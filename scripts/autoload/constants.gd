@@ -1,0 +1,1 @@
+@export var GROUND_SECTION_WIDTH = 500

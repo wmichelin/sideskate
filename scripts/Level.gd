@@ -1,7 +1,7 @@
 extends Node
 
 @onready var player: Player = $Player
-@onready var Ground: Node2D = $Ground
+@onready var ground: GroundController = $GroundController
 
 func _ready():
 	# Connect to player signals
@@ -12,7 +12,7 @@ func _ready():
 		print("Level: Warning - Player node not found")
 
 func _on_player_jumped():
-	print("Level: Player jumped! Could trigger screen shake, sound effects, etc.")
+	ground.player_did_jump()
 	# Add any level-wide reactions to player jumping here
 	# Examples:
 	# - Screen shake

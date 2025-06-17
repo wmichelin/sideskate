@@ -1,38 +1,15 @@
-[gd_scene load_steps=5 format=3 uid="uid://b6l0kmbq6qwl"]
+[gd_scene load_steps=4 format=3 uid="uid://b6l0kmbq6qwl"]
 
 [ext_resource type="Script" uid="uid://copbsk63s44ms" path="res://scripts/Level.gd" id="1_rarhs"]
 [ext_resource type="PackedScene" uid="uid://b8l2kmbq6qwl" path="res://scenes/Player.tscn" id="1_rvslj"]
-[ext_resource type="PackedScene" uid="uid://dam3nop4rstu" path="res://scenes/Enemy.tscn" id="2_0bbpv"]
 [ext_resource type="Script" uid="uid://bjskcshmkxi7y" path="res://scripts/GroundController.gd" id="3_0bbpv"]
 
 [node name="Level" type="Node2D"]
 script = ExtResource("1_rarhs")
 
-[node name="Player" parent="." groups=["Players"] instance=ExtResource("1_rvslj")]
+[node name="Player" parent="." groups=["Characters", "Players"] instance=ExtResource("1_rvslj")]
 position = Vector2(200, 200)
 motion_mode = 1
 
-[node name="Enemy" parent="." groups=["Enemies"] instance=ExtResource("2_0bbpv")]
-position = Vector2(400, 250)
-
-[node name="Ground" type="Node2D" parent="."]
+[node name="GroundController" type="Node2D" parent="."]
 script = ExtResource("3_0bbpv")
-
-[node name="Ground Alpha" type="Node" parent="Ground"]
-
-[node name="Background" type="ColorRect" parent="Ground/Ground Alpha"]
-offset_right = 1200.0
-offset_bottom = 400.0
-color = Color(0.2, 0.3, 0.2, 1)
-
-[node name="Ground Gamma" type="Node" parent="Ground"]
-
-[node name="Background" type="ColorRect" parent="Ground/Ground Gamma"]
-offset_left = 1200.0
-offset_right = 2400.0
-offset_bottom = 400.0
-color = Color(0.2, 0.3, 0.2, 1)
-
-[node name="Bottom Anchor" type="Node2D" parent="Ground"]
-
-[node name="Top Anchor" type="Node2D" parent="Ground"]
