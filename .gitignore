@@ -1,0 +1,76 @@
+# Godot 4 .gitignore
+
+# Godot-specific ignores
+.godot/
+.import/
+
+# Imported translations (if you use localization)
+*.translation
+
+# Mono-specific ignores (C# projects only)
+.mono/
+data_*/
+mono_crash.*.json
+
+# System/OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.temp
+
+# Build outputs (if you export builds)
+builds/
+exports/
+*.pck
+*.exe
+*.app
+*.dmg
+*.zip
+
+# Asset import caches
+.import/
+
+# Addons that shouldn't be tracked (uncomment if needed)
+# addons/
+
+# User-specific project settings
+# project.godot (usually you DO want to track this)
+# But exclude user-specific overrides:
+override.cfg
+
+# Export presets (contains sensitive export info)
+export_presets.cfg
+
+# Android build files
+android/
+.gradle/
+
+# iOS build files  
+ios/
+
+# Web export files
+web/
+
+# Documentation builds
+docs/_build/
+
+# Backup files
+*.backup
+*.bak
