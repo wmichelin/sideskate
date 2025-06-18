@@ -1,15 +1,27 @@
-[gd_scene load_steps=4 format=3 uid="uid://b6l0kmbq6qwl"]
+[gd_scene load_steps=5 format=3 uid="uid://b6l0kmbq6qwl"]
 
-[ext_resource type="Script" uid="uid://copbsk63s44ms" path="res://scripts/Level.gd" id="1_rarhs"]
+[ext_resource type="Script" uid="uid://copbsk63s44ms" path="res://scripts/LevelArea.gd" id="1_rarhs"]
 [ext_resource type="PackedScene" uid="uid://b8l2kmbq6qwl" path="res://scenes/Player.tscn" id="1_rvslj"]
 [ext_resource type="Script" uid="uid://bjskcshmkxi7y" path="res://scripts/GroundController.gd" id="3_0bbpv"]
+[ext_resource type="Script" uid="uid://dbavt7cca4d73" path="res://scripts/MobileUI.gd" id="4_rarhs"]
 
-[node name="Level" type="Node2D"]
+[node name="Level 1" type="Node2D"]
+
+[node name="LevelArea" type="Node2D" parent="."]
 script = ExtResource("1_rarhs")
 
-[node name="Player" parent="." groups=["Characters", "Players"] instance=ExtResource("1_rvslj")]
+[node name="Player" parent="LevelArea" groups=["Characters", "Players"] instance=ExtResource("1_rvslj")]
 position = Vector2(200, 200)
 motion_mode = 1
 
-[node name="GroundController" type="Node2D" parent="."]
+[node name="GroundController" type="Node2D" parent="LevelArea"]
 script = ExtResource("3_0bbpv")
+
+[node name="MobileUI" type="Control" parent="."]
+layout_mode = 3
+anchors_preset = 0
+offset_right = 40.0
+offset_bottom = 40.0
+size_flags_vertical = 8
+script = ExtResource("4_rarhs")
+metadata/_custom_type_script = "uid://dbavt7cca4d73"
