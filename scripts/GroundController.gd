@@ -2,6 +2,8 @@
 
 class_name GroundController extends Node
 
+const DepthBoundedCharacter = preload("res://scripts/DepthBoundedCharacter.gd")
+
 var NUM_GROUND_SECTIONS = 3
 var SECTION_HEIGHT = 350
 var SECTION_WIDTH = 500
@@ -52,12 +54,12 @@ func _ready():
         #_update_width_live()
         _find_nodes_by_groups()
         _update_ground_sections()
-        # Assign initial depth bounds based on overlapping sections
+        # Assign initial depth bounds for characters already inside sections
         for section in _ground_sections:
                 if section.area_detector:
+                        var bounds = section.get_vertical_bounds()
                         for body in section.area_detector.get_overlapping_bodies():
-                                if body in _characters and body.has_method("set_depth_bounds"):
-                                        var bounds = section.get_vertical_bounds()
+                                if body in _characters and body is DepthBoundedCharacter:
                                         body.set_depth_bounds(bounds.x, bounds.y)
         # Verify all references are valid
 	#if not characters:
@@ -66,11 +68,12 @@ func _ready():
 func _on_character_entered_section(section: GroundSection, character: Node2D):
         var section_index = _ground_sections.find(section)
         if section_index == -1:
+                # Ignore sections we don't manage
                 return
 
         print("Character entered section ", section_index)
 
-        if character.has_method("set_depth_bounds"):
+        if character is DepthBoundedCharacter:
                 var bounds = section.get_vertical_bounds()
                 character.set_depth_bounds(bounds.x, bounds.y)
 
