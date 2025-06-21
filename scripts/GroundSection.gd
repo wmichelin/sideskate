@@ -10,6 +10,13 @@ signal character_entered_section(section: GroundSection, character: Node2D)
 @onready var collision_shape: CollisionShape2D = $AreaDetector/CollisionShape2D
 var color = Color.DEEP_PINK
 
+func get_vertical_bounds() -> Vector2:
+        if background:
+                var top_y = global_position.y
+                var bottom_y = global_position.y + background.size.y
+                return Vector2(top_y, bottom_y)
+        return Vector2.ZERO
+
 static func NewGroundSection(idx: int) -> GroundSection:
 	var scene = preload("res://scenes/GroundSection.tscn")
 	var section: GroundSection = scene.instantiate()

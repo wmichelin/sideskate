@@ -9,17 +9,28 @@ class_name Player
 
 # Faked Y-axis variables for 2.5D depth simulation
 @export var depth_speed: float = 150.0  # Speed for up/down movement
+@export var default_min_depth: float = 50.0
+@export var default_max_depth: float = 400.0
+
 var fake_y: float = 0.0  # Simulated Y position for jumping
 var depth_position: float = 0.0  # Position along the "depth" axis
 var jump_speed: float = 0.0  # Current jump velocity
+var min_depth: float
+var max_depth: float
 # Camera reference
 @onready var camera: Camera2D = $Camera2D
 
 signal jumped()
 
 func _ready():
-	# Set initial depth position
-	depth_position = position.y
+        # Set initial depth position
+        depth_position = position.y
+        min_depth = default_min_depth
+        max_depth = default_max_depth
+
+func set_depth_bounds(min_val: float, max_val: float) -> void:
+        min_depth = min_val
+        max_depth = max_val
 
 
 func _physics_process(delta):
@@ -48,11 +59,12 @@ func _physics_process(delta):
 	else:
 		velocity.x = move_toward(velocity.x, 0, move_speed * delta * 5)
 
-	# Depth movement (simulated via Y position)
-	if depth_input != 0:
-		depth_position += depth_input * depth_speed * delta
-		# Clamp depth to reasonable bounds
-		depth_position = clamp(depth_position, 0, 400)
+        # Depth movement (simulated via Y position)
+        if depth_input != 0:
+                depth_position += depth_input * depth_speed * delta
+
+        # Clamp depth to current ground bounds
+        depth_position = clamp(depth_position, min_depth, max_depth)
 	
 	# Update actual position
 	var y_pos = depth_position - fake_y
