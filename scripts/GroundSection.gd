@@ -20,11 +20,11 @@ func set_size(width: int, height: int) -> GroundSection:
 	if background:
 		background.size.x = width
 		background.size.y = height
-	if collision_shape and collision_shape.shape:
-		# Make collision area span full viewport height for X-only detection
-		var viewport_height = get_viewport().get_visible_rect().size.y
-		collision_shape.shape.size = Vector2(width, viewport_height * 2)
-		collision_shape.position.y = -viewport_height / 2
+       if collision_shape and collision_shape.shape:
+               # Make collision area span full viewport height for X-only detection
+               var viewport_height = get_viewport().get_visible_rect().size.y
+               collision_shape.shape.size = Vector2(width, viewport_height * 2)
+               collision_shape.position = Vector2(width / 2, 0)
 	return self
 
 func set_position_x(pos_x: int) -> GroundSection:
