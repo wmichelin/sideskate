@@ -12,8 +12,8 @@ var left_idx = 0 # used to calculate left + right offset for infinite floor
 var _characters: Array[Node] = []
 var _original_colors: Array[Color] = []  # Store original colors for restoration
 
-# Auto-tiling management - track player's significant movement
-var _player_last_significant_section: int = -1  # Last section where auto-tiling was triggered
+# Auto-tiling management - simple approach
+var _player_last_x_position: float = 0.0
 
 # Alternative: find by groups if nodes are added to groups
 func _find_nodes_by_groups():
@@ -149,7 +149,6 @@ func _calculate_combined_bounds(sections: Array[GroundSection]) -> Dictionary:
 func _on_character_entered_section(section: GroundSection, character: Node2D):
 	var section_index = _ground_sections.find(section)
 	if section_index == -1:
-		# Ignore sections we don't manage
 		return
 
 	print("Character entered section ", section_index)
@@ -157,27 +156,13 @@ func _on_character_entered_section(section: GroundSection, character: Node2D):
 	if character is DepthBoundedCharacter:
 		_update_character_bounds(character)
 
-	# Only trigger auto-tiling if player has moved significantly since last auto-tile
-	# This prevents rapid triggering from boundary dancing
-	var should_autotile = _player_last_significant_section != section_index
-	
-	# Check if player entered leftmost section (index 0) and should trigger auto-tiling
-	if section_index == 0 and should_autotile:
-		print("Player in leftmost section - moving rightmost section to left")
-		_player_last_significant_section = section_index
-		# Defer the operation to next frame to avoid lag
-		call_deferred("_move_rightmost_section_to_left")
-	
-	# Check if player entered rightmost section (last index) and should trigger auto-tiling
-	elif section_index == _ground_sections.size() - 1 and should_autotile:
-		print("Player in rightmost section - moving leftmost section to right")
-		_player_last_significant_section = section_index
-		# Defer the operation to next frame to avoid lag
-		call_deferred("_move_leftmost_section_to_right")
-	
-	# Reset tracking when player moves to middle sections (allows future auto-tiling)
-	elif section_index > 0 and section_index < _ground_sections.size() - 1:
-		_player_last_significant_section = -1
+	# Simple auto-tiling logic
+	if section_index == 0:  # Leftmost section
+		print("Player entered leftmost section - auto-tiling")
+		_move_rightmost_section_to_left()
+	elif section_index == _ground_sections.size() - 1:  # Rightmost section
+		print("Player entered rightmost section - auto-tiling") 
+		_move_leftmost_section_to_right()
 
 func _on_character_exited_section(section: GroundSection, character: Node2D):
 	print("Character exited section: ", section.name)
@@ -216,6 +201,11 @@ func _move_section_to_opposite_side(move_left_to_right: bool):
 		_ground_sections.push_back(source_section)
 	else:
 		_ground_sections.push_front(source_section)
+	
+	# Update character bounds  
+	for character in _characters:
+		if character is DepthBoundedCharacter:
+			_update_character_bounds(character)
 
 func player_did_jump() -> void:
 	for ground_section in self._ground_sections:
