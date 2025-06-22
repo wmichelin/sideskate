@@ -3,18 +3,18 @@
 [ext_resource type="Script" uid="uid://c1jr3ujs78dh1" path="res://scripts/GroundSection.gd" id="1_lk5mp"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_1"]
-size = Vector2(500, 250)
+size = Vector2(500, 350)
 
 [node name="GroundSection" type="Node2D"]
 script = ExtResource("1_lk5mp")
 
 [node name="Background" type="ColorRect" parent="."]
 offset_right = 500.0
-offset_bottom = 250.0
+offset_bottom = 350.0
 color = Color(0.368217, 0.0820493, 0.562017, 1)
 
 [node name="AreaDetector" type="Area2D" parent="."]
 
 [node name="AreaCollisionShape2D" type="CollisionShape2D" parent="AreaDetector"]
-position = Vector2(250, 125)
+position = Vector2(250, 175)
 shape = SubResource("RectangleShape2D_1")
