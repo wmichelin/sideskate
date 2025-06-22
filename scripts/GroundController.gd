@@ -121,6 +121,7 @@ func _update_character_bounds(character: DepthBoundedCharacter):
 	
 	# Calculate combined bounds from all overlapping sections
 	var combined_bounds = _calculate_combined_bounds(overlapping_sections)
+	print("Updating bounds for character at x=", character.global_position.x, " to min_x=", combined_bounds.min_x, " max_x=", combined_bounds.max_x)
 	character.set_bounds(combined_bounds.min_depth, combined_bounds.max_depth, combined_bounds.min_x, combined_bounds.max_x)
 
 func _calculate_combined_bounds(sections: Array[GroundSection]) -> Dictionary:

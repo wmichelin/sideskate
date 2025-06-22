@@ -87,7 +87,7 @@ func _on_character_exited(body: Node2D):
 		character_exited_section.emit(self, body)
 
 static var colorChoices: Array[Color] = [
-	Color.CYAN,
-	Color.DARK_MAGENTA,
-	Color.DARK_OLIVE_GREEN,
+	Color(0.9, 0.85, 0.95, 1.0),  # Soft lavender
+	Color(0.85, 0.95, 0.9, 1.0),  # Mint green  
+	Color(0.95, 0.9, 0.85, 1.0),  # Warm peach
 ]
