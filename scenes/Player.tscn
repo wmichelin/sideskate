@@ -26,8 +26,7 @@ position = Vector2(0, 27.5)
 shape = SubResource("RectangleShape2D_1")
 
 [node name="Camera2D" type="Camera2D" parent="."]
-zoom = Vector2(2, 2)
-drag_horizontal_enabled = true
+zoom = Vector2(1.5, 1.5)
 
 [node name="Skateboard" type="Sprite2D" parent="."]
 texture_filter = 1

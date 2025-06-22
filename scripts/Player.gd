@@ -21,6 +21,12 @@ var jump_speed: float = 0.0  # Current jump velocity
 # Skateboard momentum
 var skateboard_velocity: float = 0.0  # Horizontal momentum from skateboarding
 var facing_direction: int = 1  # 1 for right, -1 for left
+
+# Camera drag variables
+var camera_target_offset: Vector2 = Vector2.ZERO
+@export var camera_drag_strength: float = 0.5  # How much camera moves opposite to velocity
+@export var camera_smoothing: float = 1.0  # How quickly camera catches up
+@export var max_camera_distance: float = 100.0  # Max pixels player can be from screen edge
 # Node references
 @onready var camera: Camera2D = $Camera2D
 @onready var collision_shape: CollisionShape2D = $CollisionShape2D
@@ -112,6 +118,9 @@ func _physics_process(delta):
 	
 	# Update visual depth sorting (objects lower on screen appear in front)
 	z_index = int(depth_position)
+	
+	# Update inverse camera drag
+	_update_camera_drag(delta)
 
 func _perform_kick_left():
 	# Set facing direction to left and apply leftward force
@@ -148,4 +157,36 @@ func get_skateboard_velocity() -> float:
 func _update_sprite_direction():
 	# Flip sprite horizontally based on facing direction
 	# facing_direction: 1 = right (no flip), -1 = left (flip)
-	sprite.flip_h = (facing_direction == -1) 
+	sprite.flip_h = (facing_direction == -1)
+
+func _update_camera_drag(delta: float):
+	# Calculate target offset based on velocity (forward camera drag)
+	var target_x_offset = skateboard_velocity * camera_drag_strength
+	camera_target_offset.x = target_x_offset
+	
+	# Smoothly move camera to target offset
+	var new_offset = camera.offset.lerp(camera_target_offset, camera_smoothing * delta)
+	
+	# Get screen bounds in world coordinates
+	var viewport_size = get_viewport().get_visible_rect().size / camera.zoom
+	var screen_left = camera.global_position.x + new_offset.x - viewport_size.x / 2
+	var screen_right = camera.global_position.x + new_offset.x + viewport_size.x / 2
+	
+	# Check if player is too far from screen edges
+	var player_x = global_position.x
+	var constraint_needed = false
+	
+	# If player is too far right of screen, pull camera right
+	if player_x > screen_right - max_camera_distance:
+		new_offset.x = player_x - camera.global_position.x - (viewport_size.x / 2 - max_camera_distance)
+		constraint_needed = true
+	
+	# If player is too far left of screen, pull camera left  
+	if player_x < screen_left + max_camera_distance:
+		new_offset.x = player_x - camera.global_position.x + (viewport_size.x / 2 - max_camera_distance)
+		constraint_needed = true
+	
+	camera.offset = new_offset
+	
+	if constraint_needed:
+		print("Camera constrained: player at ", player_x, " camera offset ", new_offset.x)
