@@ -12,9 +12,9 @@ var color = Color.DEEP_PINK
 var section_height: float = 0.0
 
 func get_vertical_bounds() -> Vector2:
-        var top_y = global_position.y
-        var bottom_y = global_position.y + section_height
-        return Vector2(top_y, bottom_y)
+		var top_y = global_position.y
+		var bottom_y = global_position.y + section_height
+		return Vector2(top_y, bottom_y)
 
 static func NewGroundSection(idx: int) -> GroundSection:
 	var scene = preload("res://scenes/GroundSection.tscn")
@@ -23,12 +23,12 @@ static func NewGroundSection(idx: int) -> GroundSection:
 	return section
 
 func set_size(width: int, height: int) -> GroundSection:
-        section_height = height
-        if background:
-                background.size.x = width
-                background.size.y = height
+	section_height = height
+	if background:
+		background.size.x = width
+		background.size.y = height
 	if collision_shape and collision_shape.shape:
-	   # Make collision area span full viewport height for X-only detection
+	# Make collision area span full viewport height for X-only detection
 		var viewport_height = get_viewport().get_visible_rect().size.y
 		collision_shape.shape.size = Vector2(width, viewport_height * 2)
 		collision_shape.position = Vector2(width / 2, 0)
@@ -39,11 +39,11 @@ func set_position_x(pos_x: int) -> GroundSection:
 	return self
 
 func _ready():
-        # Set initial color
-        if background:
-                background.color = self.color
-                if section_height == 0.0:
-                        section_height = background.size.y
+		# Set initial color
+	if background:
+			background.color = self.color
+			if section_height == 0.0:
+					section_height = background.size.y
 
 	# Connect Area2D signals
 	if area_detector:

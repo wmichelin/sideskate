@@ -51,36 +51,36 @@ func _init() -> void:
 	self._update_ground_sections()
 
 func _ready():
-        #_update_width_live()
-        _find_nodes_by_groups()
-        _update_ground_sections()
-        # Assign initial depth bounds for characters already inside sections
-        for section in _ground_sections:
-                if section.area_detector:
-                        var bounds = section.get_vertical_bounds()
-                        for body in section.area_detector.get_overlapping_bodies():
-                                if body in _characters and body is DepthBoundedCharacter:
-                                        body.set_depth_bounds(bounds.x, bounds.y)
-        # Verify all references are valid
+	#_update_width_live()
+	_find_nodes_by_groups()
+	_update_ground_sections()
+	# Assign initial depth bounds for characters already inside sections
+	for section in _ground_sections:
+		if section.area_detector:
+			var bounds = section.get_vertical_bounds()
+			for body in section.area_detector.get_overlapping_bodies():
+				if body in _characters and body is DepthBoundedCharacter:
+					body.set_depth_bounds(bounds.x, bounds.y)
+	# Verify all references are valid
 	#if not characters:
 		#return
 
 func _on_character_entered_section(section: GroundSection, character: Node2D):
-        var section_index = _ground_sections.find(section)
-        if section_index == -1:
-                # Ignore sections we don't manage
-                return
+	var section_index = _ground_sections.find(section)
+	if section_index == -1:
+		# Ignore sections we don't manage
+		return
 
-        print("Character entered section ", section_index)
+	print("Character entered section ", section_index)
 
-        if character is DepthBoundedCharacter:
-                var bounds = section.get_vertical_bounds()
-                character.set_depth_bounds(bounds.x, bounds.y)
+	if character is DepthBoundedCharacter:
+		var bounds = section.get_vertical_bounds()
+		character.set_depth_bounds(bounds.x, bounds.y)
 
-        # Check if player entered leftmost section (index 0)
-        if section_index == 0:
-                print("Player in leftmost section - moving rightmost section to left")
-                _move_rightmost_section_to_left()
+	# Check if player entered leftmost section (index 0)
+	if section_index == 0:
+		print("Player in leftmost section - moving rightmost section to left")
+		_move_rightmost_section_to_left()
 	
 	# Check if player entered rightmost section (last index)
 	elif section_index == NUM_GROUND_SECTIONS - 1:

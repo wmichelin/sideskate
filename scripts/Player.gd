@@ -19,9 +19,9 @@ var jump_speed: float = 0.0  # Current jump velocity
 signal jumped()
 
 func _ready():
-        super()
-        # Set initial depth position
-        depth_position = position.y
+		super()
+		# Set initial depth position
+		depth_position = position.y
 
 func _physics_process(delta):
 	# Handle jumping input
@@ -49,12 +49,12 @@ func _physics_process(delta):
 	else:
 		velocity.x = move_toward(velocity.x, 0, move_speed * delta * 5)
 
-        # Depth movement (simulated via Y position)
-        if depth_input != 0:
-                depth_position += depth_input * depth_speed * delta
+		# Depth movement (simulated via Y position)
+		if depth_input != 0:
+				depth_position += depth_input * depth_speed * delta
 
-        # Clamp depth to current ground bounds
-        depth_position = clamp(depth_position, min_depth, max_depth)
+		# Clamp depth to current ground bounds
+		depth_position = clamp(depth_position, min_depth, max_depth)
 	
 	# Update actual position
 	var y_pos = depth_position - fake_y
