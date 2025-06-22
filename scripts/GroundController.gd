@@ -12,7 +12,7 @@ var left_idx = 0 # used to calculate left + right offset for infinite floor
 var _characters: Array[Node] = []
 var _original_colors: Array[Color] = []  # Store original colors for restoration
 
-# Auto-tiling management - simple approach
+# Auto-tiling management
 var _player_last_x_position: float = 0.0
 
 # Alternative: find by groups if nodes are added to groups
@@ -156,7 +156,7 @@ func _on_character_entered_section(section: GroundSection, character: Node2D):
 	if character is DepthBoundedCharacter:
 		_update_character_bounds(character)
 
-	# Simple auto-tiling logic
+	# Simple auto-tiling with basic safeguards
 	if section_index == 0:  # Leftmost section
 		print("Player entered leftmost section - auto-tiling")
 		_move_rightmost_section_to_left()

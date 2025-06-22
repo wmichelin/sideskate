@@ -8,7 +8,7 @@ class_name Player
 
 # Skateboard physics variables
 @export var kick_force: float = 150.0  # Force applied when kicking
-@export var friction: float = 25.0  # Friction that slows down movement
+@export var friction: float = 150.0  # Friction that slows down movement
 @export var max_speed: float = 1000.0  # Maximum skateboard speed
 
 # Faked Y-axis variables for 2.5D depth simulation
@@ -115,4 +115,8 @@ func _perform_revert():
 	# Reverse facing direction and momentum
 	facing_direction *= -1
 	skateboard_velocity = -skateboard_velocity
-	print("Revert! Now facing: ", "right" if facing_direction == 1 else "left", " Velocity: ", skateboard_velocity) 
+	print("Revert! Now facing: ", "right" if facing_direction == 1 else "left", " Velocity: ", skateboard_velocity)
+
+func get_skateboard_velocity() -> float:
+	# Helper function for GroundController to check player velocity
+	return skateboard_velocity 
