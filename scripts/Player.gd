@@ -21,9 +21,10 @@ var jump_speed: float = 0.0  # Current jump velocity
 # Skateboard momentum
 var skateboard_velocity: float = 0.0  # Horizontal momentum from skateboarding
 var facing_direction: int = 1  # 1 for right, -1 for left
-# Camera reference
+# Node references
 @onready var camera: Camera2D = $Camera2D
 @onready var collision_shape: CollisionShape2D = $CollisionShape2D
+@onready var sprite: Sprite2D = $Sprite2D
 
 signal jumped()
 
@@ -31,6 +32,8 @@ func _ready():
 		super()
 		# Set initial depth position
 		depth_position = position.y
+		# Set initial sprite direction
+		_update_sprite_direction()
 
 
 func _physics_process(delta):
@@ -39,9 +42,12 @@ func _physics_process(delta):
 		jump_speed = jump_velocity
 		jumped.emit()
 	
-	# Kick logic - apply rightward acceleration
-	if Input.is_action_just_pressed("kick"):
-		_perform_kick()
+	# Kick logic - apply force in specific directions
+	if Input.is_action_just_pressed("kick_left"):
+		_perform_kick_left()
+	
+	if Input.is_action_just_pressed("kick_right"):
+		_perform_kick_right()
 	
 	# Revert logic - instantly reverse momentum
 	if Input.is_action_just_pressed("revert"):
@@ -104,19 +110,39 @@ func _physics_process(delta):
 	# Update visual depth sorting (objects lower on screen appear in front)
 	z_index = int(depth_position)
 
-func _perform_kick():
-	# Apply acceleration in the direction the character is facing
-	skateboard_velocity += kick_force * facing_direction
+func _perform_kick_left():
+	# Set facing direction to left and apply leftward force
+	facing_direction = -1
+	skateboard_velocity -= kick_force
 	# Clamp to maximum speed in both directions
 	skateboard_velocity = clamp(skateboard_velocity, -max_speed, max_speed)
-	print("Kick! Direction: ", facing_direction, " Velocity: ", skateboard_velocity)
+	# Update sprite to face left
+	_update_sprite_direction()
+	print("Kick Left! Velocity: ", skateboard_velocity)
+
+func _perform_kick_right():
+	# Set facing direction to right and apply rightward force
+	facing_direction = 1
+	skateboard_velocity += kick_force
+	# Clamp to maximum speed in both directions
+	skateboard_velocity = clamp(skateboard_velocity, -max_speed, max_speed)
+	# Update sprite to face right
+	_update_sprite_direction()
+	print("Kick Right! Velocity: ", skateboard_velocity)
 
 func _perform_revert():
 	# Reverse facing direction and momentum
 	facing_direction *= -1
 	skateboard_velocity = -skateboard_velocity
+	# Update sprite to face the new direction
+	_update_sprite_direction()
 	print("Revert! Now facing: ", "right" if facing_direction == 1 else "left", " Velocity: ", skateboard_velocity)
 
 func get_skateboard_velocity() -> float:
 	# Helper function for GroundController to check player velocity
-	return skateboard_velocity 
+	return skateboard_velocity
+
+func _update_sprite_direction():
+	# Flip sprite horizontally based on facing direction
+	# facing_direction: 1 = right (no flip), -1 = left (flip)
+	sprite.flip_h = (facing_direction == -1) 
