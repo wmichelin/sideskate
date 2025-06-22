@@ -3,9 +3,13 @@ extends DepthBoundedCharacter
 class_name Player
 
 # Export variables for easy tweaking in the editor
-@export var move_speed: float = 200.0
 @export var jump_velocity: float = 300.0
 @export var gravity: float = -800.0
+
+# Skateboard physics variables
+@export var kick_force: float = 150.0  # Force applied when kicking
+@export var friction: float = 25.0  # Friction that slows down movement
+@export var max_speed: float = 1000.0  # Maximum skateboard speed
 
 # Faked Y-axis variables for 2.5D depth simulation
 @export var depth_speed: float = 150.0  # Speed for up/down movement
@@ -13,6 +17,10 @@ class_name Player
 var fake_y: float = 0.0  # Simulated Y position for jumping
 var depth_position: float = 0.0  # Position along the "depth" axis
 var jump_speed: float = 0.0  # Current jump velocity
+
+# Skateboard momentum
+var skateboard_velocity: float = 0.0  # Horizontal momentum from skateboarding
+var facing_direction: int = 1  # 1 for right, -1 for left
 # Camera reference
 @onready var camera: Camera2D = $Camera2D
 @onready var collision_shape: CollisionShape2D = $CollisionShape2D
@@ -30,6 +38,14 @@ func _physics_process(delta):
 	if Input.is_action_just_pressed("jump") and fake_y <= 0:
 		jump_speed = jump_velocity
 		jumped.emit()
+	
+	# Kick logic - apply rightward acceleration
+	if Input.is_action_just_pressed("kick"):
+		_perform_kick()
+	
+	# Revert logic - instantly reverse momentum
+	if Input.is_action_just_pressed("revert"):
+		_perform_revert()
 
 	# Handle faked gravity for jumping
 	if fake_y >= 0 or jump_speed < 0:
@@ -41,15 +57,17 @@ func _physics_process(delta):
 			fake_y = 0
 			jump_speed = 0
 
-	# Get input for horizontal and depth movement
-	var horizontal_input = Input.get_axis("left", "right")
-	var depth_input = Input.get_axis("up", "down")
+	# Apply friction to skateboard velocity
+	if skateboard_velocity > 0:
+		skateboard_velocity = max(0, skateboard_velocity - friction * delta)
+	elif skateboard_velocity < 0:
+		skateboard_velocity = min(0, skateboard_velocity + friction * delta)
 	
-	# Horizontal movement (X-axis)
-	if horizontal_input != 0:
-		velocity.x = horizontal_input * move_speed
-	else:
-		velocity.x = move_toward(velocity.x, 0, move_speed * delta * 5)
+	# Set horizontal velocity from skateboard momentum
+	velocity.x = skateboard_velocity
+	
+	# Get input for depth movement
+	var depth_input = Input.get_axis("up", "down")
 
 	# Depth movement (simulated via Y position)
 	if depth_input != 0:
@@ -84,4 +102,17 @@ func _physics_process(delta):
 		depth_position = max_depth - shape_size.y / 2 - collision_shape.position.y * scale.y
 	
 	# Update visual depth sorting (objects lower on screen appear in front)
-	z_index = int(depth_position) 
+	z_index = int(depth_position)
+
+func _perform_kick():
+	# Apply acceleration in the direction the character is facing
+	skateboard_velocity += kick_force * facing_direction
+	# Clamp to maximum speed in both directions
+	skateboard_velocity = clamp(skateboard_velocity, -max_speed, max_speed)
+	print("Kick! Direction: ", facing_direction, " Velocity: ", skateboard_velocity)
+
+func _perform_revert():
+	# Reverse facing direction and momentum
+	facing_direction *= -1
+	skateboard_velocity = -skateboard_velocity
+	print("Revert! Now facing: ", "right" if facing_direction == 1 else "left", " Velocity: ", skateboard_velocity) 
