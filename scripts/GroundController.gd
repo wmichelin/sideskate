@@ -15,6 +15,9 @@ var _original_colors: Array[Color] = []  # Store original colors for restoration
 # Auto-tiling management
 var _player_last_x_position: float = 0.0
 
+# Section intersection tracking
+var _intersected_sections: Array[GroundSection] = []  # Currently intersected sections
+
 # Alternative: find by groups if nodes are added to groups
 func _find_nodes_by_groups():
 	if Engine.is_editor_hint():
@@ -151,23 +154,88 @@ func _on_character_entered_section(section: GroundSection, character: Node2D):
 	if section_index == -1:
 		return
 
-	print("Character entered section ", section_index)
+	# Only track player character
+	if not character.is_in_group("Player"):
+		return
+	
+	# Track previous intersection count
+	var previous_count = _intersected_sections.size()
+	
+	# Add to intersected sections if not already present
+	if section not in _intersected_sections:
+		_intersected_sections.append(section)
+	
+	print("Player entered section ", section_index)
+	_log_intersection_state()
 
 	if character is DepthBoundedCharacter:
 		_update_character_bounds(character)
 
-	# Simple auto-tiling with basic safeguards
-	if section_index == 0:  # Leftmost section
-		print("Player entered leftmost section - auto-tiling")
-		_move_rightmost_section_to_left()
-	elif section_index == _ground_sections.size() - 1:  # Rightmost section
-		print("Player entered rightmost section - auto-tiling") 
-		_move_leftmost_section_to_right()
+	# Check if we just transitioned to exactly one section
+	var current_count = _intersected_sections.size()
+	if current_count == 1 and previous_count != 1:
+		print("*** INTERSECTION CHANGED TO SINGLE SECTION - TRIGGERING AUTO-TILE CHECK ***")
+		_check_auto_tiling()
 
 func _on_character_exited_section(section: GroundSection, character: Node2D):
-	print("Character exited section: ", section.name)
+	var section_index = _ground_sections.find(section)
+	
+	# Only track player character
+	if not character.is_in_group("Player"):
+		return
+	
+	# Track previous intersection count
+	var previous_count = _intersected_sections.size()
+	
+	# Remove from intersected sections
+	if section in _intersected_sections:
+		_intersected_sections.erase(section)
+	
+	print("Player exited section ", section_index)
+	_log_intersection_state()
+	
 	if character is DepthBoundedCharacter:
 		_update_character_bounds(character)
+	
+	# Check if we just transitioned to exactly one section
+	var current_count = _intersected_sections.size()
+	if current_count == 1 and previous_count != 1:
+		print("*** INTERSECTION CHANGED TO SINGLE SECTION - TRIGGERING AUTO-TILE CHECK ***")
+		_check_auto_tiling()
+
+func _log_intersection_state():
+	print("=== INTERSECTION STATE ===")
+	print("Total sections: ", _ground_sections.size())
+	print("Intersected sections: ", _intersected_sections.size())
+	
+	for i in range(_ground_sections.size()):
+		var section = _ground_sections[i]
+		var is_intersected = section in _intersected_sections
+		print("  Section ", i, ": ", "INTERSECTED" if is_intersected else "NOT INTERSECTED")
+	
+	var intersected_indices = []
+	for section in _intersected_sections:
+		var idx = _ground_sections.find(section)
+		if idx != -1:
+			intersected_indices.append(idx)
+	print("Intersected indices: ", intersected_indices)
+	print("=========================")
+
+func _check_auto_tiling():
+	# Only auto-tile if player is in exactly one section to prevent rapid retriggering
+	if _intersected_sections.size() != 1:
+		print("Skipping auto-tile: player in ", _intersected_sections.size(), " sections")
+		return
+	
+	var current_section = _intersected_sections[0]
+	var section_index = _ground_sections.find(current_section)
+	
+	if section_index == 0:  # Leftmost section
+		print("Player in leftmost section only - auto-tiling")
+		_move_rightmost_section_to_left()
+	elif section_index == _ground_sections.size() - 1:  # Rightmost section
+		print("Player in rightmost section only - auto-tiling") 
+		_move_leftmost_section_to_right()
 
 func _move_rightmost_section_to_left():
 	_move_section_to_opposite_side(false)

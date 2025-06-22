@@ -34,6 +34,9 @@ func _ready():
 		depth_position = position.y
 		# Set initial sprite direction
 		_update_sprite_direction()
+		# Add to required groups for auto-tiling
+		add_to_group("Characters")
+		add_to_group("Player")
 
 
 func _physics_process(delta):
