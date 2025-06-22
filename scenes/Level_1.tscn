@@ -17,10 +17,10 @@ motion_mode = 1
 script = ExtResource("3_0bbpv")
 
 [node name="GroundSection" parent="GroundController" instance=ExtResource("4_ground")]
-position = Vector2(-58, 201)
+position = Vector2(-58, 270)
 
 [node name="GroundSection2" parent="GroundController" instance=ExtResource("4_ground")]
 position = Vector2(442, 350)
 
 [node name="GroundSection3" parent="GroundController" instance=ExtResource("4_ground")]
-position = Vector2(942, 227)
+position = Vector2(942, 294)

@@ -15,6 +15,7 @@ var depth_position: float = 0.0  # Position along the "depth" axis
 var jump_speed: float = 0.0  # Current jump velocity
 # Camera reference
 @onready var camera: Camera2D = $Camera2D
+@onready var collision_shape: CollisionShape2D = $CollisionShape2D
 
 signal jumped()
 
@@ -22,6 +23,7 @@ func _ready():
 		super()
 		# Set initial depth position
 		depth_position = position.y
+
 
 func _physics_process(delta):
 	# Handle jumping input
@@ -49,19 +51,37 @@ func _physics_process(delta):
 	else:
 		velocity.x = move_toward(velocity.x, 0, move_speed * delta * 5)
 
-		# Depth movement (simulated via Y position)
-		if depth_input != 0:
-				depth_position += depth_input * depth_speed * delta
+	# Depth movement (simulated via Y position)
+	if depth_input != 0:
+		depth_position += depth_input * depth_speed * delta
 
-		# Clamp depth to current ground bounds
-		depth_position = clamp(depth_position, min_depth, max_depth)
-	
 	# Update actual position
 	var y_pos = depth_position - fake_y
 	position.y = y_pos  # Subtract fake_y for jump effect
 	
 	# Move horizontally
 	move_and_slide()
+	
+	# Get collision shape bounds in world space
+	var shape_size = collision_shape.shape.size * scale
+	var shape_global_pos = global_position + collision_shape.position * scale
+	
+	# Calculate collision shape boundaries
+	var collision_left = shape_global_pos.x - shape_size.x / 2
+	var collision_right = shape_global_pos.x + shape_size.x / 2
+	var collision_top = shape_global_pos.y - shape_size.y / 2 
+	var collision_bottom = shape_global_pos.y + shape_size.y / 2
+	
+	# Strict boundary enforcement - collision shape cannot extend beyond bounds
+	if collision_left < min_x:
+		position.x = min_x + shape_size.x / 2 - collision_shape.position.x * scale.x
+	elif collision_right > max_x:
+		position.x = max_x - shape_size.x / 2 - collision_shape.position.x * scale.x
+		
+	if collision_top < min_depth:
+		depth_position = min_depth + shape_size.y / 2 - collision_shape.position.y * scale.y
+	elif collision_bottom > max_depth:
+		depth_position = max_depth - shape_size.y / 2 - collision_shape.position.y * scale.y
 	
 	# Update visual depth sorting (objects lower on screen appear in front)
 	z_index = int(depth_position) 

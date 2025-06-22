@@ -1,4 +1,4 @@
-[gd_scene load_steps=5 format=3 uid="uid://dgokkk3sok5tk"]
+[gd_scene load_steps=5 format=3 uid="uid://sheu2u866qoj"]
 
 [ext_resource type="Script" uid="uid://copbsk63s44ms" path="res://scripts/LevelArea.gd" id="1_rarhs"]
 [ext_resource type="PackedScene" uid="uid://b8l2kmbq6qwl" path="res://scenes/Player.tscn" id="1_rvslj"]
@@ -11,7 +11,7 @@
 script = ExtResource("1_rarhs")
 
 [node name="Player" parent="LevelArea" groups=["Characters", "Players"] instance=ExtResource("1_rvslj")]
-position = Vector2(200, 200)
+position = Vector2(200, 147)
 motion_mode = 1
 
 [node name="GroundController" type="Node2D" parent="LevelArea"]
