@@ -7,3 +7,4 @@ exports/
 .DS_Store
 .import/
 .mcp/
+mcp_bridge.gd
