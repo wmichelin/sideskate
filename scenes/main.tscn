@@ -45,9 +45,6 @@ radius = 150.0
 
 [node name="RampVisual" type="Node2D" parent="RampLevel"]
 script = ExtResource("3_visual")
-lip_left = 180.0
-lip_right = 1100.0
-pipe_radius = 150.0
 
 [node name="Player" type="Node2D" parent="."]
 script = ExtResource("4_player")

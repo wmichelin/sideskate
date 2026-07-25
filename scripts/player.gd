@@ -1,9 +1,10 @@
 extends Node2D
 ## 8-way mover on logical X/Z with accel/friction. Samples RampLevel for surface height.
 
-@export var max_speed: float = 260.0
-@export var acceleration: float = 1600.0
-@export var friction: float = 1800.0
+@export var max_speed_x: float = 520.0
+@export var max_speed_z: float = 260.0
+@export var acceleration: float = 2200.0
+@export var friction: float = 2400.0
 ## When on, logical speed is scaled by visual scale so near movement reads faster.
 @export var depth_speed_feel: bool = true
 @export var level_path: NodePath = NodePath("../RampLevel")
@@ -18,7 +19,6 @@ var last_surface: Dictionary = {}
 
 func _ready() -> void:
 	_level = get_node_or_null(level_path) as RampLevel
-	# Spawn mid-plaza.
 	var spawn_x := 640.0
 	if _level:
 		spawn_x = (_level.lip_left + _level.lip_right) * 0.5
@@ -55,7 +55,6 @@ func _apply_surface() -> void:
 
 
 func _read_move_input() -> Vector2:
-	# X: left/right. Z: up = farther (+Z), down = nearer (-Z).
 	var x := Input.get_axis("move_left", "move_right")
 	var z := Input.get_axis("move_down", "move_up")
 	var v := Vector2(x, z)
@@ -65,7 +64,8 @@ func _read_move_input() -> Vector2:
 
 
 func _integrate_velocity(input: Vector2, delta: float) -> void:
+	var target := Vector2(input.x * max_speed_x, input.y * max_speed_z)
 	if input != Vector2.ZERO:
-		_velocity = _velocity.move_toward(input * max_speed, acceleration * delta)
+		_velocity = _velocity.move_toward(target, acceleration * delta)
 	else:
 		_velocity = _velocity.move_toward(Vector2.ZERO, friction * delta)

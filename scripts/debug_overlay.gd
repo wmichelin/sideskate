@@ -25,13 +25,13 @@ func _process(_delta: float) -> void:
 	var pipe_angle := float(surface.get("angle", 0.0))
 	label.text = (
 		"PSEUDO-DEPTH DEBUG\n"
-		+ "X: %.1f\n" % s.x
+		+ "X: %.1f  (sx %.1f)\n" % [s.x, s.get("screen_x", s.x)]
 		+ "Z: %.1f  (t=%.2f)\n" % [s.z, s.t]
 		+ "Scale: %.3f\n" % s.scale
 		+ "Screen Y: %.1f\n" % s.screen_y
 		+ "z_index: %d\n" % s.z_index
 		+ "Zone: %s\n" % zone
-		+ "Surf H: %.1f\n" % s.surface_height
+		+ "Surf H: %.1f (scr %.1f)\n" % [s.surface_height, s.get("surface_screen_h", 0.0)]
 		+ "Pipe angle: %.1f deg\n" % pipe_angle
 		+ "WASD — Up = farther"
 	)
