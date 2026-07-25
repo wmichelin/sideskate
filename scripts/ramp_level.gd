@@ -1,42 +1,88 @@
 class_name RampLevel
 extends Node2D
-## Owns the plaza flat + left/right quarter pipes. Single surface sampler + perspective projector.
+## Level runtime: loads .ssk, samples floor/deck/pipes, projects to screen.
 
-@export var lip_left: float = 180.0
-@export var lip_right: float = 1100.0
-@export var pipe_radius: float = 150.0
-@export var z_min: float = 0.0
-@export var z_max: float = 100.0
+@export var level_path: String = "res://levels/plaza_default.ssk"
 
 @export_group("Perspective")
 @export var near_screen_y: float = 560.0
 @export var far_screen_y: float = 300.0
-## How far lips converge toward center at max depth (screen px).
 @export var perspective_inset: float = 80.0
-## Geometry size at far depth relative to near (pipe radius/height & X offsets).
 @export var far_geometry_scale: float = 0.72
 
-@onready var left_pipe: QuarterPipe = $LeftPipe
-@onready var right_pipe: QuarterPipe = $RightPipe
+var spec: LevelSpec
+var pipes: Array = []  # QuarterPipe nodes
+
+var z_min: float = 0.0
+var z_max: float = 100.0
+var lip_left: float = 180.0
+var lip_right: float = 1100.0
+var pipe_radius: float = 150.0
+
+@onready var _visual: Node2D = $RampVisual
 
 
 func _ready() -> void:
-	_sync_pipes()
+	if level_path != "":
+		load_level(level_path)
 
 
-func _sync_pipes() -> void:
-	if left_pipe:
-		left_pipe.side = QuarterPipe.PipeSide.LEFT
-		left_pipe.lip_x = lip_left
-		left_pipe.radius = pipe_radius
-		left_pipe.z_min = z_min
-		left_pipe.z_max = z_max
-	if right_pipe:
-		right_pipe.side = QuarterPipe.PipeSide.RIGHT
-		right_pipe.lip_x = lip_right
-		right_pipe.radius = pipe_radius
-		right_pipe.z_min = z_min
-		right_pipe.z_max = z_max
+func load_level(path: String) -> bool:
+	var loaded: LevelSpec = LevelLoader.load_path(path)
+	if loaded == null:
+		push_error("RampLevel: failed to load %s" % path)
+		return false
+	apply_spec(loaded)
+	return true
+
+
+func apply_spec(s: LevelSpec) -> void:
+	spec = s
+	perspective_inset = s.perspective_inset
+	far_geometry_scale = s.far_geometry_scale
+	z_min = s.z_min
+	z_max = s.z_max
+
+	# Clear previous pipe nodes
+	for p in pipes:
+		if is_instance_valid(p):
+			p.queue_free()
+	pipes.clear()
+
+	# Remove legacy LeftPipe/RightPipe if present
+	for child_name in ["LeftPipe", "RightPipe"]:
+		var legacy := get_node_or_null(child_name)
+		if legacy:
+			legacy.queue_free()
+
+	for pd in s.pipes:
+		var n := QuarterPipe.new()
+		n.side = pd.side
+		n.lip_x = pd.lip_x
+		n.radius = pd.radius
+		n.z_min = pd.z_min
+		n.z_max = pd.z_max
+		add_child(n)
+		pipes.append(n)
+
+	# Convenience: first left / first right for debug / simple visuals
+	lip_left = s.x_min
+	lip_right = s.x_max
+	pipe_radius = 150.0
+	for pd in s.pipes:
+		if pd.side == QuarterPipe.PipeSide.LEFT:
+			lip_left = pd.lip_x
+			pipe_radius = pd.radius
+			break
+	for pd in s.pipes:
+		if pd.side == QuarterPipe.PipeSide.RIGHT:
+			lip_right = pd.lip_x
+			break
+
+	if _visual and _visual.has_method("refresh"):
+		_visual.refresh()
+	elif _visual:
+		_visual.queue_redraw()
 
 
 func depth_t(logical_z: float) -> float:
@@ -58,28 +104,54 @@ func ground_screen_y(logical_z: float) -> float:
 	return lerpf(near_screen_y, far_screen_y, depth_t(logical_z))
 
 
-## Playable X bounds: outer pipe tops (logical / near-plane space).
 func x_min() -> float:
+	if spec:
+		return spec.x_min
 	return lip_left - pipe_radius
 
 
 func x_max() -> float:
+	if spec:
+		return spec.x_max
 	return lip_right + pipe_radius
 
 
 func sample(logical_x: float, logical_z: float) -> Dictionary:
-	_sync_pipes()
-	var left := left_pipe.query_surface(logical_x, logical_z)
-	if left.get("active", false):
-		return left
+	for pipe in pipes:
+		var hit: Dictionary = pipe.query_surface(logical_x, logical_z)
+		if hit.get("active", false):
+			return hit
 
-	var right := right_pipe.query_surface(logical_x, logical_z)
-	if right.get("active", false):
-		return right
+	var p := Vector2(logical_x, logical_z)
+	if spec:
+		for deck in spec.decks:
+			if LevelSpec.point_in_poly(p, deck.poly):
+				return {
+					"active": true,
+					"zone": "deck",
+					"height": float(deck.height),
+					"angle": 0.0,
+					"theta": 0.0,
+					"normal_x": 0.0,
+					"normal_y": 1.0,
+					"t_along_pipe": 0.0,
+				}
+		for floor in spec.floors:
+			if LevelSpec.point_in_poly(p, floor.poly):
+				return {
+					"active": true,
+					"zone": "flat",
+					"height": 0.0,
+					"angle": 0.0,
+					"theta": 0.0,
+					"normal_x": 0.0,
+					"normal_y": 1.0,
+					"t_along_pipe": 0.0,
+				}
 
 	return {
-		"active": true,
-		"zone": "flat",
+		"active": false,
+		"zone": "oob",
 		"height": 0.0,
 		"angle": 0.0,
 		"theta": 0.0,
@@ -89,48 +161,66 @@ func sample(logical_x: float, logical_z: float) -> Dictionary:
 	}
 
 
-## Project logical near-plane (x, z, surface_height) onto screen pixels.
-## Must match RampVisual pipe/plaza drawing exactly.
+## Project logical (x,z,height) to screen. Global X remap + height scale.
 func project(logical_x: float, logical_z: float, surface_height: float = 0.0) -> Dictionary:
 	var t := depth_t(logical_z)
 	var inset := inset_at(logical_z)
 	var gscale := geometry_scale_at(logical_z)
 	var ground_y := ground_screen_y(logical_z)
 
-	var screen_x: float
-	if logical_x <= lip_left:
-		# Left pipe / left of lip: offset outward from inset lip, scaled by depth.
-		var x_off := lip_left - logical_x
-		screen_x = (lip_left + inset) - x_off * gscale
-	elif logical_x >= lip_right:
-		var x_off := logical_x - lip_right
-		screen_x = (lip_right - inset) + x_off * gscale
-	else:
-		# Flat plaza: remap between inset lip screens.
-		var flat_w := lip_right - lip_left
-		var u := 0.0 if flat_w <= 0.0001 else (logical_x - lip_left) / flat_w
-		screen_x = lerpf(lip_left + inset, lip_right - inset, u)
+	var xmin := x_min()
+	var xmax := x_max()
+	var span := xmax - xmin
+	var u := 0.0 if span <= 0.0001 else clampf((logical_x - xmin) / span, 0.0, 1.0)
+	var screen_x := lerpf(xmin + inset * t, xmax - inset * t, u)
 
-	var surface_screen_h := surface_height * gscale
+	# Prefer per-pipe projection when on a pipe band (matches arc drawing).
+	for pipe in pipes:
+		if logical_z < pipe.z_min - 0.001 or logical_z > pipe.z_max + 0.001:
+			continue
+		if logical_x < pipe.x_min() - 0.001 or logical_x > pipe.x_max() + 0.001:
+			continue
+		var mid := (xmin + xmax) * 0.5
+		var dir := signf(mid - pipe.lip_x)
+		if is_zero_approx(dir):
+			dir = 1.0 if pipe.side == QuarterPipe.PipeSide.LEFT else -1.0
+		var lip_screen: float = pipe.lip_x + dir * inset
+		var x_off: float
+		if pipe.side == QuarterPipe.PipeSide.LEFT:
+			x_off = pipe.lip_x - logical_x
+			screen_x = lip_screen - x_off * gscale
+		else:
+			x_off = logical_x - pipe.lip_x
+			screen_x = lip_screen + x_off * gscale
+		break
+
 	return {
 		"t": t,
 		"screen_x": screen_x,
 		"ground_y": ground_y,
-		"surface_screen_h": surface_screen_h,
+		"surface_screen_h": surface_height * gscale,
 		"geometry_scale": gscale,
 		"inset": inset,
 	}
 
 
-## Screen point on a pipe arc (for visuals). u: 0=lip … 1=coping.
-func pipe_screen_point(is_left: bool, logical_z: float, u: float) -> Vector2:
+func pipe_screen_point_for(pipe: QuarterPipe, logical_z: float, u: float) -> Vector2:
 	var theta := clampf(u, 0.0, 1.0) * PI * 0.5
-	var x_off := pipe_radius * sin(theta)
-	var height := pipe_radius * (1.0 - cos(theta))
+	var x_off := pipe.radius * sin(theta)
+	var height := pipe.radius * (1.0 - cos(theta))
 	var logical_x: float
-	if is_left:
-		logical_x = lip_left - x_off
+	if pipe.side == QuarterPipe.PipeSide.LEFT:
+		logical_x = pipe.lip_x - x_off
 	else:
-		logical_x = lip_right + x_off
+		logical_x = pipe.lip_x + x_off
 	var p := project(logical_x, logical_z, height)
 	return Vector2(p.screen_x, p.ground_y - p.surface_screen_h)
+
+
+## Back-compat for single-bay helpers.
+func pipe_screen_point(is_left: bool, logical_z: float, u: float) -> Vector2:
+	for pipe in pipes:
+		var pipe_is_left: bool = pipe.side == QuarterPipe.PipeSide.LEFT
+		if pipe_is_left == is_left:
+			return pipe_screen_point_for(pipe, logical_z, u)
+	return Vector2.ZERO
