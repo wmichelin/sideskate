@@ -1,10 +1,11 @@
-[gd_scene load_steps=8 format=3 uid="uid://bdepthproto01"]
+[gd_scene load_steps=7 format=3 uid="uid://bdepthproto01"]
 
-[ext_resource type="Script" path="res://scripts/lane_band.gd" id="1_lane"]
-[ext_resource type="Script" path="res://scripts/player.gd" id="2_player"]
-[ext_resource type="Script" path="res://scripts/pseudo_depth_body.gd" id="3_depth"]
-[ext_resource type="Script" path="res://scripts/depth_prop.gd" id="4_prop"]
-[ext_resource type="Script" path="res://scripts/debug_overlay.gd" id="5_debug"]
+[ext_resource type="Script" path="res://scripts/ramp_level.gd" id="1_level"]
+[ext_resource type="Script" path="res://scripts/quarter_pipe.gd" id="2_pipe"]
+[ext_resource type="Script" path="res://scripts/ramp_visual.gd" id="3_visual"]
+[ext_resource type="Script" path="res://scripts/player.gd" id="4_player"]
+[ext_resource type="Script" path="res://scripts/pseudo_depth_body.gd" id="5_depth"]
+[ext_resource type="Script" path="res://scripts/debug_overlay.gd" id="6_debug"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_panel"]
 bg_color = Color(0.05, 0.06, 0.09, 0.72)
@@ -24,65 +25,35 @@ z_index = -100
 color = Color(0.08, 0.1, 0.14, 1)
 polygon = PackedVector2Array(0, 0, 1280, 0, 1280, 720, 0, 720)
 
-[node name="LaneBand" type="Node2D" parent="."]
-z_index = -50
-script = ExtResource("1_lane")
+[node name="RampLevel" type="Node2D" parent="."]
+script = ExtResource("1_level")
+lip_left = 180.0
+lip_right = 1100.0
+pipe_radius = 150.0
 
-[node name="Props" type="Node2D" parent="."]
+[node name="LeftPipe" type="Node" parent="RampLevel"]
+script = ExtResource("2_pipe")
+side = 0
+lip_x = 180.0
+radius = 150.0
 
-[node name="PropNear" type="Node2D" parent="Props"]
-script = ExtResource("4_prop")
-start_x = 320.0
-start_z = 15.0
+[node name="RightPipe" type="Node" parent="RampLevel"]
+script = ExtResource("2_pipe")
+side = 1
+lip_x = 1100.0
+radius = 150.0
 
-[node name="PseudoDepthBody" type="Node" parent="Props/PropNear"]
-script = ExtResource("3_depth")
-
-[node name="Shadow" type="Polygon2D" parent="Props/PropNear"]
-color = Color(0, 0, 0, 0.5)
-polygon = PackedVector2Array(-36, -10, 36, -10, 28, 10, -28, 10)
-
-[node name="Body" type="Polygon2D" parent="Props/PropNear"]
-color = Color(0.95, 0.55, 0.2, 1)
-polygon = PackedVector2Array(-28, -70, 28, -70, 28, 0, -28, 0)
-
-[node name="PropMid" type="Node2D" parent="Props"]
-script = ExtResource("4_prop")
-start_x = 640.0
-start_z = 50.0
-
-[node name="PseudoDepthBody" type="Node" parent="Props/PropMid"]
-script = ExtResource("3_depth")
-
-[node name="Shadow" type="Polygon2D" parent="Props/PropMid"]
-color = Color(0, 0, 0, 0.5)
-polygon = PackedVector2Array(-40, -10, 40, -10, 30, 10, -30, 10)
-
-[node name="Body" type="Polygon2D" parent="Props/PropMid"]
-color = Color(0.35, 0.75, 0.95, 1)
-polygon = PackedVector2Array(-22, -90, 22, -90, 22, 0, -22, 0)
-
-[node name="PropFar" type="Node2D" parent="Props"]
-script = ExtResource("4_prop")
-start_x = 960.0
-start_z = 85.0
-
-[node name="PseudoDepthBody" type="Node" parent="Props/PropFar"]
-script = ExtResource("3_depth")
-
-[node name="Shadow" type="Polygon2D" parent="Props/PropFar"]
-color = Color(0, 0, 0, 0.5)
-polygon = PackedVector2Array(-44, -10, 44, -10, 32, 10, -32, 10)
-
-[node name="Body" type="Polygon2D" parent="Props/PropFar"]
-color = Color(0.55, 0.9, 0.45, 1)
-polygon = PackedVector2Array(-34, -55, 34, -55, 34, 0, -34, 0)
+[node name="RampVisual" type="Node2D" parent="RampLevel"]
+script = ExtResource("3_visual")
+lip_left = 180.0
+lip_right = 1100.0
+pipe_radius = 150.0
 
 [node name="Player" type="Node2D" parent="."]
-script = ExtResource("2_player")
+script = ExtResource("4_player")
 
 [node name="PseudoDepthBody" type="Node" parent="Player"]
-script = ExtResource("3_depth")
+script = ExtResource("5_depth")
 
 [node name="Shadow" type="Polygon2D" parent="Player"]
 z_index = -1
@@ -94,13 +65,13 @@ color = Color(0.92, 0.25, 0.45, 1)
 polygon = PackedVector2Array(0, -72, 28, -20, 18, 0, -18, 0, -28, -20)
 
 [node name="DebugOverlay" type="CanvasLayer" parent="."]
-script = ExtResource("5_debug")
+script = ExtResource("6_debug")
 
 [node name="Panel" type="PanelContainer" parent="DebugOverlay"]
 offset_left = 16.0
 offset_top = 16.0
-offset_right = 340.0
-offset_bottom = 190.0
+offset_right = 360.0
+offset_bottom = 250.0
 theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
 
 [node name="Label" type="Label" parent="DebugOverlay/Panel"]

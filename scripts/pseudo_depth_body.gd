@@ -14,8 +14,8 @@ extends Node
 ##   scale     = lerp(near_scale, far_scale, t)
 ##   z_index   = round(lerp(near_z_index, far_z_index, t))
 ##
-## Shadow uses the ground screen position (X, screen_y) and ignores
-## height_offset so jumps can lift the body later without moving the shadow.
+## Shadow uses the surface contact position (X, screen_y - surface_height)
+## and ignores jump height_offset so jumps can lift the body later.
 
 @export_group("Lane Band")
 @export var z_min: float = 0.0
@@ -44,7 +44,9 @@ extends Node
 var logical_x: float = 0.0
 ## Logical depth in the lane band.
 var logical_z: float = 0.0
-## Future jump height in screen pixels (does not move the shadow).
+## Height of the supporting surface (pipe/flat). Shadow follows this.
+var surface_height: float = 0.0
+## Extra jump height in screen pixels (body only — shadow ignores this).
 var height_offset: float = 0.0
 
 var _visual: Node2D
@@ -65,7 +67,7 @@ func depth_t() -> float:
 	return clampf((logical_z - z_min) / span, 0.0, 1.0)
 
 
-## Ground contact Y on screen for the current Z (shadow + feet).
+## Ground contact Y on screen for the current Z (shadow + feet on flat plaza).
 func ground_screen_y() -> float:
 	return lerpf(near_screen_y, far_screen_y, depth_t())
 
@@ -88,7 +90,7 @@ func clamp_z(z: float) -> float:
 	return clampf(z, z_min, z_max)
 
 
-## Push logical X/Z (+ optional height) into Node2D transforms.
+## Push logical X/Z (+ surface/jump height) into Node2D transforms.
 func apply() -> void:
 	logical_z = clamp_z(logical_z)
 	var parent := get_parent() as Node2D
@@ -100,22 +102,21 @@ func apply() -> void:
 	var s := visual_scale()
 	var z_i := draw_z_index()
 
-	# Root sits on the ground contact point for this depth.
+	# Root sits on the plaza ground line for this depth; height is applied on children.
 	parent.position = Vector2(logical_x, ground_y)
 	parent.z_index = z_i
 
 	if _visual:
-		# Lift the body for future jumps; scale shrinks as Z increases.
-		_visual.position = Vector2(0.0, -height_offset)
+		# Surface raises body+shadow; jump height raises body only.
+		_visual.position = Vector2(0.0, -(surface_height + height_offset) * s)
 		_visual.scale = Vector2(s, s)
 		_visual.z_index = 1
 
 	if _shadow:
-		# Shadow stays on the ground plane (no height_offset).
-		_shadow.position = Vector2(0.0, shadow_ground_nudge * s)
+		# Shadow pinned to surface contact (not jump height).
+		_shadow.position = Vector2(0.0, shadow_ground_nudge * s - surface_height * s)
 		_shadow.scale = Vector2(s, s * 0.45)
 		_shadow.z_index = 0
-		# Soften shadow slightly as we go farther back.
 		_shadow.modulate.a = lerpf(0.55, 0.28, t)
 
 
@@ -127,5 +128,6 @@ func debug_snapshot() -> Dictionary:
 		"scale": visual_scale(),
 		"screen_y": ground_screen_y(),
 		"z_index": draw_z_index(),
+		"surface_height": surface_height,
 		"height": height_offset,
 	}

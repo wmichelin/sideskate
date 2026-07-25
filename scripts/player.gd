@@ -1,20 +1,30 @@
 extends Node2D
-## 8-way mover on logical X/Z with accel/friction. Depth visuals via PseudoDepthBody.
+## 8-way mover on logical X/Z with accel/friction. Samples RampLevel for surface height.
 
 @export var max_speed: float = 260.0
 @export var acceleration: float = 1600.0
 @export var friction: float = 1800.0
 ## When on, logical speed is scaled by visual scale so near movement reads faster.
 @export var depth_speed_feel: bool = true
+@export var level_path: NodePath = NodePath("../RampLevel")
 
 @onready var depth: PseudoDepthBody = $PseudoDepthBody
 
 var _velocity: Vector2 = Vector2.ZERO  # x = logical X speed, y = logical Z speed
+var _level: RampLevel
+## Last surface sample for debug HUD.
+var last_surface: Dictionary = {}
 
 
 func _ready() -> void:
-	depth.logical_x = 200.0
+	_level = get_node_or_null(level_path) as RampLevel
+	# Spawn mid-plaza.
+	var spawn_x := 640.0
+	if _level:
+		spawn_x = (_level.lip_left + _level.lip_right) * 0.5
+	depth.logical_x = spawn_x
 	depth.logical_z = 40.0
+	_apply_surface()
 	depth.apply()
 
 
@@ -26,9 +36,22 @@ func _physics_process(delta: float) -> void:
 	depth.logical_x += _velocity.x * speed_mul * delta
 	depth.logical_z = depth.clamp_z(depth.logical_z + _velocity.y * speed_mul * delta)
 
-	# Soft clamp X to a wide playfield so the player stays on the test stage.
-	depth.logical_x = clampf(depth.logical_x, 80.0, 1200.0)
+	if _level:
+		depth.logical_x = clampf(depth.logical_x, _level.x_min(), _level.x_max())
+	else:
+		depth.logical_x = clampf(depth.logical_x, 80.0, 1200.0)
+
+	_apply_surface()
 	depth.apply()
+
+
+func _apply_surface() -> void:
+	if _level == null:
+		last_surface = {"zone": "flat", "height": 0.0, "angle": 0.0}
+		depth.surface_height = 0.0
+		return
+	last_surface = _level.sample(depth.logical_x, depth.logical_z)
+	depth.surface_height = float(last_surface.get("height", 0.0))
 
 
 func _read_move_input() -> Vector2:
