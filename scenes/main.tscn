@@ -1,10 +1,11 @@
-[gd_scene load_steps=6 format=3 uid="uid://bdepthproto01"]
+[gd_scene load_steps=7 format=3 uid="uid://bdepthproto01"]
 
 [ext_resource type="Script" path="res://scripts/ramp_level.gd" id="1_level"]
 [ext_resource type="Script" path="res://scripts/ramp_visual.gd" id="3_visual"]
 [ext_resource type="Script" path="res://scripts/player.gd" id="4_player"]
 [ext_resource type="Script" path="res://scripts/pseudo_depth_body.gd" id="5_depth"]
 [ext_resource type="Script" path="res://scripts/debug_overlay.gd" id="6_debug"]
+[ext_resource type="Script" path="res://scripts/main.gd" id="7_main"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_panel"]
 bg_color = Color(0.05, 0.06, 0.09, 0.72)
@@ -18,6 +19,7 @@ content_margin_right = 12.0
 content_margin_bottom = 10.0
 
 [node name="Main" type="Node2D"]
+script = ExtResource("7_main")
 
 [node name="Backdrop" type="Polygon2D" parent="."]
 z_index = -100

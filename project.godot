@@ -12,9 +12,13 @@ config_version=5
 
 config/name="SideSkate"
 config/description="Pseudo-3D depth movement feel prototype"
-run/main_scene="res://scenes/main.tscn"
+run/main_scene="res://scenes/start_menu.tscn"
 config/features=PackedStringArray("4.7", "Forward Plus")
 config/icon="res://icon.svg"
+
+[autoload]
+
+GameSession="*res://scripts/game_session.gd"
 
 [display]
 

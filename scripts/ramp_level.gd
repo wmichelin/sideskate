@@ -23,8 +23,11 @@ var pipe_radius: float = 150.0
 
 
 func _ready() -> void:
-	if level_path != "":
-		load_level(level_path)
+	var path := level_path
+	if GameSession.pending_level_path != "":
+		path = GameSession.pending_level_path
+	if path != "":
+		load_level(path)
 
 
 func load_level(path: String) -> bool:
