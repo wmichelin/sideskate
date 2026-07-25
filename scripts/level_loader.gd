@@ -233,25 +233,35 @@ static func _build_geometry(spec: LevelSpec, map_rows: PackedStringArray) -> Str
 		var poly := _outline_poly(comp, cw, ch, H)
 		spec.floors.append({"poly": poly, "height": 0.0})
 
-	# Decks + height
+	# Decks + height + lip anchors (for perspective-consistent drawing)
 	spec.decks.clear()
 	var deck_comps := _components(deck_cells)
 	for comp in deck_comps:
+		var neighbors := _deck_neighbor_pipes(comp, grid, W, H, spec.pipes, cw, ch)
+		if neighbors.is_empty() and spec.deck_height_override < 0.0:
+			return "deck component has no neighboring pipe (set deck_height or place next to <> )"
 		var height := spec.deck_height_override
 		if height < 0.0:
-			var heights := _deck_neighbor_radii(comp, grid, W, H, spec.pipes, cw, ch)
-			if heights.is_empty():
-				return "deck component has no neighboring pipe (set deck_height or place next to <> )"
-			height = heights[0]
-			for i in range(1, heights.size()):
-				if not is_equal_approx(heights[i], height):
+			height = float(neighbors[0].radius)
+			for i in range(1, neighbors.size()):
+				var rh := float(neighbors[i].radius)
+				if not is_equal_approx(rh, height):
 					push_warning(
 						"LevelLoader: deck neighbors have unequal pipe radii (%.1f vs %.1f); spine coping will gap. Use matching <> run widths."
-						% [height, heights[i]]
+						% [height, rh]
 					)
-				height = maxf(height, heights[i])
+				height = maxf(height, rh)
+		var anchors: Array = []
+		for pipe in neighbors:
+			var is_left: bool = pipe.side == QuarterPipe.PipeSide.LEFT
+			anchors.append({
+				"lip_x": float(pipe.lip_x),
+				"side": pipe.side,
+				"radius": float(pipe.radius),
+				"coping_x": float(pipe.x_min) if is_left else float(pipe.x_max),
+			})
 		var poly := _outline_poly(comp, cw, ch, H)
-		spec.decks.append({"poly": poly, "height": height})
+		spec.decks.append({"poly": poly, "height": height, "anchors": anchors})
 
 	# Bounds
 	spec.z_min = 0.0
@@ -325,10 +335,10 @@ static func _pipe_from_component(
 	}
 
 
-static func _deck_neighbor_radii(
+static func _deck_neighbor_pipes(
 	comp: Array, grid: Array, W: int, H: int, pipes: Array, cw: float, ch: float
-) -> PackedFloat32Array:
-	var radii := PackedFloat32Array()
+) -> Array:
+	var out: Array = []
 	var seen_pipes := {}
 	var dirs := [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]
 	for cell in comp:
@@ -351,8 +361,8 @@ static func _deck_neighbor_radii(
 				if seen_pipes.has(pi):
 					continue
 				seen_pipes[pi] = true
-				radii.append(float(pipe.radius))
-	return radii
+				out.append(pipe)
+	return out
 
 
 static func _components(cells: Array) -> Array:

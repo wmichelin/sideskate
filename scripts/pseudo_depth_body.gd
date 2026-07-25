@@ -87,7 +87,7 @@ func apply() -> void:
 	var surface_screen_h := surface_height * s
 
 	if _level:
-		var p: Dictionary = _level.project(logical_x, logical_z, surface_height)
+		var p: Dictionary = _level.project_surface(logical_x, logical_z, surface_height)
 		screen_x = float(p.screen_x)
 		ground_y = float(p.ground_y)
 		surface_screen_h = float(p.surface_screen_h)
@@ -111,7 +111,7 @@ func debug_snapshot() -> Dictionary:
 	var screen_x := logical_x
 	var surface_screen_h := surface_height * visual_scale()
 	if _level:
-		var p: Dictionary = _level.project(logical_x, logical_z, surface_height)
+		var p: Dictionary = _level.project_surface(logical_x, logical_z, surface_height)
 		screen_x = float(p.screen_x)
 		surface_screen_h = float(p.surface_screen_h)
 	return {

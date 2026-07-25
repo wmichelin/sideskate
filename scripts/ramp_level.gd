@@ -138,6 +138,7 @@ func sample(logical_x: float, logical_z: float) -> Dictionary:
 					"normal_x": 0.0,
 					"normal_y": 1.0,
 					"t_along_pipe": 0.0,
+					"deck": deck,
 				}
 		for floor in spec.floors:
 			if LevelSpec.point_in_poly(p, floor.poly):
@@ -162,6 +163,75 @@ func sample(logical_x: float, logical_z: float) -> Dictionary:
 		"normal_y": 1.0,
 		"t_along_pipe": 0.0,
 	}
+
+
+## Project a world point for gameplay visuals — decks use lip-anchored framing.
+func project_surface(logical_x: float, logical_z: float, surface_height: float = 0.0) -> Dictionary:
+	if spec:
+		var p := Vector2(logical_x, logical_z)
+		for deck in spec.decks:
+			if LevelSpec.point_in_poly(p, deck.poly):
+				return project_deck_point(deck, logical_x, logical_z)
+	return project(logical_x, logical_z, surface_height)
+
+
+## Project a deck surface point using neighboring pipe lip frames so edge/spine
+## decks stay continuous with pipe coping under perspective.
+func project_deck_point(deck: Dictionary, logical_x: float, logical_z: float) -> Dictionary:
+	var h := float(deck.height)
+	var anchors: Array = deck.get("anchors", [])
+	if anchors.is_empty():
+		return project(logical_x, logical_z, h)
+
+	var t := depth_t(logical_z)
+	var inset := inset_at(logical_z)
+	var gscale := geometry_scale_at(logical_z)
+	var ground_y := ground_screen_y(logical_z)
+	var xmin := x_min()
+	var xmax := x_max()
+	var span := xmax - xmin
+
+	var screen_x: float
+	if anchors.size() == 1:
+		screen_x = _screen_x_from_lip_anchor(anchors[0], logical_x, t, inset, gscale, xmin, span)
+	else:
+		# Spine: lerp between coping screen positions so both pipe tops stay flush.
+		var sorted: Array = anchors.duplicate()
+		sorted.sort_custom(func(a, b): return float(a.coping_x) < float(b.coping_x))
+		var a0: Dictionary = sorted[0]
+		var a1: Dictionary = sorted[sorted.size() - 1]
+		var x0 := float(a0.coping_x)
+		var x1 := float(a1.coping_x)
+		var sx0 := _screen_x_from_lip_anchor(a0, x0, t, inset, gscale, xmin, span)
+		var sx1 := _screen_x_from_lip_anchor(a1, x1, t, inset, gscale, xmin, span)
+		var u := 0.0 if absf(x1 - x0) <= 0.0001 else clampf((logical_x - x0) / (x1 - x0), 0.0, 1.0)
+		screen_x = lerpf(sx0, sx1, u)
+
+	return {
+		"t": t,
+		"screen_x": screen_x,
+		"ground_y": ground_y,
+		"surface_screen_h": h * gscale,
+		"geometry_scale": gscale,
+		"inset": inset,
+	}
+
+
+func _screen_x_from_lip_anchor(
+	anchor: Dictionary,
+	logical_x: float,
+	t: float,
+	inset: float,
+	gscale: float,
+	xmin: float,
+	span: float
+) -> float:
+	var lip_x := float(anchor.lip_x)
+	var lip_u := 0.0 if span <= 0.0001 else clampf((lip_x - xmin) / span, 0.0, 1.0)
+	var lip_screen := lerpf(xmin + inset * t, x_max() - inset * t, lip_u)
+	if anchor.side == QuarterPipe.PipeSide.LEFT:
+		return lip_screen - (lip_x - logical_x) * gscale
+	return lip_screen + (logical_x - lip_x) * gscale
 
 
 ## Project logical (x,z,height) to screen. Global X remap + height scale.

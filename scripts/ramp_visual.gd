@@ -54,6 +54,14 @@ func _project_poly(poly: PackedVector2Array, height: float) -> PackedVector2Arra
 	return out
 
 
+func _project_deck_poly(deck: Dictionary) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	for v in deck.poly:
+		var p: Dictionary = _level.project_deck_point(deck, v.x, v.y)
+		out.append(Vector2(p.screen_x, p.ground_y - p.surface_screen_h))
+	return out
+
+
 func _draw_floors() -> void:
 	if _level.spec == null:
 		return
@@ -67,11 +75,9 @@ func _draw_decks() -> void:
 	if _level.spec == null:
 		return
 	for deck in _level.spec.decks:
-		var h := float(deck.height)
-		var pts := _project_poly(deck.poly, h)
+		var pts := _project_deck_poly(deck)
 		if pts.size() >= 3:
 			draw_colored_polygon(pts, Color(0.55, 0.48, 0.32, 0.92))
-			# Coping edge hint
 			for i in range(pts.size()):
 				draw_line(pts[i], pts[(i + 1) % pts.size()], Color(0.95, 0.55, 0.35, 0.75), 2.0)
 
