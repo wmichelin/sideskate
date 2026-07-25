@@ -197,9 +197,17 @@ static func _build_geometry(spec: LevelSpec, map_rows: PackedStringArray) -> Str
 	for comp in deck_comps:
 		var height := spec.deck_height_override
 		if height < 0.0:
-			height = _deck_height_from_neighbors(comp, grid, W, H, spec.pipes, cw, ch)
-			if height < 0.0:
+			var heights := _deck_neighbor_radii(comp, grid, W, H, spec.pipes, cw, ch)
+			if heights.is_empty():
 				return "deck component has no neighboring pipe (set deck_height or place next to <> )"
+			height = heights[0]
+			for i in range(1, heights.size()):
+				if not is_equal_approx(heights[i], height):
+					push_warning(
+						"LevelLoader: deck neighbors have unequal pipe radii (%.1f vs %.1f); spine coping will gap. Use matching <> run widths."
+						% [height, heights[i]]
+					)
+				height = maxf(height, heights[i])
 		var poly := _outline_poly(comp, cw, ch, H)
 		spec.decks.append({"poly": poly, "height": height})
 
@@ -275,10 +283,11 @@ static func _pipe_from_component(
 	}
 
 
-static func _deck_height_from_neighbors(
+static func _deck_neighbor_radii(
 	comp: Array, grid: Array, W: int, H: int, pipes: Array, cw: float, ch: float
-) -> float:
-	var best := -1.0
+) -> PackedFloat32Array:
+	var radii := PackedFloat32Array()
+	var seen_pipes := {}
 	var dirs := [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]
 	for cell in comp:
 		var ci: Vector2i = cell
@@ -289,14 +298,19 @@ static func _deck_height_from_neighbors(
 			var chv: String = grid[n.y][n.x]
 			if chv != "<" and chv != ">":
 				continue
-			# Find pipe covering this neighbor tile center
 			var nx := (float(n.x) + 0.5) * cw
 			var nz := (float(H - 1 - n.y) + 0.5) * ch
-			for pipe in pipes:
-				if nx >= pipe.x_min - 0.001 and nx <= pipe.x_max + 0.001 \
-						and nz >= pipe.z_min - 0.001 and nz <= pipe.z_max + 0.001:
-					best = maxf(best, float(pipe.radius))
-	return best
+			for pi in range(pipes.size()):
+				var pipe: Dictionary = pipes[pi]
+				if nx < pipe.x_min - 0.001 or nx > pipe.x_max + 0.001:
+					continue
+				if nz < pipe.z_min - 0.001 or nz > pipe.z_max + 0.001:
+					continue
+				if seen_pipes.has(pi):
+					continue
+				seen_pipes[pi] = true
+				radii.append(float(pipe.radius))
+	return radii
 
 
 static func _components(cells: Array) -> Array:
@@ -387,7 +401,25 @@ static func _outline_poly(comp: Array, cw: float, ch: float, H: int) -> PackedVe
 	# Remove duplicate closing point if present
 	if poly.size() > 1 and poly[poly.size() - 1].distance_to(poly[0]) < 0.0001:
 		poly.resize(poly.size() - 1)
-	return poly
+	return _simplify_colinear(poly)
+
+
+static func _simplify_colinear(poly: PackedVector2Array) -> PackedVector2Array:
+	if poly.size() < 3:
+		return poly
+	var out := PackedVector2Array()
+	var n := poly.size()
+	for i in range(n):
+		var prev: Vector2 = poly[(i - 1 + n) % n]
+		var cur: Vector2 = poly[i]
+		var next: Vector2 = poly[(i + 1) % n]
+		var ab := cur - prev
+		var bc := next - cur
+		# Drop vertices that sit on a straight axis-aligned or colinear run.
+		if absf(ab.x * bc.y - ab.y * bc.x) < 0.0001:
+			continue
+		out.append(cur)
+	return out if out.size() >= 3 else poly
 
 
 static func _add_edge(edges: Dictionary, a: Vector2, b: Vector2) -> void:

@@ -22,9 +22,9 @@ func _draw() -> void:
 		return
 	_draw_backdrop_pad()
 	_draw_floors()
-	_draw_decks()
 	for pipe in _level.pipes:
 		_draw_pipe(pipe)
+	_draw_decks()
 	_draw_depth_grid()
 
 

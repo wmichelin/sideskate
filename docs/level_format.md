@@ -60,14 +60,16 @@ width 1280
 depth 100
 perspective_inset 80
 far_geometry_scale 0.72
-<<<<========>>>>##<<<<<======>>>>
-<<<<========>>>>##<<<<<======>>>>
+<<<<=======>>>>##<<<<=======>>>>
+<<<<=======>>>>##<<<<=======>>>>
 <<<<============@===========>>>>
 <<<<========================>>>>
 <<<<========================>>>>
 ```
 
-`>>>>##<<<<<` = right-pipe → elevated deck spine → left-pipe (same height as coping).
+`>>>>##<<<<` = right-pipe → elevated deck spine → left-pipe.
+Both pipe runs must be the same width so coping height matches on both sides.
+All map rows must be the same length.
 
 ## Single-bay plaza
 
