@@ -6,3 +6,4 @@ export_presets.cfg
 exports/
 .DS_Store
 .import/
+.mcp/
