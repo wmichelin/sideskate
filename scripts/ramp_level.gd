@@ -32,8 +32,8 @@ func _ready() -> void:
 
 func load_level(path: String) -> bool:
 	var loaded: LevelSpec = LevelLoader.load_path(path)
+	# load_path aborts the process on malformed files; null is only possible if quit is deferred.
 	if loaded == null:
-		push_error("RampLevel: failed to load %s" % path)
 		return false
 	apply_spec(loaded)
 	return true

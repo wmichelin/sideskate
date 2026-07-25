@@ -1,20 +1,31 @@
 class_name LevelLoader
 extends RefCounted
 ## Parses .ssk ASCII levels into LevelSpec.
+## Malformed files abort the process with a dialog naming the path and reason.
+
+static var last_error: String = ""
 
 
 static func load_path(path: String) -> LevelSpec:
+	last_error = ""
 	var f := FileAccess.open(path, FileAccess.READ)
 	if f == null:
-		push_error("LevelLoader: cannot open %s" % path)
+		_abort("Cannot open level file:\n%s" % path)
 		return null
 	var text := f.get_as_text()
 	f.close()
-	var spec := parse_text(text, path.get_file().get_basename())
+	var spec := parse_text(text, path.get_file().get_basename(), path)
+	if spec == null:
+		_abort(last_error if last_error != "" else "Malformed level:\n%s" % path)
+		return null
 	return spec
 
 
-static func parse_text(text: String, default_name: String = "level") -> LevelSpec:
+## Parse only — returns null on error and sets last_error (no quit). Prefer load_path.
+static func parse_text(
+	text: String, default_name: String = "level", source_path: String = ""
+) -> LevelSpec:
+	var label := source_path if source_path != "" else default_name
 	var lines := text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
 	var spec := LevelSpec.new()
 	spec.name = default_name
@@ -38,33 +49,61 @@ static func parse_text(text: String, default_name: String = "level") -> LevelSpe
 			if stripped.begins_with("ssk"):
 				got_version = true
 				continue
+			if _is_map_separator(stripped):
+				in_map = true
+				continue
+			# Legacy: first map-looking row starts the grid (cannot begin with #
+			# because those lines are header comments until ---).
 			if _is_map_row(stripped):
+				push_warning(
+					"LevelLoader: %s — map started without '---' separator; add a '---' line after the header so rows can begin with #"
+					% label
+				)
 				in_map = true
 				map_rows.append(line.rstrip("\n").rstrip("\r"))
 				continue
 			_parse_header_kv(spec, stripped)
 		else:
-			# Once map starts, non-empty lines are map (comments only if entire line is #comment with no map glyphs — treat # as deck)
 			if stripped.is_empty():
 				continue
+			if _is_map_separator(stripped):
+				return _fail(label, "extra '---' separator inside map")
 			map_rows.append(line.rstrip("\n").rstrip("\r"))
 
 	if not got_version:
-		push_error("LevelLoader: missing 'ssk 1' version line")
-		return null
+		return _fail(label, "missing 'ssk 1' version line")
 	if map_rows.is_empty():
-		push_error("LevelLoader: no map rows")
-		return null
+		return _fail(label, "no map rows (expected '---' then ASCII grid)")
 	if spec.width <= 0.0 or spec.depth <= 0.0:
-		push_error("LevelLoader: width and depth are required and must be > 0")
-		return null
+		return _fail(label, "width and depth are required and must be > 0")
 
-	_normalize_row_widths(map_rows)
+	var width_err := _require_uniform_row_widths(map_rows)
+	if width_err != "":
+		return _fail(label, width_err)
+
 	var err := _build_geometry(spec, map_rows)
 	if err != "":
-		push_error("LevelLoader: %s" % err)
-		return null
+		return _fail(label, err)
 	return spec
+
+
+static func _fail(source: String, detail: String) -> LevelSpec:
+	last_error = "Malformed level '%s':\n%s" % [source, detail]
+	push_error(last_error)
+	return null
+
+
+static func _abort(message: String) -> void:
+	push_error(message)
+	printerr(message)
+	OS.alert(message, "SideSkate — malformed level")
+	var tree := Engine.get_main_loop() as SceneTree
+	if tree:
+		tree.quit(1)
+
+
+static func _is_map_separator(stripped: String) -> bool:
+	return stripped == "---" or stripped == "map"
 
 
 static func _is_map_row(stripped: String) -> bool:
@@ -110,13 +149,16 @@ static func _parse_header_kv(spec: LevelSpec, stripped: String) -> void:
 			push_warning("LevelLoader: unknown header key '%s'" % key)
 
 
-static func _normalize_row_widths(map_rows: PackedStringArray) -> void:
-	var max_w := 0
-	for r in map_rows:
-		max_w = maxi(max_w, r.length())
-	for i in range(map_rows.size()):
-		while map_rows[i].length() < max_w:
-			map_rows[i] += " "
+static func _require_uniform_row_widths(map_rows: PackedStringArray) -> String:
+	if map_rows.is_empty():
+		return "no map rows"
+	var w := map_rows[0].length()
+	for i in range(1, map_rows.size()):
+		if map_rows[i].length() != w:
+			return "map row %d width %d != row 0 width %d (all rows must be the same length)" % [
+				i, map_rows[i].length(), w
+			]
+	return ""
 
 
 static func _build_geometry(spec: LevelSpec, map_rows: PackedStringArray) -> String:

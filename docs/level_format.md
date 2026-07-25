@@ -3,7 +3,7 @@
 ASCII-first layout language. Absolute world size via `width` / `depth`.  
 Top row = **far** (high Z). Bottom row = **near** (low Z). X increases left → right.
 
-## Header
+## Structure
 
 ```text
 ssk 1
@@ -12,10 +12,22 @@ width 1280
 depth 100
 perspective_inset 80
 far_geometry_scale 0.72
-# optional:
+# optional header comments / keys:
 # pipe_radius 150
 # deck_height 150
+---
+<<<<========================>>>>
+<<<<============@===========>>>>
+<<<<========================>>>>
 ```
+
+1. **Header** — version, keys, `#` comments, blank lines  
+2. **`---`** — required separator (also accepts `map`)  
+3. **Map** — ASCII grid; `#` here is a **deck**, never a comment  
+
+All map rows must be the **same length**. Uneven widths are a hard error (dialog + quit) naming the file and the mismatched row — short rows are not padded.
+
+## Header keys
 
 | Key | Required | Meaning |
 |-----|----------|---------|
@@ -28,15 +40,12 @@ far_geometry_scale 0.72
 | `perspective_inset` | no | Camera converge (px at far) |
 | `far_geometry_scale` | no | Far size factor for geometry |
 
-`#` at start of a **header** line is a comment. Blank lines ignored.  
-(Map `#` glyphs are decks — only lines that are pure map rows after the header.)
-
 ## Glyphs
 
 | Glyph | Kind | Height |
 |-------|------|--------|
 | `=` `.` | floor (plaza) | 0 |
-| `#` | deck (spine / coping flat) | adjacent pipe radius (coping) |
+| `#` | deck (spine / coping flat / edge platform) | adjacent pipe radius (coping) |
 | `@` | spawn (counts as floor) | 0 |
 | `<` | left-facing pipe (lip on **right** edge of run) | quarter-circle |
 | `>` | right-facing pipe (lip on **left** edge of run) | quarter-circle |
@@ -60,6 +69,7 @@ width 1280
 depth 100
 perspective_inset 80
 far_geometry_scale 0.72
+---
 <<<<=======>>>>##<<<<=======>>>>
 <<<<=======>>>>##<<<<=======>>>>
 <<<<============@===========>>>>
@@ -67,10 +77,28 @@ far_geometry_scale 0.72
 <<<<========================>>>>
 ```
 
-`>>>>##<<<<` = right-pipe → elevated deck spine → left-pipe.
+`>>>>##<<<<` = right-pipe → elevated deck spine → left-pipe.  
 Both pipe runs must be the same width so coping height matches on both sides.
-All map rows must be the same length.
 
+## Edge deck example
+
+Rows may begin with `#` after `---` (edge platform outside a pipe).  
+Every map row must share one width:
+
+```text
+ssk 1
+name edge_decks
+width 1280
+depth 100
+perspective_inset 80
+far_geometry_scale 0.72
+---
+##<<<<======>>>>##<<<<======>>>>
+##<<<<======>>>>##<<<<======>>>>
+<<<<============@===========>>>>
+<<<<========================>>>>
+<<<<========================>>>>
+```
 ## Single-bay plaza
 
 ```text
@@ -80,6 +108,7 @@ width 1280
 depth 100
 perspective_inset 80
 far_geometry_scale 0.72
+---
 <<<<========================>>>>
 <<<<========================>>>>
 <<<<============@===========>>>>
@@ -95,8 +124,6 @@ Tile `(col, row)` with `row=0` at top/far:
 
 - `x ∈ [col·cw, (col+1)·cw]`
 - `z ∈ [(H-1-row)·ch, (H-row)·ch]`
-
-All rows must be the same length (pad with spaces).
 
 ## Sampling priority
 
