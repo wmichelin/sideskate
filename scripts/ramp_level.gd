@@ -178,16 +178,15 @@ func project(logical_x: float, logical_z: float, surface_height: float = 0.0) ->
 	var screen_x := lerpf(xmin + inset * t, xmax - inset * t, u)
 
 	# Prefer per-pipe projection when on a pipe band (matches arc drawing).
+	# Lip uses the same perspective lerp as the floor so seams stay closed when
+	# the follow camera pans; arc offset is then scaled by geometry_scale.
 	for pipe in pipes:
 		if logical_z < pipe.z_min - 0.001 or logical_z > pipe.z_max + 0.001:
 			continue
 		if logical_x < pipe.x_min() - 0.001 or logical_x > pipe.x_max() + 0.001:
 			continue
-		var mid := (xmin + xmax) * 0.5
-		var dir := signf(mid - pipe.lip_x)
-		if is_zero_approx(dir):
-			dir = 1.0 if pipe.side == QuarterPipe.PipeSide.LEFT else -1.0
-		var lip_screen: float = pipe.lip_x + dir * inset
+		var lip_u := 0.0 if span <= 0.0001 else clampf((pipe.lip_x - xmin) / span, 0.0, 1.0)
+		var lip_screen := lerpf(xmin + inset * t, xmax - inset * t, lip_u)
 		var x_off: float
 		if pipe.side == QuarterPipe.PipeSide.LEFT:
 			x_off = pipe.lip_x - logical_x

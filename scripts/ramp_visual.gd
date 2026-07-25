@@ -29,10 +29,12 @@ func _draw() -> void:
 
 
 func _draw_backdrop_pad() -> void:
-	var near_l := _level.project(_level.x_min() - 40.0, _level.z_min, 0.0)
-	var near_r := _level.project(_level.x_max() + 40.0, _level.z_min, 0.0)
-	var far_l := _level.project(_level.x_min() - 20.0, _level.z_max, 0.0)
-	var far_r := _level.project(_level.x_max() + 20.0, _level.z_max, 0.0)
+	# Extra horizontal pad so the plaza fill survives camera pan near the edges.
+	var pad := 640.0
+	var near_l := _level.project(_level.x_min() - pad, _level.z_min, 0.0)
+	var near_r := _level.project(_level.x_max() + pad, _level.z_min, 0.0)
+	var far_l := _level.project(_level.x_min() - pad * 0.5, _level.z_max, 0.0)
+	var far_r := _level.project(_level.x_max() + pad * 0.5, _level.z_max, 0.0)
 	draw_colored_polygon(
 		PackedVector2Array([
 			Vector2(near_l.screen_x, near_l.ground_y + 50.0),
