@@ -250,6 +250,13 @@ static func _build_geometry(
 
 	# Floors
 	spec.floors.clear()
+	spec.floor_cells = floor_cells
+	spec.floor_mask = PackedByteArray()
+	spec.floor_mask.resize(W * H)
+	spec.floor_mask.fill(0)
+	for cell in floor_cells:
+		var ci: Vector2i = cell
+		spec.floor_mask[ci.y * W + ci.x] = 1
 	for comp in _components(floor_cells):
 		var poly := _outline_poly(comp, cw, ch, H)
 		spec.floors.append({"poly": poly, "height": 0.0})

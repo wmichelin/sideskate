@@ -571,6 +571,41 @@ theme_override_font_sizes/font_size = 12
 text = "26"
 horizontal_alignment = 2
 
+[node name="FloorCheckerRow" type="HBoxContainer" parent="DebugSliders/Panel/VBox/Body"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Check" type="CheckButton" parent="DebugSliders/Panel/VBox/Body/FloorCheckerRow"]
+layout_mode = 2
+button_pressed = true
+text = "floor checker"
+
+[node name="CheckerTileRow" type="HBoxContainer" parent="DebugSliders/Panel/VBox/Body"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Caption" type="Label" parent="DebugSliders/Panel/VBox/Body/CheckerTileRow"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.75, 0.8, 0.88, 1)
+theme_override_font_sizes/font_size = 12
+text = "checker tile"
+
+[node name="Slider" type="HSlider" parent="DebugSliders/Panel/VBox/Body/CheckerTileRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+min_value = 1.0
+max_value = 16.0
+step = 1.0
+value = 6.0
+
+[node name="Value" type="Label" parent="DebugSliders/Panel/VBox/Body/CheckerTileRow"]
+custom_minimum_size = Vector2(72, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.9, 0.93, 0.98, 1)
+theme_override_font_sizes/font_size = 12
+text = "6"
+horizontal_alignment = 2
+
 [node name="DepthGridRow" type="HBoxContainer" parent="DebugSliders/Panel/VBox/Body"]
 layout_mode = 2
 theme_override_constants/separation = 8

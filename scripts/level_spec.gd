@@ -21,6 +21,10 @@ var decks: Array = []
 ## Each: { "side": int, "lip_x": float, "radius": float, "z_min": float, "z_max": float,
 ##         "x_min": float, "x_max": float }
 var pipes: Array = []
+## Floor glyph cells as Vector2i(col, row) — row 0 = far/top.
+var floor_cells: Array = []
+## PackedByteArray length grid_w*grid_h; 1 = floor. Row-major, row 0 = far/top.
+var floor_mask: PackedByteArray = PackedByteArray()
 
 var z_min: float = 0.0
 var z_max: float = 100.0

@@ -32,6 +32,8 @@ extends CanvasLayer
 @export var ref_depth_max: float = 500.0
 @export var draw_band_pad_min: float = 0.0
 @export var draw_band_pad_max: float = 2.0
+@export var checker_tile_min: float = 1.0
+@export var checker_tile_max: float = 16.0
 @export var cell_x_min: float = 10.0
 @export var cell_x_max: float = 120.0
 @export var cell_z_min: float = 10.0
@@ -70,6 +72,9 @@ extends CanvasLayer
 @onready var _cell_x_value: Label = $Panel/VBox/Body/CellXRow/Value
 @onready var _cell_z_slider: HSlider = $Panel/VBox/Body/CellZRow/Slider
 @onready var _cell_z_value: Label = $Panel/VBox/Body/CellZRow/Value
+@onready var _floor_checker_check: CheckButton = $Panel/VBox/Body/FloorCheckerRow/Check
+@onready var _checker_tile_slider: HSlider = $Panel/VBox/Body/CheckerTileRow/Slider
+@onready var _checker_tile_value: Label = $Panel/VBox/Body/CheckerTileRow/Value
 @onready var _depth_grid_check: CheckButton = $Panel/VBox/Body/DepthGridRow/Check
 @onready var _cell_check: CheckButton = $Panel/VBox/Body/CellHighlightRow/Check
 @onready var _god_check: CheckButton = $Panel/VBox/Body/GodModeRow/Check
@@ -121,6 +126,25 @@ func _ready() -> void:
 	_bind_float_slider(_cell_x_slider, cell_x_min, cell_x_max, 1.0, _level, "cell_size_x", 47.0, _on_cell_x_changed, _refresh_cell_x_label)
 	_bind_float_slider(_cell_z_slider, cell_z_min, cell_z_max, 1.0, _level, "cell_size_z", 26.0, _on_cell_z_changed, _refresh_cell_z_label)
 
+	var checker_on := true
+	if _visual != null and _visual.get("show_floor_checker") != null:
+		checker_on = bool(_visual.get("show_floor_checker"))
+	_floor_checker_check.button_pressed = checker_on
+	_floor_checker_check.focus_mode = Control.FOCUS_NONE
+	_floor_checker_check.toggled.connect(_on_floor_checker_toggled)
+
+	_bind_float_slider(
+		_checker_tile_slider,
+		checker_tile_min,
+		checker_tile_max,
+		1.0,
+		_visual,
+		"floor_checker_tile",
+		6.0,
+		_on_checker_tile_changed,
+		_refresh_checker_tile_label
+	)
+
 	var depth_on := false
 	if _visual != null and _visual.get("show_depth_grid") != null:
 		depth_on = bool(_visual.get("show_depth_grid"))
@@ -146,7 +170,7 @@ func _ready() -> void:
 		_max_speed_z_slider, _accel_slider, _brake_slider,
 		_ramp_friction_slider, _friction_slider,
 		_persp_inset_slider, _far_geom_slider, _ref_depth_slider,
-		_draw_band_pad_slider, _cell_x_slider, _cell_z_slider,
+		_draw_band_pad_slider, _checker_tile_slider, _cell_x_slider, _cell_z_slider,
 	]:
 		if row != null:
 			row.focus_mode = Control.FOCUS_NONE
@@ -364,6 +388,26 @@ func _on_cell_z_changed(v: float) -> void:
 
 func _refresh_cell_z_label(v: float) -> void:
 	_cell_z_value.text = "%.0f" % v
+
+
+func _on_floor_checker_toggled(on: bool) -> void:
+	if _visual != null:
+		_visual.set("show_floor_checker", on)
+		if _visual.has_method("refresh"):
+			_visual.call("refresh")
+		else:
+			_visual.queue_redraw()
+
+
+func _on_checker_tile_changed(v: float) -> void:
+	if _visual != null:
+		_visual.set("floor_checker_tile", int(round(v)))
+	_refresh_checker_tile_label(v)
+	_refresh_level_visual()
+
+
+func _refresh_checker_tile_label(v: float) -> void:
+	_checker_tile_value.text = "%d" % int(round(v))
 
 
 func _on_depth_grid_toggled(on: bool) -> void:
