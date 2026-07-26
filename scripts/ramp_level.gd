@@ -2,6 +2,8 @@ class_name RampLevel
 extends Node2D
 ## Level runtime: loads .ssk, samples floor/deck/pipes, projects to screen.
 
+const _PerspectiveMath := preload("res://scripts/perspective_math.gd")
+
 @export var level_path: String = "res://levels/plaza_default.ssk"
 
 @export_group("World scale")
@@ -150,26 +152,26 @@ func depth_t(logical_z: float) -> float:
 ## Lean rate: 0 at skater−ref/2, 1 at skater+ref/2. Unclamped so lip lines keep
 ## one continuous slope instead of bending into a parallel corridor.
 func perspective_t(logical_z: float) -> float:
-	return PerspectiveMath.perspective_t(logical_z, perspective_origin_z, reference_depth)
+	return _PerspectiveMath.perspective_t(logical_z, perspective_origin_z, reference_depth)
 
 
 func geometry_scale_at(logical_z: float) -> float:
-	return PerspectiveMath.geometry_scale_at(perspective_t(logical_z), far_geometry_scale)
+	return _PerspectiveMath.geometry_scale_at(perspective_t(logical_z), far_geometry_scale)
 
 
 func inset_at(logical_z: float) -> float:
-	return PerspectiveMath.inset_at(perspective_t(logical_z), perspective_inset)
+	return _PerspectiveMath.inset_at(perspective_t(logical_z), perspective_inset)
 
 
 ## Pixels of screen-Y per logical Z unit (near edge → farther = smaller Y).
 func screen_y_per_z() -> float:
-	return PerspectiveMath.screen_y_per_z(near_screen_y, far_screen_y, reference_depth)
+	return _PerspectiveMath.screen_y_per_z(near_screen_y, far_screen_y, reference_depth)
 
 
 func ground_screen_y(logical_z: float) -> float:
 	# Absolute mapping — deep levels grow taller in screen space and stay off-frame
 	# until the camera pans with the player.
-	return PerspectiveMath.ground_screen_y(
+	return _PerspectiveMath.ground_screen_y(
 		logical_z, z_min, near_screen_y, far_screen_y, reference_depth
 	)
 
@@ -323,7 +325,7 @@ func project_deck_point(deck: Dictionary, logical_x: float, logical_z: float) ->
 ## Height uses geometry_scale alone. X lean uses reference_width (not level span)
 ## so wider maps keep the same vanishing rate as a single bay.
 func project(logical_x: float, logical_z: float, surface_height: float = 0.0) -> Dictionary:
-	return PerspectiveMath.project(
+	return _PerspectiveMath.project(
 		logical_x,
 		logical_z,
 		surface_height,

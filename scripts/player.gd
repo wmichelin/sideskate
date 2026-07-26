@@ -3,7 +3,10 @@ extends Node2D
 ## Air over any zone. Coping exit locks X (gravity applies); acid drop locks X only.
 ## Ride-off a higher surface → free air (keep height + gravity). All sim on physics ticks.
 
+const _PipeMath := preload("res://scripts/pipe_math.gd")
+
 @export var max_speed_x: float = 880.0
+
 @export var max_speed_z: float = 335.0
 @export var acceleration: float = 3250.0
 ## Coast rate when no input (logical u/s²). Debug slider writes this.
@@ -464,7 +467,7 @@ func _is_opposite_pipe_swap(hit: Dictionary) -> bool:
 	var side: int = int(hit.get("side", _ramp_side))
 	var their_lip := float(hit.get("lip_x", _ramp_lip_x))
 	var their_r := _pipe_radius_for_hit(hit)
-	return PipeMath.opposite_coping_near(
+	return _PipeMath.opposite_coping_near(
 		_ramp_side, _ramp_lip_x, _sticky_pipe_radius(),
 		side, their_lip, their_r,
 		1.0
@@ -836,7 +839,7 @@ func _find_pipe_behind(
 
 
 func _coping_x_for(side: int, lip_x: float, radius: float) -> float:
-	return PipeMath.coping_x(side, lip_x, radius)
+	return _PipeMath.coping_x(side, lip_x, radius)
 
 
 func _pipe_radius_for_hit(hit: Dictionary) -> float:

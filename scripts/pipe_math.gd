@@ -1,10 +1,11 @@
 class_name PipeMath
 extends RefCounted
 ## Pure quarter-pipe helpers (no scene state).
+## side matches QuarterPipe.PipeSide: 0 = LEFT, 1 = RIGHT.
 
 
 static func coping_x(side: int, lip_x: float, radius: float) -> float:
-	if side == QuarterPipe.PipeSide.LEFT:
+	if side == 0:
 		return lip_x - radius
 	return lip_x + radius
 
