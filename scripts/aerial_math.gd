@@ -1,6 +1,6 @@
 class_name AerialMath
 extends RefCounted
-## Pure aerial action helpers (transfer / acid-drop routing + selection).
+## Pure aerial action helpers (transfer / spine-transfer / acid-drop routing + selection).
 ## Pipe entries are duck-typed: QuarterPipe nodes or {side, lip_x, radius, z_min, z_max}.
 
 const _PipeMath := preload("res://scripts/pipe_math.gd")
@@ -8,6 +8,9 @@ const _MotionMath := preload("res://scripts/motion_math.gd")
 
 const ACTION_TRANSFER := "transfer"
 const ACTION_ACID_DROP := "acid_drop"
+## Max deck cells between opposite copings for spine transfer (inclusive).
+## 3+ cells → normal free-air transfer instead.
+const SPINE_GAP_MAX_CELLS := 2
 
 
 ## Same-button routing: rising/apex → transfer; falling/rest-after-down → acid drop.
@@ -50,6 +53,25 @@ static func landing_support_height(
 	):
 		return air_radius
 	return sampled_height
+
+
+## Falling vert at top coping → along-arc drop-in (`land_vy * coping_sign`).
+## Rising / rest → 0 (no outward kick from landing).
+static func drop_in_along_from_land_vy(land_vy: float, side: int) -> float:
+	if land_vy >= 0.0:
+		return 0.0
+	return land_vy * _PipeMath.coping_sign(side)
+
+
+## Along-arc seed when landing locked on a pipe coping (pipe-exit, acid, spine).
+## Converts falling vert into drop-in; keeps approach speed when already faster
+## into the pipe. Outward approach alone does not seed along-arc.
+static func merge_drop_in_along(approach_x: float, land_vy: float, side: int) -> float:
+	var sign := _PipeMath.coping_sign(side)
+	var from_fall := drop_in_along_from_land_vy(land_vy, side)
+	# In signed space, into-pipe is negative. Take the stronger into-pipe speed.
+	return minf(approach_x * sign, from_fall * sign) * sign
+
 
 
 ## Pipe-exit X-lock → free air (parabolic fly-out) when still rising, height clears
@@ -119,6 +141,65 @@ static func find_acid_drop_target(
 			continue
 		if ahead < best_ahead:
 			best_ahead = ahead
+			best = {
+				"active": true,
+				"zone": _PipeMath.zone_name(side),
+				"side": side,
+				"lip_x": lip,
+				"radius": radius,
+				"top_coping": top_coping,
+			}
+	return best
+
+
+## Deck-cell count for a coping gap (for docs/tests).
+static func spine_gap_cells(dist: float, cell_w: float) -> int:
+	var cw := maxf(cell_w, 0.001)
+	return int(round(maxf(dist, 0.0) / cw))
+
+
+## Opposite pipe for spine transfer: behind RIGHT → LEFT; behind LEFT → RIGHT.
+static func spine_want_side(behind_sign: float) -> int:
+	return 0 if behind_sign > 0.0 else 1  # LEFT / RIGHT
+
+
+## Nearest opposite-facing TOP coping behind us within 0..SPINE_GAP_MAX_CELLS.
+## Gap is measured in logical X (deck glyphs × cell_w). Returns {} if none /
+## gap too wide (caller should use normal transfer).
+static func find_spine_transfer_target(
+	pipes: Array,
+	from_x: float,
+	logical_z: float,
+	behind_sign: float,
+	exclude_side: int,
+	exclude_lip_x: float,
+	cell_w: float,
+	eps: float = 0.05,
+) -> Dictionary:
+	if absf(behind_sign) < 0.001:
+		return {}
+	var behind := signf(behind_sign)
+	var want_side := spine_want_side(behind)
+	var max_dist := float(SPINE_GAP_MAX_CELLS) * maxf(cell_w, 0.001) + eps
+	var best: Dictionary = {}
+	var best_dist := INF
+	for pipe in pipes:
+		if int(pipe.side) != want_side:
+			continue
+		if int(pipe.side) == exclude_side and absf(float(pipe.lip_x) - exclude_lip_x) < 0.05:
+			continue
+		if logical_z < float(pipe.z_min) - 0.001 or logical_z > float(pipe.z_max) + 0.001:
+			continue
+		var side: int = int(pipe.side)
+		var lip: float = float(pipe.lip_x)
+		var radius: float = float(pipe.radius)
+		var top_coping: float = _PipeMath.coping_x(side, lip, radius)
+		var dist: float = (top_coping - from_x) * behind
+		# Shared coping (dist ~ 0) through 2-deck spine; reject 3+ decks.
+		if dist < -eps or dist > max_dist:
+			continue
+		if dist < best_dist:
+			best_dist = dist
 			best = {
 				"active": true,
 				"zone": _PipeMath.zone_name(side),

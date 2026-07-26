@@ -7,8 +7,10 @@ func run() -> bool:
 	ok = _action_routing() and ok
 	ok = _horiz_resolve() and ok
 	ok = _landing_height() and ok
+	ok = _drop_in_along() and ok
 	ok = _fly_out_pipe_lock() and ok
 	ok = _acid_drop_selection() and ok
+	ok = _spine_transfer() and ok
 	ok = _pipe_behind() and ok
 	return ok
 
@@ -57,6 +59,43 @@ func _landing_height() -> bool:
 	var free := AerialMath.landing_support_height(false, false, "flat", 150.0, 44.0)
 	if absf(free - 44.0) > 0.01:
 		push_error("free air want sampled, got %s" % free)
+		return false
+	return true
+
+
+func _drop_in_along() -> bool:
+	# Right pipe (side 1): falling → negative along.
+	var from_fall_r := AerialMath.drop_in_along_from_land_vy(-80.0, 1)
+	if absf(from_fall_r - (-80.0)) > 0.01:
+		push_error("right fall → along -80, got %s" % from_fall_r)
+		return false
+	# Left pipe (side 0): falling → positive along.
+	var from_fall_l := AerialMath.drop_in_along_from_land_vy(-80.0, 0)
+	if absf(from_fall_l - 80.0) > 0.01:
+		push_error("left fall → along +80, got %s" % from_fall_l)
+		return false
+	if absf(AerialMath.drop_in_along_from_land_vy(10.0, 1)) > 0.01:
+		push_error("rising land_vy → 0 along")
+		return false
+	# Keep faster approach into pipe (right: more negative).
+	var keep := AerialMath.merge_drop_in_along(-120.0, -40.0, 1)
+	if absf(keep - (-120.0)) > 0.01:
+		push_error("keep faster approach, got %s" % keep)
+		return false
+	# Fall wins when deeper than approach.
+	var fall_wins := AerialMath.merge_drop_in_along(-20.0, -90.0, 1)
+	if absf(fall_wins - (-90.0)) > 0.01:
+		push_error("fall wins when deeper, got %s" % fall_wins)
+		return false
+	# Outward approach alone → no seed (soft land).
+	var soft := AerialMath.merge_drop_in_along(50.0, 0.0, 1)
+	if absf(soft) > 0.01:
+		push_error("outward approach alone → 0, got %s" % soft)
+		return false
+	# Outward approach + fall → use fall.
+	var out_plus_fall := AerialMath.merge_drop_in_along(50.0, -70.0, 1)
+	if absf(out_plus_fall - (-70.0)) > 0.01:
+		push_error("outward+fall → fall, got %s" % out_plus_fall)
 		return false
 	return true
 
@@ -170,6 +209,96 @@ func _acid_drop_selection() -> bool:
 	# Opposite-facing only: moving right never returns RIGHT.
 	if int(rightward.side) == 1 or int(near.side) == 1:
 		push_error("acid drop must be opposite-facing only")
+		return false
+
+	return true
+
+
+func _spine_transfer() -> bool:
+	var cw := 47.0
+	var z := 50.0
+	# From RIGHT pipe coping looking behind (+1) toward LEFT opposite.
+	# Shared coping D=0: RIGHT lip 100 r100 coping 200; LEFT lip 300 r100 coping 200.
+	var shared := [
+		{"side": 1, "lip_x": 100.0, "radius": 100.0, "z_min": 0.0, "z_max": 100.0},
+		{"side": 0, "lip_x": 300.0, "radius": 100.0, "z_min": 0.0, "z_max": 100.0},
+	]
+	var d0 := AerialMath.find_spine_transfer_target(
+		shared, 200.0, z, 1.0, 1, 100.0, cw
+	)
+	if d0.is_empty() or int(d0.side) != 0:
+		push_error("D=0 shared coping should find LEFT spine target")
+		return false
+	if absf(float(d0.top_coping) - 200.0) > 0.01:
+		push_error("D=0 top_coping want 200")
+		return false
+
+	# D=1: gap = cw. RIGHT coping 200, LEFT coping 200+cw.
+	var d1_pipes := [
+		{"side": 1, "lip_x": 100.0, "radius": 100.0, "z_min": 0.0, "z_max": 100.0},
+		{"side": 0, "lip_x": 300.0 + cw, "radius": 100.0, "z_min": 0.0, "z_max": 100.0},
+	]
+	var d1 := AerialMath.find_spine_transfer_target(
+		d1_pipes, 200.0, z, 1.0, 1, 100.0, cw
+	)
+	if d1.is_empty():
+		push_error("D=1 should find spine target")
+		return false
+	if AerialMath.spine_gap_cells(float(d1.top_coping) - 200.0, cw) != 1:
+		push_error("D=1 gap cells want 1")
+		return false
+
+	# D=2: gap = 2*cw — still spine transfer.
+	var d2_pipes := [
+		{"side": 1, "lip_x": 100.0, "radius": 100.0, "z_min": 0.0, "z_max": 100.0},
+		{"side": 0, "lip_x": 300.0 + 2.0 * cw, "radius": 100.0, "z_min": 0.0, "z_max": 100.0},
+	]
+	var d2 := AerialMath.find_spine_transfer_target(
+		d2_pipes, 200.0, z, 1.0, 1, 100.0, cw
+	)
+	if d2.is_empty():
+		push_error("D=2 should find spine target")
+		return false
+
+	# D=3: gap = 3*cw — normal transfer (no spine target).
+	var d3_pipes := [
+		{"side": 1, "lip_x": 100.0, "radius": 100.0, "z_min": 0.0, "z_max": 100.0},
+		{"side": 0, "lip_x": 300.0 + 3.0 * cw, "radius": 100.0, "z_min": 0.0, "z_max": 100.0},
+	]
+	var d3 := AerialMath.find_spine_transfer_target(
+		d3_pipes, 200.0, z, 1.0, 1, 100.0, cw
+	)
+	if not d3.is_empty():
+		push_error("D=3 must not spine-transfer (use normal transfer)")
+		return false
+
+	# Same-side only → empty.
+	var same := [
+		{"side": 1, "lip_x": 100.0, "radius": 100.0, "z_min": 0.0, "z_max": 100.0},
+		{"side": 1, "lip_x": 400.0, "radius": 100.0, "z_min": 0.0, "z_max": 100.0},
+	]
+	if not AerialMath.find_spine_transfer_target(same, 200.0, z, 1.0, 1, 100.0, cw).is_empty():
+		push_error("same-side pipes must not spine-transfer")
+		return false
+
+	# Z outside band → empty.
+	var oz := AerialMath.find_spine_transfer_target(
+		shared, 200.0, 500.0, 1.0, 1, 100.0, cw
+	)
+	if not oz.is_empty():
+		push_error("Z OOB must not spine-transfer")
+		return false
+
+	# From LEFT looking behind (−1) toward RIGHT.
+	var from_left := AerialMath.find_spine_transfer_target(
+		shared, 200.0, z, -1.0, 0, 300.0, cw
+	)
+	if from_left.is_empty() or int(from_left.side) != 1:
+		push_error("from LEFT behind should find RIGHT")
+		return false
+
+	if AerialMath.spine_want_side(1.0) != 0 or AerialMath.spine_want_side(-1.0) != 1:
+		push_error("spine_want_side mapping wrong")
 		return false
 
 	return true

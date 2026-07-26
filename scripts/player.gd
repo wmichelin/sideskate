@@ -88,6 +88,8 @@ var _transfer_available: bool = true
 var _acid_drop_available: bool = true
 ## X-locked via acid drop: pin to coping; gravity continues (same as coping lock).
 var _acid_drop_lock: bool = false
+## Spine transfer: X-lock to opposite coping; land converts vert → along-arc (drop-in).
+var _spine_transfer_lock: bool = false
 ## Once per locked aerial: facing flip (or stick override) at vertical apex.
 var _apex_facing_done: bool = false
 ## Measured actual velocity from position deltas (not stick / momentum).
@@ -247,23 +249,25 @@ func _apply_motion(delta: float, speed_mul: float) -> void:
 			# Only land when falling onto the surface — never snap height upward.
 			if air_vel_y <= 0.0 and air_abs_height <= floor_h + 0.05:
 				air_abs_height = floor_h
-				var was_acid := _acid_drop_lock
 				var pin_x := _air_coping_x
-				var side_sign := _coping_sign(_air_side)
+				var land_side := _air_side
+				var land_lip := _air_lip_x
+				var side_sign := _coping_sign(land_side)
 				var land_vy := air_vel_y
+				var approach_x := _velocity.x
 				_clear_air()
-				# Pipe-exit lock: falling vert at the lip fully converts back into along-arc.
-				if not was_acid:
-					if land_vy < 0.0:
-						_ramp_along = land_vy * side_sign
-						_velocity.x = _ramp_along
-						_on_ramp = true
-						_ramp_side = _air_side
-						_ramp_lip_x = _air_lip_x
-					if _ramp_along * side_sign < -1.0:
-						_move_along_pipe_or_flat(_ramp_along * speed_mul, delta)
-					else:
-						depth.logical_x = pin_x
+				# Pipe-exit / acid / spine: falling vert → along-arc; keep approach
+				# if already faster into the pipe.
+				var along := _AerialMath.merge_drop_in_along(approach_x, land_vy, land_side)
+				_ramp_along = along
+				_velocity.x = along
+				if along * side_sign < -1.0:
+					_on_ramp = true
+					_ramp_side = land_side
+					_ramp_lip_x = land_lip
+					_move_along_pipe_or_flat(along * speed_mul, delta)
+				else:
+					depth.logical_x = pin_x
 			return
 
 		# Unlocked air (rode off / transfer / fly-out / over any zone): free XZ + gravity.
@@ -340,7 +344,7 @@ func _step_transfer_x(delta: float) -> void:
 		return
 	_transfer_x_t += delta
 	var duration := transfer_x_duration
-	if _acid_drop_lock:
+	if _acid_drop_lock or _spine_transfer_lock:
 		duration = acid_drop_x_duration
 	var u := 1.0
 	if duration > 0.0001:
@@ -624,7 +628,10 @@ func _enter_air_from_pipe(hit: Dictionary, up_speed: float = 0.0) -> void:
 
 ## Unlock pipe-exit X-lock into free air when rising, above coping, and INPUT
 ## points toward that pipe's side (MotionVectors.Kind.INPUT). Preserves height / vy.
+## Spine transfer stays locked (no fly-out) until drop-in.
 func _try_fly_out_from_pipe_lock() -> bool:
+	if _spine_transfer_lock:
+		return false
 	if not _AerialMath.should_fly_out_pipe_lock(
 		_air_x_locked,
 		_acid_drop_lock,
@@ -648,6 +655,7 @@ func _begin_air_over(target: Dictionary, abs_height: float, snap_x: bool = true)
 	air_over = str(target.get("zone", "flat"))
 	_air_x_locked = bool(target.get("lock_x", false))
 	_acid_drop_lock = false
+	_spine_transfer_lock = false
 	_apex_facing_done = false
 	if target.has("side"):
 		_air_side = int(target.side)
@@ -673,6 +681,7 @@ func _clear_air() -> void:
 	air_over = ""
 	_air_x_locked = false
 	_acid_drop_lock = false
+	_spine_transfer_lock = false
 	_apex_facing_done = false
 	_transfer_x_active = false
 	_transfer_available = true
@@ -689,6 +698,8 @@ func _transfer_vert_ok() -> bool:
 ## Same button: transfer while rising/apex, acid drop while falling.
 func _try_air_action() -> void:
 	if _AerialMath.choose_air_action(_vert_vel, _last_nonzero_vert_vel) == _AerialMath.ACTION_TRANSFER:
+		if _try_spine_transfer():
+			return
 		_try_transfer()
 	else:
 		_try_acid_drop()
@@ -728,6 +739,66 @@ func _try_acid_drop() -> void:
 		depth.logical_x = coping
 
 	_acid_drop_available = false
+
+
+## Spine transfer: rising P when an opposite pipe is 0–2 deck cells behind.
+## Lock X to opposite top coping; keep height / air_vel_y; land uses the same
+## drop-in merge as acid / pipe-exit. Spends both charges. Returns true if fired.
+func _try_spine_transfer() -> bool:
+	if not _airborne or _level == null or not _transfer_available:
+		return false
+	if not _transfer_vert_ok():
+		return false
+	var behind: float = _transfer_behind_sign
+	if _air_x_locked:
+		behind = _coping_sign(_air_side)
+	elif behind == 0.0:
+		return false
+	var from_x: float = _air_coping_x if _air_x_locked else depth.logical_x
+	var exclude_side := _air_side
+	var exclude_lip := _air_lip_x
+	var cell_w := _level.cell_size_x
+	if _level.spec != null and _level.spec.cell_w > 0.0:
+		cell_w = _level.spec.cell_w
+	var hit := _AerialMath.find_spine_transfer_target(
+		_level.pipes,
+		from_x,
+		depth.logical_z,
+		behind,
+		exclude_side,
+		exclude_lip,
+		cell_w,
+	)
+	if hit.is_empty():
+		return false
+
+	var side: int = int(hit.get("side", QuarterPipe.PipeSide.RIGHT))
+	var lip: float = float(hit.get("lip_x", depth.logical_x))
+	var radius: float = float(hit.get("radius", 150.0))
+	var coping: float = float(hit.get("top_coping", _coping_x_for(side, lip, radius)))
+
+	# X-lock like acid, but not acid_drop_lock (that samples floor / blocks fly-out
+	# differently). Landing drop-in is shared for all locked pipe landings.
+	_air_x_locked = true
+	_acid_drop_lock = false
+	_spine_transfer_lock = true
+	_air_side = side
+	_air_lip_x = lip
+	_air_radius = radius
+	_air_coping_x = coping
+	air_over = _pipe_zone_name(side)
+	_transfer_behind_sign = _coping_sign(side)
+
+	_transfer_x_from = depth.logical_x
+	_transfer_x_to = coping
+	_transfer_x_t = 0.0
+	_transfer_x_active = absf(coping - depth.logical_x) > 0.05
+	if not _transfer_x_active:
+		depth.logical_x = coping
+
+	_transfer_available = false
+	_acid_drop_available = false
+	return true
 
 
 ## Nearest opposite-facing TOP coping near horizontal velocity.

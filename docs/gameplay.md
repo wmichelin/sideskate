@@ -77,7 +77,8 @@ Feet height while airborne: `air_abs_height`. Vertical rate for gravity: `air_ve
 |------|-------------------|---|--------|
 | **Pipe coping lock** | Exit pipe at top coping | Locked to **top** coping | Gravity; land on coping height (`radius`). At vertical **apex**, facing flips unless stick holds L/R. |
 | **Free air** | Ride-off, transfer, fly-out, etc. | Free (unless lerping) | Gravity; land on **sampled** underfoot height |
-| **Acid-drop lock** | Acid drop action | Locked to opposite-facing **top** coping | Gravity only — action must not snap/alter height |
+| **Acid-drop lock** | Acid drop action | Locked to opposite-facing **top** coping | Gravity only — action must not snap/alter height; land converts vert → along-arc (keep approach if faster) |
+| **Spine transfer lock** | Spine transfer (rising, 0–2 deck gap) | Locked to opposite **top** coping | Gravity; land same drop-in merge as acid / pipe-exit |
 
 ### Pipe fly-out
 
@@ -99,14 +100,25 @@ Applied while unlocked air, or while acid-drop X-locked. Default `-19.0` m/s², 
 
 ## Aerial actions (same button: `transfer` / P)
 
-One **transfer** and one **acid drop** per aerial. Both refill on any surface contact (`_clear_air`).
+One **transfer** and one **acid drop** per aerial. Both refill on any surface contact (`_clear_air`). Spine transfer spends **both**.
 
 Routing uses measured vertical rate (`_vert_vel`) and the last non-zero vertical rate (so a rising **apex** still counts as transfer, not acid drop):
 
 | Vertical condition | Action |
 |--------------------|--------|
-| Rising, or `vert ≈ 0` after a positive (up) non-zero | **Transfer** |
+| Rising, or `vert ≈ 0` after a positive (up) non-zero | **Transfer** path (spine transfer if eligible, else normal transfer) |
 | Falling (or rest after down) | **Acid drop** |
+
+### Spine transfer
+
+When the transfer path runs and an **opposite** pipe’s top coping lies **behind** the current coping with gap `0…2` deck cells (`Δx ≤ 2 × cell_w`), fire spine transfer instead of free-air transfer:
+
+- Lerp/lock X to that opposite **top coping** (never the lip); keep `air_abs_height` and `air_vel_y` (continue the rise).
+- On land: same drop-in as pipe-exit / acid — falling `air_vel_y` → `_ramp_along` (keep approach if faster into the pipe).
+- No fly-out while the spine lock is active.
+- Spend **both** transfer and acid-drop charges.
+
+Gap of **3+** deck cells (`Δx > 2 × cell_w`) → normal transfer below. Plaza `##` spines (2 cells) spine-transfer; a `###` spine would free-air transfer.
 
 ### Transfer
 
@@ -121,6 +133,7 @@ Routing uses measured vertical rate (`_vert_vel`) and the last non-zero vertical
 - Target is **top coping** only (logical X), never the lip.
 - Coping must lie in front of horizontal velocity, with grace **behind** up to `acid_drop_buffer` (logical X units, default **44** — not screen pixels), and not farther ahead than `acid_drop_max_ahead` (default 120).
 - Animate/lerp X onto that coping; keep `air_abs_height` / `air_vel_y`; gravity continues. Land only when falling onto sampled surface (no upward height snap).
+- On land: same drop-in as pipe-exit / spine — falling `air_vel_y` converts into `_ramp_along`, keeping approach speed when already faster into the pipe.
 
 ## Level units (.ssk cells)
 
@@ -155,7 +168,7 @@ Debug tools are gated by autoload `DebugTools`: available when `OS.is_debug_buil
 | [`scripts/pipe_math.gd`](../scripts/pipe_math.gd) | Pure coping / opposite-pipe helpers |
 | [`scripts/motion_math.gd`](../scripts/motion_math.gd) | Pure brake-no-reverse + facing / transfer-vert helpers |
 | [`scripts/motion_vectors.gd`](../scripts/motion_vectors.gd) | Named triad `INPUT` / `MOMENTUM` / `ACTUAL` |
-| [`scripts/aerial_math.gd`](../scripts/aerial_math.gd) | Pure transfer / acid-drop routing + target selection |
+| [`scripts/aerial_math.gd`](../scripts/aerial_math.gd) | Pure transfer / spine-transfer / acid-drop routing + target selection |
 | [`scripts/pseudo_depth_body.gd`](../scripts/pseudo_depth_body.gd) | Logical pose → screen body + air/ground shadow |
 | [`scripts/quarter_pipe.gd`](../scripts/quarter_pipe.gd) | Pipe sample (θ, height, zone) |
 | [`scripts/debug_tools.gd`](../scripts/debug_tools.gd) | Production gate + god mode state |
@@ -167,10 +180,12 @@ Debug tools are gated by autoload `DebugTools`: available when `OS.is_debug_buil
 1. Sim only on physics ticks.  
 2. Top coping ≠ lip.  
 3. Pipe exit and acid drop both lock X; both use gravity. Acid drop must not snap height; pipe-exit lock may use coping radius as floor. Pipe fly-out unlocks X when above coping with outward INPUT; preserves vertical velocity.  
-4. One transfer + one acid drop per aerial; refill on surface contact.  
-5. Transfer at rising apex; acid drop must not steal that case.  
+4. One transfer + one acid drop per aerial; refill on surface contact. Spine transfer spends both.  
+5. Transfer at rising apex; acid drop must not steal that case. Spine transfer only on the rising path.  
 6. Acid drop: opposite-facing pipe, top coping, logical-unit buffer/max-ahead.  
 7. Free air / acid drop land on **sampled** height — never snap up to coping radius as a fake floor.  
-8. Fly-out: only while rising; right pipe needs INPUT right; left pipe needs INPUT left; never from acid-drop lock.
+8. Fly-out: only while rising; right pipe needs INPUT right; left pipe needs INPUT left; never from acid-drop or spine-transfer lock.  
+9. Spine transfer: opposite coping behind within 0–2 deck cells; keep height + `air_vel_y`; land uses shared drop-in merge; 3+ cells → normal transfer.
+10. Locked pipe land (pipe-exit / acid / spine): `merge_drop_in_along` — fall vert → along-arc, keep approach if faster into the pipe.
 
-Covered by headless tests in `tests/test_aerial_math.gd` / `tests/test_motion_math.gd` / `tests/test_cell_at_for_pose.gd` (routing, acid selection, landing floor, coping-lock cell targeting).
+Covered by headless tests in `tests/test_aerial_math.gd` / `tests/test_motion_math.gd` / `tests/test_cell_at_for_pose.gd` (routing, acid selection, landing floor, spine transfer gaps, coping-lock cell targeting).
