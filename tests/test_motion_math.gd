@@ -7,7 +7,9 @@ func run() -> bool:
 		return false
 	if not _transfer_vert():
 		return false
-	return _integrate()
+	if not _integrate():
+		return false
+	return _clear_at_rest()
 
 
 func _facing() -> bool:
@@ -67,5 +69,21 @@ func _integrate() -> bool:
 	var accel := MotionMath.integrate_axis_no_reverse(10.0, 100.0, 25.0, 20.0, 200.0, false)
 	if absf(accel - 35.0) > 0.01:
 		push_error("accel want 35 got %s" % accel)
+		return false
+	return true
+
+
+func _clear_at_rest() -> bool:
+	if not MotionMath.should_clear_momentum_at_rest(false, 0.0):
+		push_error("rest grounded should clear")
+		return false
+	if not MotionMath.should_clear_momentum_at_rest(false, 1.0):
+		push_error("at rest_eps should clear")
+		return false
+	if MotionMath.should_clear_momentum_at_rest(false, 1.01):
+		push_error("above rest_eps should keep")
+		return false
+	if MotionMath.should_clear_momentum_at_rest(true, 0.0):
+		push_error("gravity air must keep momentum")
 		return false
 	return true

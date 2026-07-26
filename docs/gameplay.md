@@ -24,7 +24,7 @@ See also [AGENTS.md](../AGENTS.md).
 
 **Vertical sweep (air):** when contact is a hole (or still above a solid), a sweep over `[h_before → h_after]` may still catch a **lower** solid crossed this tick. Holes contribute no floor on their story.
 
-**Solids vs holes:** `=` / `#` are solid. `.` is a hole (fall-through on that story). Space is hard OOB — the skater is **clamped** into the layer-0 playable footprint (`LevelSpec.clamp_to_playable`); you cannot enter `air (over oob)`.
+**Solids vs holes:** `=` / `#` are solid. `.` is a hole (fall-through on that story). Space is hard OOB — the skater is **clamped** into the layer-0 playable footprint (`LevelSpec.clamp_to_playable`). Grounded/`sample` never reports `oob` on a playable cell (deck `#` cells stay `deck` even on outline-poly edges); outside the footprint resolves as a hole so ride-off works until clamp corrects pose.
 
 **Contact vs fall:** fresh pipe mounts require the surface within `ride_off_height_eps` of the feet; solid pads at the same height block remounting the pipe underneath. Coping-exit launch only fires when underfoot is that same pipe identity (side + lip + base). While already on a pipe, height follows the arc. Leaving support into a hole rides off into free air at the prior feet height.
 
@@ -41,6 +41,7 @@ Stick integrates into **momentum** (`_velocity` on X/Z). See [Motion vectors](#m
 
 - **Horizontal X**: opposite stick **brakes hard** toward zero via **`brake`** (default 1250) — no reverse until `|vx|` reaches 0. Coasting uses **friction** only (default 0).
 - **Depth Z**: immediate — stick maps straight to `±max_speed_z` (default 400; debug slider).
+- **Rest reset**: when measured **ACTUAL** speed is ≈0, integrated **MOMENTUM** (`_velocity` / `_ramp_along`) is cleared so reverse isn’t fighting leftover control speed (e.g. jammed on a bound). Skipped while air **gravity** applies (horizontal remnant must survive apex / free fall).
 - **Acceleration** (default 3250) / **brake** / **max speed x** (default 880) / **max speed z**: tunable via debug sliders.
 - **Horizontal facing** `facing_h` (`l` / `r`): follows motion while moving; stick only when nearly stopped. Spawn from level header `spawn_facing` (default `r`). Head debug shows `hd l` / `hd r`.
 - **Ollie** (hold Space): mild forward accel (`ollie_accel`, default 650) toward `max_speed_x` in facing direction. Skipped while stick is braking opposite. Tunable via debug slider.

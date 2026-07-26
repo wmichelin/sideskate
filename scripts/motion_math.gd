@@ -36,3 +36,14 @@ static func integrate_axis_no_reverse(
 	if current != 0.0 and want * current < 0.0:
 		return move_toward(current, 0.0, brake_step)
 	return move_toward(current, want, accel_step)
+
+
+## When measured motion is at rest, clear integrated momentum so reverse isn’t
+## fighting leftover control speed (e.g. jammed on a boundary). Never while
+## gravity is driving air — horizontal remnant must survive apex / free fall.
+static func should_clear_momentum_at_rest(
+	gravity_applies: bool, actual_speed: float, rest_eps: float = 1.0
+) -> bool:
+	if gravity_applies:
+		return false
+	return actual_speed <= rest_eps

@@ -210,7 +210,8 @@ func sample(
 
 	var candidates: Array = sample_candidates(logical_x, logical_z)
 	if candidates.is_empty():
-		return _flat_hit(false, "oob", 0.0)
+		# Never label playable XZ as oob (deck poly edge / hole / clamp lag).
+		return _fallback_hit(logical_x, logical_z, prefer_h)
 	if is_nan(prefer_h):
 		return ContactMath.pick_highest(candidates)
 	return ContactMath.pick_by_prefer_h(candidates, prefer_h)
@@ -220,7 +221,10 @@ func sample(
 func sample_sweep(logical_x: float, logical_z: float, h0: float, h1: float) -> Dictionary:
 	var candidates: Array = sample_candidates(logical_x, logical_z)
 	if candidates.is_empty():
-		return {"hit": _flat_hit(false, "oob", 0.0), "height": 0.0, "crossed_solid": false}
+		var fb: Dictionary = _fallback_hit(logical_x, logical_z, maxf(h0, h1))
+		if str(fb.get("zone", "")) == "hole" or not fb.get("active", true):
+			return {"hit": fb, "height": float(fb.get("height", 0.0)), "crossed_solid": false}
+		candidates = [fb]
 	return ContactMath.resolve_vertical(candidates, h0, h1)
 
 
@@ -252,6 +256,14 @@ func resolve_air_contact(
 	# Hole on this story — first-class, even if a lower surface samples below.
 	if gzone == "hole":
 		return ContactMath.make_air_contact("hole", layer, layer_h, false, {})
+
+	# Deck glyph: keep deck solid even when outline poly misses the cell edge.
+	if gzone == "deck":
+		var deck_hit: Dictionary = _deck_hit_for_layer(layer)
+		if not deck_hit.is_empty():
+			var deck_h := float(deck_hit.get("height", layer_h))
+			if is_nan(prefer_h) or prefer_h + ContactMath.LAND_EPS >= deck_h:
+				return ContactMath.make_air_contact("deck", layer, deck_h, true, deck_hit)
 
 	# Sticky: only if still in footprint and highlight agrees or dipped under the pipe.
 	var sticky: Dictionary = {}
@@ -320,6 +332,8 @@ func resolve_air_contact(
 	if zone == "oob":
 		zone = "flat"
 		hit = _flat_hit(true, "flat", 0.0, maxi(layer, 0))
+	if zone == "hole":
+		return ContactMath.make_air_contact("hole", maxi(layer, 0), layer_h, false, hit)
 	var hit_layer := int(hit.get("layer", layer))
 	if hit_layer < 0:
 		hit_layer = _layer_for_hit(hit, layer)
@@ -419,10 +433,33 @@ func sample_candidates(logical_x: float, logical_z: float) -> Array:
 			out.append(hit)
 	var p := Vector2(logical_x, logical_z)
 	if spec:
+		var deck_heights := {}
 		for deck in spec.decks:
 			if LevelSpec.point_in_poly(p, deck.poly):
-				out.append(_deck_hit(deck))
+				var dh: Dictionary = _deck_hit(deck)
+				out.append(dh)
+				deck_heights[float(dh.get("height", 0.0))] = true
 		var cell := spec.cell_at(logical_x, logical_z)
+		# `#` cells always contribute their deck even when the outline poly
+		# excludes the half-open edge (walk-off → false oob while still playable).
+		if spec.grid_w > 0 and cell.x >= 0 and cell.y >= 0 \
+				and cell.x < spec.grid_w and cell.y < spec.grid_h:
+			for L in spec.layers:
+				var rows: PackedStringArray = L.get("rows", PackedStringArray())
+				if cell.y >= rows.size():
+					continue
+				var line: String = rows[cell.y]
+				if cell.x >= line.length() or line[cell.x] != "#":
+					continue
+				var layer_i := int(L.get("index", -1))
+				var deck_hit: Dictionary = _deck_hit_for_layer(layer_i)
+				if deck_hit.is_empty():
+					continue
+				var h := float(deck_hit.get("height", 0.0))
+				if deck_heights.has(h):
+					continue
+				out.append(deck_hit)
+				deck_heights[h] = true
 		if not spec.story_floor_masks.is_empty() and spec.grid_w > 0:
 			for story in spec.story_floor_masks:
 				var mask: PackedByteArray = story.get("mask", PackedByteArray())
@@ -441,6 +478,52 @@ func sample_candidates(logical_x: float, logical_z: float) -> Array:
 			for h in spec.floor_heights_at(logical_x, logical_z):
 				out.append(_flat_hit(true, "flat", float(h)))
 	return out
+
+
+## When candidates are empty: playable cell → glyph surface / hole; outside → hole
+## (pose should clamp). Never returns zone `oob`.
+func _fallback_hit(logical_x: float, logical_z: float, prefer_h: float = NAN) -> Dictionary:
+	if spec == null:
+		return _flat_hit(false, "hole", 0.0, 0)
+	if not spec.is_playable_xz(logical_x, logical_z):
+		return _flat_hit(false, "hole", 0.0, 0)
+	var cell := spec.cell_at(logical_x, logical_z)
+	var ph := prefer_h
+	if is_nan(ph):
+		ph = INF
+	var ginfo: Dictionary = spec.glyph_at_prefer_h(cell.x, cell.y, ph)
+	var glyph := str(ginfo.get("glyph", " "))
+	var layer := int(ginfo.get("layer", -1))
+	var layer_h := float(ginfo.get("layer_height", 0.0))
+	var gzone := ContactMath.zone_from_glyph(glyph)
+	match gzone:
+		"hole":
+			return _flat_hit(false, "hole", layer_h, layer)
+		"deck":
+			var deck_hit: Dictionary = _deck_hit_for_layer(layer)
+			if not deck_hit.is_empty():
+				return deck_hit
+			return _flat_hit(true, "deck", layer_h, layer)
+		"pipe":
+			for pipe in pipes:
+				var q: Dictionary = pipe.query_surface(logical_x, logical_z)
+				if q.get("active", false):
+					return q
+			return _flat_hit(true, "flat", maxf(layer_h, 0.0), maxi(layer, 0))
+		"oob":
+			return _flat_hit(false, "hole", 0.0, maxi(layer, 0))
+		_:
+			return _flat_hit(true, "flat", maxf(layer_h, 0.0), maxi(layer, 0))
+
+
+func _deck_hit_for_layer(layer: int) -> Dictionary:
+	if spec == null:
+		return {}
+	for deck in spec.decks:
+		if layer >= 0 and int(deck.get("layer", -1)) != layer:
+			continue
+		return _deck_hit(deck)
+	return {}
 
 
 ## Sticky side+lip: highest story whose base is at/below feet.

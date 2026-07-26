@@ -19,6 +19,7 @@ func run() -> bool:
 	ok = _dot_is_hole_not_floor() and ok
 	ok = _upper_space_in_footprint_fails() and ok
 	ok = _clamp_to_playable() and ok
+	ok = _deck_edge_never_oob() and ok
 	return ok
 
 
@@ -262,3 +263,48 @@ func _clamp_to_playable() -> bool:
 		push_error("clamp should preserve playable pose")
 		return false
 	return true
+
+
+## Left edge of a `#` deck cell must sample as deck, never grounded oob.
+func _deck_edge_never_oob() -> bool:
+	var text := _read("res://levels/test_ledge_drop.ssk")
+	var spec := LevelLoader.parse_text(text, "test_ledge_drop")
+	if spec == null:
+		push_error("ledge parse failed: %s" % LevelLoader.last_error)
+		return false
+	var level := RampLevel.new()
+	level.spec = spec
+	level.pipes.clear()
+	for pd in spec.pipes:
+		var qp := QuarterPipe.new()
+		qp.side = int(pd.side)
+		qp.lip_x = float(pd.lip_x)
+		qp.radius = float(pd.radius)
+		qp.base_height = float(pd.get("base_height", 0.0))
+		qp.z_min = float(pd.z_min)
+		qp.z_max = float(pd.z_max)
+		qp.layer = int(pd.get("layer", 0))
+		level.pipes.append(qp)
+	# Far-left of map = deck `#` columns. Sample near x=0 edge.
+	var z := spec.spawn_z
+	var hit: Dictionary = level.sample(0.01, z)
+	var zone := str(hit.get("zone", ""))
+	if zone == "oob":
+		push_error("deck edge must not sample oob, got %s" % hit)
+		_free_node(level)
+		return false
+	if zone != "deck" and not hit.get("active", false):
+		push_error("deck edge want active deck, got %s" % hit)
+		_free_node(level)
+		return false
+	var outside: Dictionary = level.sample(-20.0, z)
+	if str(outside.get("zone", "")) == "oob":
+		push_error("outside footprint must not report oob (hole/fallback), got %s" % outside)
+		_free_node(level)
+		return false
+	_free_node(level)
+	return true
+
+
+func _free_node(n: Node) -> void:
+	n.free()

@@ -259,12 +259,12 @@ static func zone_from_glyph(glyph: String) -> String:
 	match glyph:
 		".":
 			return "hole"
-		"=", "@", "#":
+		"=", "@":
 			return "flat"
+		"#", "^", "v", "V":
+			return "deck"
 		"<", ">":
 			return "pipe"
-		"^", "v", "V":
-			return "deck"
 		" ":
 			return "oob"
 		_:

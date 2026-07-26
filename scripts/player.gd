@@ -207,6 +207,7 @@ func _physics_process(delta: float) -> void:
 
 	_apply_surface()
 	_update_actual_velocity(delta)
+	_clear_momentum_if_at_rest()
 	depth.apply()
 
 
@@ -257,6 +258,16 @@ func _update_actual_velocity(delta: float) -> void:
 	_prev_logical_x = depth.logical_x
 	_prev_logical_z = depth.logical_z
 	_prev_feet_h = h
+
+
+## Drop integrated momentum when ACTUAL speed is ~0 (unless air gravity applies).
+func _clear_momentum_if_at_rest() -> void:
+	var gravity_applies := _airborne and _air_over_uses_gravity()
+	var actual_speed := Vector3(_actual_vel_x, _vert_vel, _actual_vel_z).length()
+	if not _MotionMath.should_clear_momentum_at_rest(gravity_applies, actual_speed):
+		return
+	_velocity = Vector2.ZERO
+	_ramp_along = 0.0
 
 
 func _apply_motion(delta: float, speed_mul: float) -> void:
@@ -687,16 +698,22 @@ func _try_ride_off_air(prev_support_h: float) -> void:
 	var under: Dictionary = _level.sample(
 		depth.logical_x, depth.logical_z, -1, NAN, prev_support_h
 	)
+	var zone := str(under.get("zone", "flat"))
+	# Hole / empty: no support on this story. Never treat as standing surface.
+	var has_support: bool = (
+		bool(under.get("active", true))
+		and zone != "hole"
+		and zone != "oob"
+	)
 	var new_h := 0.0
-	if under.get("active", true) or str(under.get("zone", "")) != "oob":
+	if has_support:
 		new_h = float(under.get("height", 0.0))
 	if new_h >= prev_support_h - ride_off_height_eps:
 		return
-	var zone := str(under.get("zone", "flat"))
-	if zone == "oob":
+	if zone == "oob" or zone == "hole":
 		zone = "flat"
 	var target := {"zone": zone, "lock_x": false, "anchor_x": depth.logical_x}
-	if _is_pipe_hit(under):
+	if _is_pipe_hit(under) and has_support:
 		target["side"] = int(under.get("side", QuarterPipe.PipeSide.RIGHT))
 		target["lip_x"] = float(under.get("lip_x", depth.logical_x))
 		target["radius"] = _pipe_radius_for_hit(under)
@@ -847,6 +864,16 @@ func _apply_surface() -> void:
 
 	last_surface = _sample_underfoot()
 	var zone := str(last_surface.get("zone", "flat"))
+	# Safety: clamping + sample fallback should make this unreachable.
+	if zone == "oob":
+		_clamp_pose_playable()
+		last_surface = _sample_underfoot()
+		zone = str(last_surface.get("zone", "flat"))
+		if zone == "oob":
+			last_surface = last_surface.duplicate()
+			last_surface["zone"] = "flat"
+			last_surface["active"] = true
+			zone = "flat"
 
 	if _airborne:
 		last_surface = last_surface.duplicate()
@@ -861,8 +888,21 @@ func _apply_surface() -> void:
 	else:
 		depth.height_offset = 0.0
 		depth.airborne = false
-		if not last_surface.get("active", true) and zone == "oob":
-			# Stay at current height — never snap down onto nothing.
+		if not last_surface.get("active", true) and (zone == "oob" or zone == "hole"):
+			# No standing surface — ride off instead of freezing as grounded oob.
+			_try_ride_off_air(depth.surface_height)
+			if _airborne:
+				last_surface = last_surface.duplicate()
+				last_surface["zone"] = "air"
+				last_surface["air_over"] = air_over
+				last_surface["air_over_layer"] = _air_over_layer
+				last_surface["height"] = air_abs_height
+				depth.surface_height = air_abs_height
+				depth.height_offset = 0.0
+				depth.airborne = true
+				depth.support_height = _underlying_surface_height()
+				_refresh_head_debug()
+				return
 			depth.support_height = depth.surface_height
 		else:
 			var sample_h := float(last_surface.get("height", 0.0))

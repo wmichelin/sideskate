@@ -172,6 +172,9 @@ func _air_contact_land_rules() -> bool:
 	if ContactMath.zone_from_glyph(".") != "hole":
 		push_error("glyph . want hole")
 		return false
+	if ContactMath.zone_from_glyph("#") != "deck":
+		push_error("glyph # want deck")
+		return false
 	return true
 
 
