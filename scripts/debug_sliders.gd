@@ -10,6 +10,8 @@ extends CanvasLayer
 @export var gravity_max: float = 0.0
 @export var acid_buffer_min: float = 0.0
 @export var acid_buffer_max: float = 80.0
+@export var fly_out_above_min: float = 0.0
+@export var fly_out_above_max: float = 300.0
 @export var ollie_accel_min: float = 0.0
 @export var ollie_accel_max: float = 3000.0
 @export var max_speed_x_min: float = 50.0
@@ -48,6 +50,8 @@ extends CanvasLayer
 @onready var _gravity_value: Label = $Panel/VBox/Body/GravityRow/Value
 @onready var _acid_slider: HSlider = $Panel/VBox/Body/AcidDropRow/Slider
 @onready var _acid_value: Label = $Panel/VBox/Body/AcidDropRow/Value
+@onready var _fly_out_slider: HSlider = $Panel/VBox/Body/FlyOutRow/Slider
+@onready var _fly_out_value: Label = $Panel/VBox/Body/FlyOutRow/Value
 @onready var _ollie_slider: HSlider = $Panel/VBox/Body/OllieAccelRow/Slider
 @onready var _ollie_value: Label = $Panel/VBox/Body/OllieAccelRow/Value
 @onready var _max_speed_x_slider: HSlider = $Panel/VBox/Body/MaxSpeedXRow/Slider
@@ -102,6 +106,17 @@ func _ready() -> void:
 
 	_bind_float_slider(_gravity_slider, gravity_min, gravity_max, 0.1, _player, "gravity_ms2", -19.0, _on_gravity_changed, _refresh_gravity_label)
 	_bind_float_slider(_acid_slider, acid_buffer_min, acid_buffer_max, 1.0, _player, "acid_drop_buffer", 44.0, _on_acid_buffer_changed, _refresh_acid_label)
+	_bind_float_slider(
+		_fly_out_slider,
+		fly_out_above_min,
+		fly_out_above_max,
+		1.0,
+		_player,
+		"fly_out_above_coping",
+		40.0,
+		_on_fly_out_changed,
+		_refresh_fly_out_label
+	)
 	_bind_float_slider(_ollie_slider, ollie_accel_min, ollie_accel_max, 10.0, _player, "ollie_accel", 650.0, _on_ollie_accel_changed, _refresh_ollie_label)
 	_bind_float_slider(_max_speed_x_slider, max_speed_x_min, max_speed_x_max, 10.0, _player, "max_speed_x", 880.0, _on_max_speed_x_changed, _refresh_max_speed_x_label)
 	_bind_float_slider(_max_speed_z_slider, max_speed_z_min, max_speed_z_max, 5.0, _player, "max_speed_z", 335.0, _on_max_speed_z_changed, _refresh_max_speed_z_label)
@@ -167,7 +182,7 @@ func _ready() -> void:
 
 	# Sliders: mouse only — Space is ollie and must not steal focus.
 	for row in [
-		_gravity_slider, _acid_slider, _ollie_slider, _max_speed_x_slider,
+		_gravity_slider, _acid_slider, _fly_out_slider, _ollie_slider, _max_speed_x_slider,
 		_max_speed_z_slider, _accel_slider, _brake_slider,
 		_ramp_friction_slider, _friction_slider,
 		_persp_inset_slider, _far_geom_slider, _ref_depth_slider,
@@ -253,6 +268,16 @@ func _on_acid_buffer_changed(v: float) -> void:
 
 func _refresh_acid_label(v: float) -> void:
 	_acid_value.text = "%.0f u" % v
+
+
+func _on_fly_out_changed(v: float) -> void:
+	if _player != null:
+		_player.set("fly_out_above_coping", v)
+	_refresh_fly_out_label(v)
+
+
+func _refresh_fly_out_label(v: float) -> void:
+	_fly_out_value.text = "%.0f u" % v
 
 
 func _on_ollie_accel_changed(v: float) -> void:

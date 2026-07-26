@@ -52,8 +52,12 @@ Feet height while airborne: `air_abs_height`. Vertical rate for gravity: `air_ve
 | Mode | How you get there | X | Height |
 |------|-------------------|---|--------|
 | **Pipe coping lock** | Exit pipe at top coping | Locked to **top** coping | Gravity; land on coping height (`radius`). At vertical **apex**, facing flips unless stick holds L/R. |
-| **Free air** | Ride-off, transfer, etc. | Free (unless lerping) | Gravity; land on **sampled** underfoot height |
+| **Free air** | Ride-off, transfer, fly-out, etc. | Free (unless lerping) | Gravity; land on **sampled** underfoot height |
 | **Acid-drop lock** | Acid drop action | Locked to opposite-facing **top** coping | Gravity only — action must not snap/alter height |
+
+### Pipe fly-out
+
+While in **pipe coping lock** (not acid-drop), if feet height reaches `radius + fly_out_above_coping` (debug slider **fly out**, default 40) **and** stick intent points toward that pipe’s side (right pipe → right; left pipe → left), unlock X into free air. Keep `air_abs_height` and `air_vel_y` so the skater continues on a **parabolic** arc. Without outward intent, stay locked and land as usual.
 
 Pipe coping lock treats the top coping height (`radius`) as the floor. Acid-drop lock and free air **must not** use that shortcut (it would snap feet upward); they sample the real surface under `(x, z)`.
 
@@ -109,7 +113,7 @@ Debug tools are gated by autoload `DebugTools`: available when `OS.is_debug_buil
 | Head **green** arrow | Measured actual velocity (dX, dZ, d(height)/dt) |
 | Head **orange** arrow | Stick **intent** `_velocity` |
 | Top-left overlay | Depth/zone/surface + cell `col`/`row` |
-| Top-right sliders | Gravity, acid buffer, cell-highlight toggle, **god mode** |
+| Top-right sliders | Gravity, acid buffer, **fly out** (above coping), cell-highlight toggle, **god mode** |
 | **God mode** (default off; `G` or checkbox) | No gravity; **k** rise / **j** lower (`god_vert_speed`) |
 
 ## Key scripts
@@ -134,10 +138,11 @@ Debug tools are gated by autoload `DebugTools`: available when `OS.is_debug_buil
 
 1. Sim only on physics ticks.  
 2. Top coping ≠ lip.  
-3. Pipe exit and acid drop both lock X; both use gravity. Acid drop must not snap height; pipe-exit lock may use coping radius as floor.
+3. Pipe exit and acid drop both lock X; both use gravity. Acid drop must not snap height; pipe-exit lock may use coping radius as floor. Pipe fly-out unlocks X when above coping with outward intent; preserves vertical velocity.  
 4. One transfer + one acid drop per aerial; refill on surface contact.  
 5. Transfer at rising apex; acid drop must not steal that case.  
 6. Acid drop: opposite-facing pipe, top coping, logical-unit buffer/max-ahead.  
-7. Free air / acid drop land on **sampled** height — never snap up to coping radius as a fake floor.
+7. Free air / acid drop land on **sampled** height — never snap up to coping radius as a fake floor.  
+8. Fly-out: right pipe needs intent right; left pipe needs intent left; never from acid-drop lock.
 
 Covered by headless tests in `tests/test_aerial_math.gd` / `tests/test_motion_math.gd` (routing, acid selection, landing floor).

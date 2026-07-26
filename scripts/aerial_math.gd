@@ -52,6 +52,28 @@ static func landing_support_height(
 	return sampled_height
 
 
+## Pipe-exit X-lock → free air (parabolic fly-out) when height clears coping+extra
+## and stick intent points toward that pipe's side (right pipe → +X, left → −X).
+## Acid-drop lock never flies out this way. `above_coping` is logical height above
+## the coping floor (`air_radius`); 0 means unlock as soon as at/above coping.
+static func should_fly_out_pipe_lock(
+	air_x_locked: bool,
+	acid_drop_lock: bool,
+	air_side: int,
+	air_abs_height: float,
+	air_radius: float,
+	above_coping: float,
+	intent_vx: float,
+	intent_eps: float = 1.0,
+) -> bool:
+	if not air_x_locked or acid_drop_lock:
+		return false
+	if air_abs_height + 0.001 < air_radius + maxf(above_coping, 0.0):
+		return false
+	var out := _PipeMath.coping_sign(air_side)
+	return intent_vx * out > intent_eps
+
+
 ## True when `x` is the top coping (lip ± radius), not the lip / flat edge.
 static func is_top_coping(
 	side: int, lip_x: float, radius: float, x: float, eps: float = 0.05

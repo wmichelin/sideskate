@@ -233,6 +233,32 @@ theme_override_font_sizes/font_size = 12
 text = "44 u"
 horizontal_alignment = 2
 
+[node name="FlyOutRow" type="HBoxContainer" parent="DebugSliders/Panel/VBox/Body"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Caption" type="Label" parent="DebugSliders/Panel/VBox/Body/FlyOutRow"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.75, 0.8, 0.88, 1)
+theme_override_font_sizes/font_size = 12
+text = "fly out"
+
+[node name="Slider" type="HSlider" parent="DebugSliders/Panel/VBox/Body/FlyOutRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+min_value = 0.0
+max_value = 300.0
+step = 1.0
+value = 40.0
+
+[node name="Value" type="Label" parent="DebugSliders/Panel/VBox/Body/FlyOutRow"]
+custom_minimum_size = Vector2(72, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.9, 0.93, 0.98, 1)
+theme_override_font_sizes/font_size = 12
+text = "40 u"
+horizontal_alignment = 2
+
 [node name="OllieAccelRow" type="HBoxContainer" parent="DebugSliders/Panel/VBox/Body"]
 layout_mode = 2
 theme_override_constants/separation = 8

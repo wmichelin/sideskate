@@ -41,6 +41,9 @@ const _AerialMath := preload("res://scripts/aerial_math.gd")
 @export var god_vert_speed: float = 320.0
 ## Along-arc speed drain while on a pipe (logical u/s²). Debug slider writes this.
 @export var ramp_friction: float = 0.0
+## Pipe-exit X-lock fly-out: unlock into free air this far above coping (logical).
+## Intent must point toward that pipe's side. Debug slider writes this.
+@export var fly_out_above_coping: float = 40.0
 
 @onready var depth: PseudoDepthBody = $PseudoDepthBody
 @onready var _head_debug_label: Label = $Body/HeadDebug/Label
@@ -230,6 +233,12 @@ func _apply_motion(delta: float, speed_mul: float) -> void:
 			var prev_air_vy := air_vel_y
 			_integrate_air_gravity(delta)
 			_try_apex_facing_flip(prev_air_vy)
+			# Intent toward pipe side + height above coping → unlock; keep air_vel_y
+			# so free air continues on a parabola. Gravity already ran this tick.
+			if _try_fly_out_from_pipe_lock():
+				if not _transfer_x_active:
+					depth.logical_x += _velocity.x * speed_mul * delta
+				return
 			var floor_h := _underlying_surface_height()
 			# Only land when falling onto the surface — never snap height upward.
 			if air_vel_y <= 0.0 and air_abs_height <= floor_h + 0.05:
@@ -253,7 +262,7 @@ func _apply_motion(delta: float, speed_mul: float) -> void:
 						depth.logical_x = pin_x
 			return
 
-		# Unlocked air (rode off / transfer / over any zone): free XZ + gravity.
+		# Unlocked air (rode off / transfer / fly-out / over any zone): free XZ + gravity.
 		# Position lerp owns X while active — don't also integrate velocity.x.
 		if not _transfer_x_active:
 			depth.logical_x += _velocity.x * speed_mul * delta
@@ -601,6 +610,23 @@ func _enter_air_from_pipe(hit: Dictionary, up_speed: float = 0.0) -> void:
 	_ramp_along = 0.0
 	_velocity.x = 0.0
 	_on_ramp = false
+
+
+## Unlock pipe-exit X-lock into free air when above coping and intent points
+## toward that pipe's side. Preserves `air_abs_height` / `air_vel_y` (parabolic).
+func _try_fly_out_from_pipe_lock() -> bool:
+	if not _AerialMath.should_fly_out_pipe_lock(
+		_air_x_locked,
+		_acid_drop_lock,
+		_air_side,
+		air_abs_height,
+		_air_radius,
+		fly_out_above_coping,
+		_velocity.x,
+	):
+		return false
+	_air_x_locked = false
+	return true
 
 
 ## Start airborne over a target. snap_x pins to anchor immediately (pipe enter);

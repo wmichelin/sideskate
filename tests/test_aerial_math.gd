@@ -7,6 +7,7 @@ func run() -> bool:
 	ok = _action_routing() and ok
 	ok = _horiz_resolve() and ok
 	ok = _landing_height() and ok
+	ok = _fly_out_pipe_lock() and ok
 	ok = _acid_drop_selection() and ok
 	ok = _pipe_behind() and ok
 	return ok
@@ -56,6 +57,39 @@ func _landing_height() -> bool:
 	var free := AerialMath.landing_support_height(false, false, "flat", 150.0, 44.0)
 	if absf(free - 44.0) > 0.01:
 		push_error("free air want sampled, got %s" % free)
+		return false
+	return true
+
+
+func _fly_out_pipe_lock() -> bool:
+	# Right pipe (side 1): need intent +X, height >= radius + above.
+	if not AerialMath.should_fly_out_pipe_lock(true, false, 1, 200.0, 150.0, 40.0, 50.0):
+		push_error("right pipe + intent right + height → fly out")
+		return false
+	if AerialMath.should_fly_out_pipe_lock(true, false, 1, 200.0, 150.0, 40.0, -50.0):
+		push_error("right pipe + intent left → no fly out")
+		return false
+	if AerialMath.should_fly_out_pipe_lock(true, false, 1, 170.0, 150.0, 40.0, 50.0):
+		push_error("below coping+above → no fly out")
+		return false
+	# Left pipe (side 0): need intent −X.
+	if not AerialMath.should_fly_out_pipe_lock(true, false, 0, 200.0, 150.0, 40.0, -50.0):
+		push_error("left pipe + intent left + height → fly out")
+		return false
+	if AerialMath.should_fly_out_pipe_lock(true, false, 0, 200.0, 150.0, 40.0, 50.0):
+		push_error("left pipe + intent right → no fly out")
+		return false
+	# Acid-drop lock never auto-flies out.
+	if AerialMath.should_fly_out_pipe_lock(true, true, 1, 200.0, 150.0, 40.0, 50.0):
+		push_error("acid lock must not fly out")
+		return false
+	# Unlocked / not locked.
+	if AerialMath.should_fly_out_pipe_lock(false, false, 1, 200.0, 150.0, 40.0, 50.0):
+		push_error("unlocked air must not fly out")
+		return false
+	# above_coping 0: unlock at coping height.
+	if not AerialMath.should_fly_out_pipe_lock(true, false, 1, 150.0, 150.0, 0.0, 50.0):
+		push_error("above=0 at coping + outward intent → fly out")
 		return false
 	return true
 
