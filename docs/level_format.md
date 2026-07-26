@@ -36,7 +36,7 @@ Add glyphs to grow the plaza; do not set `width` / `depth` in the header (ignore
 
 Pipe radius follows run width in cells (`<<<<` → 4 × cell_x), so the same glyph pattern always builds the same logical ramp.
 
-Perspective (`perspective_inset`, `far_geometry_scale`, `reference_depth`, `reference_width`) lives on **RampLevel** / TUNING only — not in `.ssk` files. Default inset is 160; X convergence uses fixed `reference_width`.
+Perspective (`perspective_inset`, `far_geometry_scale`, `reference_depth`, `reference_width`) lives on **RampLevel** / TUNING only — not in `.ssk` files. Default inset is 160; X convergence uses fixed `reference_width`. Lean is relative to the skater over `reference_depth` (not level `z_min`); drawing pads past that band so near/far perspective lines still show.
 
 ## Header keys
 

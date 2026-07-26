@@ -92,7 +92,7 @@ func apply() -> void:
 	var surface_screen_h := surface_height * s
 
 	if _level:
-		_level.set_perspective_origin(logical_x)
+		_level.set_perspective_origin(logical_x, logical_z)
 		var p: Dictionary = _level.project_surface(logical_x, logical_z, surface_height)
 		screen_x = float(p.screen_x)
 		ground_y = float(p.ground_y)

@@ -37,6 +37,8 @@ var lip_right: float = 1100.0
 var pipe_radius: float = 150.0
 ## Far X converges toward the skater so adjacent pipes share lean.
 var perspective_origin_x: float = 640.0
+## Lean band is centered on the skater so short and deep parks match on-screen.
+var perspective_origin_z: float = 0.0
 var _loaded_path: String = ""
 
 @onready var _visual: Node2D = $RampVisual
@@ -115,17 +117,22 @@ func apply_spec(s: LevelSpec) -> void:
 
 	if spec:
 		perspective_origin_x = spec.spawn_x
+		perspective_origin_z = spec.spawn_z
 	if _visual and _visual.has_method("refresh"):
 		_visual.refresh()
 	elif _visual:
 		_visual.queue_redraw()
 
 
-## Keep far-plane convergence under the skater so nearby pipes share lean angle.
-func set_perspective_origin(logical_x: float) -> void:
-	if absf(logical_x - perspective_origin_x) < 0.05:
+## Keep lean under the skater so the visible band matches across level depths.
+func set_perspective_origin(logical_x: float, logical_z: float) -> void:
+	if (
+		absf(logical_x - perspective_origin_x) < 0.05
+		and absf(logical_z - perspective_origin_z) < 0.05
+	):
 		return
 	perspective_origin_x = logical_x
+	perspective_origin_z = logical_z
 	if _visual and _visual.has_method("refresh"):
 		_visual.refresh()
 	elif _visual:
@@ -139,10 +146,12 @@ func depth_t(logical_z: float) -> float:
 	return clampf((logical_z - z_min) / span, 0.0, 1.0)
 
 
-## 0→1 over `reference_depth` from level near edge. Absolute — no player-relative
-## or exponential tricks.
+## 0→1 over `reference_depth`, centered on the skater (half behind, half ahead).
+## Level length no longer changes lean at your feet.
 func perspective_t(logical_z: float) -> float:
-	return clampf((logical_z - z_min) / maxf(reference_depth, 0.0001), 0.0, 1.0)
+	var ref := maxf(reference_depth, 0.0001)
+	var z0 := perspective_origin_z - ref * 0.5
+	return clampf((logical_z - z0) / ref, 0.0, 1.0)
 
 
 func geometry_scale_at(logical_z: float) -> float:
