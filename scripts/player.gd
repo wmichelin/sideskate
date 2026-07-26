@@ -151,10 +151,16 @@ func _apply_spawn_from_level() -> void:
 		depth.z_min = _level.z_min
 		depth.z_max = _level.z_max
 		facing_h = _normalize_facing(_level.spec.spawn_facing)
+		# Stand on the `@` story (may be L1+), not always height 0.
+		var spawn_h := float(_level.spec.spawn_height)
+		depth.surface_height = spawn_h
+		depth.support_height = spawn_h
 	else:
 		depth.logical_x = 640.0
 		depth.logical_z = 40.0
 		facing_h = "r"
+		depth.surface_height = 0.0
+		depth.support_height = 0.0
 	_velocity = Vector2.ZERO
 	_ramp_along = 0.0
 	_clear_air()
@@ -1098,26 +1104,39 @@ func _try_spine_transfer() -> bool:
 		return false
 	if not _transfer_vert_ok():
 		return false
-	var behind: float = _transfer_behind_sign
-	if _air_x_locked:
-		behind = _coping_sign(_air_side)
-	elif behind == 0.0:
+	var behind: float = _spine_behind_sign()
+	if behind == 0.0:
 		return false
-	var from_x: float = _air_coping_x if _air_x_locked else depth.logical_x
-	var exclude_side := _air_side
-	var exclude_lip := _air_lip_x
 	var cell_w := _level.cell_size_x
 	if _level.spec != null and _level.spec.cell_w > 0.0:
 		cell_w = _level.spec.cell_w
-	var hit := _AerialMath.find_spine_transfer_target(
-		_level.pipes,
-		from_x,
-		depth.logical_z,
-		behind,
-		exclude_side,
-		exclude_lip,
-		cell_w,
-	)
+	var exclude_side := _air_side
+	var exclude_lip := _air_lip_x
+	var prefer_h := _feet_height()
+	# Prefer locked coping X; also retry from live X (over hole) and last coping.
+	var from_candidates: Array[float] = []
+	if _air_x_locked:
+		from_candidates.append(_air_coping_x)
+	from_candidates.append(depth.logical_x)
+	if not is_nan(_air_coping_x) and absf(_air_coping_x - depth.logical_x) > 0.05:
+		from_candidates.append(_air_coping_x)
+
+	var hit: Dictionary = {}
+	for from_x in from_candidates:
+		hit = _AerialMath.find_spine_transfer_target(
+			_level.pipes,
+			from_x,
+			depth.logical_z,
+			behind,
+			exclude_side,
+			exclude_lip,
+			cell_w,
+			0.05,
+			prefer_h,
+			_level.spec,
+		)
+		if not hit.is_empty():
+			break
 	if hit.is_empty():
 		return false
 
@@ -1145,6 +1164,21 @@ func _try_spine_transfer() -> bool:
 	_transfer_available = false
 	_acid_drop_available = false
 	return true
+
+
+## Behind direction for spine: locked/pipe air use coping sign; hole keeps last
+## pipe side; else facing.
+func _spine_behind_sign() -> float:
+	if _air_x_locked:
+		return _coping_sign(_air_side)
+	if air_over == "left_pipe" or air_over == "right_pipe":
+		return _coping_sign(_air_side)
+	if air_over == "hole" and (_air_side == QuarterPipe.PipeSide.LEFT \
+			or _air_side == QuarterPipe.PipeSide.RIGHT):
+		return _coping_sign(_air_side)
+	if absf(_transfer_behind_sign) >= 0.001:
+		return signf(_transfer_behind_sign)
+	return 1.0 if facing_h == "r" else -1.0
 
 
 ## Nearest opposite-facing TOP coping near horizontal velocity.

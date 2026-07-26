@@ -254,7 +254,7 @@ static func _build_layered_geometry(spec: LevelSpec, layers: Array, cell_x: floa
 	spec.playable_mask = PackedByteArray()
 	spec.floor_mask = PackedByteArray()
 
-	var spawn := {"found": false, "c": 0, "r": 0}
+	var spawn := {"found": false, "c": 0, "r": 0, "height": 0.0, "layer": 0}
 	for L in layers:
 		var rows: PackedStringArray = L.rows
 		if W < 0:
@@ -292,6 +292,8 @@ static func _build_layered_geometry(spec: LevelSpec, layers: Array, cell_x: floa
 		return "missing @ spawn"
 	spec.spawn_x = (float(spawn.c) + 0.5) * cell_x
 	spec.spawn_z = (float(H - 1 - spawn.r) + 0.5) * cell_z
+	spec.spawn_height = float(spawn.height)
+	spec.spawn_layer = int(spawn.layer)
 
 	var footprint_err := _validate_upper_layer_footprint(spec)
 	if footprint_err != "":
@@ -301,7 +303,7 @@ static func _build_layered_geometry(spec: LevelSpec, layers: Array, cell_x: floa
 	return ""
 
 
-## Build one layer into spec. `spawn` is {found, c, r} mutated in place.
+## Build one layer into spec. `spawn` is {found, c, r, height, layer} mutated in place.
 ## `=` / `@` = floor; `.` = hole (no floor); space = OOB.
 static func _append_layer_geometry(
 	spec: LevelSpec,
@@ -347,6 +349,8 @@ static func _append_layer_geometry(
 					spawn.found = true
 					spawn.c = c
 					spawn.r = r
+					spawn.height = base_height
+					spawn.layer = layer_index
 				"#":
 					deck_cells.append(Vector2i(c, r))
 				"<", ">":

@@ -115,6 +115,7 @@ Routing uses measured vertical rate (`_vert_vel`) and the last non-zero vertical
 
 When the transfer path runs and an **opposite** pipe’s top coping lies **behind** the current coping with gap `0…2` deck cells (`Δx ≤ 2 × cell_w`), fire spine transfer instead of free-air transfer:
 
+- **Layer-agnostic:** any story may be the target. Among gap matches, pick by coping floor (`base_height + radius`) vs current feet height: nearest at/below feet, else nearest above (so you can spine down or up). **Holes / empty glyphs are transparent** — a lower-story opposite pipe under an adjacent `.` still counts (high→low).
 - Lerp/lock X to that opposite **top coping** (never the lip); keep `air_abs_height` and `air_vel_y` (continue the rise). Same live height-scaled X settle + smoothstep as acid drop.
 - On land: same drop-in as pipe-exit / acid — falling `air_vel_y` → `_ramp_along` (keep approach if faster into the pipe).
 - No fly-out while the spine lock is active.
@@ -188,7 +189,7 @@ Debug tools are gated by autoload `DebugTools`: available when `OS.is_debug_buil
 6. Acid drop: opposite-facing pipe, top coping, logical-unit buffer/max-ahead.  
 7. Free air / acid drop land on **sampled** height — never snap up to coping radius as a fake floor.  
 8. Fly-out: only while rising; right pipe needs INPUT right; left pipe needs INPUT left; never from acid-drop or spine-transfer lock.  
-9. Spine transfer: opposite coping behind within 0–2 deck cells; keep height + `air_vel_y`; land uses shared drop-in merge; 3+ cells → normal transfer.
+9. Spine transfer: opposite coping behind within 0–2 deck cells; holes transparent downward for high→low; layer-agnostic height pick (nearest at/below feet, else nearest above); keep height + `air_vel_y`; land uses shared drop-in merge; 3+ cells → normal transfer.
 10. Locked pipe land (pipe-exit / acid / spine): `merge_drop_in_along` — fall vert → along-arc, keep approach if faster into the pipe.
 11. Acid/spine X settle: live `duration = base + rate × height_above` (`lock_x_duration_for_height`); progress `+= δt/duration`; smoothstep ease.
 

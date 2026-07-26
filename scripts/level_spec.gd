@@ -11,6 +11,10 @@ var deck_height_override: float = -1.0
 
 var spawn_x: float = 640.0
 var spawn_z: float = 40.0
+## Absolute logical height of the `@` spawn story (layer `height`).
+var spawn_height: float = 0.0
+## Layer index of the `@` marker (−1 if unset).
+var spawn_layer: int = 0
 ## Spawn horizontal facing: "l" or "r" (default right).
 var spawn_facing: String = "r"
 

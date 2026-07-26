@@ -12,6 +12,8 @@ func run() -> bool:
 	ok = _fly_out_pipe_lock() and ok
 	ok = _acid_drop_selection() and ok
 	ok = _spine_transfer() and ok
+	ok = _spine_transfer_layers() and ok
+	ok = _spine_layered_demo_high_to_low() and ok
 	ok = _pipe_behind() and ok
 	return ok
 
@@ -352,6 +354,108 @@ func _spine_transfer() -> bool:
 		push_error("spine_want_side mapping wrong")
 		return false
 
+	return true
+
+
+## Stacked opposite pipes at shared X gap: pick by prefer_h (at/below, else above).
+func _spine_transfer_layers() -> bool:
+	var cw := 47.0
+	var z := 50.0
+	# From RIGHT L0 coping 200 looking behind toward LEFT opposites at same X.
+	# L0 LEFT: base 0 r100 coping_floor 100; L1 LEFT: base 188 r100 coping_floor 288.
+	var stacked := [
+		{"side": 1, "lip_x": 100.0, "radius": 100.0, "base_height": 0.0, "layer": 0,
+			"z_min": 0.0, "z_max": 100.0},
+		{"side": 0, "lip_x": 300.0, "radius": 100.0, "base_height": 0.0, "layer": 0,
+			"z_min": 0.0, "z_max": 100.0},
+		{"side": 0, "lip_x": 300.0, "radius": 100.0, "base_height": 188.0, "layer": 1,
+			"z_min": 0.0, "z_max": 100.0},
+	]
+	if not AerialMath.spine_height_better(288.0, 100.0, 300.0):
+		push_error("at/below: higher L1 should beat L0 when prefer mid-L1")
+		return false
+	if AerialMath.spine_height_better(100.0, 288.0, 300.0):
+		push_error("at/below: L0 must not beat L1 when prefer mid-L1")
+		return false
+	if not AerialMath.spine_height_better(100.0, 288.0, 50.0):
+		push_error("both above: lower L0 should beat L1")
+		return false
+
+	var mid_l1 := AerialMath.find_spine_transfer_target(
+		stacked, 200.0, z, 1.0, 1, 100.0, cw, 0.05, 300.0
+	)
+	if mid_l1.is_empty() or int(mid_l1.get("layer", -1)) != 1:
+		push_error("prefer at/above L1 coping should pick L1, got %s" % mid_l1)
+		return false
+
+	var mid_l0 := AerialMath.find_spine_transfer_target(
+		stacked, 200.0, z, 1.0, 1, 100.0, cw, 0.05, 150.0
+	)
+	if mid_l0.is_empty() or int(mid_l0.get("layer", -1)) != 0:
+		push_error("prefer between L0 and L1 coping should pick L0, got %s" % mid_l0)
+		return false
+
+	var below_both := AerialMath.find_spine_transfer_target(
+		stacked, 200.0, z, 1.0, 1, 100.0, cw, 0.05, 10.0
+	)
+	if below_both.is_empty() or int(below_both.get("layer", -1)) != 0:
+		push_error("prefer below both should pick nearest above (L0), got %s" % below_both)
+		return false
+
+	# Only L1 opposite in gap — up transfer from below L1 coping.
+	var only_l1 := [
+		{"side": 1, "lip_x": 100.0, "radius": 100.0, "base_height": 0.0, "layer": 0,
+			"z_min": 0.0, "z_max": 100.0},
+		{"side": 0, "lip_x": 300.0, "radius": 100.0, "base_height": 188.0, "layer": 1,
+			"z_min": 0.0, "z_max": 100.0},
+	]
+	var up := AerialMath.find_spine_transfer_target(
+		only_l1, 200.0, z, 1.0, 1, 100.0, cw, 0.05, 50.0
+	)
+	if up.is_empty() or int(up.get("layer", -1)) != 1:
+		push_error("only L1 in gap should up-transfer to L1, got %s" % up)
+		return false
+
+	return true
+
+
+## layered_demo: L1 left coping shares X with L0 right — high→low spine.
+func _spine_layered_demo_high_to_low() -> bool:
+	var text := FileAccess.get_file_as_string("res://levels/layered_demo.ssk")
+	var spec := LevelLoader.parse_text(text, "layered_demo")
+	if spec == null:
+		push_error("layered_demo parse: %s" % LevelLoader.last_error)
+		return false
+	var l1_left: Dictionary = {}
+	for pd in spec.pipes:
+		if int(pd.side) == 0 and int(pd.get("layer", -1)) == 1:
+			l1_left = pd
+			break
+	if l1_left.is_empty():
+		push_error("layered_demo: no L1 left pipe")
+		return false
+	var from_x: float = PipeMath.coping_x(0, float(l1_left.lip_x), float(l1_left.radius))
+	var z: float = (float(l1_left.z_min) + float(l1_left.z_max)) * 0.5
+	var prefer: float = float(l1_left.get("base_height", 0.0)) + float(l1_left.radius)
+	var hit: Dictionary = AerialMath.find_spine_transfer_target(
+		spec.pipes, from_x, z, -1.0, 0, float(l1_left.lip_x), spec.cell_w, 0.05, prefer, spec
+	)
+	if hit.is_empty():
+		push_error("high→low: expected L0 right from L1 left, got empty")
+		return false
+	if int(hit.get("layer", -1)) != 0 or int(hit.get("side", -1)) != 1:
+		push_error("high→low want L0 right, got %s" % hit)
+		return false
+
+	# from_x over the hole west of coping (not exact shared X) — glyph walk must
+	# still find L0 right under the adjacent `.`.
+	var hole_x: float = from_x - spec.cell_w * 0.6
+	var hit_hole: Dictionary = AerialMath.find_spine_transfer_target(
+		spec.pipes, hole_x, z, -1.0, 0, float(l1_left.lip_x), spec.cell_w, 0.05, prefer, spec
+	)
+	if hit_hole.is_empty() or int(hit_hole.get("layer", -1)) != 0:
+		push_error("high→low from over hole should still find L0, got %s" % hit_hole)
+		return false
 	return true
 
 

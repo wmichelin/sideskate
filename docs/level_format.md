@@ -52,6 +52,8 @@ Perspective (`perspective_inset`, `far_geometry_scale`, `reference_depth`, `refe
 | `deck_height` | no | Override **rise** for all `#` decks (added to layer height) |
 | `spawn_facing` | no | Spawn horizontal facing: `l` or `r` (default `r`) |
 
+`@` may sit on any layer; the skater spawns at that layer’s `height` (`LevelSpec.spawn_height`).
+
 Deprecated (ignored with a warning): `width`, `depth`, `perspective_inset`, `far_geometry_scale`, `reference_depth`, `reference_width`.
 
 ## Layer blocks
@@ -78,7 +80,7 @@ height 188
 
 - Layer **0** defines the playable **footprint**: any non-space cell is playable.  
 - Upper layers must use `.` for holes **inside** that footprint — never space (space = hard OOB).  
-- One `@` spawn total across all layers.
+- One `@` spawn total across all layers (player starts at that story’s `height`).
 
 ## Glyphs
 

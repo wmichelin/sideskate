@@ -16,6 +16,7 @@ func run() -> bool:
 	ok = _ssk1_rejected() and ok
 	ok = _stagger_deck_height() and ok
 	ok = _layered_upper_floor() and ok
+	ok = _spawn_on_upper_layer() and ok
 	ok = _dot_is_hole_not_floor() and ok
 	ok = _upper_space_in_footprint_fails() and ok
 	ok = _clamp_to_playable() and ok
@@ -183,6 +184,27 @@ func _layered_upper_floor() -> bool:
 		return false
 	if spec.layers.size() != 2:
 		push_error("expected 2 layers got %s" % spec.layers.size())
+		return false
+	return true
+
+
+func _spawn_on_upper_layer() -> bool:
+	var r := 4.0 * LevelLoader.cell_size_x
+	var text := (
+		"ssk 2\nname spawn_l1\n---\nlayer 0\nheight 0\n"
+		+ "<<<<========>>>>\n<<<<========>>>>\n<<<<========>>>>\n"
+		+ "---\nlayer 1\nheight %s\n" % r
+		+ "....========....\n....===@====....\n....========....\n"
+	)
+	var spec := LevelLoader.parse_text(text, "spawn_l1")
+	if spec == null:
+		push_error("spawn_l1 parse failed: %s" % LevelLoader.last_error)
+		return false
+	if not is_equal_approx(spec.spawn_height, r):
+		push_error("spawn_height want %s got %s" % [r, spec.spawn_height])
+		return false
+	if spec.spawn_layer != 1:
+		push_error("spawn_layer want 1 got %s" % spec.spawn_layer)
 		return false
 	return true
 
