@@ -36,7 +36,7 @@ const _PerspectiveMath := preload("res://scripts/perspective_math.gd")
 @export var air_shadow_radius: float = 28.0
 ## Height above support (logical) at which shadow width hits `air_shadow_min_scale`.
 @export var air_shadow_ref_height: float = 200.0
-@export var air_shadow_min_scale: float = 0.28
+@export var air_shadow_min_scale: float = 0.5
 ## Vertical squash so the circle reads as a ground ellipse in pseudo-3D.
 @export var shadow_y_squash: float = 0.45
 

@@ -95,27 +95,28 @@ func run() -> bool:
 
 
 func _air_shadow_scale() -> bool:
+	var min_s := 0.5
 	# At support: full width.
-	if absf(PerspectiveMath.air_shadow_width_scale(0.0, 200.0, 0.28) - 1.0) > 0.001:
+	if absf(PerspectiveMath.air_shadow_width_scale(0.0, 200.0, min_s) - 1.0) > 0.001:
 		push_error("air shadow at support want scale 1")
 		return false
 	# Mid height: between min and 1.
-	var mid := PerspectiveMath.air_shadow_width_scale(100.0, 200.0, 0.28)
-	if mid <= 0.28 or mid >= 1.0:
+	var mid := PerspectiveMath.air_shadow_width_scale(100.0, 200.0, min_s)
+	if mid <= min_s or mid >= 1.0:
 		push_error("air shadow mid height want in (min,1), got %s" % mid)
 		return false
 	# At/above ref: min scale.
-	var hi := PerspectiveMath.air_shadow_width_scale(200.0, 200.0, 0.28)
-	if absf(hi - 0.28) > 0.001:
-		push_error("air shadow at ref want min 0.28, got %s" % hi)
+	var hi := PerspectiveMath.air_shadow_width_scale(200.0, 200.0, min_s)
+	if absf(hi - min_s) > 0.001:
+		push_error("air shadow at ref want min %s, got %s" % [min_s, hi])
 		return false
-	var above := PerspectiveMath.air_shadow_width_scale(400.0, 200.0, 0.28)
-	if absf(above - 0.28) > 0.001:
+	var above := PerspectiveMath.air_shadow_width_scale(400.0, 200.0, min_s)
+	if absf(above - min_s) > 0.001:
 		push_error("air shadow above ref stays at min, got %s" % above)
 		return false
 	# Higher → smaller (or equal once clamped).
-	var a := PerspectiveMath.air_shadow_width_scale(40.0, 200.0, 0.28)
-	var b := PerspectiveMath.air_shadow_width_scale(120.0, 200.0, 0.28)
+	var a := PerspectiveMath.air_shadow_width_scale(40.0, 200.0, min_s)
+	var b := PerspectiveMath.air_shadow_width_scale(120.0, 200.0, min_s)
 	if b >= a:
 		push_error("air shadow must shrink as height rises (%s → %s)" % [a, b])
 		return false

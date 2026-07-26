@@ -88,7 +88,7 @@ static func project(
 static func air_shadow_width_scale(
 	height_above_support: float,
 	ref_height: float = 200.0,
-	min_scale: float = 0.28,
+	min_scale: float = 0.5,
 ) -> float:
 	var ref := maxf(ref_height, 0.001)
 	var t := clampf(maxf(height_above_support, 0.0) / ref, 0.0, 1.0)
