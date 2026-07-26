@@ -1,6 +1,7 @@
 extends Node2D
 ## 8-way mover on logical X/Z. Samples RampLevel; spawns from .ssk @ marker.
-## Air can be over any zone; enter air currently only from pipes. All sim on physics ticks.
+## Air over any zone. X-lock only when entering air from a pipe coping.
+## Ride-off a higher surface → free air (keep height + gravity). All sim on physics ticks.
 
 @export var max_speed_x: float = 520.0
 @export var max_speed_z: float = 260.0
@@ -12,12 +13,14 @@ extends Node2D
 @export var transfer_probe: float = 8.0
 ## Physics-time duration for transfer horizontal settle.
 @export var transfer_x_duration: float = 0.15
-## Gravity while air over deck/flat (m/s²). Debug slider writes this.
+## Gravity while in unlocked air (m/s²). Debug slider writes this.
 @export var gravity_ms2: float = -9.8
 ## Convert m/s² into logical units/s².
 @export var logic_per_meter: float = 100.0
 ## Cap how high above a pipe coping you can climb with input.
 @export var pipe_air_max_extra: float = 2.0
+## Feet must drop at least this far below prior support to ride off into air.
+@export var ride_off_height_eps: float = 0.5
 
 @onready var depth: PseudoDepthBody = $PseudoDepthBody
 @onready var _head_debug_label: Label = $Body/HeadDebug/Label
@@ -149,7 +152,7 @@ func _apply_motion(delta: float, speed_mul: float) -> void:
 					depth.logical_x = _air_coping_x
 			return
 
-		# Unlocked air (deck / flat underneath): free XZ + gravity.
+		# Unlocked air (rode off / transfer / over any zone): free XZ + gravity.
 		depth.logical_x += _velocity.x * speed_mul * delta
 		depth.logical_z = depth.clamp_z(depth.logical_z + _velocity.y * speed_mul * delta)
 		if _air_over_uses_gravity():
@@ -161,6 +164,7 @@ func _apply_motion(delta: float, speed_mul: float) -> void:
 			_clear_air()
 		return
 
+	var prev_support_h := depth.surface_height
 	depth.logical_z = depth.clamp_z(depth.logical_z + _velocity.y * speed_mul * delta)
 	var arc_speed := _velocity.x * speed_mul
 
@@ -178,6 +182,7 @@ func _apply_motion(delta: float, speed_mul: float) -> void:
 		_enter_air_from_pipe(cross, maxf(overshoot, 0.0))
 		return
 	depth.logical_x = next_x
+	_try_ride_off_air(prev_support_h)
 
 
 func _step_transfer_x(delta: float) -> void:
@@ -207,34 +212,52 @@ func _update_air_over_underfoot() -> void:
 	var zone := str(under.get("zone", "flat"))
 	if zone == "oob":
 		zone = "flat"
+	air_over = zone
 	if _is_pipe_hit(under):
-		air_over = zone
 		_air_side = int(under.get("side", _air_side))
 		_air_lip_x = float(under.get("lip_x", _air_lip_x))
 		_air_radius = _pipe_radius_for_hit(under)
 		_air_coping_x = _coping_x_for(_air_side, _air_lip_x, _air_radius)
-		_air_x_locked = true
 		_transfer_behind_sign = _coping_sign(_air_side)
-	elif zone == "deck" or zone == "flat":
-		air_over = zone
-		_air_x_locked = false
-	else:
-		air_over = zone
-		_air_x_locked = false
+	# Never auto-lock X from sampling — only pipe-coping entry locks.
 
 
 func _air_over_uses_gravity() -> bool:
-	return air_over == "deck" or air_over == "flat"
+	# Locked pipe-coping air is input-held; everything else falls.
+	return not _air_x_locked
 
 
 func _underlying_surface_height() -> float:
-	if air_over == "left_pipe" or air_over == "right_pipe":
+	# Locked coping air treats the lip as the floor.
+	if _air_x_locked and (air_over == "left_pipe" or air_over == "right_pipe"):
 		return _air_radius
-	if air_over == "deck" and _level:
-		var under: Dictionary = _level.sample(depth.logical_x, depth.logical_z)
-		if str(under.get("zone", "")) == "deck":
-			return float(under.get("height", 0.0))
-	return 0.0
+	if _level == null:
+		return 0.0
+	var under: Dictionary = _level.sample(depth.logical_x, depth.logical_z)
+	if not under.get("active", true) and str(under.get("zone", "")) == "oob":
+		return 0.0
+	return float(under.get("height", 0.0))
+
+
+## Leave a higher support surface into free air (keep height, apply gravity).
+func _try_ride_off_air(prev_support_h: float) -> void:
+	if _airborne or _level == null:
+		return
+	var under: Dictionary = _level.sample(depth.logical_x, depth.logical_z)
+	var new_h := 0.0
+	if under.get("active", true) or str(under.get("zone", "")) != "oob":
+		new_h = float(under.get("height", 0.0))
+	if new_h >= prev_support_h - ride_off_height_eps:
+		return
+	var zone := str(under.get("zone", "flat"))
+	if zone == "oob":
+		zone = "flat"
+	var target := {"zone": zone, "lock_x": false, "anchor_x": depth.logical_x}
+	if _is_pipe_hit(under):
+		target["side"] = int(under.get("side", QuarterPipe.PipeSide.RIGHT))
+		target["lip_x"] = float(under.get("lip_x", depth.logical_x))
+		target["radius"] = _pipe_radius_for_hit(under)
+	_begin_air_over(target, prev_support_h, false)
 
 
 ## Advance along the quarter-pipe arc. Past θ=PI/2 enters air at coping.
@@ -413,12 +436,13 @@ func _try_transfer() -> void:
 		var lip: float = float(hit.get("lip_x", probe_x))
 		var radius: float = _pipe_radius_for_hit(hit)
 		var coping := _coping_x_for(side, lip, radius)
+		# Transfer is not a pipe-coping exit — stay unlocked so gravity applies.
 		target = {
 			"zone": _pipe_zone_name(side),
 			"side": side,
 			"lip_x": lip,
 			"radius": radius,
-			"lock_x": true,
+			"lock_x": false,
 			"anchor_x": coping,
 		}
 		anchor_x = coping
