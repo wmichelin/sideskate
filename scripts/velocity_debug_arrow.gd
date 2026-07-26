@@ -1,8 +1,7 @@
 extends Node2D
-## Debug arrow over the player head. Display-only (reads sim state; does not step it).
-## source = actual → measured motion; intent → stick control velocity (even when remapped).
+## Head debug arrow for one [MotionVectors.Kind]. Display-only (does not step sim).
 
-@export_enum("actual", "intent") var source: String = "actual"
+@export var kind: MotionVectors.Kind = MotionVectors.Kind.ACTUAL
 @export var player_path: NodePath = NodePath("../..")
 @export var min_speed: float = 8.0
 @export var pixels_per_speed: float = 0.1
@@ -37,22 +36,12 @@ func _process(_delta: float) -> void:
 
 
 func _draw() -> void:
-	if _player == null:
+	if _player == null or not _player.has_method("motion_screen") or not _player.has_method("motion_speed"):
 		_speed_label.visible = false
 		return
 
-	var screen_method := "debug_velocity_screen"
-	var speed_method := "debug_velocity_speed"
-	if source == "intent":
-		screen_method = "debug_intent_screen"
-		speed_method = "debug_intent_speed"
-
-	if not _player.has_method(screen_method) or not _player.has_method(speed_method):
-		_speed_label.visible = false
-		return
-
-	var screen_v: Vector2 = _player.call(screen_method)
-	var speed: float = float(_player.call(speed_method))
+	var screen_v: Vector2 = _player.call("motion_screen", kind)
+	var speed: float = float(_player.call("motion_speed", kind))
 	if speed < min_speed or screen_v.length_squared() < 0.0001:
 		_speed_label.visible = false
 		return

@@ -6,6 +6,7 @@ extends Node2D
 const _PipeMath := preload("res://scripts/pipe_math.gd")
 const _MotionMath := preload("res://scripts/motion_math.gd")
 const _AerialMath := preload("res://scripts/aerial_math.gd")
+const _MotionVectors := preload("res://scripts/motion_vectors.gd")
 
 @export var max_speed_x: float = 880.0
 
@@ -89,7 +90,7 @@ var _acid_drop_available: bool = true
 var _acid_drop_lock: bool = false
 ## Once per locked aerial: facing flip (or stick override) at vertical apex.
 var _apex_facing_done: bool = false
-## Measured actual velocity from position deltas (not stick intent).
+## Measured actual velocity from position deltas (not stick / momentum).
 var _actual_vel_x: float = 0.0
 var _actual_vel_z: float = 0.0
 var _vert_vel: float = 0.0
@@ -98,6 +99,8 @@ var _last_nonzero_vert_vel: float = 0.0
 var _prev_logical_x: float = 0.0
 var _prev_logical_z: float = 0.0
 var _prev_feet_h: float = 0.0
+## Last physics-tick stick input (X = horiz, Y = depth Z). Debug input arrow.
+var _last_input: Vector2 = Vector2.ZERO
 ## Horizontal facing: "l" or "r". Spawn default from level (usually r).
 var facing_h: String = "r"
 
@@ -165,6 +168,7 @@ func _physics_process(delta: float) -> void:
 		_try_air_action()
 
 	var input := _read_move_input()
+	_last_input = input
 	# Stick must accelerate along-arc speed, not the post-projection horizontal remnant.
 	if _on_ramp:
 		_velocity.x = _ramp_along
@@ -612,8 +616,8 @@ func _enter_air_from_pipe(hit: Dictionary, up_speed: float = 0.0) -> void:
 	_on_ramp = false
 
 
-## Unlock pipe-exit X-lock into free air when above coping and intent points
-## toward that pipe's side. Preserves `air_abs_height` / `air_vel_y` (parabolic).
+## Unlock pipe-exit X-lock into free air when above coping and Momentum points
+## toward that pipe's side (MotionVectors.Kind.MOMENTUM). Preserves height / vy.
 func _try_fly_out_from_pipe_lock() -> bool:
 	if not _AerialMath.should_fly_out_pipe_lock(
 		_air_x_locked,
@@ -902,37 +906,43 @@ func _update_face_nose() -> void:
 	_face_nose.position = Vector2(22.0 * side, -40.0)
 
 
-## Screen-local velocity for the head debug arrow (+X right, -Y up).
-## Uses measured position rates, not stick intent (_velocity).
-func debug_velocity_screen() -> Vector2:
-	# +logical Z (farther) → up on screen; +vertical (rising) → up on screen.
-	return Vector2(_actual_vel_x, -_actual_vel_z - _vert_vel)
+## Screen-local vector for a [MotionVectors.Kind] (+X right, -Y up on screen).
+## Prefer this over kind-specific helpers when branching in gameplay/debug code.
+func motion_screen(kind: _MotionVectors.Kind) -> Vector2:
+	match kind:
+		_MotionVectors.Kind.ACTUAL:
+			# +logical Z (farther) → up; +vertical (rising) → up.
+			return Vector2(_actual_vel_x, -_actual_vel_z - _vert_vel)
+		_MotionVectors.Kind.MOMENTUM:
+			if _on_ramp:
+				# Horiz remnant + converted vertical so the split is visible.
+				var th := 0.0
+				if last_surface.has("theta"):
+					th = float(last_surface.theta)
+				var sign := 1.0
+				if last_surface.has("side"):
+					sign = _coping_sign(int(last_surface.side))
+				var toward := _ramp_along * sign
+				var horiz := _ramp_along * cos(clampf(th, 0.0, PI * 0.5))
+				var vert := toward * sin(clampf(th, 0.0, PI * 0.5))
+				return Vector2(horiz, -vert)
+			# Flat: X + depth Z (_velocity.y is logical Z, not height).
+			return Vector2(_velocity.x, -_velocity.y)
+		_MotionVectors.Kind.INPUT:
+			# Planar wish only — never height (player cannot steer Y).
+			return Vector2(_last_input.x * max_speed_x, -_last_input.y * max_speed_z)
+	return Vector2.ZERO
 
 
-func debug_velocity_speed() -> float:
-	return Vector3(_actual_vel_x, _vert_vel, _actual_vel_z).length()
-
-
-## Stick-intent velocity (integrated every tick). On a ramp, orange shows the
-## remaining horizontal remnant (`along * cosθ`); green actual includes vertical.
-func debug_intent_screen() -> Vector2:
-	if _on_ramp:
-		# Show horiz remnant + converted vertical so the split is visible.
-		var th := 0.0
-		if last_surface.has("theta"):
-			th = float(last_surface.theta)
-		var sign := 1.0
-		if last_surface.has("side"):
-			sign = _coping_sign(int(last_surface.side))
-		var toward := _ramp_along * sign
-		var horiz := _ramp_along * cos(clampf(th, 0.0, PI * 0.5))
-		var vert := toward * sin(clampf(th, 0.0, PI * 0.5))
-		return Vector2(horiz, -vert)
-	return Vector2(_velocity.x, -_velocity.y)
-
-
-func debug_intent_speed() -> float:
-	return _velocity.length()
+func motion_speed(kind: _MotionVectors.Kind) -> float:
+	match kind:
+		_MotionVectors.Kind.ACTUAL:
+			return Vector3(_actual_vel_x, _vert_vel, _actual_vel_z).length()
+		_MotionVectors.Kind.MOMENTUM:
+			return _velocity.length()
+		_MotionVectors.Kind.INPUT:
+			return Vector2(_last_input.x * max_speed_x, _last_input.y * max_speed_z).length()
+	return 0.0
 
 
 ## Instantaneous control acceleration from last integrate (u/s²).

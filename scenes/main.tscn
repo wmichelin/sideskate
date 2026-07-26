@@ -93,12 +93,20 @@ horizontal_alignment = 1
 [node name="VelocityArrow" type="Node2D" parent="Player/Body" unique_id=1704464314]
 position = Vector2(-18, -118)
 script = ExtResource("10_vel_arrow")
+kind = 0
+arrow_color = Color(0.45, 0.95, 0.75, 0.95)
 
-[node name="IntentArrow" type="Node2D" parent="Player/Body" unique_id=106386296]
+[node name="MomentumArrow" type="Node2D" parent="Player/Body" unique_id=106386296]
 position = Vector2(18, -118)
 script = ExtResource("10_vel_arrow")
-source = "intent"
+kind = 1
 arrow_color = Color(1, 0.72, 0.28, 0.95)
+
+[node name="InputArrow" type="Node2D" parent="Player/Body"]
+position = Vector2(0, -138)
+script = ExtResource("10_vel_arrow")
+kind = 2
+arrow_color = Color(0.35, 0.72, 1, 0.95)
 
 [node name="FollowCamera" type="Camera2D" parent="." unique_id=1242588525]
 script = ExtResource("8_camera")

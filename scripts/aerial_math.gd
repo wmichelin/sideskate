@@ -19,13 +19,13 @@ static func choose_air_action(
 	return ACTION_ACID_DROP
 
 
-## Prefer measured horizontal velocity; fall back to stick intent.
+## Prefer measured horizontal velocity; fall back to Momentum X.
 static func resolve_horiz_vel(
-	actual_vx: float, intent_vx: float, actual_eps: float = 8.0, dead_eps: float = 1.0
+	actual_vx: float, momentum_vx: float, actual_eps: float = 8.0, dead_eps: float = 1.0
 ) -> float:
 	var hx := actual_vx
 	if absf(hx) < actual_eps:
-		hx = intent_vx
+		hx = momentum_vx
 	if absf(hx) < dead_eps:
 		return 0.0
 	return hx
@@ -53,9 +53,10 @@ static func landing_support_height(
 
 
 ## Pipe-exit X-lock → free air (parabolic fly-out) when height clears coping+extra
-## and stick intent points toward that pipe's side (right pipe → +X, left → −X).
-## Acid-drop lock never flies out this way. `above_coping` is logical height above
-## the coping floor (`air_radius`); 0 means unlock as soon as at/above coping.
+## and Momentum X points toward that pipe's side (right pipe → +X, left → −X).
+## See MotionVectors.Kind.MOMENTUM. Acid-drop lock never flies out this way.
+## `above_coping` is logical height above the coping floor (`air_radius`);
+## 0 means unlock as soon as at/above coping.
 static func should_fly_out_pipe_lock(
 	air_x_locked: bool,
 	acid_drop_lock: bool,
@@ -63,15 +64,15 @@ static func should_fly_out_pipe_lock(
 	air_abs_height: float,
 	air_radius: float,
 	above_coping: float,
-	intent_vx: float,
-	intent_eps: float = 1.0,
+	momentum_vx: float,
+	momentum_eps: float = 1.0,
 ) -> bool:
 	if not air_x_locked or acid_drop_lock:
 		return false
 	if air_abs_height + 0.001 < air_radius + maxf(above_coping, 0.0):
 		return false
 	var out := _PipeMath.coping_sign(air_side)
-	return intent_vx * out > intent_eps
+	return momentum_vx * out > momentum_eps
 
 
 ## True when `x` is the top coping (lip ± radius), not the lip / flat edge.

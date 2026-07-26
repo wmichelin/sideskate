@@ -2,8 +2,12 @@
 
 ## Read first
 
-- [docs/gameplay.md](docs/gameplay.md) — motion, air, transfer / acid-drop, debug
+- [docs/gameplay.md](docs/gameplay.md) — motion vectors, air, transfer / acid-drop, debug
 - [docs/level_format.md](docs/level_format.md) — `.ssk` IDL
+
+## Motion vectors
+
+Use `MotionVectors.Kind` (`INPUT` / `MOMENTUM` / `ACTUAL`) when referring to stick wish, integrated control, or measured world motion. See gameplay.md § Motion vectors. Do not invent parallel names (`intent`, `wishvel`, etc.) in new code.
 
 ## Simulation: physics ticks only
 

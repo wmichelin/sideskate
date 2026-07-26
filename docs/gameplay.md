@@ -36,7 +36,8 @@ Player-facing zone labels include `flat`, `left_pipe`, `right_pipe`, `deck`, and
 
 ## Grounded motion
 
-- Stick integrates into intent velocity `_velocity` (X and Z).
+Stick integrates into **momentum** (`_velocity` on X/Z). See [Motion vectors](#motion-vectors).
+
 - **Horizontal X**: opposite stick **brakes hard** toward zero via **`brake`** (default 1250) — no reverse until `|vx|` reaches 0. Coasting uses **friction** only (default 0).
 - **Depth Z**: immediate — stick maps straight to `±max_speed_z` (default 335; debug slider).
 - **Acceleration** (default 3250) / **brake** / **max speed x** (default 880) / **max speed z**: tunable via debug sliders.
@@ -44,6 +45,29 @@ Player-facing zone labels include `flat`, `left_pipe`, `right_pipe`, `deck`, and
 - **Ollie** (hold Space): mild forward accel (`ollie_accel`, default 650) toward `max_speed_x` in facing direction. Skipped while stick is braking opposite. Tunable via debug slider.
 - On flat/deck: move in X/Z; leaving a **higher** support into a lower one **rides off** into free air (keep prior height, apply gravity).
 - On a pipe: along-arc speed (`_ramp_along`) follows the arc (θ). Horiz remnant is `along * cosθ`; vertical is `along * sinθ`. At the top coping (θ = π/2) **all** remaining along-speed converts into `air_vel_y` (horiz → 0). **`ramp_friction`** (default 0, debug slider) drains along-speed while on the pipe.
+
+## Motion vectors
+
+Canonical triad for control vs world motion — `MotionVectors.Kind` in [`scripts/motion_vectors.gd`](../scripts/motion_vectors.gd). Same vocabulary for sim gates and head debug arrows. Pattern matches common “wish → control → world” controllers (e.g. Quake wishvel / velocity).
+
+| Kind | Code | Signal | Axes | Head arrow |
+|------|------|--------|------|------------|
+| **INPUT** | `MotionVectors.Kind.INPUT` | Raw stick wish (`_last_input` × max speeds) | **X + Z only** (planar; no height) | Cyan |
+| **MOMENTUM** | `MotionVectors.Kind.MOMENTUM` | Integrated control (`_velocity` / `_ramp_along`) | X/Z; on ramp also shows converted vertical | Orange |
+| **ACTUAL** | `MotionVectors.Kind.ACTUAL` | Measured pose rates (`_actual_vel_*`, `_vert_vel`) | X, Z, **height** | Green |
+
+**API:** `Player.motion_screen(kind)` / `Player.motion_speed(kind)` — prefer these over ad-hoc strings. Fly-out and similar gates that care about “stick toward pipe side” read **momentum** X (`_velocity.x`), not INPUT (INPUT is the instantaneous wish; MOMENTUM is what control has already integrated).
+
+```gdscript
+# Example: branch on the named kind
+match kind:
+	MotionVectors.Kind.INPUT:
+		pass  # planar wish only
+	MotionVectors.Kind.MOMENTUM:
+		pass  # integrated control
+	MotionVectors.Kind.ACTUAL:
+		pass  # world measurement
+```
 
 ## Air model
 
@@ -57,7 +81,7 @@ Feet height while airborne: `air_abs_height`. Vertical rate for gravity: `air_ve
 
 ### Pipe fly-out
 
-While in **pipe coping lock** (not acid-drop), if feet height reaches `radius + fly_out_above_coping` (debug slider **fly out**, default 40) **and** stick intent points toward that pipe’s side (right pipe → right; left pipe → left), unlock X into free air. Keep `air_abs_height` and `air_vel_y` so the skater continues on a **parabolic** arc. Without outward intent, stay locked and land as usual.
+While in **pipe coping lock** (not acid-drop), if feet height reaches `radius + fly_out_above_coping` (debug slider **fly out**, default 40) **and** **momentum** X points toward that pipe’s side (right pipe → right; left pipe → left), unlock X into free air. Keep `air_abs_height` and `air_vel_y` so the skater continues on a **parabolic** arc. Without outward momentum, stay locked and land as usual.
 
 Pipe coping lock treats the top coping height (`radius`) as the floor. Acid-drop lock and free air **must not** use that shortcut (it would snap feet upward); they sample the real surface under `(x, z)`.
 
@@ -84,7 +108,7 @@ Routing uses measured vertical rate (`_vert_vel`) and the last non-zero vertical
 
 - Probe “behind” the current pipe / last behind-sign for deck, other pipe, or flat.
 - Enter free air over the target at **same** height; gravity applies.
-- Leaving **locked** coping air: seed horizontal `_velocity.x` in the behind direction (`max(|intent|, transfer_release_min)`) and **skip** the slow X position lerp so motion doesn’t restart from near-zero.
+- Leaving **locked** coping air: seed horizontal `_velocity.x` in the behind direction (`max(|momentum|, transfer_release_min)`) and **skip** the slow X position lerp so motion doesn’t restart from near-zero.
 - Unlocked→unlocked transfers may still short-lerp X when needed; don’t double-apply X while a lerp owns position.
 
 ### Acid drop
@@ -110,8 +134,7 @@ Debug tools are gated by autoload `DebugTools`: available when `OS.is_debug_buil
 
 | Piece | Role |
 |-------|------|
-| Head **green** arrow | Measured actual velocity (dX, dZ, d(height)/dt) |
-| Head **orange** arrow | Stick **intent** `_velocity` |
+| Head arrows | [Motion vectors](#motion-vectors): green **ACTUAL**, orange **MOMENTUM**, cyan **INPUT** |
 | Top-left overlay | Depth/zone/surface + cell `col`/`row` |
 | Top-right sliders | Gravity, acid buffer, **fly out** (above coping), cell-highlight toggle, **god mode** |
 | **God mode** (default off; `G` or checkbox) | No gravity; **k** rise / **j** lower (`god_vert_speed`) |
@@ -120,29 +143,30 @@ Debug tools are gated by autoload `DebugTools`: available when `OS.is_debug_buil
 
 | Script | Role |
 |--------|------|
-| [`scripts/player.gd`](../scripts/player.gd) | Motion, air, transfer, acid drop, ride-off, measured/intent debug APIs |
+| [`scripts/player.gd`](../scripts/player.gd) | Motion, air, transfer, acid drop, ride-off; `motion_screen` / `motion_speed` |
 | [`scripts/ramp_level.gd`](../scripts/ramp_level.gd) | Load `.ssk`, sample surfaces, project to screen |
 | [`scripts/ramp_visual.gd`](../scripts/ramp_visual.gd) | Surface draw + cell highlight |
 | [`scripts/level_loader.gd`](../scripts/level_loader.gd) / [`level_spec.gd`](../scripts/level_spec.gd) | Parse IDL → floors, decks, pipes, grid metrics |
 | [`scripts/perspective_math.gd`](../scripts/perspective_math.gd) | Pure pseudo-depth projection helpers |
 | [`scripts/pipe_math.gd`](../scripts/pipe_math.gd) | Pure coping / opposite-pipe helpers |
 | [`scripts/motion_math.gd`](../scripts/motion_math.gd) | Pure brake-no-reverse + facing / transfer-vert helpers |
+| [`scripts/motion_vectors.gd`](../scripts/motion_vectors.gd) | Named triad `INPUT` / `MOMENTUM` / `ACTUAL` |
 | [`scripts/aerial_math.gd`](../scripts/aerial_math.gd) | Pure transfer / acid-drop routing + target selection |
 | [`scripts/pseudo_depth_body.gd`](../scripts/pseudo_depth_body.gd) | Logical pose → screen body/shadow |
 | [`scripts/quarter_pipe.gd`](../scripts/quarter_pipe.gd) | Pipe sample (θ, height, zone) |
 | [`scripts/debug_tools.gd`](../scripts/debug_tools.gd) | Production gate + god mode state |
-| [`scripts/velocity_debug_arrow.gd`](../scripts/velocity_debug_arrow.gd) | Head arrows (`actual` / `intent`) |
+| [`scripts/velocity_debug_arrow.gd`](../scripts/velocity_debug_arrow.gd) | Head arrow for one `MotionVectors.Kind` |
 | [`scripts/debug_overlay.gd`](../scripts/debug_overlay.gd) / [`debug_sliders.gd`](../scripts/debug_sliders.gd) | HUD debug |
 
 ## Behavioral invariants (do not regress)
 
 1. Sim only on physics ticks.  
 2. Top coping ≠ lip.  
-3. Pipe exit and acid drop both lock X; both use gravity. Acid drop must not snap height; pipe-exit lock may use coping radius as floor. Pipe fly-out unlocks X when above coping with outward intent; preserves vertical velocity.  
+3. Pipe exit and acid drop both lock X; both use gravity. Acid drop must not snap height; pipe-exit lock may use coping radius as floor. Pipe fly-out unlocks X when above coping with outward momentum; preserves vertical velocity.  
 4. One transfer + one acid drop per aerial; refill on surface contact.  
 5. Transfer at rising apex; acid drop must not steal that case.  
 6. Acid drop: opposite-facing pipe, top coping, logical-unit buffer/max-ahead.  
 7. Free air / acid drop land on **sampled** height — never snap up to coping radius as a fake floor.  
-8. Fly-out: right pipe needs intent right; left pipe needs intent left; never from acid-drop lock.
+8. Fly-out: right pipe needs momentum right; left pipe needs momentum left; never from acid-drop lock.
 
 Covered by headless tests in `tests/test_aerial_math.gd` / `tests/test_motion_math.gd` (routing, acid selection, landing floor).
