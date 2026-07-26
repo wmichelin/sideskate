@@ -464,12 +464,12 @@ func _sample_underfoot() -> Dictionary:
 func _is_opposite_pipe_swap(hit: Dictionary) -> bool:
 	if not _on_ramp or not _is_pipe_hit(hit):
 		return false
-	var side: int = int(hit.get("side", _ramp_side))
+	var hit_side := int(hit.get("side", _ramp_side))
 	var their_lip := float(hit.get("lip_x", _ramp_lip_x))
 	var their_r := _pipe_radius_for_hit(hit)
 	return _PipeMath.opposite_coping_near(
 		_ramp_side, _ramp_lip_x, _sticky_pipe_radius(),
-		side, their_lip, their_r,
+		hit_side, their_lip, their_r,
 		1.0
 	)
 

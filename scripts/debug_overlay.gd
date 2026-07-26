@@ -6,6 +6,8 @@ extends CanvasLayer
 @export var start_collapsed: bool = true
 
 @onready var _panel: PanelContainer = $Panel
+@onready var _header: Control = $Panel/VBox/Header
+@onready var _title: Label = $Panel/VBox/Header/Title
 @onready var _body: Label = $Panel/VBox/Body
 @onready var _toggle: Button = $Panel/VBox/Header/Toggle
 
@@ -19,9 +21,25 @@ func _ready() -> void:
 		queue_free()
 		return
 	_player = get_node_or_null(player_path) as Node2D
-	_toggle.focus_mode = Control.FOCUS_NONE
-	_toggle.pressed.connect(_on_toggle_pressed)
+	_wire_header_toggle()
 	_set_collapsed(start_collapsed)
+
+
+func _wire_header_toggle() -> void:
+	_header.mouse_filter = Control.MOUSE_FILTER_STOP
+	_header.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	_header.gui_input.connect(_on_header_gui_input)
+	_title.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_toggle.focus_mode = Control.FOCUS_NONE
+	_toggle.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	_toggle.pressed.connect(_on_toggle_pressed)
+
+
+func _on_header_gui_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		_on_toggle_pressed()
+		_header.accept_event()
+
 
 
 func _process(_delta: float) -> void:

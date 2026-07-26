@@ -40,6 +40,8 @@ extends CanvasLayer
 @export var cell_z_max: float = 200.0
 
 @onready var _panel: PanelContainer = $Panel
+@onready var _header: Control = $Panel/VBox/Header
+@onready var _title: Label = $Panel/VBox/Header/Title
 @onready var _body: VBoxContainer = $Panel/VBox/Body
 @onready var _toggle: Button = $Panel/VBox/Header/Toggle
 @onready var _gravity_slider: HSlider = $Panel/VBox/Body/GravityRow/Slider
@@ -96,8 +98,7 @@ func _ready() -> void:
 	_level = get_node_or_null(ramp_level_path) as Node2D
 	_visual = get_node_or_null(ramp_visual_path) as Node2D
 
-	_toggle.focus_mode = Control.FOCUS_NONE
-	_toggle.pressed.connect(_on_toggle_pressed)
+	_wire_header_toggle()
 
 	_bind_float_slider(_gravity_slider, gravity_min, gravity_max, 0.1, _player, "gravity_ms2", -12.8, _on_gravity_changed, _refresh_gravity_label)
 	_bind_float_slider(_acid_slider, acid_buffer_min, acid_buffer_max, 1.0, _player, "acid_drop_buffer", 44.0, _on_acid_buffer_changed, _refresh_acid_label)
@@ -176,6 +177,22 @@ func _ready() -> void:
 			row.focus_mode = Control.FOCUS_NONE
 
 	_set_collapsed(start_collapsed)
+
+
+func _wire_header_toggle() -> void:
+	_header.mouse_filter = Control.MOUSE_FILTER_STOP
+	_header.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	_header.gui_input.connect(_on_header_gui_input)
+	_title.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_toggle.focus_mode = Control.FOCUS_NONE
+	_toggle.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	_toggle.pressed.connect(_on_toggle_pressed)
+
+
+func _on_header_gui_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		_on_toggle_pressed()
+		_header.accept_event()
 
 
 func _on_toggle_pressed() -> void:
