@@ -70,9 +70,9 @@ polygon = PackedVector2Array(0, -72, 28, -20, 18, 0, -18, 0, -28, -20)
 
 [node name="HeadDebug" type="PanelContainer" parent="Player/Body" unique_id=786460520]
 z_index = 20
-offset_left = -36.0
-offset_top = -104.0
-offset_right = 36.0
+offset_left = -40.0
+offset_top = -118.0
+offset_right = 40.0
 offset_bottom = -80.0
 mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_head")
@@ -123,7 +123,7 @@ anchor_right = 1.0
 offset_left = -320.0
 offset_top = 16.0
 offset_right = -16.0
-offset_bottom = 250.0
+offset_bottom = 410.0
 grow_horizontal = 0
 theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
 
@@ -179,14 +179,118 @@ size_flags_horizontal = 3
 min_value = 0.0
 max_value = 80.0
 step = 1.0
-value = 30.0
+value = 44.0
 
 [node name="Value" type="Label" parent="DebugSliders/Panel/VBox/AcidDropRow"]
 custom_minimum_size = Vector2(72, 0)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.9, 0.93, 0.98, 1)
 theme_override_font_sizes/font_size = 12
-text = "30 u"
+text = "44 u"
+horizontal_alignment = 2
+
+[node name="OllieAccelRow" type="HBoxContainer" parent="DebugSliders/Panel/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Caption" type="Label" parent="DebugSliders/Panel/VBox/OllieAccelRow"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.75, 0.8, 0.88, 1)
+theme_override_font_sizes/font_size = 12
+text = "ollie accel"
+
+[node name="Slider" type="HSlider" parent="DebugSliders/Panel/VBox/OllieAccelRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+min_value = 0.0
+max_value = 3000.0
+step = 10.0
+value = 830.0
+
+[node name="Value" type="Label" parent="DebugSliders/Panel/VBox/OllieAccelRow"]
+custom_minimum_size = Vector2(72, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.9, 0.93, 0.98, 1)
+theme_override_font_sizes/font_size = 12
+text = "830"
+horizontal_alignment = 2
+
+[node name="MaxSpeedXRow" type="HBoxContainer" parent="DebugSliders/Panel/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Caption" type="Label" parent="DebugSliders/Panel/VBox/MaxSpeedXRow"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.75, 0.8, 0.88, 1)
+theme_override_font_sizes/font_size = 12
+text = "max speed x"
+
+[node name="Slider" type="HSlider" parent="DebugSliders/Panel/VBox/MaxSpeedXRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+min_value = 50.0
+max_value = 2000.0
+step = 10.0
+value = 900.0
+
+[node name="Value" type="Label" parent="DebugSliders/Panel/VBox/MaxSpeedXRow"]
+custom_minimum_size = Vector2(72, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.9, 0.93, 0.98, 1)
+theme_override_font_sizes/font_size = 12
+text = "900"
+horizontal_alignment = 2
+
+[node name="RampFrictionRow" type="HBoxContainer" parent="DebugSliders/Panel/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Caption" type="Label" parent="DebugSliders/Panel/VBox/RampFrictionRow"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.75, 0.8, 0.88, 1)
+theme_override_font_sizes/font_size = 12
+text = "ramp fric"
+
+[node name="Slider" type="HSlider" parent="DebugSliders/Panel/VBox/RampFrictionRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+min_value = 0.0
+max_value = 2000.0
+step = 10.0
+value = 160.0
+
+[node name="Value" type="Label" parent="DebugSliders/Panel/VBox/RampFrictionRow"]
+custom_minimum_size = Vector2(72, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.9, 0.93, 0.98, 1)
+theme_override_font_sizes/font_size = 12
+text = "160"
+horizontal_alignment = 2
+
+[node name="FrictionRow" type="HBoxContainer" parent="DebugSliders/Panel/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Caption" type="Label" parent="DebugSliders/Panel/VBox/FrictionRow"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.75, 0.8, 0.88, 1)
+theme_override_font_sizes/font_size = 12
+text = "friction"
+
+[node name="Slider" type="HSlider" parent="DebugSliders/Panel/VBox/FrictionRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+min_value = 0.0
+max_value = 2000.0
+step = 10.0
+value = 0.0
+
+[node name="Value" type="Label" parent="DebugSliders/Panel/VBox/FrictionRow"]
+custom_minimum_size = Vector2(72, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.9, 0.93, 0.98, 1)
+theme_override_font_sizes/font_size = 12
+text = "0"
 horizontal_alignment = 2
 
 [node name="CellHighlightRow" type="HBoxContainer" parent="DebugSliders/Panel/VBox"]

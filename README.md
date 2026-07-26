@@ -11,6 +11,7 @@ Open the project in Godot 4.7+ and play. Starts at the level select menu.
 | Input | Action |
 |-------|--------|
 | WASD / arrows | Move (W = farther) |
+| Space | Hold ollie — forward accel in facing dir |
 | P | Transfer (rising) / acid drop (falling) |
 | Esc | Back to menu |
 | G | God mode (debug builds) |

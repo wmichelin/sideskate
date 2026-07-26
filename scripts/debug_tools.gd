@@ -11,10 +11,18 @@ signal god_mode_changed(enabled: bool)
 
 
 func _ready() -> void:
-	available = OS.is_debug_build() or OS.has_feature("debug_tools")
+	available = (OS.is_debug_build() or OS.has_feature("debug_tools")) and not _cmdline_disables_debug()
 	if not available:
 		god_mode = false
 		call_deferred("_strip_debug_nodes")
+
+
+func _cmdline_disables_debug() -> bool:
+	# Godot user args after `--`, e.g. `godot --path . -- --no-debug-tools`
+	for arg in OS.get_cmdline_user_args():
+		if arg == "--no-debug-tools":
+			return true
+	return false
 
 
 func is_available() -> bool:

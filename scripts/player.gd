@@ -1,12 +1,15 @@
 extends Node2D
 ## 8-way mover on logical X/Z. Samples RampLevel; spawns from .ssk @ marker.
-## Air over any zone. Coping exit locks X+height; acid drop locks X only (gravity stays).
+## Air over any zone. Coping exit locks X (gravity applies); acid drop locks X only.
 ## Ride-off a higher surface → free air (keep height + gravity). All sim on physics ticks.
 
-@export var max_speed_x: float = 520.0
+@export var max_speed_x: float = 900.0
 @export var max_speed_z: float = 260.0
 @export var acceleration: float = 2200.0
-@export var friction: float = 2400.0
+## Coast / brake rate (logical u/s²). Opposite stick and no-input only use this — never acceleration. Debug slider writes this.
+@export var friction: float = 0.0
+## THPS-style forward accel while holding ollie (logical units/s²). Debug slider writes this.
+@export var ollie_accel: float = 830.0
 @export var depth_speed_feel: bool = true
 @export var level_path: NodePath = NodePath("../RampLevel")
 ## How far past the coping to probe for transfer targets.
@@ -19,18 +22,18 @@ extends Node2D
 @export var gravity_ms2: float = -9.8
 ## Convert m/s² into logical units/s².
 @export var logic_per_meter: float = 100.0
-## Cap how high above a pipe coping you can climb with input.
-@export var pipe_air_max_extra: float = 2.0
 ## Feet must drop at least this far below prior support to ride off into air.
 @export var ride_off_height_eps: float = 0.5
 ## How far behind facing a top coping may still be acid-dropped (logical X, not screen px).
-@export var acid_drop_buffer: float = 30.0
+@export var acid_drop_buffer: float = 44.0
 ## Max distance ahead (logical X) to a top coping for acid drop — prevents cross-plaza lerps.
 @export var acid_drop_max_ahead: float = 120.0
 ## Physics-time duration for acid-drop horizontal settle to coping.
 @export var acid_drop_x_duration: float = 0.15
 ## God-mode vertical speed (logical units/s) for j/k. Debug only.
 @export var god_vert_speed: float = 320.0
+## Along-arc speed drain while on a pipe (logical u/s²). Debug slider writes this.
+@export var ramp_friction: float = 160.0
 
 @onready var depth: PseudoDepthBody = $PseudoDepthBody
 @onready var _head_debug_label: Label = $Body/HeadDebug/Label
@@ -38,6 +41,10 @@ extends Node2D
 var _velocity: Vector2 = Vector2.ZERO
 ## Last physics-tick control acceleration (d(_velocity)/dt from integrate).
 var _debug_accel: Vector2 = Vector2.ZERO
+## Along-arc speed while on a pipe (world-X signed). Stick integrates against this;
+## `_velocity.x` is the remaining horizontal component `along * cos(θ)` after projection.
+var _ramp_along: float = 0.0
+var _on_ramp: bool = false
 var _level: RampLevel
 var last_surface: Dictionary = {}
 
@@ -64,7 +71,7 @@ var _transfer_x_t: float = 0.0
 var _transfer_available: bool = true
 ## One acid drop per aerial; replenished on any surface contact.
 var _acid_drop_available: bool = true
-## X-locked via acid drop: pin to coping but keep gravity (not coping height-hold).
+## X-locked via acid drop: pin to coping; gravity continues (same as coping lock).
 var _acid_drop_lock: bool = false
 ## Measured actual velocity from position deltas (not stick intent).
 var _actual_vel_x: float = 0.0
@@ -75,6 +82,8 @@ var _last_nonzero_vert_vel: float = 0.0
 var _prev_logical_x: float = 0.0
 var _prev_logical_z: float = 0.0
 var _prev_feet_h: float = 0.0
+## Horizontal facing: "l" or "r". Spawn default from level (usually r).
+var facing_h: String = "r"
 
 
 func _ready() -> void:
@@ -95,9 +104,11 @@ func _spawn_from_level() -> void:
 		depth.logical_z = _level.spec.spawn_z
 		depth.z_min = _level.z_min
 		depth.z_max = _level.z_max
+		facing_h = _normalize_facing(_level.spec.spawn_facing)
 	else:
 		depth.logical_x = 640.0
 		depth.logical_z = 40.0
+		facing_h = "r"
 	_clear_air()
 	_apply_surface()
 	_prev_logical_x = depth.logical_x
@@ -107,6 +118,7 @@ func _spawn_from_level() -> void:
 	_actual_vel_z = 0.0
 	_vert_vel = 0.0
 	_last_nonzero_vert_vel = 0.0
+	_refresh_head_debug()
 	depth.apply()
 
 
@@ -123,7 +135,13 @@ func _physics_process(delta: float) -> void:
 		_try_air_action()
 
 	var input := _read_move_input()
+	# Stick must accelerate along-arc speed, not the post-projection horizontal remnant.
+	if _on_ramp:
+		_velocity.x = _ramp_along
+	_update_facing_h(input)
 	_integrate_velocity(input, delta)
+	if _on_ramp:
+		_ramp_along = _velocity.x
 
 	var speed_mul := depth.depth_speed_multiplier() if depth_speed_feel else 1.0
 	_apply_motion(delta, speed_mul)
@@ -175,32 +193,32 @@ func _apply_motion(delta: float, speed_mul: float) -> void:
 				depth.logical_x = _air_coping_x
 			depth.logical_z = depth.clamp_z(depth.logical_z + _velocity.y * speed_mul * delta)
 
-			if _acid_drop_lock:
-				# Inverse of coping height-hold: X locked only. Height = gravity alone.
-				_integrate_air_gravity(delta)
-				var floor_h := _underlying_surface_height()
-				# Only land when falling onto the surface — never snap height upward.
-				if air_vel_y <= 0.0 and air_abs_height <= floor_h + 0.05:
-					air_abs_height = floor_h
-					_clear_air()
-				return
-
-			# God mode over a coping lock: keep X pin, free height via j/k (no stick climb).
+			# God mode over a coping lock: keep X pin, free height via j/k.
 			if DebugTools.god_mode:
 				air_vel_y = 0.0
 				return
 
-			var toward: float = _velocity.x * speed_mul * _coping_sign(_air_side)
-			var coping_h := _air_radius
-			var max_h := coping_h + maxf(_air_radius * pipe_air_max_extra, 1.0)
-			air_abs_height = clampf(air_abs_height + toward * delta, coping_h, max_h)
-			air_vel_y = 0.0
-			if air_abs_height <= coping_h + 0.001 and toward <= 1.0 and not _transfer_x_active:
+			# Horiz-locked air (pipe exit or acid drop): gravity always applies.
+			_integrate_air_gravity(delta)
+			var floor_h := _underlying_surface_height()
+			# Only land when falling onto the surface — never snap height upward.
+			if air_vel_y <= 0.0 and air_abs_height <= floor_h + 0.05:
+				air_abs_height = floor_h
+				var was_acid := _acid_drop_lock
+				var pin_x := _air_coping_x
+				var side_sign := _coping_sign(_air_side)
+				var land_vy := air_vel_y
 				_clear_air()
-				if toward < -1.0:
-					_move_along_pipe_or_flat(toward * delta)
-				else:
-					depth.logical_x = _air_coping_x
+				# Pipe-exit lock: falling vert at the lip fully converts back into along-arc.
+				if not was_acid:
+					if land_vy < 0.0:
+						_ramp_along = land_vy * side_sign
+						_velocity.x = _ramp_along
+						_on_ramp = true
+					if _ramp_along * side_sign < -1.0:
+						_move_along_pipe_or_flat(_ramp_along * speed_mul, delta)
+					else:
+						depth.logical_x = pin_x
 			return
 
 		# Unlocked air (rode off / transfer / over any zone): free XZ + gravity.
@@ -218,20 +236,34 @@ func _apply_motion(delta: float, speed_mul: float) -> void:
 
 	var prev_support_h := depth.surface_height
 	depth.logical_z = depth.clamp_z(depth.logical_z + _velocity.y * speed_mul * delta)
-	var arc_speed := _velocity.x * speed_mul
 
 	var hit: Dictionary = _level.sample(depth.logical_x, depth.logical_z) if _level else {}
 	if _is_pipe_hit(hit):
-		_move_along_pipe(hit, arc_speed * delta)
+		if not _on_ramp:
+			_ramp_along = _velocity.x
+			_on_ramp = true
+		_apply_ramp_friction(delta)
+		_ramp_along = _velocity.x
+		var arc_speed := _ramp_along * speed_mul
+		_move_along_pipe(hit, arc_speed, delta)
+		# Re-sample after move so θ matches feet; project along → horiz remnant.
+		if _on_ramp and not _airborne:
+			var after: Dictionary = _level.sample(depth.logical_x, depth.logical_z) if _level else hit
+			if _is_pipe_hit(after):
+				_project_ramp_velocity(float(after.get("theta", 0.0)))
+			else:
+				_leave_ramp_to_flat()
 		return
 
+	if _on_ramp:
+		_leave_ramp_to_flat()
+	var arc_speed := _velocity.x * speed_mul
 	var next_x: float = depth.logical_x + arc_speed * delta
 	var cross := _coping_cross_hit(depth.logical_x, next_x)
 	if not cross.is_empty():
-		var overshoot: float = (next_x - _coping_x_for(
-			int(cross.side), float(cross.lip_x), float(cross.radius)
-		)) * _coping_sign(int(cross.side))
-		_enter_air_from_pipe(cross, maxf(overshoot, 0.0))
+		var side: int = int(cross.side)
+		var up_speed: float = maxf(arc_speed * _coping_sign(side), 0.0)
+		_enter_air_from_pipe(cross, up_speed)
 		return
 	depth.logical_x = next_x
 	_try_ride_off_air(prev_support_h)
@@ -278,11 +310,8 @@ func _update_air_over_underfoot() -> void:
 
 
 func _air_over_uses_gravity() -> bool:
-	# Coping height-hold ignores gravity; acid-drop lock and free air do not.
-	# God mode also ignores gravity (vertical via j/k).
-	if DebugTools.god_mode:
-		return false
-	return not _air_x_locked or _acid_drop_lock
+	# All air modes use gravity except god mode (vertical via j/k).
+	return not DebugTools.god_mode
 
 
 func _integrate_air_gravity(delta: float) -> void:
@@ -323,7 +352,7 @@ func _step_god_vertical(delta: float) -> void:
 
 
 func _underlying_surface_height() -> float:
-	# Coping height-hold only: floor is the top coping. Acid drop must NOT use this
+	# Pipe-exit X-lock: floor is the top coping. Acid drop must NOT use this
 	# (it would snap feet up to radius). Always sample the real surface instead.
 	if _air_x_locked and not _acid_drop_lock and (
 		air_over == "left_pipe" or air_over == "right_pipe"
@@ -359,29 +388,52 @@ func _try_ride_off_air(prev_support_h: float) -> void:
 
 
 ## Advance along the quarter-pipe arc. Past θ=PI/2 enters air at coping.
-func _move_along_pipe(hit: Dictionary, signed_dx: float) -> void:
+func _apply_ramp_friction(delta: float) -> void:
+	if ramp_friction <= 0.0 or delta <= 0.0:
+		return
+	_ramp_along = move_toward(_ramp_along, 0.0, ramp_friction * delta)
+	_velocity.x = _ramp_along
+
+
+## Split along-arc speed into remaining horizontal (`along * cosθ`). Vertical is
+## carried by surface height while grounded; at the lip it becomes `air_vel_y`.
+func _project_ramp_velocity(theta: float) -> void:
+	var c := cos(clampf(theta, 0.0, PI * 0.5))
+	_velocity.x = _ramp_along * c
+
+
+func _leave_ramp_to_flat() -> void:
+	# Back on flat: full along-speed is horizontal again.
+	_velocity.x = _ramp_along
+	_on_ramp = false
+
+
+func _move_along_pipe(hit: Dictionary, arc_speed: float, delta: float) -> void:
 	var side: int = int(hit.get("side", QuarterPipe.PipeSide.RIGHT))
 	var lip: float = float(hit.get("lip_x", depth.logical_x))
 	var radius: float = _pipe_radius_for_hit(hit)
 	if radius <= 0.0001:
 		return
 	var sign: float = _coping_sign(side)
+	var signed_dx: float = arc_speed * delta
 	var toward_arc: float = signed_dx * sign
 	var theta: float = float(hit.get("theta", 0.0))
 	var d_theta: float = toward_arc / radius
 	var new_theta: float = theta + d_theta
 
 	if new_theta >= PI * 0.5:
-		var extra: float = (new_theta - PI * 0.5) * radius
+		# At vertical lip: all along-arc speed becomes vertical. No positional overshoot.
+		var up_speed: float = maxf(arc_speed * sign, 0.0)
 		_enter_air_from_pipe({
 			"side": side,
 			"lip_x": lip,
 			"radius": radius,
-		}, extra)
+		}, up_speed)
 		return
 
 	if new_theta <= 0.0:
 		depth.logical_x = lip - sign * absf(new_theta) * radius
+		_leave_ramp_to_flat()
 		return
 
 	var x_off: float = radius * sin(new_theta)
@@ -391,7 +443,7 @@ func _move_along_pipe(hit: Dictionary, signed_dx: float) -> void:
 		depth.logical_x = lip + x_off
 
 
-func _move_along_pipe_or_flat(signed_toward_arc: float) -> void:
+func _move_along_pipe_or_flat(arc_speed: float, delta: float) -> void:
 	var hit: Dictionary = {
 		"active": true,
 		"zone": _pipe_zone_name(_air_side),
@@ -401,7 +453,7 @@ func _move_along_pipe_or_flat(signed_toward_arc: float) -> void:
 		"t_along_pipe": 1.0,
 		"radius": _air_radius,
 	}
-	_move_along_pipe(hit, signed_toward_arc * _coping_sign(_air_side))
+	_move_along_pipe(hit, arc_speed, delta)
 
 
 func _apply_surface() -> void:
@@ -452,12 +504,12 @@ func _coping_cross_hit(from_x: float, to_x: float) -> Dictionary:
 
 
 ## Pipe-only entry path (today). Future entries should call _begin_air_over.
-func _enter_air_from_pipe(hit: Dictionary, extra_height: float = 0.0) -> void:
+## `up_speed` is along-arc speed fully converted to vertical at the lip (θ = π/2).
+func _enter_air_from_pipe(hit: Dictionary, up_speed: float = 0.0) -> void:
 	var side: int = int(hit.get("side", QuarterPipe.PipeSide.RIGHT))
 	var lip: float = float(hit.get("lip_x", depth.logical_x))
 	var radius: float = float(hit.get("radius", _pipe_radius_for_hit(hit)))
 	var coping := _coping_x_for(side, lip, radius)
-	var abs_h := radius + maxf(extra_height, 0.0)
 	_begin_air_over({
 		"zone": _pipe_zone_name(side),
 		"side": side,
@@ -465,7 +517,12 @@ func _enter_air_from_pipe(hit: Dictionary, extra_height: float = 0.0) -> void:
 		"radius": radius,
 		"lock_x": true,
 		"anchor_x": coping,
-	}, abs_h, true)
+	}, radius, true)
+	# Fully convert remaining along-speed into vertical; horiz is gone at θ = π/2.
+	air_vel_y = maxf(up_speed, 0.0)
+	_ramp_along = 0.0
+	_velocity.x = 0.0
+	_on_ramp = false
 
 
 ## Start airborne over a target. snap_x pins to anchor immediately (pipe enter);
@@ -742,9 +799,30 @@ func zone_debug_label() -> String:
 		if over == "" and last_surface.has("air_over"):
 			over = str(last_surface.air_over)
 		if over != "":
-			return "air (over %s)" % over
-		return "air"
-	return zone
+			zone = "air (over %s)" % over
+		else:
+			zone = "air"
+	return "%s\nhd %s" % [zone, facing_h]
+
+
+func _normalize_facing(raw: String) -> String:
+	var f := raw.strip_edges().to_lower()
+	if f == "l" or f == "left":
+		return "l"
+	return "r"
+
+
+func _update_facing_h(input: Vector2) -> void:
+	# Facing follows along-speed on ramps (not the cos-projected remnant).
+	var horiz := _ramp_along if _on_ramp else _velocity.x
+	if absf(horiz) >= 8.0:
+		facing_h = "r" if horiz > 0.0 else "l"
+		return
+	if absf(_actual_vel_x) >= 8.0:
+		facing_h = "r" if _actual_vel_x > 0.0 else "l"
+		return
+	if absf(input.x) >= 0.15:
+		facing_h = "r" if input.x > 0.0 else "l"
 
 
 ## Screen-local velocity for the head debug arrow (+X right, -Y up).
@@ -758,9 +836,21 @@ func debug_velocity_speed() -> float:
 	return Vector3(_actual_vel_x, _vert_vel, _actual_vel_z).length()
 
 
-## Stick-intent velocity (integrated every tick). Shown even when remapped
-## (e.g. locked pipe air uses vx for height, not horizontal).
+## Stick-intent velocity (integrated every tick). On a ramp, orange shows the
+## remaining horizontal remnant (`along * cosθ`); green actual includes vertical.
 func debug_intent_screen() -> Vector2:
+	if _on_ramp:
+		# Show horiz remnant + converted vertical so the split is visible.
+		var th := 0.0
+		if last_surface.has("theta"):
+			th = float(last_surface.theta)
+		var sign := 1.0
+		if last_surface.has("side"):
+			sign = _coping_sign(int(last_surface.side))
+		var toward := _ramp_along * sign
+		var horiz := _ramp_along * cos(clampf(th, 0.0, PI * 0.5))
+		var vert := toward * sin(clampf(th, 0.0, PI * 0.5))
+		return Vector2(horiz, -vert)
 	return Vector2(_velocity.x, -_velocity.y)
 
 
@@ -794,12 +884,43 @@ func _read_move_input() -> Vector2:
 
 func _integrate_velocity(input: Vector2, delta: float) -> void:
 	var before := _velocity
-	var target := Vector2(input.x * max_speed_x, input.y * max_speed_z)
-	if input != Vector2.ZERO:
-		_velocity = _velocity.move_toward(target, acceleration * delta)
-	else:
-		_velocity = _velocity.move_toward(Vector2.ZERO, friction * delta)
+	var holding_ollie := Input.is_action_pressed("ollie")
+	var step := acceleration * delta
+	var friction_step := friction * delta
+
+	# Horizontal X: opposite stick only brakes to zero (no reverse until stopped).
+	_velocity.x = _integrate_axis_no_reverse(_velocity.x, input.x * max_speed_x, step, friction_step, holding_ollie and input.x == 0.0)
+
+	# Depth Z: immediate — snap to stick (no accel / friction ramp).
+	_velocity.y = input.y * max_speed_z
+
+	# Hold ollie: mild forward thrust in facing direction (THPS charge feel).
+	# Skip when stick is already braking opposite to motion.
+	if holding_ollie:
+		var face := 1.0 if facing_h == "r" else -1.0
+		var stick_opposes := absf(input.x) >= 0.15 and input.x * face < 0.0
+		if not stick_opposes:
+			_velocity.x = move_toward(_velocity.x, face * max_speed_x, ollie_accel * delta)
+
 	if delta > 0.0001:
 		_debug_accel = (_velocity - before) / delta
 	else:
 		_debug_accel = Vector2.ZERO
+
+
+## Move `current` toward `want`. Opposite stick only brakes via friction (no reverse
+## until stopped). Acceleration is never used to decelerate.
+func _integrate_axis_no_reverse(
+	current: float,
+	want: float,
+	accel_step: float,
+	friction_step: float,
+	skip_friction: bool,
+) -> float:
+	if want == 0.0:
+		if skip_friction:
+			return current
+		return move_toward(current, 0.0, friction_step)
+	if current != 0.0 and want * current < 0.0:
+		return move_toward(current, 0.0, friction_step)
+	return move_toward(current, want, accel_step)

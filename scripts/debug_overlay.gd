@@ -40,7 +40,7 @@ func _process(_delta: float) -> void:
 		+ "Surf H: %.1f (scr %.1f)\n" % [s.surface_height, s.get("surface_screen_h", 0.0)]
 		+ "Pipe angle: %.1f deg\n" % pipe_angle
 		+ _cell_debug_line()
-		+ "WASD — Up = farther | P = transfer↑ / acid↓ | G = god (j/k vert)"
+		+ "WASD — Up = farther | Space = ollie | P = transfer↑ / acid↓ | G = god (j/k vert)"
 	)
 
 

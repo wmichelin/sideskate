@@ -37,8 +37,13 @@ Player-facing zone labels include `flat`, `left_pipe`, `right_pipe`, `deck`, and
 ## Grounded motion
 
 - Stick integrates into intent velocity `_velocity` (X and Z).
+- **Horizontal X**: opposite stick **only brakes** toward zero via **friction** (never acceleration) — no reverse until `|vx|` reaches 0. Coasting also uses friction only.
+- **Depth Z**: immediate — stick maps straight to `±max_speed_z` (no accel/friction ramp).
+- **Friction** (default 0, debug slider): sole deceleration rate for coast / opposite-stick brake.
+- **Horizontal facing** `facing_h` (`l` / `r`): follows motion while moving; stick only when nearly stopped. Spawn from level header `spawn_facing` (default `r`). Head debug shows `hd l` / `hd r`.
+- **Ollie** (hold Space): mild forward accel (`ollie_accel`, default 830) toward `max_speed_x` (default 900) in facing direction. Skipped while stick is braking opposite. Tunable via debug slider.
 - On flat/deck: move in X/Z; leaving a **higher** support into a lower one **rides off** into free air (keep prior height, apply gravity).
-- On a pipe: motion follows the arc (θ). Past θ = π/2 at the top coping → enter **coping height-hold** air.
+- On a pipe: along-arc speed (`_ramp_along`) follows the arc (θ). Horiz remnant is `along * cosθ`; vertical is `along * sinθ`. At the top coping (θ = π/2) **all** remaining along-speed converts into `air_vel_y` (horiz → 0). **`ramp_friction`** (default 160, debug slider) drains along-speed while on the pipe.
 
 ## Air model
 
@@ -46,11 +51,11 @@ Feet height while airborne: `air_abs_height`. Vertical rate for gravity: `air_ve
 
 | Mode | How you get there | X | Height |
 |------|-------------------|---|--------|
-| **Coping height-hold** | Exit pipe at top coping | Locked to **top** coping | Stick drives height above coping; **no** gravity |
+| **Pipe coping lock** | Exit pipe at top coping | Locked to **top** coping | Gravity; land on coping height (`radius`) |
 | **Free air** | Ride-off, transfer, etc. | Free (unless lerping) | Gravity; land on **sampled** underfoot height |
 | **Acid-drop lock** | Acid drop action | Locked to opposite-facing **top** coping | Gravity only — action must not snap/alter height |
 
-Coping height-hold treats the top coping height (`radius`) as the floor. Acid-drop lock and free air **must not** use that shortcut (it would snap feet upward); they sample the real surface under `(x, z)`.
+Pipe coping lock treats the top coping height (`radius`) as the floor. Acid-drop lock and free air **must not** use that shortcut (it would snap feet upward); they sample the real surface under `(x, z)`.
 
 ### Ride-off
 
@@ -82,7 +87,7 @@ Routing uses measured vertical rate (`_vert_vel`) and the last non-zero vertical
 
 - Only opposite-facing pipe: velocity **right** → `left_pipe`; velocity **left** → `right_pipe`.
 - Target is **top coping** only (logical X), never the lip.
-- Coping must lie in front of horizontal velocity, with grace **behind** up to `acid_drop_buffer` (logical X units, default **30** — not screen pixels), and not farther ahead than `acid_drop_max_ahead` (default 120).
+- Coping must lie in front of horizontal velocity, with grace **behind** up to `acid_drop_buffer` (logical X units, default **44** — not screen pixels), and not farther ahead than `acid_drop_max_ahead` (default 120).
 - Animate/lerp X onto that coping; keep `air_abs_height` / `air_vel_y`; gravity continues. Land only when falling onto sampled surface (no upward height snap).
 
 ## Level units (.ssk cells)
@@ -102,7 +107,7 @@ Debug tools are gated by autoload `DebugTools`: available when `OS.is_debug_buil
 | Piece | Role |
 |-------|------|
 | Head **green** arrow | Measured actual velocity (dX, dZ, d(height)/dt) |
-| Head **orange** arrow | Stick **intent** `_velocity` (still shown when remapped, e.g. height-hold) |
+| Head **orange** arrow | Stick **intent** `_velocity` |
 | Top-left overlay | Depth/zone/surface + cell `col`/`row` |
 | Top-right sliders | Gravity, acid buffer, cell-highlight toggle, **god mode** |
 | **God mode** (default off; `G` or checkbox) | No gravity; **k** rise / **j** lower (`god_vert_speed`) |
@@ -125,7 +130,7 @@ Debug tools are gated by autoload `DebugTools`: available when `OS.is_debug_buil
 
 1. Sim only on physics ticks.  
 2. Top coping ≠ lip.  
-3. Coping height-hold locks X **and** remaps stick to height; acid drop locks X **only**.  
+3. Pipe exit and acid drop both lock X; both use gravity. Acid drop must not snap height; pipe-exit lock may use coping radius as floor.
 4. One transfer + one acid drop per aerial; refill on surface contact.  
 5. Transfer at rising apex; acid drop must not steal that case.  
 6. Acid drop: opposite-facing pipe, top coping, logical-unit buffer/max-ahead.  

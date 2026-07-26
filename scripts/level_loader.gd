@@ -111,7 +111,7 @@ static func _is_map_row(stripped: String) -> bool:
 		return false
 	# Header keys
 	var key := stripped.split(" ")[0]
-	if key in ["ssk", "name", "width", "depth", "pipe_radius", "deck_height", "perspective_inset", "far_geometry_scale"]:
+	if key in ["ssk", "name", "width", "depth", "pipe_radius", "deck_height", "perspective_inset", "far_geometry_scale", "spawn_facing"]:
 		return false
 	# Must contain at least one map glyph (not only spaces)
 	for glyph in stripped:
@@ -145,6 +145,14 @@ static func _parse_header_kv(spec: LevelSpec, stripped: String) -> void:
 			spec.perspective_inset = float(val)
 		"far_geometry_scale":
 			spec.far_geometry_scale = float(val)
+		"spawn_facing":
+			var f := val.strip_edges().to_lower()
+			if f == "l" or f == "left":
+				spec.spawn_facing = "l"
+			elif f == "r" or f == "right":
+				spec.spawn_facing = "r"
+			else:
+				push_warning("LevelLoader: spawn_facing must be l or r (got '%s')" % val)
 		_:
 			push_warning("LevelLoader: unknown header key '%s'" % key)
 

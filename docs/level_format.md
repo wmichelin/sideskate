@@ -25,6 +25,8 @@ far_geometry_scale 0.72
 2. **`---`** — required separator (also accepts `map`)  
 3. **Map** — ASCII grid; `#` here is a **deck**, never a comment  
 
+Files in `levels/` whose names start with `_` (e.g. `_template.ssk`) are templates only — the start menu ignores them.
+
 All map rows must be the **same length**. Uneven widths are a hard error (dialog + quit) naming the file and the mismatched row — short rows are not padded.
 
 ## Header keys
@@ -39,6 +41,7 @@ All map rows must be the **same length**. Uneven widths are a hard error (dialog
 | `deck_height` | no | Override height for all `#` decks |
 | `perspective_inset` | no | How hard far X converges toward the skater (px; → `far_x_scale`) |
 | `far_geometry_scale` | no | Far size factor for vertical geometry |
+| `spawn_facing` | no | Spawn horizontal facing: `l` or `r` (default `r`) |
 
 ## Glyphs
 

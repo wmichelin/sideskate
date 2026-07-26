@@ -1,5 +1,6 @@
 extends Control
 ## Start menu: splash title + one button per .ssk in res://levels/.
+## Files whose names start with `_` (e.g. `_template.ssk`) are skipped.
 
 const LEVELS_DIR := "res://levels"
 
@@ -60,7 +61,11 @@ func _scan_level_paths() -> PackedStringArray:
 	dir.list_dir_begin()
 	var file_name := dir.get_next()
 	while file_name != "":
-		if not dir.current_is_dir() and file_name.ends_with(".ssk"):
+		if (
+			not dir.current_is_dir()
+			and file_name.ends_with(".ssk")
+			and not file_name.begins_with("_")
+		):
 			out.append("%s/%s" % [LEVELS_DIR, file_name])
 		file_name = dir.get_next()
 	dir.list_dir_end()

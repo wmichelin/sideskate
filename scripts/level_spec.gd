@@ -12,6 +12,8 @@ var deck_height_override: float = -1.0
 
 var spawn_x: float = 640.0
 var spawn_z: float = 40.0
+## Spawn horizontal facing: "l" or "r" (default right).
+var spawn_facing: String = "r"
 
 ## Each: { "poly": PackedVector2Array (x,z), "height": float }
 var floors: Array = []
