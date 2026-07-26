@@ -36,8 +36,11 @@ var z_min: float = 0.0
 var z_max: float = 100.0
 ## Far X converges toward the skater so adjacent pipes share lean.
 var perspective_origin_x: float = 640.0
-## Lean band is centered on the skater so short and deep parks match on-screen.
+## World-fixed Z lean anchor (z_min + reference_depth/2). Depth stick only trucks
+## the camera / draw window — it must not re-center X perspective.
 var perspective_origin_z: float = 0.0
+## Skater Z for draw-band culling only (not used for lean / x_scale).
+var view_origin_z: float = 0.0
 var _loaded_path: String = ""
 
 @onready var _visual: Node2D = $RampVisual
@@ -96,23 +99,31 @@ func apply_spec(s: LevelSpec) -> void:
 
 	if spec:
 		perspective_origin_x = spec.spawn_x
-		perspective_origin_z = spec.spawn_z
+		view_origin_z = spec.spawn_z
+	sync_lean_origin_z()
 	if _visual and _visual.has_method("refresh"):
 		_visual.refresh()
 	elif _visual:
 		_visual.queue_redraw()
 
 
-## Keep lean under the skater so the visible band matches across level depths.
+## Absolute lean band: t=0 at z_min, t=1 at z_min+reference_depth.
+func sync_lean_origin_z() -> void:
+	perspective_origin_z = z_min + reference_depth * 0.5
+
+
+## Skater X recenters horizontal lean. Skater Z only moves the draw window
+## (up/down truck) — never perspective_origin_z.
 ## Threshold avoids redrawing the whole park every physics tick while skating.
 func set_perspective_origin(logical_x: float, logical_z: float) -> void:
-	if (
-		absf(logical_x - perspective_origin_x) < 2.0
-		and absf(logical_z - perspective_origin_z) < 4.0
-	):
+	var x_moved := absf(logical_x - perspective_origin_x) >= 2.0
+	var z_moved := absf(logical_z - view_origin_z) >= 4.0
+	if not x_moved and not z_moved:
 		return
-	perspective_origin_x = logical_x
-	perspective_origin_z = logical_z
+	if x_moved:
+		perspective_origin_x = logical_x
+	if z_moved:
+		view_origin_z = logical_z
 	if _visual and _visual.has_method("refresh"):
 		_visual.refresh()
 	elif _visual:
@@ -126,8 +137,7 @@ func depth_t(logical_z: float) -> float:
 	return clampf((logical_z - z_min) / span, 0.0, 1.0)
 
 
-## Lean rate: 0 at skater−ref/2, 1 at skater+ref/2. Unclamped so lip lines keep
-## one continuous slope instead of bending into a parallel corridor.
+## Lean rate vs world-fixed origin_z. Unclamped so lip lines keep one slope.
 func perspective_t(logical_z: float) -> float:
 	return _PerspectiveMath.perspective_t(logical_z, perspective_origin_z, reference_depth)
 

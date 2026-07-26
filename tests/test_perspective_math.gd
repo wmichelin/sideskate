@@ -66,4 +66,26 @@ func run() -> bool:
 		push_error("surface_screen_h should be height*gscale")
 		return false
 
+	# Fixed lean Z: same world point keeps the same x_scale if origin_z is unchanged
+	# (skater depth stick must not re-lean the park).
+	var z_world := 120.0
+	var lean_z := z_min + ref_d * 0.5
+	var a := PerspectiveMath.project(
+		logical_x, z_world, 0.0,
+		origin_x, lean_z, z_min, near_y, far_y, ref_d, ref_w, inset, far_g
+	)
+	var b := PerspectiveMath.project(
+		logical_x, z_world, 0.0,
+		origin_x, lean_z, z_min, near_y, far_y, ref_d, ref_w, inset, far_g
+	)
+	if absf(float(a.x_scale) - float(b.x_scale)) > 0.0001:
+		push_error("x_scale must be stable for fixed lean origin_z")
+		return false
+	# Ground Y trucks with world Z, independent of lean origin.
+	var y0 := PerspectiveMath.ground_screen_y(z_world, z_min, near_y, far_y, ref_d)
+	var y1 := PerspectiveMath.ground_screen_y(z_world + 40.0, z_min, near_y, far_y, ref_d)
+	if y1 >= y0:
+		push_error("farther Z should move up the screen (smaller Y)")
+		return false
+
 	return true

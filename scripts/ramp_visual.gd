@@ -1,6 +1,6 @@
 extends Node2D
 ## Surface-only level draw: floors, pipe ribbons, elevated deck tops.
-## Skater-centered Z window (lean + pad). Unclamped lean → one near/far ribbon is exact.
+## Draw window follows skater Z (truck only). X lean uses world-fixed origin_z.
 
 @export var grid_steps: int = 5
 ## How many iso-u depth strokes to split the pipe face into (not cross-section arcs).
@@ -65,11 +65,11 @@ func _draw() -> void:
 	_draw_player_cell_highlight()
 
 
-## Skater-centered draw window: lean band (±ref/2) plus near/far pad.
+## Skater-centered draw window (culling only — does not move X lean).
 func _view_z_band() -> Vector2:
 	var ref := maxf(_level.reference_depth, 0.0001)
 	var half := ref * (0.5 + maxf(draw_band_pad, 0.0))
-	var oz := _level.perspective_origin_z
+	var oz := _level.view_origin_z
 	return Vector2(maxf(oz - half, _level.z_min), minf(oz + half, _level.z_max))
 
 

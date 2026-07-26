@@ -362,6 +362,8 @@ func _refresh_far_geom_label(v: float) -> void:
 func _on_ref_depth_changed(v: float) -> void:
 	if _level != null:
 		_level.set("reference_depth", v)
+		if _level.has_method("sync_lean_origin_z"):
+			_level.call("sync_lean_origin_z")
 	_refresh_ref_depth_label(v)
 	_refresh_level_visual()
 
