@@ -4,6 +4,8 @@ extends Node2D
 
 @export var grid_steps: int = 5
 @export var arc_ribs: int = 5
+## Faint white depth bands across the plaza. Off by default (debug clutter).
+@export var show_depth_grid: bool = false
 ## Highlight the .ssk ASCII cell under the player (logical unit 1:1). Debug only.
 @export var debug_cell_highlight: bool = false
 @export var player_path: NodePath = NodePath("../../Player")
@@ -40,7 +42,8 @@ func _draw() -> void:
 	for pipe in _pipes_far_to_near():
 		_draw_pipe(pipe)
 	_draw_decks()
-	_draw_depth_grid()
+	if show_depth_grid:
+		_draw_depth_grid()
 	_draw_player_cell_highlight()
 
 

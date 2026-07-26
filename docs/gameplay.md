@@ -37,13 +37,13 @@ Player-facing zone labels include `flat`, `left_pipe`, `right_pipe`, `deck`, and
 ## Grounded motion
 
 - Stick integrates into intent velocity `_velocity` (X and Z).
-- **Horizontal X**: opposite stick **brakes hard** toward zero via **`brake`** (default 5500) — no reverse until `|vx|` reaches 0. Coasting uses **friction** only (default 0).
+- **Horizontal X**: opposite stick **brakes hard** toward zero via **`brake`** (default 1250) — no reverse until `|vx|` reaches 0. Coasting uses **friction** only (default 0).
 - **Depth Z**: immediate — stick maps straight to `±max_speed_z` (default 60; debug slider).
-- **Acceleration** / **brake** / **max speed z**: tunable via debug sliders.
+- **Acceleration** (default 3250) / **brake** / **max speed x** (default 880) / **max speed z**: tunable via debug sliders.
 - **Horizontal facing** `facing_h` (`l` / `r`): follows motion while moving; stick only when nearly stopped. Spawn from level header `spawn_facing` (default `r`). Head debug shows `hd l` / `hd r`.
-- **Ollie** (hold Space): mild forward accel (`ollie_accel`, default 830) toward `max_speed_x` (default 900) in facing direction. Skipped while stick is braking opposite. Tunable via debug slider.
+- **Ollie** (hold Space): mild forward accel (`ollie_accel`, default 650) toward `max_speed_x` in facing direction. Skipped while stick is braking opposite. Tunable via debug slider.
 - On flat/deck: move in X/Z; leaving a **higher** support into a lower one **rides off** into free air (keep prior height, apply gravity).
-- On a pipe: along-arc speed (`_ramp_along`) follows the arc (θ). Horiz remnant is `along * cosθ`; vertical is `along * sinθ`. At the top coping (θ = π/2) **all** remaining along-speed converts into `air_vel_y` (horiz → 0). **`ramp_friction`** (default 160, debug slider) drains along-speed while on the pipe.
+- On a pipe: along-arc speed (`_ramp_along`) follows the arc (θ). Horiz remnant is `along * cosθ`; vertical is `along * sinθ`. At the top coping (θ = π/2) **all** remaining along-speed converts into `air_vel_y` (horiz → 0). **`ramp_friction`** (default 0, debug slider) drains along-speed while on the pipe.
 
 ## Air model
 
@@ -51,7 +51,7 @@ Feet height while airborne: `air_abs_height`. Vertical rate for gravity: `air_ve
 
 | Mode | How you get there | X | Height |
 |------|-------------------|---|--------|
-| **Pipe coping lock** | Exit pipe at top coping | Locked to **top** coping | Gravity; land on coping height (`radius`) |
+| **Pipe coping lock** | Exit pipe at top coping | Locked to **top** coping | Gravity; land on coping height (`radius`). At vertical **apex**, facing flips unless stick holds L/R. |
 | **Free air** | Ride-off, transfer, etc. | Free (unless lerping) | Gravity; land on **sampled** underfoot height |
 | **Acid-drop lock** | Acid drop action | Locked to opposite-facing **top** coping | Gravity only — action must not snap/alter height |
 
@@ -63,7 +63,7 @@ When grounded motion would place you on a surface lower than prior support (beyo
 
 ### Gravity
 
-Applied while unlocked air, or while acid-drop X-locked. Default ≈ `-9.8` m/s², converted with `logic_per_meter` (default 100). Tunable via top-right debug slider.
+Applied while unlocked air, or while acid-drop X-locked. Default ≈ `-12.8` m/s², converted with `logic_per_meter` (default 100). Tunable via top-right debug slider.
 
 ## Aerial actions (same button: `transfer` / P)
 

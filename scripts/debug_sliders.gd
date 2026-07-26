@@ -1,9 +1,10 @@
 extends CanvasLayer
 ## Top-right debug sliders. UI-only; simulation reads values on physics ticks.
-## Stripped in production via DebugTools / group `debug_tools`.
+## Collapsible body starts collapsed. Stripped in production via DebugTools.
 
 @export var player_path: NodePath = NodePath("../Player")
 @export var ramp_visual_path: NodePath = NodePath("../RampLevel/RampVisual")
+@export var start_collapsed: bool = true
 @export var gravity_min: float = -30.0
 @export var gravity_max: float = 0.0
 @export var acid_buffer_min: float = 0.0
@@ -23,30 +24,35 @@ extends CanvasLayer
 @export var friction_min: float = 0.0
 @export var friction_max: float = 2000.0
 
-@onready var _gravity_slider: HSlider = $Panel/VBox/GravityRow/Slider
-@onready var _gravity_value: Label = $Panel/VBox/GravityRow/Value
-@onready var _acid_slider: HSlider = $Panel/VBox/AcidDropRow/Slider
-@onready var _acid_value: Label = $Panel/VBox/AcidDropRow/Value
-@onready var _ollie_slider: HSlider = $Panel/VBox/OllieAccelRow/Slider
-@onready var _ollie_value: Label = $Panel/VBox/OllieAccelRow/Value
-@onready var _max_speed_x_slider: HSlider = $Panel/VBox/MaxSpeedXRow/Slider
-@onready var _max_speed_x_value: Label = $Panel/VBox/MaxSpeedXRow/Value
-@onready var _max_speed_z_slider: HSlider = $Panel/VBox/MaxSpeedZRow/Slider
-@onready var _max_speed_z_value: Label = $Panel/VBox/MaxSpeedZRow/Value
-@onready var _accel_slider: HSlider = $Panel/VBox/AccelRow/Slider
-@onready var _accel_value: Label = $Panel/VBox/AccelRow/Value
-@onready var _brake_slider: HSlider = $Panel/VBox/BrakeRow/Slider
-@onready var _brake_value: Label = $Panel/VBox/BrakeRow/Value
-@onready var _ramp_friction_slider: HSlider = $Panel/VBox/RampFrictionRow/Slider
-@onready var _ramp_friction_value: Label = $Panel/VBox/RampFrictionRow/Value
-@onready var _friction_slider: HSlider = $Panel/VBox/FrictionRow/Slider
-@onready var _friction_value: Label = $Panel/VBox/FrictionRow/Value
-@onready var _cell_check: CheckButton = $Panel/VBox/CellHighlightRow/Check
-@onready var _god_check: CheckButton = $Panel/VBox/GodModeRow/Check
+@onready var _panel: PanelContainer = $Panel
+@onready var _body: VBoxContainer = $Panel/VBox/Body
+@onready var _toggle: Button = $Panel/VBox/Header/Toggle
+@onready var _gravity_slider: HSlider = $Panel/VBox/Body/GravityRow/Slider
+@onready var _gravity_value: Label = $Panel/VBox/Body/GravityRow/Value
+@onready var _acid_slider: HSlider = $Panel/VBox/Body/AcidDropRow/Slider
+@onready var _acid_value: Label = $Panel/VBox/Body/AcidDropRow/Value
+@onready var _ollie_slider: HSlider = $Panel/VBox/Body/OllieAccelRow/Slider
+@onready var _ollie_value: Label = $Panel/VBox/Body/OllieAccelRow/Value
+@onready var _max_speed_x_slider: HSlider = $Panel/VBox/Body/MaxSpeedXRow/Slider
+@onready var _max_speed_x_value: Label = $Panel/VBox/Body/MaxSpeedXRow/Value
+@onready var _max_speed_z_slider: HSlider = $Panel/VBox/Body/MaxSpeedZRow/Slider
+@onready var _max_speed_z_value: Label = $Panel/VBox/Body/MaxSpeedZRow/Value
+@onready var _accel_slider: HSlider = $Panel/VBox/Body/AccelRow/Slider
+@onready var _accel_value: Label = $Panel/VBox/Body/AccelRow/Value
+@onready var _brake_slider: HSlider = $Panel/VBox/Body/BrakeRow/Slider
+@onready var _brake_value: Label = $Panel/VBox/Body/BrakeRow/Value
+@onready var _ramp_friction_slider: HSlider = $Panel/VBox/Body/RampFrictionRow/Slider
+@onready var _ramp_friction_value: Label = $Panel/VBox/Body/RampFrictionRow/Value
+@onready var _friction_slider: HSlider = $Panel/VBox/Body/FrictionRow/Slider
+@onready var _friction_value: Label = $Panel/VBox/Body/FrictionRow/Value
+@onready var _depth_grid_check: CheckButton = $Panel/VBox/Body/DepthGridRow/Check
+@onready var _cell_check: CheckButton = $Panel/VBox/Body/CellHighlightRow/Check
+@onready var _god_check: CheckButton = $Panel/VBox/Body/GodModeRow/Check
 
 var _player: Node2D
 var _visual: Node2D
 var _syncing_god := false
+var _collapsed: bool = true
 
 
 func _ready() -> void:
@@ -58,15 +64,25 @@ func _ready() -> void:
 	_player = get_node_or_null(player_path) as Node2D
 	_visual = get_node_or_null(ramp_visual_path) as Node2D
 
-	_bind_float_slider(_gravity_slider, gravity_min, gravity_max, 0.1, "gravity_ms2", -9.8, _on_gravity_changed, _refresh_gravity_label)
+	_toggle.focus_mode = Control.FOCUS_NONE
+	_toggle.pressed.connect(_on_toggle_pressed)
+
+	_bind_float_slider(_gravity_slider, gravity_min, gravity_max, 0.1, "gravity_ms2", -12.8, _on_gravity_changed, _refresh_gravity_label)
 	_bind_float_slider(_acid_slider, acid_buffer_min, acid_buffer_max, 1.0, "acid_drop_buffer", 44.0, _on_acid_buffer_changed, _refresh_acid_label)
-	_bind_float_slider(_ollie_slider, ollie_accel_min, ollie_accel_max, 10.0, "ollie_accel", 830.0, _on_ollie_accel_changed, _refresh_ollie_label)
-	_bind_float_slider(_max_speed_x_slider, max_speed_x_min, max_speed_x_max, 10.0, "max_speed_x", 900.0, _on_max_speed_x_changed, _refresh_max_speed_x_label)
+	_bind_float_slider(_ollie_slider, ollie_accel_min, ollie_accel_max, 10.0, "ollie_accel", 650.0, _on_ollie_accel_changed, _refresh_ollie_label)
+	_bind_float_slider(_max_speed_x_slider, max_speed_x_min, max_speed_x_max, 10.0, "max_speed_x", 880.0, _on_max_speed_x_changed, _refresh_max_speed_x_label)
 	_bind_float_slider(_max_speed_z_slider, max_speed_z_min, max_speed_z_max, 5.0, "max_speed_z", 60.0, _on_max_speed_z_changed, _refresh_max_speed_z_label)
-	_bind_float_slider(_accel_slider, acceleration_min, acceleration_max, 50.0, "acceleration", 2200.0, _on_accel_changed, _refresh_accel_label)
-	_bind_float_slider(_brake_slider, brake_min, brake_max, 50.0, "brake", 5500.0, _on_brake_changed, _refresh_brake_label)
-	_bind_float_slider(_ramp_friction_slider, ramp_friction_min, ramp_friction_max, 10.0, "ramp_friction", 160.0, _on_ramp_friction_changed, _refresh_ramp_friction_label)
+	_bind_float_slider(_accel_slider, acceleration_min, acceleration_max, 50.0, "acceleration", 3250.0, _on_accel_changed, _refresh_accel_label)
+	_bind_float_slider(_brake_slider, brake_min, brake_max, 50.0, "brake", 1250.0, _on_brake_changed, _refresh_brake_label)
+	_bind_float_slider(_ramp_friction_slider, ramp_friction_min, ramp_friction_max, 10.0, "ramp_friction", 0.0, _on_ramp_friction_changed, _refresh_ramp_friction_label)
 	_bind_float_slider(_friction_slider, friction_min, friction_max, 10.0, "friction", 0.0, _on_friction_changed, _refresh_friction_label)
+
+	var depth_on := false
+	if _visual != null and _visual.get("show_depth_grid") != null:
+		depth_on = bool(_visual.get("show_depth_grid"))
+	_depth_grid_check.button_pressed = depth_on
+	_depth_grid_check.focus_mode = Control.FOCUS_NONE
+	_depth_grid_check.toggled.connect(_on_depth_grid_toggled)
 
 	var cell_on := false
 	if _visual != null and _visual.get("debug_cell_highlight") != null:
@@ -88,6 +104,26 @@ func _ready() -> void:
 	]:
 		if row != null:
 			row.focus_mode = Control.FOCUS_NONE
+
+	_set_collapsed(start_collapsed)
+
+
+func _on_toggle_pressed() -> void:
+	_set_collapsed(not _collapsed)
+
+
+func _set_collapsed(on: bool) -> void:
+	_collapsed = on
+	_body.visible = not on
+	_toggle.text = "▶" if on else "▼"
+	call_deferred("_fit_panel")
+
+
+func _fit_panel() -> void:
+	if _panel == null:
+		return
+	var min_sz := _panel.get_combined_minimum_size()
+	_panel.size = Vector2(maxf(min_sz.x, 280.0), min_sz.y)
 
 
 func _bind_float_slider(
@@ -199,6 +235,15 @@ func _on_friction_changed(v: float) -> void:
 
 func _refresh_friction_label(v: float) -> void:
 	_friction_value.text = "%.0f" % v
+
+
+func _on_depth_grid_toggled(on: bool) -> void:
+	if _visual != null:
+		_visual.set("show_depth_grid", on)
+		if _visual.has_method("refresh"):
+			_visual.call("refresh")
+		else:
+			_visual.queue_redraw()
 
 
 func _on_cell_highlight_toggled(on: bool) -> void:

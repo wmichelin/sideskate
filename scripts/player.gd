@@ -3,15 +3,15 @@ extends Node2D
 ## Air over any zone. Coping exit locks X (gravity applies); acid drop locks X only.
 ## Ride-off a higher surface → free air (keep height + gravity). All sim on physics ticks.
 
-@export var max_speed_x: float = 900.0
+@export var max_speed_x: float = 880.0
 @export var max_speed_z: float = 60.0
-@export var acceleration: float = 2200.0
+@export var acceleration: float = 3250.0
 ## Coast rate when no input (logical u/s²). Debug slider writes this.
 @export var friction: float = 0.0
 ## Opposite-stick brake rate (logical u/s²). Much stronger than friction. Debug slider writes this.
-@export var brake: float = 5500.0
+@export var brake: float = 1250.0
 ## THPS-style forward accel while holding ollie (logical units/s²). Debug slider writes this.
-@export var ollie_accel: float = 830.0
+@export var ollie_accel: float = 650.0
 @export var depth_speed_feel: bool = true
 @export var level_path: NodePath = NodePath("../RampLevel")
 ## How far past the coping to probe for transfer targets.
@@ -21,7 +21,7 @@ extends Node2D
 ## Min free-air |vx| when releasing locked pipe air via transfer.
 @export var transfer_release_min: float = 260.0
 ## Gravity while in unlocked air (m/s²). Debug slider writes this.
-@export var gravity_ms2: float = -9.8
+@export var gravity_ms2: float = -12.8
 ## Convert m/s² into logical units/s².
 @export var logic_per_meter: float = 100.0
 ## Feet must drop at least this far below prior support to ride off into air.
@@ -35,7 +35,7 @@ extends Node2D
 ## God-mode vertical speed (logical units/s) for j/k. Debug only.
 @export var god_vert_speed: float = 320.0
 ## Along-arc speed drain while on a pipe (logical u/s²). Debug slider writes this.
-@export var ramp_friction: float = 160.0
+@export var ramp_friction: float = 0.0
 
 @onready var depth: PseudoDepthBody = $PseudoDepthBody
 @onready var _head_debug_label: Label = $Body/HeadDebug/Label
@@ -76,6 +76,8 @@ var _transfer_available: bool = true
 var _acid_drop_available: bool = true
 ## X-locked via acid drop: pin to coping; gravity continues (same as coping lock).
 var _acid_drop_lock: bool = false
+## Once per locked aerial: facing flip (or stick override) at vertical apex.
+var _apex_facing_done: bool = false
 ## Measured actual velocity from position deltas (not stick intent).
 var _actual_vel_x: float = 0.0
 var _actual_vel_z: float = 0.0
@@ -204,7 +206,9 @@ func _apply_motion(delta: float, speed_mul: float) -> void:
 				return
 
 			# Horiz-locked air (pipe exit or acid drop): gravity always applies.
+			var prev_air_vy := air_vel_y
 			_integrate_air_gravity(delta)
+			_try_apex_facing_flip(prev_air_vy)
 			var floor_h := _underlying_surface_height()
 			# Only land when falling onto the surface — never snap height upward.
 			if air_vel_y <= 0.0 and air_abs_height <= floor_h + 0.05:
@@ -538,6 +542,7 @@ func _begin_air_over(target: Dictionary, abs_height: float, snap_x: bool = true)
 	air_over = str(target.get("zone", "flat"))
 	_air_x_locked = bool(target.get("lock_x", false))
 	_acid_drop_lock = false
+	_apex_facing_done = false
 	if target.has("side"):
 		_air_side = int(target.side)
 		_transfer_behind_sign = _coping_sign(_air_side)
@@ -562,6 +567,7 @@ func _clear_air() -> void:
 	air_over = ""
 	_air_x_locked = false
 	_acid_drop_lock = false
+	_apex_facing_done = false
 	_transfer_x_active = false
 	_transfer_available = true
 	_acid_drop_available = true
@@ -828,6 +834,22 @@ func _update_facing_h(input: Vector2) -> void:
 		return
 	if absf(input.x) >= 0.15:
 		facing_h = "r" if input.x > 0.0 else "l"
+
+
+## At vertical apex while X-locked over a pipe: flip facing, unless stick
+## holds a horizontal direction (then face that way). Once per aerial.
+func _try_apex_facing_flip(prev_air_vy: float) -> void:
+	if _apex_facing_done or not _air_x_locked:
+		return
+	if prev_air_vy <= 0.0 or air_vel_y > 0.0:
+		return
+	_apex_facing_done = true
+	var ix := Input.get_axis("move_left", "move_right")
+	if absf(ix) >= 0.15:
+		facing_h = "r" if ix > 0.0 else "l"
+	else:
+		facing_h = "l" if facing_h == "r" else "r"
+	_update_face_nose()
 
 
 func _update_face_nose() -> void:

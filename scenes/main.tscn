@@ -151,7 +151,7 @@ anchor_right = 1.0
 offset_left = -320.0
 offset_top = 16.0
 offset_right = -16.0
-offset_bottom = 530.0
+offset_bottom = 56.0
 grow_horizontal = 0
 theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
 
@@ -159,49 +159,65 @@ theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="Title" type="Label" parent="DebugSliders/Panel/VBox" unique_id=295481884]
-layout_mode = 2
-theme_override_colors/font_color = Color(0.9, 0.93, 0.98, 1)
-theme_override_font_sizes/font_size = 14
-text = "Air"
-
-[node name="GravityRow" type="HBoxContainer" parent="DebugSliders/Panel/VBox" unique_id=114494023]
+[node name="Header" type="HBoxContainer" parent="DebugSliders/Panel/VBox"]
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="Caption" type="Label" parent="DebugSliders/Panel/VBox/GravityRow" unique_id=1485714092]
+[node name="Title" type="Label" parent="DebugSliders/Panel/VBox/Header"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.9, 0.93, 0.98, 1)
+theme_override_font_sizes/font_size = 14
+text = "TUNING"
+
+[node name="Toggle" type="Button" parent="DebugSliders/Panel/VBox/Header"]
+custom_minimum_size = Vector2(28, 0)
+layout_mode = 2
+focus_mode = 0
+text = "▶"
+
+[node name="Body" type="VBoxContainer" parent="DebugSliders/Panel/VBox"]
+visible = false
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="GravityRow" type="HBoxContainer" parent="DebugSliders/Panel/VBox/Body" unique_id=114494023]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Caption" type="Label" parent="DebugSliders/Panel/VBox/Body/GravityRow" unique_id=1485714092]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.75, 0.8, 0.88, 1)
 theme_override_font_sizes/font_size = 12
 text = "g"
 
-[node name="Slider" type="HSlider" parent="DebugSliders/Panel/VBox/GravityRow" unique_id=2040495274]
+[node name="Slider" type="HSlider" parent="DebugSliders/Panel/VBox/Body/GravityRow" unique_id=2040495274]
 layout_mode = 2
 size_flags_horizontal = 3
 min_value = -30.0
 max_value = 0.0
 step = 0.1
-value = -9.8
+value = -12.8
 
-[node name="Value" type="Label" parent="DebugSliders/Panel/VBox/GravityRow" unique_id=284586511]
+[node name="Value" type="Label" parent="DebugSliders/Panel/VBox/Body/GravityRow" unique_id=284586511]
 custom_minimum_size = Vector2(72, 0)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.9, 0.93, 0.98, 1)
 theme_override_font_sizes/font_size = 12
-text = "-9.8 m/s²"
+text = "-12.8 m/s²"
 horizontal_alignment = 2
 
-[node name="AcidDropRow" type="HBoxContainer" parent="DebugSliders/Panel/VBox"]
+[node name="AcidDropRow" type="HBoxContainer" parent="DebugSliders/Panel/VBox/Body"]
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="Caption" type="Label" parent="DebugSliders/Panel/VBox/AcidDropRow"]
+[node name="Caption" type="Label" parent="DebugSliders/Panel/VBox/Body/AcidDropRow"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.75, 0.8, 0.88, 1)
 theme_override_font_sizes/font_size = 12
 text = "acid buf"
 
-[node name="Slider" type="HSlider" parent="DebugSliders/Panel/VBox/AcidDropRow"]
+[node name="Slider" type="HSlider" parent="DebugSliders/Panel/VBox/Body/AcidDropRow"]
 layout_mode = 2
 size_flags_horizontal = 3
 min_value = 0.0
@@ -209,7 +225,7 @@ max_value = 80.0
 step = 1.0
 value = 44.0
 
-[node name="Value" type="Label" parent="DebugSliders/Panel/VBox/AcidDropRow"]
+[node name="Value" type="Label" parent="DebugSliders/Panel/VBox/Body/AcidDropRow"]
 custom_minimum_size = Vector2(72, 0)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.9, 0.93, 0.98, 1)
@@ -217,69 +233,69 @@ theme_override_font_sizes/font_size = 12
 text = "44 u"
 horizontal_alignment = 2
 
-[node name="OllieAccelRow" type="HBoxContainer" parent="DebugSliders/Panel/VBox"]
+[node name="OllieAccelRow" type="HBoxContainer" parent="DebugSliders/Panel/VBox/Body"]
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="Caption" type="Label" parent="DebugSliders/Panel/VBox/OllieAccelRow"]
+[node name="Caption" type="Label" parent="DebugSliders/Panel/VBox/Body/OllieAccelRow"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.75, 0.8, 0.88, 1)
 theme_override_font_sizes/font_size = 12
 text = "ollie accel"
 
-[node name="Slider" type="HSlider" parent="DebugSliders/Panel/VBox/OllieAccelRow"]
+[node name="Slider" type="HSlider" parent="DebugSliders/Panel/VBox/Body/OllieAccelRow"]
 layout_mode = 2
 size_flags_horizontal = 3
 min_value = 0.0
 max_value = 3000.0
 step = 10.0
-value = 830.0
+value = 650.0
 
-[node name="Value" type="Label" parent="DebugSliders/Panel/VBox/OllieAccelRow"]
+[node name="Value" type="Label" parent="DebugSliders/Panel/VBox/Body/OllieAccelRow"]
 custom_minimum_size = Vector2(72, 0)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.9, 0.93, 0.98, 1)
 theme_override_font_sizes/font_size = 12
-text = "830"
+text = "650"
 horizontal_alignment = 2
 
-[node name="MaxSpeedXRow" type="HBoxContainer" parent="DebugSliders/Panel/VBox"]
+[node name="MaxSpeedXRow" type="HBoxContainer" parent="DebugSliders/Panel/VBox/Body"]
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="Caption" type="Label" parent="DebugSliders/Panel/VBox/MaxSpeedXRow"]
+[node name="Caption" type="Label" parent="DebugSliders/Panel/VBox/Body/MaxSpeedXRow"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.75, 0.8, 0.88, 1)
 theme_override_font_sizes/font_size = 12
 text = "max speed x"
 
-[node name="Slider" type="HSlider" parent="DebugSliders/Panel/VBox/MaxSpeedXRow"]
+[node name="Slider" type="HSlider" parent="DebugSliders/Panel/VBox/Body/MaxSpeedXRow"]
 layout_mode = 2
 size_flags_horizontal = 3
 min_value = 50.0
 max_value = 2000.0
 step = 10.0
-value = 900.0
+value = 880.0
 
-[node name="Value" type="Label" parent="DebugSliders/Panel/VBox/MaxSpeedXRow"]
+[node name="Value" type="Label" parent="DebugSliders/Panel/VBox/Body/MaxSpeedXRow"]
 custom_minimum_size = Vector2(72, 0)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.9, 0.93, 0.98, 1)
 theme_override_font_sizes/font_size = 12
-text = "900"
+text = "880"
 horizontal_alignment = 2
 
-[node name="MaxSpeedZRow" type="HBoxContainer" parent="DebugSliders/Panel/VBox"]
+[node name="MaxSpeedZRow" type="HBoxContainer" parent="DebugSliders/Panel/VBox/Body"]
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="Caption" type="Label" parent="DebugSliders/Panel/VBox/MaxSpeedZRow"]
+[node name="Caption" type="Label" parent="DebugSliders/Panel/VBox/Body/MaxSpeedZRow"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.75, 0.8, 0.88, 1)
 theme_override_font_sizes/font_size = 12
 text = "max speed z"
 
-[node name="Slider" type="HSlider" parent="DebugSliders/Panel/VBox/MaxSpeedZRow"]
+[node name="Slider" type="HSlider" parent="DebugSliders/Panel/VBox/Body/MaxSpeedZRow"]
 layout_mode = 2
 size_flags_horizontal = 3
 min_value = 10.0
@@ -287,7 +303,7 @@ max_value = 400.0
 step = 5.0
 value = 60.0
 
-[node name="Value" type="Label" parent="DebugSliders/Panel/VBox/MaxSpeedZRow"]
+[node name="Value" type="Label" parent="DebugSliders/Panel/VBox/Body/MaxSpeedZRow"]
 custom_minimum_size = Vector2(72, 0)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.9, 0.93, 0.98, 1)
@@ -295,95 +311,69 @@ theme_override_font_sizes/font_size = 12
 text = "60"
 horizontal_alignment = 2
 
-[node name="AccelRow" type="HBoxContainer" parent="DebugSliders/Panel/VBox"]
+[node name="AccelRow" type="HBoxContainer" parent="DebugSliders/Panel/VBox/Body"]
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="Caption" type="Label" parent="DebugSliders/Panel/VBox/AccelRow"]
+[node name="Caption" type="Label" parent="DebugSliders/Panel/VBox/Body/AccelRow"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.75, 0.8, 0.88, 1)
 theme_override_font_sizes/font_size = 12
 text = "accel"
 
-[node name="Slider" type="HSlider" parent="DebugSliders/Panel/VBox/AccelRow"]
+[node name="Slider" type="HSlider" parent="DebugSliders/Panel/VBox/Body/AccelRow"]
 layout_mode = 2
 size_flags_horizontal = 3
 min_value = 100.0
 max_value = 6000.0
 step = 50.0
-value = 2200.0
+value = 3250.0
 
-[node name="Value" type="Label" parent="DebugSliders/Panel/VBox/AccelRow"]
+[node name="Value" type="Label" parent="DebugSliders/Panel/VBox/Body/AccelRow"]
 custom_minimum_size = Vector2(72, 0)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.9, 0.93, 0.98, 1)
 theme_override_font_sizes/font_size = 12
-text = "2200"
+text = "3250"
 horizontal_alignment = 2
 
-[node name="BrakeRow" type="HBoxContainer" parent="DebugSliders/Panel/VBox"]
+[node name="BrakeRow" type="HBoxContainer" parent="DebugSliders/Panel/VBox/Body"]
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="Caption" type="Label" parent="DebugSliders/Panel/VBox/BrakeRow"]
+[node name="Caption" type="Label" parent="DebugSliders/Panel/VBox/Body/BrakeRow"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.75, 0.8, 0.88, 1)
 theme_override_font_sizes/font_size = 12
 text = "brake"
 
-[node name="Slider" type="HSlider" parent="DebugSliders/Panel/VBox/BrakeRow"]
+[node name="Slider" type="HSlider" parent="DebugSliders/Panel/VBox/Body/BrakeRow"]
 layout_mode = 2
 size_flags_horizontal = 3
 min_value = 0.0
 max_value = 12000.0
 step = 50.0
-value = 5500.0
+value = 1250.0
 
-[node name="Value" type="Label" parent="DebugSliders/Panel/VBox/BrakeRow"]
+[node name="Value" type="Label" parent="DebugSliders/Panel/VBox/Body/BrakeRow"]
 custom_minimum_size = Vector2(72, 0)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.9, 0.93, 0.98, 1)
 theme_override_font_sizes/font_size = 12
-text = "5500"
+text = "1250"
 horizontal_alignment = 2
 
-[node name="RampFrictionRow" type="HBoxContainer" parent="DebugSliders/Panel/VBox"]
+[node name="RampFrictionRow" type="HBoxContainer" parent="DebugSliders/Panel/VBox/Body"]
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="Caption" type="Label" parent="DebugSliders/Panel/VBox/RampFrictionRow"]
+[node name="Caption" type="Label" parent="DebugSliders/Panel/VBox/Body/RampFrictionRow"]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.75, 0.8, 0.88, 1)
 theme_override_font_sizes/font_size = 12
 text = "ramp fric"
 
-[node name="Slider" type="HSlider" parent="DebugSliders/Panel/VBox/RampFrictionRow"]
-layout_mode = 2
-size_flags_horizontal = 3
-min_value = 0.0
-max_value = 2000.0
-step = 10.0
-value = 160.0
-
-[node name="Value" type="Label" parent="DebugSliders/Panel/VBox/RampFrictionRow"]
-custom_minimum_size = Vector2(72, 0)
-layout_mode = 2
-theme_override_colors/font_color = Color(0.9, 0.93, 0.98, 1)
-theme_override_font_sizes/font_size = 12
-text = "160"
-horizontal_alignment = 2
-
-[node name="FrictionRow" type="HBoxContainer" parent="DebugSliders/Panel/VBox"]
-layout_mode = 2
-theme_override_constants/separation = 8
-
-[node name="Caption" type="Label" parent="DebugSliders/Panel/VBox/FrictionRow"]
-layout_mode = 2
-theme_override_colors/font_color = Color(0.75, 0.8, 0.88, 1)
-theme_override_font_sizes/font_size = 12
-text = "friction"
-
-[node name="Slider" type="HSlider" parent="DebugSliders/Panel/VBox/FrictionRow"]
+[node name="Slider" type="HSlider" parent="DebugSliders/Panel/VBox/Body/RampFrictionRow"]
 layout_mode = 2
 size_flags_horizontal = 3
 min_value = 0.0
@@ -391,7 +381,7 @@ max_value = 2000.0
 step = 10.0
 value = 0.0
 
-[node name="Value" type="Label" parent="DebugSliders/Panel/VBox/FrictionRow"]
+[node name="Value" type="Label" parent="DebugSliders/Panel/VBox/Body/RampFrictionRow"]
 custom_minimum_size = Vector2(72, 0)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.9, 0.93, 0.98, 1)
@@ -399,20 +389,55 @@ theme_override_font_sizes/font_size = 12
 text = "0"
 horizontal_alignment = 2
 
-[node name="CellHighlightRow" type="HBoxContainer" parent="DebugSliders/Panel/VBox"]
+[node name="FrictionRow" type="HBoxContainer" parent="DebugSliders/Panel/VBox/Body"]
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="Check" type="CheckButton" parent="DebugSliders/Panel/VBox/CellHighlightRow"]
+[node name="Caption" type="Label" parent="DebugSliders/Panel/VBox/Body/FrictionRow"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.75, 0.8, 0.88, 1)
+theme_override_font_sizes/font_size = 12
+text = "friction"
+
+[node name="Slider" type="HSlider" parent="DebugSliders/Panel/VBox/Body/FrictionRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+min_value = 0.0
+max_value = 2000.0
+step = 10.0
+value = 0.0
+
+[node name="Value" type="Label" parent="DebugSliders/Panel/VBox/Body/FrictionRow"]
+custom_minimum_size = Vector2(72, 0)
+layout_mode = 2
+theme_override_colors/font_color = Color(0.9, 0.93, 0.98, 1)
+theme_override_font_sizes/font_size = 12
+text = "0"
+horizontal_alignment = 2
+
+[node name="DepthGridRow" type="HBoxContainer" parent="DebugSliders/Panel/VBox/Body"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Check" type="CheckButton" parent="DebugSliders/Panel/VBox/Body/DepthGridRow"]
+layout_mode = 2
+button_pressed = false
+text = "depth grid"
+
+[node name="CellHighlightRow" type="HBoxContainer" parent="DebugSliders/Panel/VBox/Body"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Check" type="CheckButton" parent="DebugSliders/Panel/VBox/Body/CellHighlightRow"]
 layout_mode = 2
 button_pressed = false
 text = "cell highlight"
 
-[node name="GodModeRow" type="HBoxContainer" parent="DebugSliders/Panel/VBox"]
+[node name="GodModeRow" type="HBoxContainer" parent="DebugSliders/Panel/VBox/Body"]
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="Check" type="CheckButton" parent="DebugSliders/Panel/VBox/GodModeRow"]
+[node name="Check" type="CheckButton" parent="DebugSliders/Panel/VBox/Body/GodModeRow"]
 layout_mode = 2
 button_pressed = false
 text = "god mode (G, j/k)"
