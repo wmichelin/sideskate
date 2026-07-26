@@ -142,10 +142,22 @@ func _project_deck_poly(deck: Dictionary, poly: PackedVector2Array) -> PackedVec
 func _draw_ground_floors(band: Vector2) -> void:
 	if _level.spec == null:
 		return
-	if show_floor_checker and _level.spec.floor_mask.size() > 0:
-		_draw_floor_checker(band)
+	var spec := _level.spec
+	# Same per-cell blue tiles as elevated stories (checker is unused).
+	if not spec.story_floor_masks.is_empty() and spec.grid_w > 0:
+		for story in spec.story_floor_masks:
+			var h := float(story.get("height", 0.0))
+			if h > 0.05:
+				continue
+			var mask: PackedByteArray = story.get("mask", PackedByteArray())
+			if mask.size() < spec.grid_w * spec.grid_h:
+				continue
+			_draw_story_floor_cells(band, mask, 0.0)
 		return
-	for floor in _level.spec.floors:
+	if spec.floor_mask.size() > 0 and spec.grid_w > 0:
+		_draw_story_floor_cells(band, spec.floor_mask, 0.0)
+		return
+	for floor in spec.floors:
 		if float(floor.get("height", 0.0)) > 0.05:
 			continue
 		var clipped := _clip_poly_z_band(floor.poly, band.x, band.y)
@@ -153,7 +165,7 @@ func _draw_ground_floors(band: Vector2) -> void:
 			continue
 		var pts := _project_poly(clipped, 0.0)
 		if pts.size() >= 3:
-			draw_colored_polygon(pts, Color(0.28, 0.34, 0.30, 0.95))
+			draw_colored_polygon(pts, Color(0.32, 0.38, 0.42, 0.88))
 
 
 ## Elevated stories: per-cell quads (outline polys break on holes / rings).
@@ -163,16 +175,8 @@ func _draw_elevated_floors(band: Vector2) -> void:
 	var spec := _level.spec
 	var W := spec.grid_w
 	var H := spec.grid_h
-	var cw := spec.cell_w
-	var ch := spec.cell_h
-	if W <= 0 or H <= 0 or cw <= 0.0 or ch <= 0.0:
+	if W <= 0 or H <= 0:
 		return
-	var r_min := clampi(int(ceil(float(H) - 1.0 - band.y / ch)), 0, H - 1)
-	var r_max := clampi(int(floor(float(H) - band.x / ch - 0.0001)), 0, H - 1)
-	if r_max < r_min:
-		return
-	var fill := Color(0.32, 0.38, 0.42, 0.88)
-	var stroke := Color(0.55, 0.62, 0.70, 0.75)
 	for story in spec.story_floor_masks:
 		var h := float(story.get("height", 0.0))
 		if h <= 0.05:
@@ -180,25 +184,42 @@ func _draw_elevated_floors(band: Vector2) -> void:
 		var mask: PackedByteArray = story.get("mask", PackedByteArray())
 		if mask.size() < W * H:
 			continue
-		for r in range(r_min, r_max + 1):
-			for c in range(W):
-				if mask[r * W + c] == 0:
-					continue
-				var x0 := float(c) * cw
-				var x1 := float(c + 1) * cw
-				var z0 := maxf(float(H - 1 - r) * ch, band.x)
-				var z1 := minf(float(H - r) * ch, band.y)
-				if z1 <= z0 + 0.001:
-					continue
-				var corners := PackedVector2Array([
-					_surf_point(x0, z0, h),
-					_surf_point(x1, z0, h),
-					_surf_point(x1, z1, h),
-					_surf_point(x0, z1, h),
-				])
-				draw_colored_polygon(corners, fill)
-				for i in range(corners.size()):
-					draw_line(corners[i], corners[(i + 1) % corners.size()], stroke, 1.25)
+		_draw_story_floor_cells(band, mask, h)
+
+
+func _draw_story_floor_cells(band: Vector2, mask: PackedByteArray, height: float) -> void:
+	var spec := _level.spec
+	var W := spec.grid_w
+	var H := spec.grid_h
+	var cw := spec.cell_w
+	var ch := spec.cell_h
+	if cw <= 0.0 or ch <= 0.0:
+		return
+	var r_min := clampi(int(ceil(float(H) - 1.0 - band.y / ch)), 0, H - 1)
+	var r_max := clampi(int(floor(float(H) - band.x / ch - 0.0001)), 0, H - 1)
+	if r_max < r_min:
+		return
+	var fill := Color(0.32, 0.38, 0.42, 0.88)
+	var stroke := Color(0.55, 0.62, 0.70, 0.75)
+	for r in range(r_min, r_max + 1):
+		for c in range(W):
+			if mask[r * W + c] == 0:
+				continue
+			var x0 := float(c) * cw
+			var x1 := float(c + 1) * cw
+			var z0 := maxf(float(H - 1 - r) * ch, band.x)
+			var z1 := minf(float(H - r) * ch, band.y)
+			if z1 <= z0 + 0.001:
+				continue
+			var corners := PackedVector2Array([
+				_surf_point(x0, z0, height),
+				_surf_point(x1, z0, height),
+				_surf_point(x1, z1, height),
+				_surf_point(x0, z1, height),
+			])
+			draw_colored_polygon(corners, fill)
+			for i in range(corners.size()):
+				draw_line(corners[i], corners[(i + 1) % corners.size()], stroke, 1.25)
 
 
 func _ensure_checker_texture() -> void:
@@ -222,6 +243,7 @@ func _ensure_checker_texture() -> void:
 
 
 ## Coarse tiles baked into one textured mesh. `floor_checker_tile` ASCII cells per square.
+## Ground story only — elevated floors use per-cell blue tiles.
 func _draw_floor_checker(band: Vector2) -> void:
 	_ensure_checker_texture()
 	var spec := _level.spec
@@ -258,14 +280,10 @@ func _draw_floor_checker(band: Vector2) -> void:
 				continue
 			var x0 := float(c) * cw
 			var x1 := float(c1) * cw
-			var p00: Dictionary = _level.project(x0, z0, 0.0)
-			var p10: Dictionary = _level.project(x1, z0, 0.0)
-			var p11: Dictionary = _level.project(x1, z1, 0.0)
-			var p01: Dictionary = _level.project(x0, z1, 0.0)
-			var s00 := Vector2(p00.screen_x, p00.ground_y)
-			var s10 := Vector2(p10.screen_x, p10.ground_y)
-			var s11 := Vector2(p11.screen_x, p11.ground_y)
-			var s01 := Vector2(p01.screen_x, p01.ground_y)
+			var s00 := _surf_point(x0, z0, 0.0)
+			var s10 := _surf_point(x1, z0, 0.0)
+			var s11 := _surf_point(x1, z1, 0.0)
+			var s01 := _surf_point(x0, z1, 0.0)
 			# Solid UV sample from 2×2 checker tex (NEAREST).
 			var tx := int(c / tile)
 			var uv := Vector2(0.25, 0.25) if ((tx + ty) & 1) == 0 else Vector2(0.75, 0.25)

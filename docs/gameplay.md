@@ -39,7 +39,7 @@ Player-facing zone labels include `flat L#`, `left_pipe L#`, `right_pipe L#`, `d
 
 Stick integrates into **momentum** (`_velocity` on X/Z). See [Motion vectors](#motion-vectors).
 
-- **Horizontal X**: opposite stick **brakes hard** toward zero via **`brake`** (default 1250) — no reverse until `|vx|` reaches 0. Coasting uses **friction** only (default 0).
+- **Horizontal X**: opposite stick **brakes hard** toward zero via **`brake`** (default 1250) — no reverse until `|vx|` reaches 0. Coasting uses **friction** only (default 0). **MOMENTUM** X / `_ramp_along` are hard-capped to **`±max_speed_x`** (drop-ins, transfers, and live slider changes included).
 - **Depth Z**: immediate — stick maps straight to `±max_speed_z` (default 400; debug slider).
 - **Rest reset**: when measured **ACTUAL** speed is ≈0, integrated **MOMENTUM** (`_velocity` / `_ramp_along`) is cleared so reverse isn’t fighting leftover control speed (e.g. jammed on a bound). Skipped while air **gravity** applies (horizontal remnant must survive apex / free fall).
 - **Acceleration** (default 3250) / **brake** / **max speed x** (default 880) / **max speed z**: tunable via debug sliders.

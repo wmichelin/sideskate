@@ -193,9 +193,11 @@ func _physics_process(delta: float) -> void:
 	_integrate_velocity(input, delta)
 	if _on_ramp:
 		_ramp_along = _velocity.x
+	_clamp_momentum_to_max_speed()
 
 	var speed_mul := depth.depth_speed_multiplier() if depth_speed_feel else 1.0
 	_apply_motion(delta, speed_mul)
+	_clamp_momentum_to_max_speed()
 	_step_god_vertical(delta)
 
 	if _level:
@@ -1484,10 +1486,19 @@ func _integrate_velocity(input: Vector2, delta: float) -> void:
 		if not stick_opposes:
 			_velocity.x = move_toward(_velocity.x, face * max_speed_x, ollie_accel * delta)
 
+	_clamp_momentum_to_max_speed()
+
 	if delta > 0.0001:
 		_debug_accel = (_velocity - before) / delta
 	else:
 		_debug_accel = Vector2.ZERO
+
+
+## Cap MOMENTUM X / along-arc to ±max_speed_x (drops, transfers, tuning changes).
+func _clamp_momentum_to_max_speed() -> void:
+	var cap := absf(max_speed_x)
+	_velocity.x = clampf(_velocity.x, -cap, cap)
+	_ramp_along = clampf(_ramp_along, -cap, cap)
 
 
 ## Move `current` toward `want`. Opposite stick uses `brake_step` (no reverse until
