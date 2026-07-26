@@ -24,7 +24,7 @@ extends Node2D
 ## Feet must drop at least this far below prior support to ride off into air.
 @export var ride_off_height_eps: float = 0.5
 ## How far behind facing a top coping may still be acid-dropped (logical X, not screen px).
-@export var acid_drop_buffer: float = 10.0
+@export var acid_drop_buffer: float = 30.0
 ## Max distance ahead (logical X) to a top coping for acid drop — prevents cross-plaza lerps.
 @export var acid_drop_max_ahead: float = 120.0
 ## Physics-time duration for acid-drop horizontal settle to coping.
@@ -68,6 +68,8 @@ var _acid_drop_lock: bool = false
 var _actual_vel_x: float = 0.0
 var _actual_vel_z: float = 0.0
 var _vert_vel: float = 0.0
+## Last non-zero measured vertical rate (for apex: vert==0 but still "rising").
+var _last_nonzero_vert_vel: float = 0.0
 var _prev_logical_x: float = 0.0
 var _prev_logical_z: float = 0.0
 var _prev_feet_h: float = 0.0
@@ -96,6 +98,7 @@ func _spawn_from_level() -> void:
 	_actual_vel_x = 0.0
 	_actual_vel_z = 0.0
 	_vert_vel = 0.0
+	_last_nonzero_vert_vel = 0.0
 	depth.apply()
 
 
@@ -140,6 +143,8 @@ func _update_actual_velocity(delta: float) -> void:
 		_actual_vel_x = 0.0
 		_actual_vel_z = 0.0
 		_vert_vel = 0.0
+	if absf(_vert_vel) > 0.5:
+		_last_nonzero_vert_vel = _vert_vel
 	_prev_logical_x = depth.logical_x
 	_prev_logical_z = depth.logical_z
 	_prev_feet_h = h
@@ -441,12 +446,20 @@ func _clear_air() -> void:
 	_transfer_x_active = false
 	_transfer_available = true
 	_acid_drop_available = true
+	_last_nonzero_vert_vel = 0.0
 	depth.height_offset = 0.0
 
 
-## Same button: transfer while rising, acid drop while falling / at rest.
-func _try_air_action() -> void:
+## Rising, or at apex after a rise (vert≈0 but last non-zero was up).
+func _transfer_vert_ok() -> bool:
 	if _vert_vel > 0.0:
+		return true
+	return absf(_vert_vel) <= 0.5 and _last_nonzero_vert_vel > 0.0
+
+
+## Same button: transfer while rising/apex, acid drop while falling.
+func _try_air_action() -> void:
+	if _transfer_vert_ok():
 		_try_transfer()
 	else:
 		_try_acid_drop()
@@ -455,7 +468,8 @@ func _try_air_action() -> void:
 func _try_acid_drop() -> void:
 	if not _airborne or _level == null or not _acid_drop_available:
 		return
-	if _vert_vel > 0.0:
+	# Not while rising or at a rising apex — that belongs to transfer.
+	if _transfer_vert_ok():
 		return
 	var hit := _find_acid_drop_pipe()
 	if hit.is_empty():
@@ -533,8 +547,8 @@ func _find_acid_drop_pipe() -> Dictionary:
 func _try_transfer() -> void:
 	if not _airborne or _level == null or not _transfer_available:
 		return
-	# Only while rising — no transfers on the way down or at rest.
-	if _vert_vel <= 0.0:
+	# Rising, or apex after rise (vert≈0 with last non-zero up).
+	if not _transfer_vert_ok():
 		return
 	var was_locked := _air_x_locked
 	var behind: float = _transfer_behind_sign

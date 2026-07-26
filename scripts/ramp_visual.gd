@@ -4,14 +4,26 @@ extends Node2D
 
 @export var grid_steps: int = 5
 @export var arc_ribs: int = 5
+## Highlight the .ssk ASCII cell under the player (logical unit 1:1).
+@export var debug_cell_highlight: bool = true
+@export var player_path: NodePath = NodePath("../../Player")
+@export var cell_highlight_fill: Color = Color(1.0, 0.92, 0.2, 0.35)
+@export var cell_highlight_stroke: Color = Color(1.0, 0.85, 0.1, 0.95)
 
 var _level: RampLevel
+var _player: Node2D
 
 
 func _ready() -> void:
 	z_index = -50
 	_level = get_parent() as RampLevel
+	_player = get_node_or_null(player_path) as Node2D
 	queue_redraw()
+
+
+func _process(_delta: float) -> void:
+	if debug_cell_highlight:
+		queue_redraw()
 
 
 func refresh() -> void:
@@ -27,6 +39,7 @@ func _draw() -> void:
 		_draw_pipe(pipe)
 	_draw_decks()
 	_draw_depth_grid()
+	_draw_player_cell_highlight()
 
 
 func _pipes_far_to_near() -> Array:
@@ -124,6 +137,50 @@ func _draw_depth_grid() -> void:
 			Color(1, 1, 1, 0.10),
 			1.2
 		)
+
+
+## Yellow outline/fill of the ASCII map cell under the player (air or grounded).
+func _draw_player_cell_highlight() -> void:
+	if not debug_cell_highlight or _level == null or _level.spec == null:
+		return
+	if _level.spec.grid_w <= 0 or _level.spec.grid_h <= 0:
+		return
+	if _player == null:
+		_player = get_node_or_null(player_path) as Node2D
+	if _player == null or not _player.has_node("PseudoDepthBody"):
+		return
+	var body: PseudoDepthBody = _player.get_node("PseudoDepthBody")
+	var lx: float = body.logical_x
+	var lz: float = body.logical_z
+	var cell: Vector2i = _level.spec.cell_at(lx, lz)
+	var b: Dictionary = _level.spec.cell_bounds(cell.x, cell.y)
+	# Underfoot surface height (spawn is on floor → 0). Air still uses the tile below.
+	var under: Dictionary = _level.sample(lx, lz)
+	var h := 0.0
+	if under.get("active", true) or str(under.get("zone", "")) != "oob":
+		h = float(under.get("height", 0.0))
+	var corners := PackedVector2Array([
+		_surf_point(float(b.x0), float(b.z0), h),
+		_surf_point(float(b.x1), float(b.z0), h),
+		_surf_point(float(b.x1), float(b.z1), h),
+		_surf_point(float(b.x0), float(b.z1), h),
+	])
+	if Geometry2D.triangulate_polygon(corners).is_empty():
+		return
+	draw_colored_polygon(corners, cell_highlight_fill)
+	for i in range(corners.size()):
+		draw_line(
+			corners[i],
+			corners[(i + 1) % corners.size()],
+			cell_highlight_stroke,
+			2.5,
+			true
+		)
+
+
+func _surf_point(logical_x: float, logical_z: float, height: float) -> Vector2:
+	var p: Dictionary = _level.project(logical_x, logical_z, height)
+	return Vector2(p.screen_x, p.ground_y - p.surface_screen_h)
 
 
 func _draw_pipe(pipe: QuarterPipe) -> void:

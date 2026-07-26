@@ -26,6 +26,32 @@ var z_max: float = 100.0
 var x_min: float = 0.0
 var x_max: float = 1280.0
 
+## ASCII map grid (1:1 with .ssk map glyphs). row 0 = far/top.
+var grid_w: int = 0
+var grid_h: int = 0
+var cell_w: float = 1.0
+var cell_h: float = 1.0
+
+
+## Map (col, row) for a logical point. row 0 = far (top of ASCII).
+func cell_at(logical_x: float, logical_z: float) -> Vector2i:
+	if grid_w <= 0 or grid_h <= 0 or cell_w <= 0.0 or cell_h <= 0.0:
+		return Vector2i.ZERO
+	var col := clampi(int(floor(logical_x / cell_w)), 0, grid_w - 1)
+	var row := clampi(grid_h - 1 - int(floor(logical_z / cell_h)), 0, grid_h - 1)
+	return Vector2i(col, row)
+
+
+## Logical XZ bounds of ASCII cell (col, row). Returns {x0,x1,z0,z1}.
+func cell_bounds(col: int, row: int) -> Dictionary:
+	var c := clampi(col, 0, maxi(grid_w - 1, 0))
+	var r := clampi(row, 0, maxi(grid_h - 1, 0))
+	var x0 := float(c) * cell_w
+	var x1 := float(c + 1) * cell_w
+	var z0 := float(grid_h - 1 - r) * cell_h
+	var z1 := float(grid_h - r) * cell_h
+	return {"x0": x0, "x1": x1, "z0": z0, "z1": z1}
+
 
 static func point_in_poly(point: Vector2, poly: PackedVector2Array) -> bool:
 	var n := poly.size()

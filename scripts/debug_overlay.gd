@@ -35,5 +35,19 @@ func _process(_delta: float) -> void:
 		+ "Zone: %s\n" % zone
 		+ "Surf H: %.1f (scr %.1f)\n" % [s.surface_height, s.get("surface_screen_h", 0.0)]
 		+ "Pipe angle: %.1f deg\n" % pipe_angle
+		+ _cell_debug_line()
 		+ "WASD — Up = farther | P = transfer↑ / acid↓"
 	)
+
+
+func _cell_debug_line() -> String:
+	if _player == null or not _player.has_node("PseudoDepthBody"):
+		return ""
+	var level := get_node_or_null("../RampLevel") as RampLevel
+	if level == null or level.spec == null or level.spec.grid_w <= 0:
+		return ""
+	var body: PseudoDepthBody = _player.get_node("PseudoDepthBody")
+	var cell: Vector2i = level.spec.cell_at(body.logical_x, body.logical_z)
+	return "Cell: col=%d row=%d (%.1f×%.1f)\n" % [
+		cell.x, cell.y, level.spec.cell_w, level.spec.cell_h
+	]

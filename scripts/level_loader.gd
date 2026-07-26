@@ -166,6 +166,10 @@ static func _build_geometry(spec: LevelSpec, map_rows: PackedStringArray) -> Str
 	var W := map_rows[0].length()
 	var cw := spec.width / float(W)
 	var ch := spec.depth / float(H)
+	spec.grid_w = W
+	spec.grid_h = H
+	spec.cell_w = cw
+	spec.cell_h = ch
 
 	# grid[row][col] character
 	var grid: Array = []

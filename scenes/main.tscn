@@ -123,7 +123,7 @@ anchor_right = 1.0
 offset_left = -320.0
 offset_top = 16.0
 offset_right = -16.0
-offset_bottom = 168.0
+offset_bottom = 210.0
 grow_horizontal = 0
 theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
 
@@ -179,12 +179,21 @@ size_flags_horizontal = 3
 min_value = 0.0
 max_value = 80.0
 step = 1.0
-value = 10.0
+value = 30.0
 
 [node name="Value" type="Label" parent="DebugSliders/Panel/VBox/AcidDropRow"]
 custom_minimum_size = Vector2(72, 0)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.9, 0.93, 0.98, 1)
 theme_override_font_sizes/font_size = 12
-text = "10 u"
+text = "30 u"
 horizontal_alignment = 2
+
+[node name="CellHighlightRow" type="HBoxContainer" parent="DebugSliders/Panel/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Check" type="CheckButton" parent="DebugSliders/Panel/VBox/CellHighlightRow"]
+layout_mode = 2
+button_pressed = true
+text = "cell highlight"
