@@ -1,0 +1,69 @@
+extends RefCounted
+## PerspectiveMath / project invariants: converge X, linear unclamped t, clamped gscale.
+
+
+func run() -> bool:
+	var origin_x := 640.0
+	var origin_z := 200.0
+	var z_min := 0.0
+	var near_y := 560.0
+	var far_y := 300.0
+	var ref_d := 400.0
+	var ref_w := 1280.0
+	var inset := 70.0
+	var far_g := 0.7
+	var logical_x := 900.0
+
+	var near_z := origin_z
+	var far_z := origin_z + ref_d * 0.5
+	var p_near := PerspectiveMath.project(
+		logical_x, near_z, 100.0,
+		origin_x, origin_z, z_min, near_y, far_y, ref_d, ref_w, inset, far_g
+	)
+	var p_far := PerspectiveMath.project(
+		logical_x, far_z, 100.0,
+		origin_x, origin_z, z_min, near_y, far_y, ref_d, ref_w, inset, far_g
+	)
+
+	# X moves toward origin as Z increases (within lean band)
+	var dist_near := absf(float(p_near.screen_x) - origin_x)
+	var dist_far := absf(float(p_far.screen_x) - origin_x)
+	if dist_far >= dist_near - 0.01:
+		push_error("screen_x should converge toward origin with Z (near dist=%s far=%s)" % [dist_near, dist_far])
+		return false
+
+	# Unclamped t is linear in Z (no knee): t = (z - (origin - ref/2)) / ref
+	var t0 := PerspectiveMath.perspective_t(origin_z - ref_d, origin_z, ref_d)
+	var t1 := PerspectiveMath.perspective_t(origin_z, origin_z, ref_d)
+	var t2 := PerspectiveMath.perspective_t(origin_z + ref_d, origin_z, ref_d)
+	if absf(t0 - (-0.5)) > 0.001 or absf(t1 - 0.5) > 0.001 or absf(t2 - 1.5) > 0.001:
+		push_error("perspective_t not linear/unclamped: %s %s %s" % [t0, t1, t2])
+		return false
+	# Equal Z steps → equal Δt
+	var mid := origin_z + ref_d * 0.25
+	var t_a := PerspectiveMath.perspective_t(origin_z, origin_z, ref_d)
+	var t_b := PerspectiveMath.perspective_t(mid, origin_z, ref_d)
+	var t_c := PerspectiveMath.perspective_t(origin_z + ref_d * 0.5, origin_z, ref_d)
+	if absf((t_b - t_a) - (t_c - t_b)) > 0.0001:
+		push_error("t steps not equal (knee?): %s %s %s" % [t_a, t_b, t_c])
+		return false
+
+	# Height / geometry_scale uses clamped t (outside [0,1] does not overshoot far_g)
+	var t_below := -0.5
+	var t_above := 1.5
+	var g_lo := PerspectiveMath.geometry_scale_at(t_below, far_g)
+	var g_hi := PerspectiveMath.geometry_scale_at(t_above, far_g)
+	if absf(g_lo - 1.0) > 0.001:
+		push_error("geometry_scale below band should clamp to 1, got %s" % g_lo)
+		return false
+	if absf(g_hi - far_g) > 0.001:
+		push_error("geometry_scale above band should clamp to far_g=%s, got %s" % [far_g, g_hi])
+		return false
+
+	var h_far := float(p_far.surface_screen_h)
+	var want_h := 100.0 * float(p_far.geometry_scale)
+	if absf(h_far - want_h) > 0.01:
+		push_error("surface_screen_h should be height*gscale")
+		return false
+
+	return true

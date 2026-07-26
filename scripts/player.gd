@@ -462,15 +462,13 @@ func _is_opposite_pipe_swap(hit: Dictionary) -> bool:
 	if not _on_ramp or not _is_pipe_hit(hit):
 		return false
 	var side: int = int(hit.get("side", _ramp_side))
-	if side == _ramp_side:
-		return false
-	# Shared / near-shared coping: neighbor stole the sample at the top.
 	var their_lip := float(hit.get("lip_x", _ramp_lip_x))
 	var their_r := _pipe_radius_for_hit(hit)
-	var my_r := _sticky_pipe_radius()
-	var their_coping := _coping_x_for(side, their_lip, their_r)
-	var my_coping := _coping_x_for(_ramp_side, _ramp_lip_x, my_r)
-	return absf(their_coping - my_coping) < 1.0
+	return PipeMath.opposite_coping_near(
+		_ramp_side, _ramp_lip_x, _sticky_pipe_radius(),
+		side, their_lip, their_r,
+		1.0
+	)
 
 
 func _sticky_pipe_radius() -> float:
@@ -838,9 +836,7 @@ func _find_pipe_behind(
 
 
 func _coping_x_for(side: int, lip_x: float, radius: float) -> float:
-	if side == QuarterPipe.PipeSide.LEFT:
-		return lip_x - radius
-	return lip_x + radius
+	return PipeMath.coping_x(side, lip_x, radius)
 
 
 func _pipe_radius_for_hit(hit: Dictionary) -> float:

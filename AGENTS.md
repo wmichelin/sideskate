@@ -21,3 +21,14 @@ Autoload `DebugTools` (`scripts/debug_tools.gd`):
 - Force off locally with user arg: `godot --path . -- --no-debug-tools` (strips HUD/arrows like a release).
 - When unavailable: nodes in group `debug_tools` are freed; god mode and debug HUD do not run.
 - Release exports should omit `debug_tools` so all debug affordances stay off.
+
+## Testing
+
+Minimal headless runner in `tests/` (no GUT). Each `test_*.gd` exposes `run() -> bool`.
+
+```bash
+godot4 --headless --path . --script res://tests/test_runner.gd
+# or open tests/TestRunner.tscn and press F6
+```
+
+Prefer `LevelLoader.parse_text` over `load_path` in tests (`load_path` aborts the process on bad maps).

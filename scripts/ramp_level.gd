@@ -150,29 +150,28 @@ func depth_t(logical_z: float) -> float:
 ## Lean rate: 0 at skater−ref/2, 1 at skater+ref/2. Unclamped so lip lines keep
 ## one continuous slope instead of bending into a parallel corridor.
 func perspective_t(logical_z: float) -> float:
-	var ref := maxf(reference_depth, 0.0001)
-	var z0 := perspective_origin_z - ref * 0.5
-	return (logical_z - z0) / ref
+	return PerspectiveMath.perspective_t(logical_z, perspective_origin_z, reference_depth)
 
 
 func geometry_scale_at(logical_z: float) -> float:
-	return lerpf(1.0, far_geometry_scale, clampf(perspective_t(logical_z), 0.0, 1.0))
+	return PerspectiveMath.geometry_scale_at(perspective_t(logical_z), far_geometry_scale)
 
 
 func inset_at(logical_z: float) -> float:
-	return lerpf(0.0, perspective_inset, clampf(perspective_t(logical_z), 0.0, 1.0))
+	return PerspectiveMath.inset_at(perspective_t(logical_z), perspective_inset)
 
 
 ## Pixels of screen-Y per logical Z unit (near edge → farther = smaller Y).
 func screen_y_per_z() -> float:
-	var ref := maxf(reference_depth, 0.0001)
-	return (near_screen_y - far_screen_y) / ref
+	return PerspectiveMath.screen_y_per_z(near_screen_y, far_screen_y, reference_depth)
 
 
 func ground_screen_y(logical_z: float) -> float:
 	# Absolute mapping — deep levels grow taller in screen space and stay off-frame
 	# until the camera pans with the player.
-	return near_screen_y - (logical_z - z_min) * screen_y_per_z()
+	return PerspectiveMath.ground_screen_y(
+		logical_z, z_min, near_screen_y, far_screen_y, reference_depth
+	)
 
 
 func x_min() -> float:
@@ -324,26 +323,20 @@ func project_deck_point(deck: Dictionary, logical_x: float, logical_z: float) ->
 ## Height uses geometry_scale alone. X lean uses reference_width (not level span)
 ## so wider maps keep the same vanishing rate as a single bay.
 func project(logical_x: float, logical_z: float, surface_height: float = 0.0) -> Dictionary:
-	var t := perspective_t(logical_z)
-	var inset := inset_at(logical_z)
-	var gscale := geometry_scale_at(logical_z)
-	var ground_y := ground_screen_y(logical_z)
-
-	var ref_w := maxf(reference_width, 0.0001)
-	var far_x_scale := clampf(1.0 - (2.0 * perspective_inset) / ref_w, 0.15, 1.0)
-	# Unclamped t keeps one slope; soft-limit scale so extreme pads don't invert X.
-	var x_scale := clampf(lerpf(1.0, far_x_scale, t), 0.08, 2.5)
-	var screen_x := perspective_origin_x + (logical_x - perspective_origin_x) * x_scale
-
-	return {
-		"t": t,
-		"screen_x": screen_x,
-		"ground_y": ground_y,
-		"surface_screen_h": surface_height * gscale,
-		"geometry_scale": gscale,
-		"inset": inset,
-		"x_scale": x_scale,
-	}
+	return PerspectiveMath.project(
+		logical_x,
+		logical_z,
+		surface_height,
+		perspective_origin_x,
+		perspective_origin_z,
+		z_min,
+		near_screen_y,
+		far_screen_y,
+		reference_depth,
+		reference_width,
+		perspective_inset,
+		far_geometry_scale
+	)
 
 
 func pipe_screen_point_for(pipe: QuarterPipe, logical_z: float, u: float) -> Vector2:
