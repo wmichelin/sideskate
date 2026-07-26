@@ -300,7 +300,20 @@ func _draw_player_cell_highlight() -> void:
 	var body: PseudoDepthBody = _player.get_node("PseudoDepthBody")
 	var lx: float = body.logical_x
 	var lz: float = body.logical_z
-	var cell: Vector2i = _level.spec.cell_at(lx, lz)
+	var cell: Vector2i
+	if _player.has_method("cell_under_feet"):
+		cell = _player.call("cell_under_feet") as Vector2i
+		if _player.has_method("cell_sample_xz"):
+			var xz: Vector2 = _player.call("cell_sample_xz")
+			lx = xz.x
+			lz = xz.y
+	elif _player.has_method("cell_sample_xz"):
+		var xz2: Vector2 = _player.call("cell_sample_xz")
+		lx = xz2.x
+		lz = xz2.y
+		cell = _level.spec.cell_at(lx, lz)
+	else:
+		cell = _level.spec.cell_at(lx, lz)
 	var b: Dictionary = _level.spec.cell_bounds(cell.x, cell.y)
 	var under: Dictionary = _level.sample(lx, lz)
 	var h := 0.0

@@ -97,8 +97,18 @@ func _cell_debug_line() -> String:
 	var level := get_node_or_null("../RampLevel") as RampLevel
 	if level == null or level.spec == null or level.spec.grid_w <= 0:
 		return ""
-	var body: PseudoDepthBody = _player.get_node("PseudoDepthBody")
-	var cell: Vector2i = level.spec.cell_at(body.logical_x, body.logical_z)
+	var cell: Vector2i
+	if _player.has_method("cell_under_feet"):
+		cell = _player.call("cell_under_feet") as Vector2i
+	else:
+		var body: PseudoDepthBody = _player.get_node("PseudoDepthBody")
+		var lx: float = body.logical_x
+		var lz: float = body.logical_z
+		if _player.has_method("cell_sample_xz"):
+			var xz: Vector2 = _player.call("cell_sample_xz")
+			lx = xz.x
+			lz = xz.y
+		cell = level.spec.cell_at(lx, lz)
 	return "Cell: col=%d row=%d (%.1f×%.1f)\n" % [
 		cell.x, cell.y, level.spec.cell_w, level.spec.cell_h
 	]

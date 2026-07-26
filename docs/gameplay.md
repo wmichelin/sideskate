@@ -89,6 +89,10 @@ Pipe coping lock treats the top coping height (`radius`) as the floor. Acid-drop
 
 When grounded motion would place you on a surface lower than prior support (beyond a small epsilon), enter free air at the **previous** support height and start gravity. Works for deck → pipe/flat and similar drops. Spawn is assumed to start on floor.
 
+### Air shadow
+
+While airborne, a **circular** ground shadow sits on the underfoot support surface (same idea as cell highlight height, at the skater’s X/Z — not the cell footprint). Width matches body scale at support and shrinks toward a floor as feet rise (`PerspectiveMath.air_shadow_width_scale`; tunable on `PseudoDepthBody`: `air_shadow_ref_height`, `air_shadow_min_scale`). Grounded keeps the same blob on the ridden surface.
+
 ### Gravity
 
 Applied while unlocked air, or while acid-drop X-locked. Default `-19.0` m/s², converted with `logic_per_meter` (default 100). Tunable via top-right debug slider.
@@ -124,9 +128,9 @@ Each ASCII map glyph is one logical cell:
 
 - `cw = width / W`, `ch = depth / H`
 - Row 0 = far (top of file); bottom row = near
-- Stored on `LevelSpec` (`grid_w`, `grid_h`, `cell_w`, `cell_h`); helpers `cell_at`, `cell_bounds`
+- Stored on `LevelSpec` (`grid_w`, `grid_h`, `cell_w`, `cell_h`); helpers `cell_at`, `cell_at_for_pose`, `cell_bounds`
 
-Debug **cell highlight** (default off) draws the cell under the player in yellow (air or grounded), using underfoot surface height (floor = 0 at spawn).
+Debug **cell highlight** (default off) draws the cell under the player in yellow (air or grounded), using underfoot surface height (floor = 0 at spawn). Cell indexing for targeting / highlight uses `LevelSpec.cell_at_for_pose` (via `Player.cell_under_feet` / `cell_sample_xz`): while X-locked on pipe coping, sample X is nudged into the pipe so half-open `cell_at` does not assign **right**-pipe coping to the next cell outward.
 
 ## Debug overlays
 
@@ -152,7 +156,7 @@ Debug tools are gated by autoload `DebugTools`: available when `OS.is_debug_buil
 | [`scripts/motion_math.gd`](../scripts/motion_math.gd) | Pure brake-no-reverse + facing / transfer-vert helpers |
 | [`scripts/motion_vectors.gd`](../scripts/motion_vectors.gd) | Named triad `INPUT` / `MOMENTUM` / `ACTUAL` |
 | [`scripts/aerial_math.gd`](../scripts/aerial_math.gd) | Pure transfer / acid-drop routing + target selection |
-| [`scripts/pseudo_depth_body.gd`](../scripts/pseudo_depth_body.gd) | Logical pose → screen body/shadow |
+| [`scripts/pseudo_depth_body.gd`](../scripts/pseudo_depth_body.gd) | Logical pose → screen body + air/ground shadow |
 | [`scripts/quarter_pipe.gd`](../scripts/quarter_pipe.gd) | Pipe sample (θ, height, zone) |
 | [`scripts/debug_tools.gd`](../scripts/debug_tools.gd) | Production gate + god mode state |
 | [`scripts/velocity_debug_arrow.gd`](../scripts/velocity_debug_arrow.gd) | Head arrow for one `MotionVectors.Kind` |
@@ -169,4 +173,4 @@ Debug tools are gated by autoload `DebugTools`: available when `OS.is_debug_buil
 7. Free air / acid drop land on **sampled** height — never snap up to coping radius as a fake floor.  
 8. Fly-out: only while rising; right pipe needs INPUT right; left pipe needs INPUT left; never from acid-drop lock.
 
-Covered by headless tests in `tests/test_aerial_math.gd` / `tests/test_motion_math.gd` (routing, acid selection, landing floor).
+Covered by headless tests in `tests/test_aerial_math.gd` / `tests/test_motion_math.gd` / `tests/test_cell_at_for_pose.gd` (routing, acid selection, landing floor, coping-lock cell targeting).

@@ -62,7 +62,7 @@ script = ExtResource("5_depth")
 [node name="Shadow" type="Polygon2D" parent="Player" unique_id=1016364103]
 z_index = -1
 color = Color(0, 0, 0, 0.55)
-polygon = PackedVector2Array(-30, -8, 30, -8, 22, 8, -22, 8)
+polygon = PackedVector2Array()
 
 [node name="Body" type="Polygon2D" parent="Player" unique_id=58950740]
 color = Color(0.92, 0.25, 0.45, 1)

@@ -39,12 +39,30 @@ var cell_h: float = 1.0
 
 
 ## Map (col, row) for a logical point. row 0 = far (top of ASCII).
+## Cells are half-open in X: [c·cw, (c+1)·cw). Prefer `cell_at_for_pose` when
+## the skater may be X-locked on pipe coping (right coping sits on the exclusive edge).
 func cell_at(logical_x: float, logical_z: float) -> Vector2i:
 	if grid_w <= 0 or grid_h <= 0 or cell_w <= 0.0 or cell_h <= 0.0:
 		return Vector2i.ZERO
 	var col := clampi(int(floor(logical_x / cell_w)), 0, grid_w - 1)
 	var row := clampi(grid_h - 1 - int(floor(logical_z / cell_h)), 0, grid_h - 1)
 	return Vector2i(col, row)
+
+
+## Cell under feet for targeting / debug. When X-locked over a pipe coping,
+## adjusts X into the pipe so half-open `cell_at` keeps the pipe column
+## (raw right-pipe coping would otherwise resolve one cell outward).
+func cell_at_for_pose(
+	logical_x: float,
+	logical_z: float,
+	air_x_locked: bool = false,
+	air_over: String = "",
+	air_side: int = 0,
+) -> Vector2i:
+	var x := logical_x
+	if air_x_locked and (air_over == "left_pipe" or air_over == "right_pipe"):
+		x = PipeMath.pose_x_for_cell_query(x, air_side)
+	return cell_at(x, logical_z)
 
 
 ## Logical XZ bounds of ASCII cell (col, row). Returns {x0,x1,z0,z1}.

@@ -552,6 +552,8 @@ func _apply_surface() -> void:
 		last_surface = {"zone": "flat", "height": 0.0, "angle": 0.0}
 		depth.surface_height = 0.0
 		depth.height_offset = 0.0
+		depth.airborne = false
+		depth.support_height = 0.0
 		_clear_air()
 		_refresh_head_debug()
 		return
@@ -566,12 +568,16 @@ func _apply_surface() -> void:
 		last_surface["height"] = air_abs_height
 		depth.surface_height = air_abs_height
 		depth.height_offset = 0.0
+		depth.airborne = true
+		depth.support_height = _underlying_surface_height()
 	else:
 		depth.height_offset = 0.0
+		depth.airborne = false
 		if not last_surface.get("active", true) and zone == "oob":
 			depth.surface_height = 0.0
 		else:
 			depth.surface_height = float(last_surface.get("height", 0.0))
+		depth.support_height = depth.surface_height
 
 	_refresh_head_debug()
 
@@ -864,6 +870,29 @@ func zone_debug_label() -> String:
 		else:
 			zone = "air"
 	return "%s\nhd %s" % [zone, facing_h]
+
+
+## Logical XZ for cell queries (targeting / highlight / HUD). While X-locked on
+## a pipe coping, nudges X into the pipe — see LevelSpec.cell_at_for_pose.
+func cell_sample_xz() -> Vector2:
+	var x := depth.logical_x
+	var z := depth.logical_z
+	if _airborne and _air_x_locked and (air_over == "left_pipe" or air_over == "right_pipe"):
+		x = _PipeMath.pose_x_for_cell_query(x, _air_side)
+	return Vector2(x, z)
+
+
+## Cell under feet for targeting / debug (uses LevelSpec when available).
+func cell_under_feet() -> Vector2i:
+	if _level == null or _level.spec == null:
+		return Vector2i.ZERO
+	return _level.spec.cell_at_for_pose(
+		depth.logical_x,
+		depth.logical_z,
+		_airborne and _air_x_locked,
+		air_over,
+		_air_side,
+	)
 
 
 func _normalize_facing(raw: String) -> String:
