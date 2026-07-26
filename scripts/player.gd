@@ -4,6 +4,8 @@ extends Node2D
 ## Ride-off a higher surface → free air (keep height + gravity). All sim on physics ticks.
 
 const _PipeMath := preload("res://scripts/pipe_math.gd")
+const _MotionMath := preload("res://scripts/motion_math.gd")
+const _AerialMath := preload("res://scripts/aerial_math.gd")
 
 @export var max_speed_x: float = 880.0
 
@@ -403,18 +405,15 @@ func _step_god_vertical(delta: float) -> void:
 
 
 func _underlying_surface_height() -> float:
-	# Pipe-exit X-lock: floor is the top coping. Acid drop must NOT use this
-	# (it would snap feet up to radius). Always sample the real surface instead.
-	if _air_x_locked and not _acid_drop_lock and (
-		air_over == "left_pipe" or air_over == "right_pipe"
-	):
-		return _air_radius
-	if _level == null:
-		return 0.0
-	var under: Dictionary = _level.sample(depth.logical_x, depth.logical_z)
-	if not under.get("active", true) and str(under.get("zone", "")) == "oob":
-		return 0.0
-	return float(under.get("height", 0.0))
+	# Pipe-exit X-lock may use coping radius; acid drop / free air sample real surface.
+	var sampled := 0.0
+	if _level != null:
+		var under: Dictionary = _level.sample(depth.logical_x, depth.logical_z)
+		if under.get("active", true) or str(under.get("zone", "")) != "oob":
+			sampled = float(under.get("height", 0.0))
+	return _AerialMath.landing_support_height(
+		_air_x_locked, _acid_drop_lock, air_over, _air_radius, sampled
+	)
 
 
 ## Leave a higher support surface into free air (keep height, apply gravity).
@@ -647,14 +646,12 @@ func _clear_air() -> void:
 
 ## Rising, or at apex after a rise (vert≈0 but last non-zero was up).
 func _transfer_vert_ok() -> bool:
-	if _vert_vel > 0.0:
-		return true
-	return absf(_vert_vel) <= 0.5 and _last_nonzero_vert_vel > 0.0
+	return _MotionMath.transfer_vert_ok(_vert_vel, _last_nonzero_vert_vel)
 
 
 ## Same button: transfer while rising/apex, acid drop while falling.
 func _try_air_action() -> void:
-	if _transfer_vert_ok():
+	if _AerialMath.choose_air_action(_vert_vel, _last_nonzero_vert_vel) == _AerialMath.ACTION_TRANSFER:
 		_try_transfer()
 	else:
 		_try_acid_drop()
@@ -702,41 +699,15 @@ func _try_acid_drop() -> void:
 func _find_acid_drop_pipe() -> Dictionary:
 	if _level == null:
 		return {}
-	var hx := _actual_vel_x
-	if absf(hx) < 8.0:
-		hx = _velocity.x
-	if absf(hx) < 1.0:
-		return {}
-	var facing := signf(hx)
-	# Opposite wall: velocity right → left pipe; velocity left → right pipe.
-	var want_side: int = (
-		QuarterPipe.PipeSide.LEFT if facing > 0.0 else QuarterPipe.PipeSide.RIGHT
+	var hx := _AerialMath.resolve_horiz_vel(_actual_vel_x, _velocity.x)
+	return _AerialMath.find_acid_drop_target(
+		_level.pipes,
+		depth.logical_x,
+		depth.logical_z,
+		hx,
+		acid_drop_buffer,
+		acid_drop_max_ahead
 	)
-	var best: Dictionary = {}
-	var best_ahead := INF
-	for pipe in _level.pipes:
-		if pipe.side != want_side:
-			continue
-		if depth.logical_z < pipe.z_min - 0.001 or depth.logical_z > pipe.z_max + 0.001:
-			continue
-		# Top coping only (lip ± radius). Never the lip / flat edge.
-		var top_coping: float = _coping_x_for(pipe.side, pipe.lip_x, pipe.radius)
-		var ahead: float = (top_coping - depth.logical_x) * facing
-		if ahead < -acid_drop_buffer:
-			continue
-		if ahead > acid_drop_max_ahead:
-			continue
-		if ahead < best_ahead:
-			best_ahead = ahead
-			best = {
-				"active": true,
-				"zone": _pipe_zone_name(pipe.side),
-				"side": pipe.side,
-				"lip_x": pipe.lip_x,
-				"radius": pipe.radius,
-				"top_coping": top_coping,
-			}
-	return best
 
 
 func _try_transfer() -> void:
@@ -813,29 +784,9 @@ func _find_pipe_behind(
 ) -> Dictionary:
 	if _level == null:
 		return {}
-	var best: Dictionary = {}
-	var best_dist := INF
-	for pipe in _level.pipes:
-		if pipe.side == exclude_side and absf(pipe.lip_x - exclude_lip_x) < 0.05:
-			continue
-		if depth.logical_z < pipe.z_min - 0.001 or depth.logical_z > pipe.z_max + 0.001:
-			continue
-		var coping: float = _coping_x_for(pipe.side, pipe.lip_x, pipe.radius)
-		var dist: float = (coping - from_x) * behind
-		# Allow shared coping (dist ~ 0) and nearby opposite transitions.
-		if dist < -0.05 or dist > maxf(pipe.radius * 2.0, 200.0):
-			continue
-		var score: float = absf(dist)
-		if score < best_dist:
-			best_dist = score
-			best = {
-				"active": true,
-				"zone": _pipe_zone_name(pipe.side),
-				"side": pipe.side,
-				"lip_x": pipe.lip_x,
-				"radius": pipe.radius,
-			}
-	return best
+	return _AerialMath.find_pipe_behind(
+		_level.pipes, from_x, depth.logical_z, behind, exclude_side, exclude_lip_x
+	)
 
 
 func _coping_x_for(side: int, lip_x: float, radius: float) -> float:
@@ -864,11 +815,11 @@ func _is_pipe_hit(hit: Dictionary) -> bool:
 
 
 func _coping_sign(side: int) -> float:
-	return -1.0 if side == QuarterPipe.PipeSide.LEFT else 1.0
+	return _PipeMath.coping_sign(side)
 
 
 func _pipe_zone_name(side: int) -> String:
-	return "left_pipe" if side == QuarterPipe.PipeSide.LEFT else "right_pipe"
+	return _PipeMath.zone_name(side)
 
 
 func zone_debug_label() -> String:
@@ -885,10 +836,7 @@ func zone_debug_label() -> String:
 
 
 func _normalize_facing(raw: String) -> String:
-	var f := raw.strip_edges().to_lower()
-	if f == "l" or f == "left":
-		return "l"
-	return "r"
+	return _MotionMath.normalize_facing(raw)
 
 
 func _update_facing_h(input: Vector2) -> void:
@@ -1029,10 +977,6 @@ func _integrate_axis_no_reverse(
 	brake_step: float,
 	skip_friction: bool,
 ) -> float:
-	if want == 0.0:
-		if skip_friction:
-			return current
-		return move_toward(current, 0.0, friction_step)
-	if current != 0.0 and want * current < 0.0:
-		return move_toward(current, 0.0, brake_step)
-	return move_toward(current, want, accel_step)
+	return _MotionMath.integrate_axis_no_reverse(
+		current, want, accel_step, friction_step, brake_step, skip_friction
+	)

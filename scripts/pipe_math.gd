@@ -10,6 +10,14 @@ static func coping_x(side: int, lip_x: float, radius: float) -> float:
 	return lip_x + radius
 
 
+static func coping_sign(side: int) -> float:
+	return -1.0 if side == 0 else 1.0
+
+
+static func zone_name(side: int) -> String:
+	return "left_pipe" if side == 0 else "right_pipe"
+
+
 ## True when two opposite-facing pipes share (or nearly share) a top coping X.
 static func opposite_coping_near(
 	side_a: int,

@@ -28,6 +28,12 @@ func _pipe_math_opposite() -> bool:
 	if absf(PipeMath.coping_x(QuarterPipe.PipeSide.RIGHT, 100.0, 100.0) - 200.0) > 0.01:
 		push_error("RIGHT coping_x wrong")
 		return false
+	if absf(PipeMath.coping_sign(QuarterPipe.PipeSide.LEFT) + 1.0) > 0.01:
+		push_error("LEFT coping_sign want -1")
+		return false
+	if PipeMath.zone_name(QuarterPipe.PipeSide.RIGHT) != "right_pipe":
+		push_error("zone_name RIGHT")
+		return false
 	return true
 
 

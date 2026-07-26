@@ -34,9 +34,6 @@ var pipes: Array = []  # QuarterPipe nodes
 
 var z_min: float = 0.0
 var z_max: float = 100.0
-var lip_left: float = 180.0
-var lip_right: float = 1100.0
-var pipe_radius: float = 150.0
 ## Far X converges toward the skater so adjacent pipes share lean.
 var perspective_origin_x: float = 640.0
 ## Lean band is centered on the skater so short and deep parks match on-screen.
@@ -87,12 +84,6 @@ func apply_spec(s: LevelSpec) -> void:
 			p.queue_free()
 	pipes.clear()
 
-	# Remove legacy LeftPipe/RightPipe if present
-	for child_name in ["LeftPipe", "RightPipe"]:
-		var legacy := get_node_or_null(child_name)
-		if legacy:
-			legacy.queue_free()
-
 	for pd in s.pipes:
 		var n := QuarterPipe.new()
 		n.side = pd.side
@@ -102,20 +93,6 @@ func apply_spec(s: LevelSpec) -> void:
 		n.z_max = pd.z_max
 		add_child(n)
 		pipes.append(n)
-
-	# Convenience: first left / first right for debug / simple visuals
-	lip_left = s.x_min
-	lip_right = s.x_max
-	pipe_radius = 150.0
-	for pd in s.pipes:
-		if pd.side == QuarterPipe.PipeSide.LEFT:
-			lip_left = pd.lip_x
-			pipe_radius = pd.radius
-			break
-	for pd in s.pipes:
-		if pd.side == QuarterPipe.PipeSide.RIGHT:
-			lip_right = pd.lip_x
-			break
 
 	if spec:
 		perspective_origin_x = spec.spawn_x
@@ -179,13 +156,13 @@ func ground_screen_y(logical_z: float) -> float:
 func x_min() -> float:
 	if spec:
 		return spec.x_min
-	return lip_left - pipe_radius
+	return 0.0
 
 
 func x_max() -> float:
 	if spec:
 		return spec.x_max
-	return lip_right + pipe_radius
+	return 1280.0
 
 
 ## Prefer a specific pipe first (side + lip). Stops spine neighbors that share a
@@ -215,40 +192,12 @@ func sample(
 	if spec:
 		for deck in spec.decks:
 			if LevelSpec.point_in_poly(p, deck.poly):
-				return {
-					"active": true,
-					"zone": "deck",
-					"height": float(deck.height),
-					"angle": 0.0,
-					"theta": 0.0,
-					"normal_x": 0.0,
-					"normal_y": 1.0,
-					"t_along_pipe": 0.0,
-					"deck": deck,
-				}
+				return _deck_hit(deck)
 		for floor in spec.floors:
 			if LevelSpec.point_in_poly(p, floor.poly):
-				return {
-					"active": true,
-					"zone": "flat",
-					"height": 0.0,
-					"angle": 0.0,
-					"theta": 0.0,
-					"normal_x": 0.0,
-					"normal_y": 1.0,
-					"t_along_pipe": 0.0,
-				}
+				return _flat_hit(true)
 
-	return {
-		"active": false,
-		"zone": "oob",
-		"height": 0.0,
-		"angle": 0.0,
-		"theta": 0.0,
-		"normal_x": 0.0,
-		"normal_y": 1.0,
-		"t_along_pipe": 0.0,
-	}
+	return _flat_hit(false, "oob")
 
 
 ## Transfer probe: decks first, then other pipes, then flat. Excludes the source pipe.
@@ -262,17 +211,7 @@ func sample_transfer(
 	if spec:
 		for deck in spec.decks:
 			if LevelSpec.point_in_poly(p, deck.poly):
-				return {
-					"active": true,
-					"zone": "deck",
-					"height": float(deck.height),
-					"angle": 0.0,
-					"theta": 0.0,
-					"normal_x": 0.0,
-					"normal_y": 1.0,
-					"t_along_pipe": 0.0,
-					"deck": deck,
-				}
+				return _deck_hit(deck)
 
 	for pipe in pipes:
 		if pipe.side == exclude_side and absf(pipe.lip_x - exclude_lip_x) < 0.05:
@@ -285,21 +224,30 @@ func sample_transfer(
 	if spec:
 		for floor in spec.floors:
 			if LevelSpec.point_in_poly(p, floor.poly):
-				return {
-					"active": true,
-					"zone": "flat",
-					"height": 0.0,
-					"angle": 0.0,
-					"theta": 0.0,
-					"normal_x": 0.0,
-					"normal_y": 1.0,
-					"t_along_pipe": 0.0,
-				}
+				return _flat_hit(true)
 
 	# Empty / oob still lands as flat at the probe point.
+	return _flat_hit(true)
+
+
+func _deck_hit(deck: Dictionary) -> Dictionary:
 	return {
 		"active": true,
-		"zone": "flat",
+		"zone": "deck",
+		"height": float(deck.height),
+		"angle": 0.0,
+		"theta": 0.0,
+		"normal_x": 0.0,
+		"normal_y": 1.0,
+		"t_along_pipe": 0.0,
+		"deck": deck,
+	}
+
+
+func _flat_hit(active: bool, zone: String = "flat") -> Dictionary:
+	return {
+		"active": active,
+		"zone": zone,
 		"height": 0.0,
 		"angle": 0.0,
 		"theta": 0.0,
@@ -352,12 +300,3 @@ func pipe_screen_point_for(pipe: QuarterPipe, logical_z: float, u: float) -> Vec
 		logical_x = pipe.lip_x + x_off
 	var p := project(logical_x, logical_z, height)
 	return Vector2(p.screen_x, p.ground_y - p.surface_screen_h)
-
-
-## Back-compat for single-bay helpers.
-func pipe_screen_point(is_left: bool, logical_z: float, u: float) -> Vector2:
-	for pipe in pipes:
-		var pipe_is_left: bool = pipe.side == QuarterPipe.PipeSide.LEFT
-		if pipe_is_left == is_left:
-			return pipe_screen_point_for(pipe, logical_z, u)
-	return Vector2.ZERO

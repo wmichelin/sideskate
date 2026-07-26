@@ -38,7 +38,7 @@ Player-facing zone labels include `flat`, `left_pipe`, `right_pipe`, `deck`, and
 
 - Stick integrates into intent velocity `_velocity` (X and Z).
 - **Horizontal X**: opposite stick **brakes hard** toward zero via **`brake`** (default 1250) — no reverse until `|vx|` reaches 0. Coasting uses **friction** only (default 0).
-- **Depth Z**: immediate — stick maps straight to `±max_speed_z` (default 60; debug slider).
+- **Depth Z**: immediate — stick maps straight to `±max_speed_z` (default 335; debug slider).
 - **Acceleration** (default 3250) / **brake** / **max speed x** (default 880) / **max speed z**: tunable via debug sliders.
 - **Horizontal facing** `facing_h` (`l` / `r`): follows motion while moving; stick only when nearly stopped. Spawn from level header `spawn_facing` (default `r`). Head debug shows `hd l` / `hd r`.
 - **Ollie** (hold Space): mild forward accel (`ollie_accel`, default 650) toward `max_speed_x` in facing direction. Skipped while stick is braking opposite. Tunable via debug slider.
@@ -120,6 +120,10 @@ Debug tools are gated by autoload `DebugTools`: available when `OS.is_debug_buil
 | [`scripts/ramp_level.gd`](../scripts/ramp_level.gd) | Load `.ssk`, sample surfaces, project to screen |
 | [`scripts/ramp_visual.gd`](../scripts/ramp_visual.gd) | Surface draw + cell highlight |
 | [`scripts/level_loader.gd`](../scripts/level_loader.gd) / [`level_spec.gd`](../scripts/level_spec.gd) | Parse IDL → floors, decks, pipes, grid metrics |
+| [`scripts/perspective_math.gd`](../scripts/perspective_math.gd) | Pure pseudo-depth projection helpers |
+| [`scripts/pipe_math.gd`](../scripts/pipe_math.gd) | Pure coping / opposite-pipe helpers |
+| [`scripts/motion_math.gd`](../scripts/motion_math.gd) | Pure brake-no-reverse + facing / transfer-vert helpers |
+| [`scripts/aerial_math.gd`](../scripts/aerial_math.gd) | Pure transfer / acid-drop routing + target selection |
 | [`scripts/pseudo_depth_body.gd`](../scripts/pseudo_depth_body.gd) | Logical pose → screen body/shadow |
 | [`scripts/quarter_pipe.gd`](../scripts/quarter_pipe.gd) | Pipe sample (θ, height, zone) |
 | [`scripts/debug_tools.gd`](../scripts/debug_tools.gd) | Production gate + god mode state |
@@ -135,3 +139,5 @@ Debug tools are gated by autoload `DebugTools`: available when `OS.is_debug_buil
 5. Transfer at rising apex; acid drop must not steal that case.  
 6. Acid drop: opposite-facing pipe, top coping, logical-unit buffer/max-ahead.  
 7. Free air / acid drop land on **sampled** height — never snap up to coping radius as a fake floor.
+
+Covered by headless tests in `tests/test_aerial_math.gd` / `tests/test_motion_math.gd` (routing, acid selection, landing floor).

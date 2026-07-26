@@ -7,7 +7,10 @@ func run() -> bool:
 	ok = _smoke_fixture("res://levels/test_halfpipe.ssk") and ok
 	ok = _smoke_fixture("res://levels/test_twin_bay.ssk") and ok
 	ok = _smoke_fixture("res://levels/test_stagger_spine.ssk") and ok
+	ok = _smoke_fixture("res://levels/test_ledge_drop.ssk") and ok
+	ok = _smoke_fixture("res://levels/test_asymm_pipes.ssk") and ok
 	ok = _halfpipe_geometry() and ok
+	ok = _ledge_spawn_facing() and ok
 	ok = _uneven_rows_fail() and ok
 	ok = _stagger_deck_height() and ok
 	return ok
@@ -79,6 +82,21 @@ func _halfpipe_geometry() -> bool:
 	var want_r := 4.0 * cx
 	if not is_equal_approx(left_r, want_r) or not is_equal_approx(right_r, want_r):
 		push_error("halfpipe pipe radii want %s got L=%s R=%s" % [want_r, left_r, right_r])
+		return false
+	return true
+
+
+func _ledge_spawn_facing() -> bool:
+	var text := _read("res://levels/test_ledge_drop.ssk")
+	var spec := LevelLoader.parse_text(text, "test_ledge_drop")
+	if spec == null:
+		push_error("ledge parse failed: %s" % LevelLoader.last_error)
+		return false
+	if spec.spawn_facing != "l":
+		push_error("ledge spawn_facing want l got %s" % spec.spawn_facing)
+		return false
+	if spec.decks.is_empty():
+		push_error("ledge should have deck ledge")
 		return false
 	return true
 

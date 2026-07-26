@@ -1,0 +1,38 @@
+class_name MotionMath
+extends RefCounted
+## Pure motion / air-routing helpers (no scene state).
+
+
+static func normalize_facing(raw: String) -> String:
+	var f := raw.strip_edges().to_lower()
+	if f == "l" or f == "left":
+		return "l"
+	return "r"
+
+
+## Rising, or at apex after a rise (vert≈0 but last non-zero was up).
+static func transfer_vert_ok(
+	vert_vel: float, last_nonzero_vert_vel: float, rest_eps: float = 0.5
+) -> bool:
+	if vert_vel > 0.0:
+		return true
+	return absf(vert_vel) <= rest_eps and last_nonzero_vert_vel > 0.0
+
+
+## Move `current` toward `want`. Opposite stick uses `brake_step` (no reverse until
+## stopped). Coast uses `friction_step`. Acceleration never decelerates.
+static func integrate_axis_no_reverse(
+	current: float,
+	want: float,
+	accel_step: float,
+	friction_step: float,
+	brake_step: float,
+	skip_friction: bool,
+) -> float:
+	if want == 0.0:
+		if skip_friction:
+			return current
+		return move_toward(current, 0.0, friction_step)
+	if current != 0.0 and want * current < 0.0:
+		return move_toward(current, 0.0, brake_step)
+	return move_toward(current, want, accel_step)
