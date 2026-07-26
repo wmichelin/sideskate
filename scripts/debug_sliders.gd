@@ -30,6 +30,8 @@ extends CanvasLayer
 @export var far_geom_max: float = 1.0
 @export var ref_depth_min: float = 20.0
 @export var ref_depth_max: float = 500.0
+@export var draw_band_pad_min: float = 0.0
+@export var draw_band_pad_max: float = 2.0
 @export var cell_x_min: float = 10.0
 @export var cell_x_max: float = 120.0
 @export var cell_z_min: float = 10.0
@@ -62,6 +64,8 @@ extends CanvasLayer
 @onready var _far_geom_value: Label = $Panel/VBox/Body/FarGeomScaleRow/Value
 @onready var _ref_depth_slider: HSlider = $Panel/VBox/Body/RefDepthRow/Slider
 @onready var _ref_depth_value: Label = $Panel/VBox/Body/RefDepthRow/Value
+@onready var _draw_band_pad_slider: HSlider = $Panel/VBox/Body/DrawBandPadRow/Slider
+@onready var _draw_band_pad_value: Label = $Panel/VBox/Body/DrawBandPadRow/Value
 @onready var _cell_x_slider: HSlider = $Panel/VBox/Body/CellXRow/Slider
 @onready var _cell_x_value: Label = $Panel/VBox/Body/CellXRow/Value
 @onready var _cell_z_slider: HSlider = $Panel/VBox/Body/CellZRow/Slider
@@ -100,9 +104,20 @@ func _ready() -> void:
 	_bind_float_slider(_ramp_friction_slider, ramp_friction_min, ramp_friction_max, 10.0, _player, "ramp_friction", 0.0, _on_ramp_friction_changed, _refresh_ramp_friction_label)
 	_bind_float_slider(_friction_slider, friction_min, friction_max, 10.0, _player, "friction", 0.0, _on_friction_changed, _refresh_friction_label)
 
-	_bind_float_slider(_persp_inset_slider, persp_inset_min, persp_inset_max, 1.0, _level, "perspective_inset", 160.0, _on_persp_inset_changed, _refresh_persp_inset_label)
+	_bind_float_slider(_persp_inset_slider, persp_inset_min, persp_inset_max, 1.0, _level, "perspective_inset", 70.0, _on_persp_inset_changed, _refresh_persp_inset_label)
 	_bind_float_slider(_far_geom_slider, far_geom_min, far_geom_max, 0.01, _level, "far_geometry_scale", 1.0, _on_far_geom_changed, _refresh_far_geom_label)
 	_bind_float_slider(_ref_depth_slider, ref_depth_min, ref_depth_max, 5.0, _level, "reference_depth", 485.0, _on_ref_depth_changed, _refresh_ref_depth_label)
+	_bind_float_slider(
+		_draw_band_pad_slider,
+		draw_band_pad_min,
+		draw_band_pad_max,
+		0.05,
+		_visual,
+		"draw_band_pad",
+		1.15,
+		_on_draw_band_pad_changed,
+		_refresh_draw_band_pad_label
+	)
 	_bind_float_slider(_cell_x_slider, cell_x_min, cell_x_max, 1.0, _level, "cell_size_x", 47.0, _on_cell_x_changed, _refresh_cell_x_label)
 	_bind_float_slider(_cell_z_slider, cell_z_min, cell_z_max, 1.0, _level, "cell_size_z", 26.0, _on_cell_z_changed, _refresh_cell_z_label)
 
@@ -131,7 +146,7 @@ func _ready() -> void:
 		_max_speed_z_slider, _accel_slider, _brake_slider,
 		_ramp_friction_slider, _friction_slider,
 		_persp_inset_slider, _far_geom_slider, _ref_depth_slider,
-		_cell_x_slider, _cell_z_slider,
+		_draw_band_pad_slider, _cell_x_slider, _cell_z_slider,
 	]:
 		if row != null:
 			row.focus_mode = Control.FOCUS_NONE
@@ -312,6 +327,17 @@ func _on_ref_depth_changed(v: float) -> void:
 
 func _refresh_ref_depth_label(v: float) -> void:
 	_ref_depth_value.text = "%.0f" % v
+
+
+func _on_draw_band_pad_changed(v: float) -> void:
+	if _visual != null:
+		_visual.set("draw_band_pad", v)
+	_refresh_draw_band_pad_label(v)
+	_refresh_level_visual()
+
+
+func _refresh_draw_band_pad_label(v: float) -> void:
+	_draw_band_pad_value.text = "%.2f" % v
 
 
 func _on_cell_x_changed(v: float) -> void:

@@ -1,13 +1,14 @@
 extends Node2D
 ## Surface-only level draw: floors, pipe ribbons, elevated deck tops.
-## Drawn in a skater-centered Z window (lean band + pad); deep parks match shorts.
+## Skater-centered Z window (lean + pad). Unclamped lean → one near/far ribbon is exact.
 
 @export var grid_steps: int = 5
 ## How many iso-u depth strokes to split the pipe face into (not cross-section arcs).
-@export var arc_ribs: int = 5
+@export var arc_ribs: int = 4
 ## Extra Z past the lean band on near and far sides, as a fraction of reference_depth.
-## 0 = tight lean window; ~0.55 lets pipes continue into parallel perspective lines.
-@export_range(0.0, 2.0, 0.05) var draw_band_pad: float = 0.55
+@export_range(0.0, 2.0, 0.05) var draw_band_pad: float = 1.15
+## Arc samples along the quarter-pipe profile (fill + ribs share this).
+@export_range(4, 16, 1) var arc_steps: int = 8
 ## Faint white depth bands across the plaza. Off by default (debug clutter).
 @export var show_depth_grid: bool = false
 ## Highlight the .ssk ASCII cell under the player (logical unit 1:1). Debug only.
@@ -52,19 +53,12 @@ func _draw() -> void:
 	_draw_player_cell_highlight()
 
 
-## Skater-centered draw window: lean band (±ref/2) plus pad into near/far parallels.
+## Skater-centered draw window: lean band (±ref/2) plus near/far pad.
 func _view_z_band() -> Vector2:
 	var ref := maxf(_level.reference_depth, 0.0001)
 	var half := ref * (0.5 + maxf(draw_band_pad, 0.0))
 	var oz := _level.perspective_origin_z
 	return Vector2(maxf(oz - half, _level.z_min), minf(oz + half, _level.z_max))
-
-
-func _z_slice_count(z0: float, z1: float) -> int:
-	var ref := maxf(_level.reference_depth, 1.0)
-	var span := absf(z1 - z0)
-	# Keep segments short so chords stay accurate once t clamps outside the lean band.
-	return clampi(int(ceil(span / maxf(ref * 0.12, 16.0))), 4, 28)
 
 
 func _pipes_far_to_near() -> Array:
@@ -112,39 +106,23 @@ func _draw_backdrop_pad(band: Vector2) -> void:
 	)
 
 
-func _densify_poly_z(poly: PackedVector2Array) -> PackedVector2Array:
-	## Insert midpoints on long Z edges so outlines follow clamped lean.
-	var out := PackedVector2Array()
-	var n := poly.size()
-	if n < 2:
-		return out
-	var ref := maxf(_level.reference_depth, 1.0)
-	var band := maxf(ref * 0.12, 16.0)
-	for i in range(n):
-		var a: Vector2 = poly[i]
-		var b: Vector2 = poly[(i + 1) % n]
-		out.append(a)
-		var dz := absf(b.y - a.y)
-		var steps := clampi(int(ceil(dz / band)), 0, 24)
-		for s in range(1, steps):
-			var t := float(s) / float(steps)
-			out.append(a.lerp(b, t))
-	return out
-
-
 func _project_poly(poly: PackedVector2Array, height: float) -> PackedVector2Array:
 	var out := PackedVector2Array()
-	for v in _densify_poly_z(poly):
+	out.resize(poly.size())
+	for i in range(poly.size()):
+		var v: Vector2 = poly[i]
 		var p: Dictionary = _level.project(v.x, v.y, height)
-		out.append(Vector2(p.screen_x, p.ground_y - p.surface_screen_h))
+		out[i] = Vector2(p.screen_x, p.ground_y - p.surface_screen_h)
 	return out
 
 
 func _project_deck_poly(deck: Dictionary, poly: PackedVector2Array) -> PackedVector2Array:
 	var out := PackedVector2Array()
-	for v in _densify_poly_z(poly):
+	out.resize(poly.size())
+	for i in range(poly.size()):
+		var v: Vector2 = poly[i]
 		var p: Dictionary = _level.project_deck_point(deck, v.x, v.y)
-		out.append(Vector2(p.screen_x, p.ground_y - p.surface_screen_h))
+		out[i] = Vector2(p.screen_x, p.ground_y - p.surface_screen_h)
 	return out
 
 
@@ -216,8 +194,6 @@ func _draw_player_cell_highlight() -> void:
 		_surf_point(float(b.x1), float(b.z1), h),
 		_surf_point(float(b.x0), float(b.z1), h),
 	])
-	if Geometry2D.triangulate_polygon(corners).is_empty():
-		return
 	draw_colored_polygon(corners, cell_highlight_fill)
 	for i in range(corners.size()):
 		draw_line(
@@ -234,67 +210,56 @@ func _surf_point(logical_x: float, logical_z: float, height: float) -> Vector2:
 	return Vector2(p.screen_x, p.ground_y - p.surface_screen_h)
 
 
-## Ribbon clipped to the padded view band; sliced along Z past the lean knees.
+## One near→far ribbon (lean is linear/unclamped, so chords are exact — no Z slices).
 func _draw_pipe(pipe: QuarterPipe, band: Vector2) -> void:
 	var z0 := maxf(pipe.z_min, band.x)
 	var z1 := minf(pipe.z_max, band.y)
 	if z1 <= z0 + 0.001:
 		return
 
-	var arc_steps := 10
-	var z_steps := _z_slice_count(z0, z1)
-	var slices: Array = []
-	for r in range(z_steps + 1):
-		var zt := float(r) / float(z_steps)
-		slices.append(_arc_points(pipe, lerpf(z0, z1, zt), arc_steps))
-
+	var steps := maxi(arc_steps, 4)
+	var near_arc := _arc_points(pipe, z0, steps)
+	var far_arc := _arc_points(pipe, z1, steps)
 	var is_left := pipe.side == QuarterPipe.PipeSide.LEFT
 	var fill_col := Color(0.42, 0.38, 0.48, 0.92) if is_left else Color(0.38, 0.44, 0.52, 0.92)
 
-	for r in range(z_steps):
-		var near_arc: PackedVector2Array = slices[r]
-		var far_arc: PackedVector2Array = slices[r + 1]
-		for i in range(arc_steps):
-			var quad := PackedVector2Array([
+	for i in range(steps):
+		draw_colored_polygon(
+			PackedVector2Array([
 				near_arc[i],
 				near_arc[i + 1],
 				far_arc[i + 1],
 				far_arc[i],
-			])
-			if Geometry2D.triangulate_polygon(quad).is_empty():
-				continue
-			draw_colored_polygon(quad, fill_col)
+			]),
+			fill_col
+		)
 
 	var ribs := maxi(arc_ribs, 1)
 	for r in range(1, ribs):
 		var u := float(r) / float(ribs)
-		_draw_pipe_u_stroke(pipe, z0, z1, u, Color(1, 1, 1, 0.14), 1.25, z_steps)
+		var a: Vector2 = _level.pipe_screen_point_for(pipe, z0, u)
+		var b: Vector2 = _level.pipe_screen_point_for(pipe, z1, u)
+		draw_line(a, b, Color(1, 1, 1, 0.14), 1.25)
 
-	_draw_pipe_top_stroke(pipe, z0, z1, z_steps)
-	_draw_pipe_u_stroke(pipe, z0, z1, 0.0, Color(0.95, 0.85, 0.35, 0.85), 2.5, z_steps)
-
-
-func _draw_pipe_u_stroke(
-	pipe: QuarterPipe, z0: float, z1: float, u: float, col: Color, width: float, z_steps: int
-) -> void:
-	var prev: Vector2
-	for r in range(z_steps + 1):
-		var zt := float(r) / float(z_steps)
-		var pt: Vector2 = _level.pipe_screen_point_for(pipe, lerpf(z0, z1, zt), u)
-		if r > 0:
-			draw_line(prev, pt, col, width)
-		prev = pt
+	_draw_pipe_top_stroke(pipe, z0, z1)
+	draw_line(
+		_level.pipe_screen_point_for(pipe, z0, 0.0),
+		_level.pipe_screen_point_for(pipe, z1, 0.0),
+		Color(0.95, 0.85, 0.35, 0.85),
+		2.5
+	)
 
 
-func _draw_pipe_top_stroke(pipe: QuarterPipe, z0: float, z1: float, z_steps: int) -> void:
+func _draw_pipe_top_stroke(pipe: QuarterPipe, z0: float, z1: float) -> void:
 	var covered := _deck_z_ranges_covering_pipe(pipe)
 	var segments := _z_segments_minus_covered(z0, z1, covered)
-	var span := maxf(z1 - z0, 0.001)
 	for seg in segments:
-		var s0: float = float(seg.x)
-		var s1: float = float(seg.y)
-		var local_steps := maxi(1, int(round(float(z_steps) * (s1 - s0) / span)))
-		_draw_pipe_u_stroke(pipe, s0, s1, 1.0, Color(0.95, 0.55, 0.35, 0.9), 3.0, local_steps)
+		draw_line(
+			_level.pipe_screen_point_for(pipe, float(seg.x), 1.0),
+			_level.pipe_screen_point_for(pipe, float(seg.y), 1.0),
+			Color(0.95, 0.55, 0.35, 0.9),
+			3.0
+		)
 
 
 func _deck_z_ranges_covering_pipe(pipe: QuarterPipe) -> Array:
@@ -344,16 +309,16 @@ func _z_segments_minus_covered(z_min: float, z_max: float, covered: Array) -> Ar
 
 func _arc_points(pipe: QuarterPipe, logical_z: float, steps: int) -> PackedVector2Array:
 	var pts := PackedVector2Array()
+	pts.resize(steps + 1)
 	for i in range(steps + 1):
-		var u := float(i) / float(steps)
-		pts.append(_level.pipe_screen_point_for(pipe, logical_z, u))
+		pts[i] = _level.pipe_screen_point_for(pipe, logical_z, float(i) / float(steps))
 	return pts
 
 
 ## Sutherland–Hodgman clip of XZ polygon to z ∈ [z0, z1].
 func _clip_poly_z_band(poly: PackedVector2Array, z0: float, z1: float) -> PackedVector2Array:
-	var kept := _clip_poly_halfplane(poly, true, z0)  # keep z >= z0
-	return _clip_poly_halfplane(kept, false, z1)  # keep z <= z1
+	var kept := _clip_poly_halfplane(poly, true, z0)
+	return _clip_poly_halfplane(kept, false, z1)
 
 
 func _clip_poly_halfplane(poly: PackedVector2Array, keep_above: bool, z_edge: float) -> PackedVector2Array:

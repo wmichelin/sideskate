@@ -22,7 +22,7 @@ extends Node2D
 @export var reference_width: float = 1280.0
 ## X convergence toward the skater. 0 = side-on truck (parallel edges, camera
 ## slides in Z). Higher values tilt into a looking-down vanishing point.
-@export var perspective_inset: float = 160.0
+@export var perspective_inset: float = 70.0
 @export var far_geometry_scale: float = 1.0
 
 signal rebuilt
@@ -125,10 +125,11 @@ func apply_spec(s: LevelSpec) -> void:
 
 
 ## Keep lean under the skater so the visible band matches across level depths.
+## Threshold avoids redrawing the whole park every physics tick while skating.
 func set_perspective_origin(logical_x: float, logical_z: float) -> void:
 	if (
-		absf(logical_x - perspective_origin_x) < 0.05
-		and absf(logical_z - perspective_origin_z) < 0.05
+		absf(logical_x - perspective_origin_x) < 2.0
+		and absf(logical_z - perspective_origin_z) < 4.0
 	):
 		return
 	perspective_origin_x = logical_x
@@ -146,20 +147,20 @@ func depth_t(logical_z: float) -> float:
 	return clampf((logical_z - z_min) / span, 0.0, 1.0)
 
 
-## 0→1 over `reference_depth`, centered on the skater (half behind, half ahead).
-## Level length no longer changes lean at your feet.
+## Lean rate: 0 at skater−ref/2, 1 at skater+ref/2. Unclamped so lip lines keep
+## one continuous slope instead of bending into a parallel corridor.
 func perspective_t(logical_z: float) -> float:
 	var ref := maxf(reference_depth, 0.0001)
 	var z0 := perspective_origin_z - ref * 0.5
-	return clampf((logical_z - z0) / ref, 0.0, 1.0)
+	return (logical_z - z0) / ref
 
 
 func geometry_scale_at(logical_z: float) -> float:
-	return lerpf(1.0, far_geometry_scale, perspective_t(logical_z))
+	return lerpf(1.0, far_geometry_scale, clampf(perspective_t(logical_z), 0.0, 1.0))
 
 
 func inset_at(logical_z: float) -> float:
-	return lerpf(0.0, perspective_inset, perspective_t(logical_z))
+	return lerpf(0.0, perspective_inset, clampf(perspective_t(logical_z), 0.0, 1.0))
 
 
 ## Pixels of screen-Y per logical Z unit (near edge → farther = smaller Y).
@@ -313,7 +314,8 @@ func project(logical_x: float, logical_z: float, surface_height: float = 0.0) ->
 
 	var ref_w := maxf(reference_width, 0.0001)
 	var far_x_scale := clampf(1.0 - (2.0 * perspective_inset) / ref_w, 0.15, 1.0)
-	var x_scale := lerpf(1.0, far_x_scale, t)
+	# Unclamped t keeps one slope; soft-limit scale so extreme pads don't invert X.
+	var x_scale := clampf(lerpf(1.0, far_x_scale, t), 0.08, 2.5)
 	var screen_x := perspective_origin_x + (logical_x - perspective_origin_x) * x_scale
 
 	return {
