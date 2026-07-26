@@ -97,12 +97,15 @@ Debug **cell highlight** (default on) draws the cell under the player in yellow 
 
 ## Debug overlays
 
+Debug tools are gated by autoload `DebugTools`: available when `OS.is_debug_build()` **or** export feature `debug_tools`. Release exports strip HUD/arrows/cell highlight (group `debug_tools`) and ignore god mode.
+
 | Piece | Role |
 |-------|------|
 | Head **green** arrow | Measured actual velocity (dX, dZ, d(height)/dt) |
 | Head **orange** arrow | Stick **intent** `_velocity` (still shown when remapped, e.g. height-hold) |
 | Top-left overlay | Depth/zone/surface + cell `col`/`row` |
-| Top-right sliders | Gravity, acid buffer, cell-highlight toggle |
+| Top-right sliders | Gravity, acid buffer, cell-highlight toggle, **god mode** |
+| **God mode** (default off; `G` or checkbox) | No gravity; **k** rise / **j** lower (`god_vert_speed`) |
 
 ## Key scripts
 
@@ -114,6 +117,7 @@ Debug **cell highlight** (default on) draws the cell under the player in yellow 
 | [`scripts/level_loader.gd`](../scripts/level_loader.gd) / [`level_spec.gd`](../scripts/level_spec.gd) | Parse IDL → floors, decks, pipes, grid metrics |
 | [`scripts/pseudo_depth_body.gd`](../scripts/pseudo_depth_body.gd) | Logical pose → screen body/shadow |
 | [`scripts/quarter_pipe.gd`](../scripts/quarter_pipe.gd) | Pipe sample (θ, height, zone) |
+| [`scripts/debug_tools.gd`](../scripts/debug_tools.gd) | Production gate + god mode state |
 | [`scripts/velocity_debug_arrow.gd`](../scripts/velocity_debug_arrow.gd) | Head arrows (`actual` / `intent`) |
 | [`scripts/debug_overlay.gd`](../scripts/debug_overlay.gd) / [`debug_sliders.gd`](../scripts/debug_sliders.gd) | HUD debug |
 

@@ -123,7 +123,7 @@ anchor_right = 1.0
 offset_left = -320.0
 offset_top = 16.0
 offset_right = -16.0
-offset_bottom = 210.0
+offset_bottom = 250.0
 grow_horizontal = 0
 theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
 
@@ -197,3 +197,12 @@ theme_override_constants/separation = 8
 layout_mode = 2
 button_pressed = true
 text = "cell highlight"
+
+[node name="GodModeRow" type="HBoxContainer" parent="DebugSliders/Panel/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Check" type="CheckButton" parent="DebugSliders/Panel/VBox/GodModeRow"]
+layout_mode = 2
+button_pressed = false
+text = "god mode (G, j/k)"

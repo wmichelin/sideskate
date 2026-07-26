@@ -29,6 +29,8 @@ extends Node2D
 @export var acid_drop_max_ahead: float = 120.0
 ## Physics-time duration for acid-drop horizontal settle to coping.
 @export var acid_drop_x_duration: float = 0.15
+## God-mode vertical speed (logical units/s) for j/k. Debug only.
+@export var god_vert_speed: float = 320.0
 
 @onready var depth: PseudoDepthBody = $PseudoDepthBody
 @onready var _head_debug_label: Label = $Body/HeadDebug/Label
@@ -77,6 +79,12 @@ var _prev_feet_h: float = 0.0
 
 func _ready() -> void:
 	_level = get_node_or_null(level_path) as RampLevel
+	var head_dbg := get_node_or_null("Body/HeadDebug")
+	if head_dbg:
+		head_dbg.add_to_group("debug_tools")
+		if not DebugTools.is_available():
+			head_dbg.queue_free()
+			_head_debug_label = null
 	call_deferred("_spawn_from_level")
 
 
@@ -106,6 +114,11 @@ func _physics_process(delta: float) -> void:
 	if _level == null:
 		_level = get_node_or_null(level_path) as RampLevel
 
+	if DebugTools.is_available() and Input.is_action_just_pressed("god_mode_toggle"):
+		DebugTools.toggle_god_mode()
+		if DebugTools.god_mode:
+			air_vel_y = 0.0
+
 	if Input.is_action_just_pressed("transfer"):
 		_try_air_action()
 
@@ -114,6 +127,7 @@ func _physics_process(delta: float) -> void:
 
 	var speed_mul := depth.depth_speed_multiplier() if depth_speed_feel else 1.0
 	_apply_motion(delta, speed_mul)
+	_step_god_vertical(delta)
 
 	if _level:
 		depth.logical_x = clampf(depth.logical_x, _level.x_min(), _level.x_max())
@@ -163,13 +177,17 @@ func _apply_motion(delta: float, speed_mul: float) -> void:
 
 			if _acid_drop_lock:
 				# Inverse of coping height-hold: X locked only. Height = gravity alone.
-				air_vel_y += gravity_ms2 * logic_per_meter * delta
-				air_abs_height += air_vel_y * delta
+				_integrate_air_gravity(delta)
 				var floor_h := _underlying_surface_height()
 				# Only land when falling onto the surface — never snap height upward.
 				if air_vel_y <= 0.0 and air_abs_height <= floor_h + 0.05:
 					air_abs_height = floor_h
 					_clear_air()
+				return
+
+			# God mode over a coping lock: keep X pin, free height via j/k (no stick climb).
+			if DebugTools.god_mode:
+				air_vel_y = 0.0
 				return
 
 			var toward: float = _velocity.x * speed_mul * _coping_sign(_air_side)
@@ -191,8 +209,7 @@ func _apply_motion(delta: float, speed_mul: float) -> void:
 			depth.logical_x += _velocity.x * speed_mul * delta
 		depth.logical_z = depth.clamp_z(depth.logical_z + _velocity.y * speed_mul * delta)
 		if _air_over_uses_gravity():
-			air_vel_y += gravity_ms2 * logic_per_meter * delta
-			air_abs_height += air_vel_y * delta
+			_integrate_air_gravity(delta)
 		var floor_h := _underlying_surface_height()
 		if air_abs_height <= floor_h + 0.05:
 			air_abs_height = floor_h
@@ -262,7 +279,47 @@ func _update_air_over_underfoot() -> void:
 
 func _air_over_uses_gravity() -> bool:
 	# Coping height-hold ignores gravity; acid-drop lock and free air do not.
+	# God mode also ignores gravity (vertical via j/k).
+	if DebugTools.god_mode:
+		return false
 	return not _air_x_locked or _acid_drop_lock
+
+
+func _integrate_air_gravity(delta: float) -> void:
+	if DebugTools.god_mode:
+		air_vel_y = 0.0
+		return
+	air_vel_y += gravity_ms2 * logic_per_meter * delta
+	air_abs_height += air_vel_y * delta
+
+
+## Debug god mode: j/k change height; take off from ground with k.
+func _step_god_vertical(delta: float) -> void:
+	if not DebugTools.is_available() or not DebugTools.god_mode:
+		return
+	var v := Input.get_axis("god_down", "god_up")
+	if is_zero_approx(v):
+		return
+	if not _airborne:
+		if v <= 0.0:
+			return
+		var under: Dictionary = _level.sample(depth.logical_x, depth.logical_z) if _level else {}
+		var zone := str(under.get("zone", "flat"))
+		if zone == "oob":
+			zone = "flat"
+		var target := {"zone": zone, "lock_x": false, "anchor_x": depth.logical_x}
+		if _is_pipe_hit(under):
+			target["side"] = int(under.get("side", QuarterPipe.PipeSide.RIGHT))
+			target["lip_x"] = float(under.get("lip_x", depth.logical_x))
+			target["radius"] = _pipe_radius_for_hit(under)
+		_begin_air_over(target, depth.surface_height, false)
+		air_vel_y = 0.0
+	air_abs_height += v * god_vert_speed * delta
+	air_vel_y = 0.0
+	var floor_h := _underlying_surface_height()
+	if air_abs_height <= floor_h + 0.05:
+		air_abs_height = floor_h
+		_clear_air()
 
 
 func _underlying_surface_height() -> float:

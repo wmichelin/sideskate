@@ -12,3 +12,11 @@ All gameplay simulation must run on the **fixed physics timestep** (`_physics_pr
 Applies to: movement, air, gravity, transfer lerps, surface sampling that drives state, zone transitions, and any other game logic that advances world state.
 
 Debug / UI readouts may use `_process` to **display** state. They must not step simulation.
+
+## Debug tools (production)
+
+Autoload `DebugTools` (`scripts/debug_tools.gd`):
+
+- **Available** only if `OS.is_debug_build()` or custom export feature `debug_tools`.
+- When unavailable: nodes in group `debug_tools` are freed; god mode and debug HUD do not run.
+- Release exports should omit `debug_tools` so all debug affordances stay off.

@@ -16,6 +16,10 @@ var _speed_label: Label
 
 
 func _ready() -> void:
+	add_to_group("debug_tools")
+	if not DebugTools.is_available():
+		queue_free()
+		return
 	z_index = 25
 	_player = get_node_or_null(player_path) as Node2D
 	_speed_label = Label.new()

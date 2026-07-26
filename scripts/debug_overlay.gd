@@ -9,6 +9,10 @@ var _player: Node2D
 
 
 func _ready() -> void:
+	add_to_group("debug_tools")
+	if not DebugTools.is_available():
+		queue_free()
+		return
 	_player = get_node_or_null(player_path) as Node2D
 
 
@@ -36,7 +40,7 @@ func _process(_delta: float) -> void:
 		+ "Surf H: %.1f (scr %.1f)\n" % [s.surface_height, s.get("surface_screen_h", 0.0)]
 		+ "Pipe angle: %.1f deg\n" % pipe_angle
 		+ _cell_debug_line()
-		+ "WASD — Up = farther | P = transfer↑ / acid↓"
+		+ "WASD — Up = farther | P = transfer↑ / acid↓ | G = god (j/k vert)"
 	)
 
 

@@ -1,5 +1,6 @@
 extends CanvasLayer
 ## Top-right debug sliders. UI-only; simulation reads values on physics ticks.
+## Stripped in production via DebugTools / group `debug_tools`.
 
 @export var player_path: NodePath = NodePath("../Player")
 @export var ramp_visual_path: NodePath = NodePath("../RampLevel/RampVisual")
@@ -13,12 +14,19 @@ extends CanvasLayer
 @onready var _acid_slider: HSlider = $Panel/VBox/AcidDropRow/Slider
 @onready var _acid_value: Label = $Panel/VBox/AcidDropRow/Value
 @onready var _cell_check: CheckButton = $Panel/VBox/CellHighlightRow/Check
+@onready var _god_check: CheckButton = $Panel/VBox/GodModeRow/Check
 
 var _player: Node2D
 var _visual: Node2D
+var _syncing_god := false
 
 
 func _ready() -> void:
+	add_to_group("debug_tools")
+	if not DebugTools.is_available():
+		queue_free()
+		return
+
 	_player = get_node_or_null(player_path) as Node2D
 	_visual = get_node_or_null(ramp_visual_path) as Node2D
 
@@ -48,6 +56,10 @@ func _ready() -> void:
 	_cell_check.button_pressed = cell_on
 	_cell_check.toggled.connect(_on_cell_highlight_toggled)
 
+	_god_check.button_pressed = DebugTools.god_mode
+	_god_check.toggled.connect(_on_god_mode_toggled)
+	DebugTools.god_mode_changed.connect(_on_god_mode_changed)
+
 
 func _on_gravity_changed(v: float) -> void:
 	if _player != null:
@@ -76,3 +88,15 @@ func _on_cell_highlight_toggled(on: bool) -> void:
 			_visual.call("refresh")
 		else:
 			_visual.queue_redraw()
+
+
+func _on_god_mode_toggled(on: bool) -> void:
+	if _syncing_god:
+		return
+	DebugTools.set_god_mode(on)
+
+
+func _on_god_mode_changed(on: bool) -> void:
+	_syncing_god = true
+	_god_check.button_pressed = on
+	_syncing_god = false

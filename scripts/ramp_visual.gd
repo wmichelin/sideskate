@@ -4,7 +4,7 @@ extends Node2D
 
 @export var grid_steps: int = 5
 @export var arc_ribs: int = 5
-## Highlight the .ssk ASCII cell under the player (logical unit 1:1).
+## Highlight the .ssk ASCII cell under the player (logical unit 1:1). Debug only.
 @export var debug_cell_highlight: bool = true
 @export var player_path: NodePath = NodePath("../../Player")
 @export var cell_highlight_fill: Color = Color(1.0, 0.92, 0.2, 0.35)
@@ -18,11 +18,13 @@ func _ready() -> void:
 	z_index = -50
 	_level = get_parent() as RampLevel
 	_player = get_node_or_null(player_path) as Node2D
+	if not DebugTools.is_available():
+		debug_cell_highlight = false
 	queue_redraw()
 
 
 func _process(_delta: float) -> void:
-	if debug_cell_highlight:
+	if DebugTools.is_available() and debug_cell_highlight:
 		queue_redraw()
 
 
@@ -141,7 +143,9 @@ func _draw_depth_grid() -> void:
 
 ## Yellow outline/fill of the ASCII map cell under the player (air or grounded).
 func _draw_player_cell_highlight() -> void:
-	if not debug_cell_highlight or _level == null or _level.spec == null:
+	if not DebugTools.is_available() or not debug_cell_highlight:
+		return
+	if _level == null or _level.spec == null:
 		return
 	if _level.spec.grid_w <= 0 or _level.spec.grid_h <= 0:
 		return
