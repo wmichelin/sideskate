@@ -36,6 +36,8 @@ extends CanvasLayer
 @export var draw_band_pad_max: float = 2.0
 @export var checker_tile_min: float = 1.0
 @export var checker_tile_max: float = 16.0
+@export var cast_cells_min: float = 1.0
+@export var cast_cells_max: float = 8.0
 @export var cell_x_min: float = 10.0
 @export var cell_x_max: float = 120.0
 @export var cell_z_min: float = 10.0
@@ -83,6 +85,9 @@ extends CanvasLayer
 @onready var _checker_tile_value: Label = $Panel/VBox/Body/CheckerTileRow/Value
 @onready var _depth_grid_check: CheckButton = $Panel/VBox/Body/DepthGridRow/Check
 @onready var _cell_check: CheckButton = $Panel/VBox/Body/CellHighlightRow/Check
+@onready var _facing_cast_check: CheckButton = $Panel/VBox/Body/FacingCastRow/Check
+@onready var _cast_cells_slider: HSlider = $Panel/VBox/Body/CastCellsRow/Slider
+@onready var _cast_cells_value: Label = $Panel/VBox/Body/CastCellsRow/Value
 @onready var _god_check: CheckButton = $Panel/VBox/Body/GodModeRow/Check
 
 var _player: Node2D
@@ -175,6 +180,25 @@ func _ready() -> void:
 	_cell_check.focus_mode = Control.FOCUS_NONE
 	_cell_check.toggled.connect(_on_cell_highlight_toggled)
 
+	var facing_on := false
+	if _visual != null and _visual.get("debug_facing_cast") != null:
+		facing_on = bool(_visual.get("debug_facing_cast"))
+	_facing_cast_check.button_pressed = facing_on
+	_facing_cast_check.focus_mode = Control.FOCUS_NONE
+	_facing_cast_check.toggled.connect(_on_facing_cast_toggled)
+
+	_bind_float_slider(
+		_cast_cells_slider,
+		cast_cells_min,
+		cast_cells_max,
+		1.0,
+		_visual,
+		"facing_cast_distance",
+		3.0,
+		_on_cast_cells_changed,
+		_refresh_cast_cells_label
+	)
+
 	_god_check.button_pressed = DebugTools.god_mode
 	_god_check.focus_mode = Control.FOCUS_NONE
 	_god_check.toggled.connect(_on_god_mode_toggled)
@@ -186,7 +210,8 @@ func _ready() -> void:
 		_max_speed_z_slider, _accel_slider, _brake_slider,
 		_ramp_friction_slider, _friction_slider,
 		_persp_inset_slider, _far_geom_slider, _ref_depth_slider,
-		_draw_band_pad_slider, _checker_tile_slider, _cell_x_slider, _cell_z_slider,
+		_draw_band_pad_slider, _checker_tile_slider, _cast_cells_slider,
+		_cell_x_slider, _cell_z_slider,
 	]:
 		if row != null:
 			row.focus_mode = Control.FOCUS_NONE
@@ -470,6 +495,29 @@ func _on_cell_highlight_toggled(on: bool) -> void:
 			_visual.call("refresh")
 		else:
 			_visual.queue_redraw()
+
+
+func _on_facing_cast_toggled(on: bool) -> void:
+	if _visual != null:
+		_visual.set("debug_facing_cast", on)
+		if _visual.has_method("refresh"):
+			_visual.call("refresh")
+		else:
+			_visual.queue_redraw()
+
+
+func _on_cast_cells_changed(v: float) -> void:
+	if _visual != null:
+		_visual.set("facing_cast_distance", int(round(v)))
+		if _visual.has_method("refresh"):
+			_visual.call("refresh")
+		else:
+			_visual.queue_redraw()
+	_refresh_cast_cells_label(v)
+
+
+func _refresh_cast_cells_label(v: float) -> void:
+	_cast_cells_value.text = "%d" % int(round(v))
 
 
 func _on_god_mode_toggled(on: bool) -> void:

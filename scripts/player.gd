@@ -1096,21 +1096,22 @@ func _try_acid_drop() -> void:
 	_acid_drop_available = false
 
 
-## Spine transfer: rising P when an opposite pipe is 0–2 deck cells behind.
-## Lock X to opposite top coping; keep height / air_vel_y; land uses the same
-## drop-in merge as acid / pipe-exit. Spends both charges. Returns true if fired.
+## Spine transfer: rising P when an opposite pipe is within 0–2 deck cells
+## (|Δlogical_x|). Aligned stacks on another story count — no "behind" hemisphere,
+## no camera / perspective. Lock X to opposite top coping; keep height / air_vel_y;
+## land uses the same drop-in merge as acid / pipe-exit. Spends both charges.
 func _try_spine_transfer() -> bool:
 	if not _airborne or _level == null or not _transfer_available:
 		return false
 	if not _transfer_vert_ok():
 		return false
-	var behind: float = _spine_behind_sign()
-	if behind == 0.0:
+	var exclude_side := _spine_from_side()
+	if exclude_side < 0:
 		return false
+	var behind: float = _spine_behind_sign()
 	var cell_w := _level.cell_size_x
 	if _level.spec != null and _level.spec.cell_w > 0.0:
 		cell_w = _level.spec.cell_w
-	var exclude_side := _air_side
 	var exclude_lip := _air_lip_x
 	var prefer_h := _feet_height()
 	# Prefer locked coping X; also retry from live X (over hole) and last coping.
@@ -1166,16 +1167,28 @@ func _try_spine_transfer() -> bool:
 	return true
 
 
-## Behind direction for spine: locked/pipe air use coping sign; hole keeps last
-## pipe side; else facing.
-func _spine_behind_sign() -> float:
+## Pipe side we're leaving for spine (want = opposite). Locked/pipe/hole keep
+## last pipe side; else infer from facing.
+func _spine_from_side() -> int:
 	if _air_x_locked:
-		return _coping_sign(_air_side)
+		return _air_side
 	if air_over == "left_pipe" or air_over == "right_pipe":
-		return _coping_sign(_air_side)
+		return _air_side
 	if air_over == "hole" and (_air_side == QuarterPipe.PipeSide.LEFT \
 			or _air_side == QuarterPipe.PipeSide.RIGHT):
-		return _coping_sign(_air_side)
+		return _air_side
+	if facing_h == "l":
+		return QuarterPipe.PipeSide.LEFT
+	if facing_h == "r":
+		return QuarterPipe.PipeSide.RIGHT
+	return -1
+
+
+## Behind sign (call-site compat / transfer lock seed). Same sources as from-side.
+func _spine_behind_sign() -> float:
+	var side := _spine_from_side()
+	if side >= 0:
+		return _coping_sign(side)
 	if absf(_transfer_behind_sign) >= 0.001:
 		return signf(_transfer_behind_sign)
 	return 1.0 if facing_h == "r" else -1.0

@@ -19,9 +19,17 @@ extends Node2D
 @export var show_depth_grid: bool = false
 ## Highlight the .ssk ASCII cell under the player (logical unit 1:1). Debug only.
 @export var debug_cell_highlight: bool = false
+## Green cells ahead of facing_h (logical X columns). Debug only; off by default.
+@export var debug_facing_cast: bool = false
+@export_range(1, 8, 1) var facing_cast_distance: int = 3
 @export var player_path: NodePath = NodePath("../../Player")
 @export var cell_highlight_fill: Color = Color(1.0, 0.92, 0.2, 0.35)
 @export var cell_highlight_stroke: Color = Color(1.0, 0.85, 0.1, 0.95)
+@export var facing_cast_fill: Color = Color(0.2, 0.95, 0.35, 0.32)
+@export var facing_cast_stroke: Color = Color(0.15, 0.85, 0.3, 0.95)
+## Cast cell that owns a pipe top coping (visual distinct from green pads).
+@export var facing_cast_coping_fill: Color = Color(1.0, 0.55, 0.15, 0.4)
+@export var facing_cast_coping_stroke: Color = Color(1.0, 0.7, 0.2, 1.0)
 
 var _level: RampLevel
 var _player: Node2D
@@ -39,11 +47,12 @@ func _ready() -> void:
 	_player = get_node_or_null(player_path) as Node2D
 	if not DebugTools.is_available():
 		debug_cell_highlight = false
+		debug_facing_cast = false
 	queue_redraw()
 
 
 func _process(_delta: float) -> void:
-	if DebugTools.is_available() and debug_cell_highlight:
+	if DebugTools.is_available() and (debug_cell_highlight or debug_facing_cast):
 		queue_redraw()
 
 
@@ -64,6 +73,7 @@ func _draw() -> void:
 	if show_depth_grid:
 		_draw_depth_grid(band)
 	_draw_player_cell_highlight()
+	_draw_facing_cast_highlight()
 
 
 ## Skater-centered draw window (culling only — does not move X lean).
@@ -380,29 +390,162 @@ func _draw_player_cell_highlight() -> void:
 		cell = _level.spec.cell_at(lx, lz)
 	else:
 		cell = _level.spec.cell_at(lx, lz)
-	var b: Dictionary = _level.spec.cell_bounds(cell.x, cell.y)
 	var prefer_h := float(body.surface_height)
 	if bool(_player.get("_airborne")):
 		prefer_h = float(_player.get("air_abs_height"))
-	var under: Dictionary = _level.sample(lx, lz, -1, NAN, prefer_h)
-	var h := 0.0
-	if under.get("active", true) or str(under.get("zone", "")) != "oob":
-		h = float(under.get("height", 0.0))
+	_draw_logical_cell(cell, prefer_h, cell_highlight_fill, cell_highlight_stroke, lx, lz)
+
+
+## Green cells ahead of facing_h (logical X). Heights follow each cell’s glyph
+## on the story at prefer_h (same-layer pipe arc — not a lower stacked pipe).
+func _draw_facing_cast_highlight() -> void:
+	if not DebugTools.is_available() or not debug_facing_cast:
+		return
+	if _level == null or _level.spec == null:
+		return
+	if _level.spec.grid_w <= 0 or _level.spec.grid_h <= 0:
+		return
+	if _player == null:
+		_player = get_node_or_null(player_path) as Node2D
+	if _player == null or not _player.has_node("PseudoDepthBody"):
+		return
+	var body: PseudoDepthBody = _player.get_node("PseudoDepthBody")
+	var cell: Vector2i
+	if _player.has_method("cell_under_feet"):
+		cell = _player.call("cell_under_feet") as Vector2i
+	elif _player.has_method("cell_sample_xz"):
+		var xz: Vector2 = _player.call("cell_sample_xz")
+		cell = _level.spec.cell_at(xz.x, xz.y)
+	else:
+		cell = _level.spec.cell_at(body.logical_x, body.logical_z)
+	var facing := str(_player.get("facing_h"))
+	if facing != "l" and facing != "r":
+		facing = "r"
+	var cast: Array[Vector2i] = _level.spec.facing_cast_cells(
+		cell.x, cell.y, facing, facing_cast_distance
+	)
+	var prefer_h := float(body.surface_height)
+	if bool(_player.get("_airborne")):
+		prefer_h = float(_player.get("air_abs_height"))
+	var trail_z := body.logical_z
+	if _player.has_method("cell_sample_xz"):
+		trail_z = float(_player.call("cell_sample_xz").y)
+	for c in cast:
+		_draw_cast_cell(c, prefer_h, trail_z)
+
+
+## One cast cell: flat pad at the cell’s surface height (same style as yellow
+## cell highlight). Coping cells use amber fill/stroke.
+func _draw_cast_cell(cell: Vector2i, prefer_h: float, trail_z: float) -> void:
+	var b: Dictionary = _level.spec.cell_bounds(cell.x, cell.y)
+	var mid_x := (float(b.x0) + float(b.x1)) * 0.5
+	var info: Dictionary = _level.cast_surface_at(mid_x, trail_z, prefer_h)
+	var h := float(info.get("height", 0.0))
+	var is_cope := bool(info.get("is_coping", false))
+	var fill := facing_cast_coping_fill if is_cope else facing_cast_fill
+	var stroke := facing_cast_coping_stroke if is_cope else facing_cast_stroke
+	var x0 := float(b.x0)
+	var x1 := float(b.x1)
+	var z0 := float(b.z0)
+	var z1 := float(b.z1)
 	var corners := PackedVector2Array([
-		_surf_point(float(b.x0), float(b.z0), h),
-		_surf_point(float(b.x1), float(b.z0), h),
-		_surf_point(float(b.x1), float(b.z1), h),
-		_surf_point(float(b.x0), float(b.z1), h),
+		_surf_point(x0, z0, h),
+		_surf_point(x1, z0, h),
+		_surf_point(x1, z1, h),
+		_surf_point(x0, z1, h),
 	])
-	draw_colored_polygon(corners, cell_highlight_fill)
+	draw_colored_polygon(corners, fill)
 	for i in range(corners.size()):
 		draw_line(
 			corners[i],
 			corners[(i + 1) % corners.size()],
-			cell_highlight_stroke,
+			stroke,
+			3.0 if is_cope else 2.5,
+			true
+		)
+
+
+## Height for facing-cast viz (legacy helper).
+func _cast_height_at(logical_x: float, logical_z: float, prefer_h: float) -> float:
+	return _level.cast_surface_height(logical_x, logical_z, prefer_h)
+
+
+func _draw_logical_cell(
+	cell: Vector2i,
+	prefer_h: float,
+	fill: Color,
+	stroke: Color,
+	sample_x: float = NAN,
+	sample_z: float = NAN,
+	prefer_side: int = -1,
+	prefer_lip_x: float = NAN,
+	prefer_base_h: float = NAN,
+	warp_to_surface: bool = false,
+	trail_z: float = NAN,
+) -> void:
+	var b: Dictionary = _level.spec.cell_bounds(cell.x, cell.y)
+	var x0 := float(b.x0)
+	var x1 := float(b.x1)
+	var z0 := float(b.z0)
+	var z1 := float(b.z1)
+	var corners_xz := [
+		Vector2(x0, z0),
+		Vector2(x1, z0),
+		Vector2(x1, z1),
+		Vector2(x0, z1),
+	]
+	var heights: Array[float] = []
+	if warp_to_surface:
+		var hz := trail_z
+		if is_nan(hz):
+			hz = (z0 + z1) * 0.5
+		for p in corners_xz:
+			heights.append(
+				_surface_height_at(
+					p.x, hz, prefer_h, prefer_side, prefer_lip_x, prefer_base_h
+				)
+			)
+	else:
+		var sx := sample_x
+		var sz := sample_z
+		if is_nan(sx) or is_nan(sz):
+			sx = (x0 + x1) * 0.5
+			sz = (z0 + z1) * 0.5
+		var h := _surface_height_at(
+			sx, sz, prefer_h, prefer_side, prefer_lip_x, prefer_base_h
+		)
+		for _i in range(4):
+			heights.append(h)
+	var corners := PackedVector2Array()
+	for i in range(4):
+		var p: Vector2 = corners_xz[i]
+		corners.append(_surf_point(p.x, p.y, heights[i]))
+	draw_colored_polygon(corners, fill)
+	for i in range(corners.size()):
+		draw_line(
+			corners[i],
+			corners[(i + 1) % corners.size()],
+			stroke,
 			2.5,
 			true
 		)
+
+
+## Surface height at logical XZ (cell highlight). Optional sticky pipe.
+func _surface_height_at(
+	logical_x: float,
+	logical_z: float,
+	prefer_h: float,
+	prefer_side: int = -1,
+	prefer_lip_x: float = NAN,
+	prefer_base_h: float = NAN,
+) -> float:
+	var under: Dictionary = _level.sample(
+		logical_x, logical_z, prefer_side, prefer_lip_x, prefer_h, prefer_base_h
+	)
+	if under.get("active", true) or str(under.get("zone", "")) != "oob":
+		return float(under.get("height", 0.0))
+	return 0.0
 
 
 func _surf_point(logical_x: float, logical_z: float, height: float) -> Vector2:

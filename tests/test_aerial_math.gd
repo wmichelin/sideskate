@@ -447,14 +447,23 @@ func _spine_layered_demo_high_to_low() -> bool:
 		push_error("high→low want L0 right, got %s" % hit)
 		return false
 
-	# from_x over the hole west of coping (not exact shared X) — glyph walk must
-	# still find L0 right under the adjacent `.`.
+	# from_x over the hole west of coping (not exact shared X) — abs gap + glyph
+	# walk must still find L0 right (signed "behind" would reject this).
 	var hole_x: float = from_x - spec.cell_w * 0.6
 	var hit_hole: Dictionary = AerialMath.find_spine_transfer_target(
 		spec.pipes, hole_x, z, -1.0, 0, float(l1_left.lip_x), spec.cell_w, 0.05, prefer, spec
 	)
 	if hit_hole.is_empty() or int(hit_hole.get("layer", -1)) != 0:
 		push_error("high→low from over hole should still find L0, got %s" % hit_hole)
+		return false
+
+	# Slight past shared coping into hole (classic signed-behind reject case).
+	var past_x: float = from_x - 2.0
+	var hit_past: Dictionary = AerialMath.find_spine_transfer_target(
+		spec.pipes, past_x, z, -1.0, 0, float(l1_left.lip_x), spec.cell_w, 0.05, prefer, spec
+	)
+	if hit_past.is_empty() or int(hit_past.get("side", -1)) != 1:
+		push_error("high→low past shared X must still find L0 right, got %s" % hit_past)
 		return false
 	return true
 

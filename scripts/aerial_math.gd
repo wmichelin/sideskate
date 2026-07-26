@@ -201,9 +201,14 @@ static func spine_gap_cells(dist: float, cell_w: float) -> int:
 	return int(round(maxf(dist, 0.0) / cw))
 
 
-## Opposite pipe for spine transfer: behind RIGHT → LEFT; behind LEFT → RIGHT.
+## Opposite pipe for spine transfer: LEFT ↔ RIGHT (same coping column or ≤2 cells).
+static func spine_opposite_side(side: int) -> int:
+	return 1 if side == 0 else 0  # RIGHT if LEFT, LEFT if RIGHT
+
+
+## Deprecated alias: behind RIGHT(+1) → LEFT; behind LEFT(−1) → RIGHT.
 static func spine_want_side(behind_sign: float) -> int:
-	return 0 if behind_sign > 0.0 else 1  # LEFT / RIGHT
+	return spine_opposite_side(1 if behind_sign > 0.0 else 0)
 
 
 ## True if candidate coping floor `cand_h` beats `best_h` for spine height pick.
@@ -316,14 +321,14 @@ static func _spine_opposite_at_column(
 	return out
 
 
-## Walk behind across ≤ SPINE_GAP_MAX_CELLS empty/non-pipe columns; holes are
-## transparent so a lower-story opposite pipe under an adjacent `.` still counts.
+## Walk ±X across ≤ SPINE_GAP_MAX_CELLS columns; holes/empty/same-side pipes are
+## transparent downward so a lower opposite under `.` still counts. Logical grid
+## only — no screen / perspective.
 static func _spine_candidates_from_glyphs(
 	spec: Variant,
 	pipes: Array,
 	from_x: float,
 	logical_z: float,
-	behind: float,
 	want_side: int,
 	exclude_side: int,
 	exclude_lip_x: float,
@@ -332,46 +337,39 @@ static func _spine_candidates_from_glyphs(
 	if spec == null or spec.grid_w <= 0 or spec.grid_h <= 0:
 		return out
 	var cell: Vector2i = spec.cell_at(from_x, logical_z)
-	var col := cell.x
+	var start_col := cell.x
 	var row := cell.y
-	var step := 1 if behind > 0.0 else -1
-	var gap_used := 0
-	for _i in range(spec.grid_w + 1):
-		if col < 0 or col >= spec.grid_w:
-			break
-		var hits: Array = _spine_opposite_at_column(
-			spec, pipes, col, row, want_side, exclude_side, exclude_lip_x, logical_z
-		)
-		for h in hits:
-			out.append(h)
-		# Columns with no opposite pipe consume one slot of the 0..2 non-pipe budget
-		# (includes `.` holes with nothing below, floors, decks, own-pipe cells).
-		if hits.is_empty():
-			gap_used += 1
-			if gap_used > SPINE_GAP_MAX_CELLS:
+	for step in [-1, 1]:
+		var col := start_col
+		var gap_used := 0
+		for _i in range(spec.grid_w + 1):
+			if col < 0 or col >= spec.grid_w:
 				break
-		col += step
+			var hits: Array = _spine_opposite_at_column(
+				spec, pipes, col, row, want_side, exclude_side, exclude_lip_x, logical_z
+			)
+			for h in hits:
+				out.append(h)
+			if hits.is_empty():
+				gap_used += 1
+				if gap_used > SPINE_GAP_MAX_CELLS:
+					break
+			col += step
 	return out
 
 
-## Pick best hit from candidates using prefer_h then smaller behind-gap from from_x.
-## Allows a one-cell negative behind-dist so a pipe under an adjacent hole (coping
-## still near shared X) is not rejected.
+## Pick best hit: prefer_h height rule, then smaller |Δcoping_x| (logical only).
 static func _pick_spine_candidate(
-	candidates: Array, from_x: float, behind: float, prefer_h: float, cell_w: float = 1.0
+	candidates: Array, from_x: float, prefer_h: float
 ) -> Dictionary:
 	var best: Dictionary = {}
-	var best_dist := INF
+	var best_gap := INF
 	var best_h := -INF
-	var min_dist := -maxf(cell_w, 1.0) * 2.0 - 0.05
 	for hit in candidates:
 		if hit.is_empty():
 			continue
 		var top_coping: float = float(hit.get("top_coping", from_x))
-		var dist: float = (top_coping - from_x) * behind
-		if dist < min_dist:
-			continue
-		var score_dist: float = maxf(dist, 0.0)
+		var gap: float = absf(top_coping - from_x)
 		var coping_floor: float = float(hit.get("base_height", 0.0)) + float(hit.get("radius", 0.0))
 		var take := false
 		if best.is_empty():
@@ -379,27 +377,27 @@ static func _pick_spine_candidate(
 		elif not is_nan(prefer_h):
 			if spine_height_better(coping_floor, best_h, prefer_h):
 				take = true
-			elif absf(coping_floor - best_h) <= 0.001 and score_dist < best_dist:
+			elif absf(coping_floor - best_h) <= 0.001 and gap < best_gap:
 				take = true
-		elif score_dist < best_dist:
+		elif gap < best_gap:
 			take = true
 		if take:
 			best = hit
-			best_dist = score_dist
+			best_gap = gap
 			best_h = coping_floor
 	return best
 
 
-## Nearest opposite-facing TOP coping behind us within 0..SPINE_GAP_MAX_CELLS.
-## Gap is measured in logical X (deck glyphs × cell_w) and/or glyph walk: holes and
-## empty cells are transparent so a lower-story opposite pipe under an adjacent `.`
-## still counts (high→low). Among matches, pick by prefer_h then smaller X gap.
-## `spec` (LevelSpec) enables glyph/hole passthrough; without it, AABB-only.
+## Opposite-facing TOP coping within 0..SPINE_GAP_MAX_CELLS of `from_x` (logical X).
+## Gap is |Δcoping_x| only — aligned opposite stacks (|Δx|≈0) are valid. No screen /
+## perspective. Want side = opposite of `exclude_side` (pipe you're on).
+## `behind_sign` is unused for filtering (call-site compat).
+## Among matches: nearest coping floor at/below prefer_h, else nearest above.
 static func find_spine_transfer_target(
 	pipes: Array,
 	from_x: float,
 	logical_z: float,
-	behind_sign: float,
+	_behind_sign: float,
 	exclude_side: int,
 	exclude_lip_x: float,
 	cell_w: float,
@@ -407,10 +405,8 @@ static func find_spine_transfer_target(
 	prefer_h: float = NAN,
 	spec: Variant = null,
 ) -> Dictionary:
-	if absf(behind_sign) < 0.001:
-		return {}
-	var behind := signf(behind_sign)
-	var want_side := spine_want_side(behind)
+	# behind_sign kept for call-site compat; want side = opposite(exclude_side).
+	var want_side := spine_opposite_side(exclude_side)
 	var max_dist := float(SPINE_GAP_MAX_CELLS) * maxf(cell_w, 0.001) + eps
 	var candidates: Array = []
 
@@ -422,18 +418,21 @@ static func find_spine_transfer_target(
 		if logical_z < float(pipe.z_min) - 0.001 or logical_z > float(pipe.z_max) + 0.001:
 			continue
 		var hit: Dictionary = _pipe_hit_dict(pipe)
-		var dist: float = (float(hit.top_coping) - from_x) * behind
-		if dist < -eps or dist > max_dist:
+		var gap: float = absf(float(hit.top_coping) - from_x)
+		# Logical X gap only (aligned = 0). Never screen / perspective.
+		if gap > max_dist:
 			continue
 		candidates.append(hit)
 
 	if spec != null:
 		for ghit in _spine_candidates_from_glyphs(
-			spec, pipes, from_x, logical_z, behind, want_side, exclude_side, exclude_lip_x
+			spec, pipes, from_x, logical_z, want_side, exclude_side, exclude_lip_x
 		):
-			candidates.append(ghit)
+			var ggap: float = absf(float(ghit.get("top_coping", from_x)) - from_x)
+			if ggap <= max_dist:
+				candidates.append(ghit)
 
-	return _pick_spine_candidate(candidates, from_x, behind, prefer_h, cell_w)
+	return _pick_spine_candidate(candidates, from_x, prefer_h)
 
 
 ## Nearest other pipe whose coping lies behind us (spine / back-to-back).

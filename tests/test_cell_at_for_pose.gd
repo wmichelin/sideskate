@@ -10,6 +10,7 @@ func run() -> bool:
 	ok = _left_coping_cell() and ok
 	ok = _unlocked_no_nudge() and ok
 	ok = _non_pipe_air_no_nudge() and ok
+	ok = _facing_cast_cells() and ok
 	return ok
 
 
@@ -102,5 +103,22 @@ func _non_pipe_air_no_nudge() -> bool:
 	var raw := s.cell_at(x, z)
 	if over_flat != raw or over_deck != raw:
 		push_error("non-pipe air_over must not nudge cell query")
+		return false
+	return true
+
+
+func _facing_cast_cells() -> bool:
+	var s := _spec(50.0, 25.0, 10, 4)
+	var right: Array[Vector2i] = s.facing_cast_cells(3, 1, "r", 3)
+	if right.size() != 3 or right[0] != Vector2i(4, 1) or right[2] != Vector2i(6, 1):
+		push_error("facing cast right want cols 4,5,6 row 1, got %s" % [right])
+		return false
+	var left: Array[Vector2i] = s.facing_cast_cells(2, 1, "l", 3)
+	if left.size() != 2 or left[0] != Vector2i(1, 1) or left[1] != Vector2i(0, 1):
+		push_error("facing cast left should stop at grid edge, got %s" % [left])
+		return false
+	var none: Array[Vector2i] = s.facing_cast_cells(5, 1, "r", 0)
+	if not none.is_empty():
+		push_error("distance 0 must be empty")
 		return false
 	return true
