@@ -4,8 +4,8 @@ extends Node
 ##
 ## When a RampLevel projector is set, screen X/Y, surface height, and sprite
 ## scale use the same perspective math as level geometry (`geometry_scale_at`).
-## Airborne: body rises with feet height; circular shadow stays on underfoot
-## support and shrinks with height above that surface.
+## Airborne: body rises with feet height; circular shadow shows only in air,
+## pinned to underfoot support and shrinking with height above that surface.
 
 const _PerspectiveMath := preload("res://scripts/perspective_math.gd")
 
@@ -60,6 +60,8 @@ func _ready() -> void:
 	_shadow = get_node_or_null(shadow_path) as Node2D
 	_level = get_node_or_null(level_path) as RampLevel
 	_ensure_shadow_circle()
+	if _shadow:
+		_shadow.visible = false
 
 
 func depth_t() -> float:
@@ -126,38 +128,37 @@ func apply() -> void:
 		_visual.z_index = 1
 
 	if _shadow:
-		_apply_shadow(s, t, surface_screen_h)
+		if airborne:
+			_shadow.visible = true
+			_apply_air_shadow(s, t)
+		else:
+			_shadow.visible = false
 
 
-func _apply_shadow(geom_scale: float, depth_t_val: float, feet_screen_h: float) -> void:
+func _apply_air_shadow(geom_scale: float, depth_t_val: float) -> void:
 	_ensure_shadow_circle()
-	var support_h := support_height if airborne else surface_height
-	var support_screen_h := support_h * geom_scale
-	if _level and airborne:
-		var sp: Dictionary = _level.project_surface(logical_x, logical_z, support_h)
+	var support_screen_h := support_height * geom_scale
+	if _level:
+		var sp: Dictionary = _level.project_surface(logical_x, logical_z, support_height)
 		support_screen_h = float(sp.surface_screen_h)
 
-	# Pin to underfoot support (air) or feet surface (grounded) — never floats with air feet.
-	var shadow_h := support_screen_h if airborne else feet_screen_h
-	_shadow.position = Vector2(0.0, shadow_ground_nudge * geom_scale - shadow_h)
+	# Pin to underfoot support — never floats with air feet.
+	_shadow.position = Vector2(0.0, shadow_ground_nudge * geom_scale - support_screen_h)
 	_shadow.z_index = 0
 
-	var width_mul := 1.0
-	if airborne:
-		width_mul = _PerspectiveMath.air_shadow_width_scale(
-			surface_height - support_h,
-			air_shadow_ref_height,
-			air_shadow_min_scale
-		)
+	var width_mul := _PerspectiveMath.air_shadow_width_scale(
+		surface_height - support_height,
+		air_shadow_ref_height,
+		air_shadow_min_scale
+	)
 	# Relative width: perspective scale × height falloff; Y squash for ground ellipse.
 	_shadow.scale = Vector2(
 		geom_scale * width_mul,
 		geom_scale * shadow_y_squash * width_mul
 	)
 	_shadow.modulate.a = lerpf(0.55, 0.28, depth_t_val)
-	if airborne:
-		# Slightly softer as it shrinks high up.
-		_shadow.modulate.a *= lerpf(1.0, 0.7, 1.0 - width_mul)
+	# Slightly softer as it shrinks high up.
+	_shadow.modulate.a *= lerpf(1.0, 0.7, 1.0 - width_mul)
 
 
 func _ensure_shadow_circle() -> void:

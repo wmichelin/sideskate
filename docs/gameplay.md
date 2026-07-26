@@ -39,7 +39,7 @@ Player-facing zone labels include `flat`, `left_pipe`, `right_pipe`, `deck`, and
 Stick integrates into **momentum** (`_velocity` on X/Z). See [Motion vectors](#motion-vectors).
 
 - **Horizontal X**: opposite stick **brakes hard** toward zero via **`brake`** (default 1250) — no reverse until `|vx|` reaches 0. Coasting uses **friction** only (default 0).
-- **Depth Z**: immediate — stick maps straight to `±max_speed_z` (default 335; debug slider).
+- **Depth Z**: immediate — stick maps straight to `±max_speed_z` (default 400; debug slider).
 - **Acceleration** (default 3250) / **brake** / **max speed x** (default 880) / **max speed z**: tunable via debug sliders.
 - **Horizontal facing** `facing_h` (`l` / `r`): follows motion while moving; stick only when nearly stopped. Spawn from level header `spawn_facing` (default `r`). Head debug shows `hd l` / `hd r`.
 - **Ollie** (hold Space): mild forward accel (`ollie_accel`, default 650) toward `max_speed_x` in facing direction. Skipped while stick is braking opposite. Tunable via debug slider.
@@ -91,7 +91,7 @@ When grounded motion would place you on a surface lower than prior support (beyo
 
 ### Air shadow
 
-While airborne, a **circular** ground shadow sits on the underfoot support surface (same idea as cell highlight height, at the skater’s X/Z — not the cell footprint). Width matches body scale at support and shrinks toward a floor as feet rise (`PerspectiveMath.air_shadow_width_scale`; tunable on `PseudoDepthBody`: `air_shadow_ref_height`, `air_shadow_min_scale`). Grounded keeps the same blob on the ridden surface.
+While airborne, a **circular** ground shadow sits on the underfoot support surface (same idea as cell highlight height, at the skater’s X/Z — not the cell footprint). Width matches body scale at support and shrinks toward a floor as feet rise (`PerspectiveMath.air_shadow_width_scale`; tunable on `PseudoDepthBody`: `air_shadow_ref_height`, `air_shadow_min_scale`). Hidden while grounded.
 
 ### Gravity
 

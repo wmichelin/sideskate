@@ -10,7 +10,7 @@ const _MotionVectors := preload("res://scripts/motion_vectors.gd")
 
 @export var max_speed_x: float = 880.0
 
-@export var max_speed_z: float = 335.0
+@export var max_speed_z: float = 400.0
 @export var acceleration: float = 3250.0
 ## Coast rate when no input (logical u/s²). Debug slider writes this.
 @export var friction: float = 0.0

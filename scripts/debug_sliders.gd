@@ -17,7 +17,7 @@ extends CanvasLayer
 @export var max_speed_x_min: float = 50.0
 @export var max_speed_x_max: float = 2000.0
 @export var max_speed_z_min: float = 10.0
-@export var max_speed_z_max: float = 400.0
+@export var max_speed_z_max: float = 800.0
 @export var acceleration_min: float = 100.0
 @export var acceleration_max: float = 6000.0
 @export var brake_min: float = 0.0
@@ -119,7 +119,7 @@ func _ready() -> void:
 	)
 	_bind_float_slider(_ollie_slider, ollie_accel_min, ollie_accel_max, 10.0, _player, "ollie_accel", 650.0, _on_ollie_accel_changed, _refresh_ollie_label)
 	_bind_float_slider(_max_speed_x_slider, max_speed_x_min, max_speed_x_max, 10.0, _player, "max_speed_x", 880.0, _on_max_speed_x_changed, _refresh_max_speed_x_label)
-	_bind_float_slider(_max_speed_z_slider, max_speed_z_min, max_speed_z_max, 5.0, _player, "max_speed_z", 335.0, _on_max_speed_z_changed, _refresh_max_speed_z_label)
+	_bind_float_slider(_max_speed_z_slider, max_speed_z_min, max_speed_z_max, 5.0, _player, "max_speed_z", 400.0, _on_max_speed_z_changed, _refresh_max_speed_z_label)
 	_bind_float_slider(_accel_slider, acceleration_min, acceleration_max, 50.0, _player, "acceleration", 3250.0, _on_accel_changed, _refresh_accel_label)
 	_bind_float_slider(_brake_slider, brake_min, brake_max, 50.0, _player, "brake", 1250.0, _on_brake_changed, _refresh_brake_label)
 	_bind_float_slider(_ramp_friction_slider, ramp_friction_min, ramp_friction_max, 10.0, _player, "ramp_friction", 0.0, _on_ramp_friction_changed, _refresh_ramp_friction_label)
