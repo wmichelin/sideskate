@@ -35,5 +35,5 @@ func _process(_delta: float) -> void:
 		+ "Zone: %s\n" % zone
 		+ "Surf H: %.1f (scr %.1f)\n" % [s.surface_height, s.get("surface_screen_h", 0.0)]
 		+ "Pipe angle: %.1f deg\n" % pipe_angle
-		+ "WASD — Up = farther | P = transfer"
+		+ "WASD — Up = farther | P = transfer↑ / acid↓"
 	)

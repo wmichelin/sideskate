@@ -1,6 +1,6 @@
 extends Node2D
 ## 8-way mover on logical X/Z. Samples RampLevel; spawns from .ssk @ marker.
-## Air over any zone. X-lock only when entering air from a pipe coping.
+## Air over any zone. Coping exit locks X+height; acid drop locks X only (gravity stays).
 ## Ride-off a higher surface → free air (keep height + gravity). All sim on physics ticks.
 
 @export var max_speed_x: float = 520.0
@@ -23,6 +23,12 @@ extends Node2D
 @export var pipe_air_max_extra: float = 2.0
 ## Feet must drop at least this far below prior support to ride off into air.
 @export var ride_off_height_eps: float = 0.5
+## How far behind facing a top coping may still be acid-dropped (logical X, not screen px).
+@export var acid_drop_buffer: float = 10.0
+## Max distance ahead (logical X) to a top coping for acid drop — prevents cross-plaza lerps.
+@export var acid_drop_max_ahead: float = 120.0
+## Physics-time duration for acid-drop horizontal settle to coping.
+@export var acid_drop_x_duration: float = 0.15
 
 @onready var depth: PseudoDepthBody = $PseudoDepthBody
 @onready var _head_debug_label: Label = $Body/HeadDebug/Label
@@ -52,6 +58,12 @@ var _transfer_x_active: bool = false
 var _transfer_x_from: float = 0.0
 var _transfer_x_to: float = 0.0
 var _transfer_x_t: float = 0.0
+## One transfer per aerial; replenished on any surface contact.
+var _transfer_available: bool = true
+## One acid drop per aerial; replenished on any surface contact.
+var _acid_drop_available: bool = true
+## X-locked via acid drop: pin to coping but keep gravity (not coping height-hold).
+var _acid_drop_lock: bool = false
 ## Measured actual velocity from position deltas (not stick intent).
 var _actual_vel_x: float = 0.0
 var _actual_vel_z: float = 0.0
@@ -92,7 +104,7 @@ func _physics_process(delta: float) -> void:
 		_level = get_node_or_null(level_path) as RampLevel
 
 	if Input.is_action_just_pressed("transfer"):
-		_try_transfer()
+		_try_air_action()
 
 	var input := _read_move_input()
 	_integrate_velocity(input, delta)
@@ -139,10 +151,22 @@ func _apply_motion(delta: float, speed_mul: float) -> void:
 		_step_transfer_x(delta)
 
 		if _air_x_locked:
-			# Don't pin X while a transfer lerp is carrying us to the new coping.
+			# Don't pin X while a transfer/acid-drop lerp is carrying us to coping.
 			if not _transfer_x_active:
 				depth.logical_x = _air_coping_x
 			depth.logical_z = depth.clamp_z(depth.logical_z + _velocity.y * speed_mul * delta)
+
+			if _acid_drop_lock:
+				# Inverse of coping height-hold: X locked only. Height = gravity alone.
+				air_vel_y += gravity_ms2 * logic_per_meter * delta
+				air_abs_height += air_vel_y * delta
+				var floor_h := _underlying_surface_height()
+				# Only land when falling onto the surface — never snap height upward.
+				if air_vel_y <= 0.0 and air_abs_height <= floor_h + 0.05:
+					air_abs_height = floor_h
+					_clear_air()
+				return
+
 			var toward: float = _velocity.x * speed_mul * _coping_sign(_air_side)
 			var coping_h := _air_radius
 			var max_h := coping_h + maxf(_air_radius * pipe_air_max_extra, 1.0)
@@ -195,9 +219,12 @@ func _step_transfer_x(delta: float) -> void:
 	if not _transfer_x_active:
 		return
 	_transfer_x_t += delta
+	var duration := transfer_x_duration
+	if _acid_drop_lock:
+		duration = acid_drop_x_duration
 	var u := 1.0
-	if transfer_x_duration > 0.0001:
-		u = clampf(_transfer_x_t / transfer_x_duration, 0.0, 1.0)
+	if duration > 0.0001:
+		u = clampf(_transfer_x_t / duration, 0.0, 1.0)
 	depth.logical_x = lerpf(_transfer_x_from, _transfer_x_to, u)
 	if u >= 1.0:
 		_transfer_x_active = false
@@ -229,13 +256,16 @@ func _update_air_over_underfoot() -> void:
 
 
 func _air_over_uses_gravity() -> bool:
-	# Locked pipe-coping air is input-held; everything else falls.
-	return not _air_x_locked
+	# Coping height-hold ignores gravity; acid-drop lock and free air do not.
+	return not _air_x_locked or _acid_drop_lock
 
 
 func _underlying_surface_height() -> float:
-	# Locked coping air treats the lip as the floor.
-	if _air_x_locked and (air_over == "left_pipe" or air_over == "right_pipe"):
+	# Coping height-hold only: floor is the top coping. Acid drop must NOT use this
+	# (it would snap feet up to radius). Always sample the real surface instead.
+	if _air_x_locked and not _acid_drop_lock and (
+		air_over == "left_pipe" or air_over == "right_pipe"
+	):
 		return _air_radius
 	if _level == null:
 		return 0.0
@@ -383,6 +413,7 @@ func _begin_air_over(target: Dictionary, abs_height: float, snap_x: bool = true)
 	air_vel_y = 0.0
 	air_over = str(target.get("zone", "flat"))
 	_air_x_locked = bool(target.get("lock_x", false))
+	_acid_drop_lock = false
 	if target.has("side"):
 		_air_side = int(target.side)
 		_transfer_behind_sign = _coping_sign(_air_side)
@@ -406,12 +437,104 @@ func _clear_air() -> void:
 	air_vel_y = 0.0
 	air_over = ""
 	_air_x_locked = false
+	_acid_drop_lock = false
 	_transfer_x_active = false
+	_transfer_available = true
+	_acid_drop_available = true
 	depth.height_offset = 0.0
 
 
+## Same button: transfer while rising, acid drop while falling / at rest.
+func _try_air_action() -> void:
+	if _vert_vel > 0.0:
+		_try_transfer()
+	else:
+		_try_acid_drop()
+
+
+func _try_acid_drop() -> void:
+	if not _airborne or _level == null or not _acid_drop_available:
+		return
+	if _vert_vel > 0.0:
+		return
+	var hit := _find_acid_drop_pipe()
+	if hit.is_empty():
+		return
+
+	var side: int = int(hit.get("side", QuarterPipe.PipeSide.RIGHT))
+	var lip: float = float(hit.get("lip_x", depth.logical_x))
+	var radius: float = float(hit.get("radius", 150.0))
+	# Explicit top coping — never lip_x (flat / bottom edge of the quarter-pipe).
+	var coping: float = float(hit.get("top_coping", _coping_x_for(side, lip, radius)))
+
+	_air_x_locked = true
+	_acid_drop_lock = true
+	_air_side = side
+	_air_lip_x = lip
+	_air_radius = radius
+	_air_coping_x = coping
+	air_over = _pipe_zone_name(side)
+	_transfer_behind_sign = _coping_sign(side)
+	# Do not touch air_abs_height or air_vel_y — only horizontal lock + existing gravity.
+
+	_transfer_x_from = depth.logical_x
+	_transfer_x_to = coping
+	_transfer_x_t = 0.0
+	_transfer_x_active = absf(coping - depth.logical_x) > 0.05
+	if not _transfer_x_active:
+		depth.logical_x = coping
+
+	_acid_drop_available = false
+
+
+## Nearest opposite-facing TOP coping near horizontal velocity.
+## Moving right → left_pipe only; moving left → right_pipe only.
+## Buffer/max_ahead are logical X units (same as depth.logical_x), not screen pixels.
+func _find_acid_drop_pipe() -> Dictionary:
+	if _level == null:
+		return {}
+	var hx := _actual_vel_x
+	if absf(hx) < 8.0:
+		hx = _velocity.x
+	if absf(hx) < 1.0:
+		return {}
+	var facing := signf(hx)
+	# Opposite wall: velocity right → left pipe; velocity left → right pipe.
+	var want_side: int = (
+		QuarterPipe.PipeSide.LEFT if facing > 0.0 else QuarterPipe.PipeSide.RIGHT
+	)
+	var best: Dictionary = {}
+	var best_ahead := INF
+	for pipe in _level.pipes:
+		if pipe.side != want_side:
+			continue
+		if depth.logical_z < pipe.z_min - 0.001 or depth.logical_z > pipe.z_max + 0.001:
+			continue
+		# Top coping only (lip ± radius). Never the lip / flat edge.
+		var top_coping: float = _coping_x_for(pipe.side, pipe.lip_x, pipe.radius)
+		var ahead: float = (top_coping - depth.logical_x) * facing
+		if ahead < -acid_drop_buffer:
+			continue
+		if ahead > acid_drop_max_ahead:
+			continue
+		if ahead < best_ahead:
+			best_ahead = ahead
+			best = {
+				"active": true,
+				"zone": _pipe_zone_name(pipe.side),
+				"side": pipe.side,
+				"lip_x": pipe.lip_x,
+				"radius": pipe.radius,
+				"top_coping": top_coping,
+			}
+	return best
+
+
 func _try_transfer() -> void:
-	if not _airborne or _level == null:
+	if not _airborne or _level == null or not _transfer_available:
+		return
+	# Only while rising — no transfers on the way down or at rest.
+	if _vert_vel <= 0.0:
 		return
 	var was_locked := _air_x_locked
 	var behind: float = _transfer_behind_sign
@@ -459,6 +582,7 @@ func _try_transfer() -> void:
 		target = {"zone": "flat", "lock_x": false, "anchor_x": probe_x}
 
 	_begin_air_over(target, keep_h, false)
+	_transfer_available = false
 
 	# Locked pipe air spent stick X on height — release it as free-air horizontal.
 	if was_locked:
