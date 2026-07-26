@@ -37,8 +37,8 @@ All map rows must be the **same length**. Uneven widths are a hard error (dialog
 | `depth` | yes | Logical Z span of the full ASCII grid |
 | `pipe_radius` | no | Default pipe radius; else from `<>` run width |
 | `deck_height` | no | Override height for all `#` decks |
-| `perspective_inset` | no | Camera converge (px at far) |
-| `far_geometry_scale` | no | Far size factor for geometry |
+| `perspective_inset` | no | How hard far X converges toward the skater (px; → `far_x_scale`) |
+| `far_geometry_scale` | no | Far size factor for vertical geometry |
 
 ## Glyphs
 
@@ -80,26 +80,52 @@ far_geometry_scale 0.72
 `>>>>##<<<<` = right-pipe → elevated deck spine → left-pipe.  
 Both pipe runs must be the same width so coping height matches on both sides.
 
-## Edge deck example
+## Decks (spine / edge / partial depth)
 
-Rows may begin with `#` after `---` (edge platform outside a pipe).  
-Every map row must share one width:
+`#` after `---` is always a deck glyph (never a header comment).
+
+- Decks may cover only some rows (partial depth) while pipes continue — that’s valid.
+- Pipe runs merge vertically only when **column spans match**; stepped `<>` columns become separate pipes (no fat AABB overlap).
+- All map rows must be the same length.
+- Rendering is **surface-only**: decks are elevated top faces (same family as floors), not solid pillars. Pipe ribbons meet deck edges at coping height; spine troughs stay open.
+
+### Multi-spine / stepped example
 
 ```text
 ssk 1
-name edge_decks
+name spine_demo
 width 1280
 depth 100
 perspective_inset 80
 far_geometry_scale 0.72
 ---
-##<<<<======>>>>##<<<<======>>>>
-##<<<<======>>>>##<<<<======>>>>
+<<<<===>>>>##<<<<=======>>>>##<<<<=======>>>>
+<<<<===>>>>##<<<<=======>>>>##<<<<=======>>>>
+<<<<===>>>>##<<<<=======>>>>##<<<<=======>>>>
+<<<<===>>>>##<<<<=======>>>>##<<<<=======>>>>
+<<<<====>>>><<<<====@===>>>>##<<<<=======>>>>
+```
+
+Bottom row drops the first spine deck (`>>>><<<<`) and shifts a bay — pipes stay separate because columns differ.
+
+### Partial-depth spine (deck only in far rows)
+
+```text
+ssk 1
+name partial_spine
+width 1280
+depth 100
+perspective_inset 80
+far_geometry_scale 0.72
+---
+<<<<=======>>>>##<<<<=======>>>>
+<<<<=======>>>>##<<<<=======>>>>
 <<<<============@===========>>>>
 <<<<========================>>>>
 <<<<========================>>>>
 ```
-## Single-bay plaza
+
+Here the spine pipes and deck share the far rows only; plaza pipes on the sides can still run full depth.
 
 ```text
 ssk 1

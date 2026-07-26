@@ -18,6 +18,9 @@ var z_max: float = 100.0
 var lip_left: float = 180.0
 var lip_right: float = 1100.0
 var pipe_radius: float = 150.0
+## Logical X that far geometry converges toward (follow-cam / player).
+## Level-centered VP made adjacent spine pipes lean opposite ways.
+var perspective_origin_x: float = 640.0
 
 @onready var _visual: Node2D = $RampVisual
 
@@ -82,6 +85,19 @@ func apply_spec(s: LevelSpec) -> void:
 			lip_right = pd.lip_x
 			break
 
+	if spec:
+		perspective_origin_x = spec.spawn_x
+	if _visual and _visual.has_method("refresh"):
+		_visual.refresh()
+	elif _visual:
+		_visual.queue_redraw()
+
+
+## Keep far-plane convergence under the skater so nearby pipes share lean angle.
+func set_perspective_origin(logical_x: float) -> void:
+	if absf(logical_x - perspective_origin_x) < 0.05:
+		return
+	perspective_origin_x = logical_x
 	if _visual and _visual.has_method("refresh"):
 		_visual.refresh()
 	elif _visual:
@@ -165,106 +181,33 @@ func sample(logical_x: float, logical_z: float) -> Dictionary:
 	}
 
 
-## Project a world point for gameplay visuals — decks use lip-anchored framing.
+## Project a world point for gameplay visuals.
 func project_surface(logical_x: float, logical_z: float, surface_height: float = 0.0) -> Dictionary:
-	if spec:
-		var p := Vector2(logical_x, logical_z)
-		for deck in spec.decks:
-			if LevelSpec.point_in_poly(p, deck.poly):
-				return project_deck_point(deck, logical_x, logical_z)
 	return project(logical_x, logical_z, surface_height)
 
 
-## Project a deck surface point using neighboring pipe lip frames so edge/spine
-## decks stay continuous with pipe coping under perspective.
+## Decks use the same projector as everything else (logical X → perspective lerp).
 func project_deck_point(deck: Dictionary, logical_x: float, logical_z: float) -> Dictionary:
-	var h := float(deck.height)
-	var anchors: Array = deck.get("anchors", [])
-	if anchors.is_empty():
-		return project(logical_x, logical_z, h)
-
-	var t := depth_t(logical_z)
-	var inset := inset_at(logical_z)
-	var gscale := geometry_scale_at(logical_z)
-	var ground_y := ground_screen_y(logical_z)
-	var xmin := x_min()
-	var xmax := x_max()
-	var span := xmax - xmin
-
-	var screen_x: float
-	if anchors.size() == 1:
-		screen_x = _screen_x_from_lip_anchor(anchors[0], logical_x, t, inset, gscale, xmin, span)
-	else:
-		# Spine: lerp between coping screen positions so both pipe tops stay flush.
-		var sorted: Array = anchors.duplicate()
-		sorted.sort_custom(func(a, b): return float(a.coping_x) < float(b.coping_x))
-		var a0: Dictionary = sorted[0]
-		var a1: Dictionary = sorted[sorted.size() - 1]
-		var x0 := float(a0.coping_x)
-		var x1 := float(a1.coping_x)
-		var sx0 := _screen_x_from_lip_anchor(a0, x0, t, inset, gscale, xmin, span)
-		var sx1 := _screen_x_from_lip_anchor(a1, x1, t, inset, gscale, xmin, span)
-		var u := 0.0 if absf(x1 - x0) <= 0.0001 else clampf((logical_x - x0) / (x1 - x0), 0.0, 1.0)
-		screen_x = lerpf(sx0, sx1, u)
-
-	return {
-		"t": t,
-		"screen_x": screen_x,
-		"ground_y": ground_y,
-		"surface_screen_h": h * gscale,
-		"geometry_scale": gscale,
-		"inset": inset,
-	}
+	return project(logical_x, logical_z, float(deck.height))
 
 
-func _screen_x_from_lip_anchor(
-	anchor: Dictionary,
-	logical_x: float,
-	t: float,
-	inset: float,
-	gscale: float,
-	xmin: float,
-	span: float
-) -> float:
-	var lip_x := float(anchor.lip_x)
-	var lip_u := 0.0 if span <= 0.0001 else clampf((lip_x - xmin) / span, 0.0, 1.0)
-	var lip_screen := lerpf(xmin + inset * t, x_max() - inset * t, lip_u)
-	if anchor.side == QuarterPipe.PipeSide.LEFT:
-		return lip_screen - (lip_x - logical_x) * gscale
-	return lip_screen + (logical_x - lip_x) * gscale
-
-
-## Project logical (x,z,height) to screen. Global X remap + height scale.
+## Project logical (x,z,height) to screen.
+## X scales toward perspective_origin_x with depth (same for floor/pipes/decks)
+## so adjacent features share lean instead of fanning from the level midpoint.
+## Height uses geometry_scale alone. perspective_inset still controls how hard
+## X converges (far_x_scale = 1 - 2*inset/span).
 func project(logical_x: float, logical_z: float, surface_height: float = 0.0) -> Dictionary:
 	var t := depth_t(logical_z)
 	var inset := inset_at(logical_z)
 	var gscale := geometry_scale_at(logical_z)
 	var ground_y := ground_screen_y(logical_z)
 
-	var xmin := x_min()
-	var xmax := x_max()
-	var span := xmax - xmin
-	var u := 0.0 if span <= 0.0001 else clampf((logical_x - xmin) / span, 0.0, 1.0)
-	var screen_x := lerpf(xmin + inset * t, xmax - inset * t, u)
-
-	# Prefer per-pipe projection when on a pipe band (matches arc drawing).
-	# Lip uses the same perspective lerp as the floor so seams stay closed when
-	# the follow camera pans; arc offset is then scaled by geometry_scale.
-	for pipe in pipes:
-		if logical_z < pipe.z_min - 0.001 or logical_z > pipe.z_max + 0.001:
-			continue
-		if logical_x < pipe.x_min() - 0.001 or logical_x > pipe.x_max() + 0.001:
-			continue
-		var lip_u := 0.0 if span <= 0.0001 else clampf((pipe.lip_x - xmin) / span, 0.0, 1.0)
-		var lip_screen := lerpf(xmin + inset * t, xmax - inset * t, lip_u)
-		var x_off: float
-		if pipe.side == QuarterPipe.PipeSide.LEFT:
-			x_off = pipe.lip_x - logical_x
-			screen_x = lip_screen - x_off * gscale
-		else:
-			x_off = logical_x - pipe.lip_x
-			screen_x = lip_screen + x_off * gscale
-		break
+	var span := x_max() - x_min()
+	var far_x_scale := 1.0
+	if span > 0.0001:
+		far_x_scale = clampf(1.0 - (2.0 * perspective_inset) / span, 0.35, 1.0)
+	var x_scale := lerpf(1.0, far_x_scale, t)
+	var screen_x := perspective_origin_x + (logical_x - perspective_origin_x) * x_scale
 
 	return {
 		"t": t,
@@ -273,6 +216,7 @@ func project(logical_x: float, logical_z: float, surface_height: float = 0.0) ->
 		"surface_screen_h": surface_height * gscale,
 		"geometry_scale": gscale,
 		"inset": inset,
+		"x_scale": x_scale,
 	}
 
 

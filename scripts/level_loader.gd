@@ -215,16 +215,9 @@ static func _build_geometry(spec: LevelSpec, map_rows: PackedStringArray) -> Str
 	spec.spawn_x = (float(spawn_c) + 0.5) * cw
 	spec.spawn_z = (float(H - 1 - spawn_r) + 0.5) * ch
 
-	# Pipes from components
-	var left_comps := _components(left_cells)
-	var right_comps := _components(right_cells)
+	# Pipes from column-aligned horizontal runs (jagged columns stay separate).
 	spec.pipes.clear()
-
-	for comp in left_comps:
-		var pipe := _pipe_from_component(comp, true, cw, ch, H, spec.pipe_radius_override)
-		spec.pipes.append(pipe)
-	for comp in right_comps:
-		var pipe := _pipe_from_component(comp, false, cw, ch, H, spec.pipe_radius_override)
+	for pipe in _pipes_from_aligned_runs(grid, W, H, cw, ch, spec.pipe_radius_override):
 		spec.pipes.append(pipe)
 
 	# Floors
@@ -290,6 +283,79 @@ static func _build_geometry(spec: LevelSpec, map_rows: PackedStringArray) -> Str
 		spec.z_max = zmax
 
 	return ""
+
+
+static func _pipes_from_aligned_runs(
+	grid: Array, W: int, H: int, cw: float, ch: float, radius_override: float
+) -> Array:
+	# Collect per-row horizontal <> runs, then merge only identical column spans
+	# that are contiguous in row — so stepped layouts don't fatten into one AABB.
+	var runs: Array = []
+	for r in range(H):
+		var c := 0
+		while c < W:
+			var glyph: String = grid[r][c]
+			if glyph != "<" and glyph != ">":
+				c += 1
+				continue
+			var c0 := c
+			while c < W and grid[r][c] == glyph:
+				c += 1
+			runs.append({
+				"is_left": glyph == "<",
+				"c0": c0,
+				"c1": c - 1,
+				"r0": r,
+				"r1": r,
+			})
+
+	var used := {}
+	var pipes: Array = []
+	for i in range(runs.size()):
+		if used.has(i):
+			continue
+		used[i] = true
+		var band: Dictionary = runs[i].duplicate()
+		var changed := true
+		while changed:
+			changed = false
+			for j in range(runs.size()):
+				if used.has(j):
+					continue
+				var other: Dictionary = runs[j]
+				if other.is_left != band.is_left:
+					continue
+				if other.c0 != band.c0 or other.c1 != band.c1:
+					continue
+				if other.r0 > band.r1 + 1 or other.r1 < band.r0 - 1:
+					continue
+				band.r0 = mini(band.r0, other.r0)
+				band.r1 = maxi(band.r1, other.r1)
+				used[j] = true
+				changed = true
+		pipes.append(_pipe_from_band(band, cw, ch, H, radius_override))
+	return pipes
+
+
+static func _pipe_from_band(
+	band: Dictionary, cw: float, ch: float, H: int, radius_override: float
+) -> Dictionary:
+	var x0 := float(band.c0) * cw
+	var x1 := float(band.c1 + 1) * cw
+	var z0 := float(H - 1 - band.r1) * ch
+	var z1 := float(H - band.r0) * ch
+	var radius: float = radius_override if radius_override > 0.0 else (x1 - x0)
+	var is_left: bool = band.is_left
+	var lip_x: float = x1 if is_left else x0
+	return {
+		"side": QuarterPipe.PipeSide.LEFT if is_left else QuarterPipe.PipeSide.RIGHT,
+		"lip_x": lip_x,
+		"radius": radius,
+		"z_min": z0,
+		"z_max": z1,
+		"x_min": lip_x - radius if is_left else lip_x,
+		"x_max": lip_x if is_left else lip_x + radius,
+	}
 
 
 static func _pipe_from_component(
