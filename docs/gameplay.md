@@ -7,7 +7,7 @@ Intent brief for humans and agents. For the ASCII level IDL, see [level_format.m
 Godot 4 **pseudo-3D** skate prototype. Simulation lives in **logical** space:
 
 - **X** — left/right across the plaza
-- **Z** — near/far depth (stick “up” = farther)
+- **Z** — near/far depth (stick “up” = farther). Screen Y uses a fixed px/Z rate (not “fit whole level in frame”), so deep levels scroll off-screen; the camera pans with the player in X and Y.
 - **Height** — feet elevation above flat (pipe arc, deck, air)
 
 Screen placement is a perspective **projection** of `(x, z, height)` (far X converges toward the skater). Visuals are surface-only (floors, pipe ribbons, deck tops).

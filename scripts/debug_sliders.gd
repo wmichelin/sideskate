@@ -3,6 +3,7 @@ extends CanvasLayer
 ## Collapsible body starts collapsed. Stripped in production via DebugTools.
 
 @export var player_path: NodePath = NodePath("../Player")
+@export var ramp_level_path: NodePath = NodePath("../RampLevel")
 @export var ramp_visual_path: NodePath = NodePath("../RampLevel/RampVisual")
 @export var start_collapsed: bool = true
 @export var gravity_min: float = -30.0
@@ -23,6 +24,12 @@ extends CanvasLayer
 @export var ramp_friction_max: float = 2000.0
 @export var friction_min: float = 0.0
 @export var friction_max: float = 2000.0
+@export var persp_inset_min: float = 0.0
+@export var persp_inset_max: float = 200.0
+@export var far_geom_min: float = 0.4
+@export var far_geom_max: float = 1.0
+@export var ref_depth_min: float = 20.0
+@export var ref_depth_max: float = 500.0
 
 @onready var _panel: PanelContainer = $Panel
 @onready var _body: VBoxContainer = $Panel/VBox/Body
@@ -45,11 +52,18 @@ extends CanvasLayer
 @onready var _ramp_friction_value: Label = $Panel/VBox/Body/RampFrictionRow/Value
 @onready var _friction_slider: HSlider = $Panel/VBox/Body/FrictionRow/Slider
 @onready var _friction_value: Label = $Panel/VBox/Body/FrictionRow/Value
+@onready var _persp_inset_slider: HSlider = $Panel/VBox/Body/PerspInsetRow/Slider
+@onready var _persp_inset_value: Label = $Panel/VBox/Body/PerspInsetRow/Value
+@onready var _far_geom_slider: HSlider = $Panel/VBox/Body/FarGeomScaleRow/Slider
+@onready var _far_geom_value: Label = $Panel/VBox/Body/FarGeomScaleRow/Value
+@onready var _ref_depth_slider: HSlider = $Panel/VBox/Body/RefDepthRow/Slider
+@onready var _ref_depth_value: Label = $Panel/VBox/Body/RefDepthRow/Value
 @onready var _depth_grid_check: CheckButton = $Panel/VBox/Body/DepthGridRow/Check
 @onready var _cell_check: CheckButton = $Panel/VBox/Body/CellHighlightRow/Check
 @onready var _god_check: CheckButton = $Panel/VBox/Body/GodModeRow/Check
 
 var _player: Node2D
+var _level: Node2D
 var _visual: Node2D
 var _syncing_god := false
 var _collapsed: bool = true
@@ -62,20 +76,25 @@ func _ready() -> void:
 		return
 
 	_player = get_node_or_null(player_path) as Node2D
+	_level = get_node_or_null(ramp_level_path) as Node2D
 	_visual = get_node_or_null(ramp_visual_path) as Node2D
 
 	_toggle.focus_mode = Control.FOCUS_NONE
 	_toggle.pressed.connect(_on_toggle_pressed)
 
-	_bind_float_slider(_gravity_slider, gravity_min, gravity_max, 0.1, "gravity_ms2", -12.8, _on_gravity_changed, _refresh_gravity_label)
-	_bind_float_slider(_acid_slider, acid_buffer_min, acid_buffer_max, 1.0, "acid_drop_buffer", 44.0, _on_acid_buffer_changed, _refresh_acid_label)
-	_bind_float_slider(_ollie_slider, ollie_accel_min, ollie_accel_max, 10.0, "ollie_accel", 650.0, _on_ollie_accel_changed, _refresh_ollie_label)
-	_bind_float_slider(_max_speed_x_slider, max_speed_x_min, max_speed_x_max, 10.0, "max_speed_x", 880.0, _on_max_speed_x_changed, _refresh_max_speed_x_label)
-	_bind_float_slider(_max_speed_z_slider, max_speed_z_min, max_speed_z_max, 5.0, "max_speed_z", 60.0, _on_max_speed_z_changed, _refresh_max_speed_z_label)
-	_bind_float_slider(_accel_slider, acceleration_min, acceleration_max, 50.0, "acceleration", 3250.0, _on_accel_changed, _refresh_accel_label)
-	_bind_float_slider(_brake_slider, brake_min, brake_max, 50.0, "brake", 1250.0, _on_brake_changed, _refresh_brake_label)
-	_bind_float_slider(_ramp_friction_slider, ramp_friction_min, ramp_friction_max, 10.0, "ramp_friction", 0.0, _on_ramp_friction_changed, _refresh_ramp_friction_label)
-	_bind_float_slider(_friction_slider, friction_min, friction_max, 10.0, "friction", 0.0, _on_friction_changed, _refresh_friction_label)
+	_bind_float_slider(_gravity_slider, gravity_min, gravity_max, 0.1, _player, "gravity_ms2", -12.8, _on_gravity_changed, _refresh_gravity_label)
+	_bind_float_slider(_acid_slider, acid_buffer_min, acid_buffer_max, 1.0, _player, "acid_drop_buffer", 44.0, _on_acid_buffer_changed, _refresh_acid_label)
+	_bind_float_slider(_ollie_slider, ollie_accel_min, ollie_accel_max, 10.0, _player, "ollie_accel", 650.0, _on_ollie_accel_changed, _refresh_ollie_label)
+	_bind_float_slider(_max_speed_x_slider, max_speed_x_min, max_speed_x_max, 10.0, _player, "max_speed_x", 880.0, _on_max_speed_x_changed, _refresh_max_speed_x_label)
+	_bind_float_slider(_max_speed_z_slider, max_speed_z_min, max_speed_z_max, 5.0, _player, "max_speed_z", 335.0, _on_max_speed_z_changed, _refresh_max_speed_z_label)
+	_bind_float_slider(_accel_slider, acceleration_min, acceleration_max, 50.0, _player, "acceleration", 3250.0, _on_accel_changed, _refresh_accel_label)
+	_bind_float_slider(_brake_slider, brake_min, brake_max, 50.0, _player, "brake", 1250.0, _on_brake_changed, _refresh_brake_label)
+	_bind_float_slider(_ramp_friction_slider, ramp_friction_min, ramp_friction_max, 10.0, _player, "ramp_friction", 0.0, _on_ramp_friction_changed, _refresh_ramp_friction_label)
+	_bind_float_slider(_friction_slider, friction_min, friction_max, 10.0, _player, "friction", 0.0, _on_friction_changed, _refresh_friction_label)
+
+	_bind_float_slider(_persp_inset_slider, persp_inset_min, persp_inset_max, 1.0, _level, "perspective_inset", 200.0, _on_persp_inset_changed, _refresh_persp_inset_label)
+	_bind_float_slider(_far_geom_slider, far_geom_min, far_geom_max, 0.01, _level, "far_geometry_scale", 1.0, _on_far_geom_changed, _refresh_far_geom_label)
+	_bind_float_slider(_ref_depth_slider, ref_depth_min, ref_depth_max, 5.0, _level, "reference_depth", 500.0, _on_ref_depth_changed, _refresh_ref_depth_label)
 
 	var depth_on := false
 	if _visual != null and _visual.get("show_depth_grid") != null:
@@ -101,6 +120,7 @@ func _ready() -> void:
 		_gravity_slider, _acid_slider, _ollie_slider, _max_speed_x_slider,
 		_max_speed_z_slider, _accel_slider, _brake_slider,
 		_ramp_friction_slider, _friction_slider,
+		_persp_inset_slider, _far_geom_slider, _ref_depth_slider,
 	]:
 		if row != null:
 			row.focus_mode = Control.FOCUS_NONE
@@ -131,6 +151,7 @@ func _bind_float_slider(
 	min_v: float,
 	max_v: float,
 	step: float,
+	target: Object,
 	prop: String,
 	fallback: float,
 	on_changed: Callable,
@@ -140,8 +161,8 @@ func _bind_float_slider(
 	slider.max_value = max_v
 	slider.step = step
 	var v := fallback
-	if _player != null and _player.get(prop) != null:
-		v = float(_player.get(prop))
+	if target != null and target.get(prop) != null:
+		v = float(target.get(prop))
 	slider.value = v
 	slider.value_changed.connect(on_changed)
 	refresh.call(v)
@@ -235,6 +256,51 @@ func _on_friction_changed(v: float) -> void:
 
 func _refresh_friction_label(v: float) -> void:
 	_friction_value.text = "%.0f" % v
+
+
+func _refresh_level_visual() -> void:
+	if _visual != null:
+		if _visual.has_method("refresh"):
+			_visual.call("refresh")
+		else:
+			_visual.queue_redraw()
+	if _player != null and _player.has_node("PseudoDepthBody"):
+		var depth: Node = _player.get_node("PseudoDepthBody")
+		if depth.has_method("apply"):
+			depth.call("apply")
+
+
+func _on_persp_inset_changed(v: float) -> void:
+	if _level != null:
+		_level.set("perspective_inset", v)
+	_refresh_persp_inset_label(v)
+	_refresh_level_visual()
+
+
+func _refresh_persp_inset_label(v: float) -> void:
+	_persp_inset_value.text = "%.0f" % v
+
+
+func _on_far_geom_changed(v: float) -> void:
+	if _level != null:
+		_level.set("far_geometry_scale", v)
+	_refresh_far_geom_label(v)
+	_refresh_level_visual()
+
+
+func _refresh_far_geom_label(v: float) -> void:
+	_far_geom_value.text = "%.2f" % v
+
+
+func _on_ref_depth_changed(v: float) -> void:
+	if _level != null:
+		_level.set("reference_depth", v)
+	_refresh_ref_depth_label(v)
+	_refresh_level_visual()
+
+
+func _refresh_ref_depth_label(v: float) -> void:
+	_ref_depth_value.text = "%.0f" % v
 
 
 func _on_depth_grid_toggled(on: bool) -> void:

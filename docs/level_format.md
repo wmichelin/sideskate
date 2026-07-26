@@ -10,8 +10,9 @@ ssk 1
 name my_level
 width 1280
 depth 100
-perspective_inset 80
-far_geometry_scale 0.72
+perspective_inset 200
+far_geometry_scale 1.0
+reference_depth 500
 # optional header comments / keys:
 # pipe_radius 150
 # deck_height 150
@@ -36,11 +37,12 @@ All map rows must be the **same length**. Uneven widths are a hard error (dialog
 | `ssk 1` | yes (first line) | Format version |
 | `name` | no | Level id (default: filename) |
 | `width` | yes | Logical X span of the full ASCII grid |
-| `depth` | yes | Logical Z span of the full ASCII grid |
+| `depth` | yes | Logical Z span of the full ASCII grid. Screen Y uses a fixed px/Z rate from `reference_depth`; deeper levels extend off-frame and the camera pans with the player. |
 | `pipe_radius` | no | Default pipe radius; else from `<>` run width |
 | `deck_height` | no | Override height for all `#` decks |
-| `perspective_inset` | no | How hard far X converges toward the skater (px; → `far_x_scale`) |
-| `far_geometry_scale` | no | Far size factor for vertical geometry |
+| `perspective_inset` | no | How hard far X converges toward the skater (px; → `far_x_scale`). Lower ≈ more isometric / parallel. |
+| `far_geometry_scale` | no | Far size factor for vertical geometry (closer to 1 ≈ more isometric). Lean/scale use `reference_depth`, not the full level depth. |
+| `reference_depth` | no | Z span over which perspective lean/X converge saturate (default ~500). Deep plazas keep converging only for this band, then parallel. |
 | `spawn_facing` | no | Spawn horizontal facing: `l` or `r` (default `r`) |
 
 ## Glyphs

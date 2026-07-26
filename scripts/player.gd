@@ -4,7 +4,7 @@ extends Node2D
 ## Ride-off a higher surface → free air (keep height + gravity). All sim on physics ticks.
 
 @export var max_speed_x: float = 880.0
-@export var max_speed_z: float = 60.0
+@export var max_speed_z: float = 335.0
 @export var acceleration: float = 3250.0
 ## Coast rate when no input (logical u/s²). Debug slider writes this.
 @export var friction: float = 0.0

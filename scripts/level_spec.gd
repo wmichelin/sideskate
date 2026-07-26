@@ -5,8 +5,10 @@ extends RefCounted
 var name: String = ""
 var width: float = 1280.0
 var depth: float = 100.0
-var perspective_inset: float = 80.0
-var far_geometry_scale: float = 0.72
+var perspective_inset: float = 200.0
+var far_geometry_scale: float = 1.0
+## Screen Y / lean saturate over this Z span from z_min (-1 = use RampLevel default).
+var reference_depth: float = -1.0
 var pipe_radius_override: float = -1.0
 var deck_height_override: float = -1.0
 

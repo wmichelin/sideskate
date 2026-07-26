@@ -2,9 +2,8 @@ class_name PseudoDepthBody
 extends Node
 ## Converts logical (X, Z) beat-em-up coordinates into screen placement.
 ##
-## When a RampLevel projector is set, screen X/Y and surface height use the same
-## perspective math as the quarter-pipe visuals (inset + geometry scale by depth).
-## Sprite scale still uses near_scale→far_scale independently.
+## When a RampLevel projector is set, screen X/Y, surface height, and sprite
+## scale use the same perspective math as level geometry (`geometry_scale_at`).
 
 @export_group("Lane Band")
 @export var z_min: float = 0.0
@@ -13,8 +12,9 @@ extends Node
 @export var far_screen_y: float = 300.0
 
 @export_group("Scale")
+## Fallback only when no RampLevel is bound. With a level, scale matches `far_geometry_scale`.
 @export var near_scale: float = 1.0
-@export var far_scale: float = 0.55
+@export var far_scale: float = 0.72
 
 @export_group("Draw Order")
 @export var near_z_index: int = 100
@@ -53,10 +53,15 @@ func depth_t() -> float:
 func ground_screen_y() -> float:
 	if _level:
 		return _level.ground_screen_y(logical_z)
-	return lerpf(near_screen_y, far_screen_y, depth_t())
+	# Absolute px/Z (same idea as RampLevel); default reference span = 100.
+	var per_z := (near_screen_y - far_screen_y) / 100.0
+	return near_screen_y - (logical_z - z_min) * per_z
 
 
 func visual_scale() -> float:
+	# Match level geometry scale when a projector is available.
+	if _level:
+		return _level.geometry_scale_at(logical_z)
 	return lerpf(near_scale, far_scale, depth_t())
 
 
