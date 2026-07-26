@@ -7,8 +7,8 @@
 [ext_resource type="Script" uid="uid://cy2j0ajrjipwf" path="res://scripts/debug_overlay.gd" id="6_debug"]
 [ext_resource type="Script" uid="uid://bt2eynnt5cbqm" path="res://scripts/main.gd" id="7_main"]
 [ext_resource type="Script" uid="uid://bjukc50nc4o3b" path="res://scripts/follow_camera.gd" id="8_camera"]
-[ext_resource type="Script" path="res://scripts/debug_sliders.gd" id="9_sliders"]
-[ext_resource type="Script" path="res://scripts/velocity_debug_arrow.gd" id="10_vel_arrow"]
+[ext_resource type="Script" uid="uid://b5c20xe6x0frg" path="res://scripts/debug_sliders.gd" id="9_sliders"]
+[ext_resource type="Script" uid="uid://bq6pejaq1h5br" path="res://scripts/velocity_debug_arrow.gd" id="10_vel_arrow"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_head"]
 content_margin_left = 8.0
@@ -84,9 +84,15 @@ theme_override_font_sizes/font_size = 13
 text = "flat"
 horizontal_alignment = 1
 
-[node name="VelocityArrow" type="Node2D" parent="Player/Body"]
-position = Vector2(0, -118)
+[node name="VelocityArrow" type="Node2D" parent="Player/Body" unique_id=1704464314]
+position = Vector2(-18, -118)
 script = ExtResource("10_vel_arrow")
+
+[node name="IntentArrow" type="Node2D" parent="Player/Body" unique_id=106386296]
+position = Vector2(18, -118)
+script = ExtResource("10_vel_arrow")
+source = "intent"
+arrow_color = Color(1, 0.72, 0.28, 0.95)
 
 [node name="FollowCamera" type="Camera2D" parent="." unique_id=1242588525]
 script = ExtResource("8_camera")
@@ -107,10 +113,10 @@ theme_override_colors/font_color = Color(0.9, 0.93, 0.98, 1)
 theme_override_font_sizes/font_size = 16
 text = "PSEUDO-DEPTH DEBUG"
 
-[node name="DebugSliders" type="CanvasLayer" parent="."]
+[node name="DebugSliders" type="CanvasLayer" parent="." unique_id=931579767]
 script = ExtResource("9_sliders")
 
-[node name="Panel" type="PanelContainer" parent="DebugSliders"]
+[node name="Panel" type="PanelContainer" parent="DebugSliders" unique_id=1740147584]
 anchors_preset = 1
 anchor_left = 1.0
 anchor_right = 1.0
@@ -121,27 +127,27 @@ offset_bottom = 120.0
 grow_horizontal = 0
 theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
 
-[node name="VBox" type="VBoxContainer" parent="DebugSliders/Panel"]
+[node name="VBox" type="VBoxContainer" parent="DebugSliders/Panel" unique_id=982389819]
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="Title" type="Label" parent="DebugSliders/Panel/VBox"]
+[node name="Title" type="Label" parent="DebugSliders/Panel/VBox" unique_id=295481884]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.9, 0.93, 0.98, 1)
 theme_override_font_sizes/font_size = 14
 text = "Air"
 
-[node name="GravityRow" type="HBoxContainer" parent="DebugSliders/Panel/VBox"]
+[node name="GravityRow" type="HBoxContainer" parent="DebugSliders/Panel/VBox" unique_id=114494023]
 layout_mode = 2
 theme_override_constants/separation = 8
 
-[node name="Caption" type="Label" parent="DebugSliders/Panel/VBox/GravityRow"]
+[node name="Caption" type="Label" parent="DebugSliders/Panel/VBox/GravityRow" unique_id=1485714092]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.75, 0.8, 0.88, 1)
 theme_override_font_sizes/font_size = 12
 text = "g"
 
-[node name="Slider" type="HSlider" parent="DebugSliders/Panel/VBox/GravityRow"]
+[node name="Slider" type="HSlider" parent="DebugSliders/Panel/VBox/GravityRow" unique_id=2040495274]
 layout_mode = 2
 size_flags_horizontal = 3
 min_value = -30.0
@@ -149,9 +155,9 @@ max_value = 0.0
 step = 0.1
 value = -9.8
 
-[node name="Value" type="Label" parent="DebugSliders/Panel/VBox/GravityRow"]
-layout_mode = 2
+[node name="Value" type="Label" parent="DebugSliders/Panel/VBox/GravityRow" unique_id=284586511]
 custom_minimum_size = Vector2(72, 0)
+layout_mode = 2
 theme_override_colors/font_color = Color(0.9, 0.93, 0.98, 1)
 theme_override_font_sizes/font_size = 12
 text = "-9.8 m/s²"

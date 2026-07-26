@@ -13,6 +13,8 @@ extends Node2D
 @export var transfer_probe: float = 8.0
 ## Physics-time duration for transfer horizontal settle.
 @export var transfer_x_duration: float = 0.15
+## Min free-air |vx| when releasing locked pipe air via transfer.
+@export var transfer_release_min: float = 260.0
 ## Gravity while in unlocked air (m/s²). Debug slider writes this.
 @export var gravity_ms2: float = -9.8
 ## Convert m/s² into logical units/s².
@@ -26,6 +28,8 @@ extends Node2D
 @onready var _head_debug_label: Label = $Body/HeadDebug/Label
 
 var _velocity: Vector2 = Vector2.ZERO
+## Last physics-tick control acceleration (d(_velocity)/dt from integrate).
+var _debug_accel: Vector2 = Vector2.ZERO
 var _level: RampLevel
 var last_surface: Dictionary = {}
 
@@ -153,7 +157,9 @@ func _apply_motion(delta: float, speed_mul: float) -> void:
 			return
 
 		# Unlocked air (rode off / transfer / over any zone): free XZ + gravity.
-		depth.logical_x += _velocity.x * speed_mul * delta
+		# Position lerp owns X while active — don't also integrate velocity.x.
+		if not _transfer_x_active:
+			depth.logical_x += _velocity.x * speed_mul * delta
 		depth.logical_z = depth.clamp_z(depth.logical_z + _velocity.y * speed_mul * delta)
 		if _air_over_uses_gravity():
 			air_vel_y += gravity_ms2 * logic_per_meter * delta
@@ -407,6 +413,7 @@ func _clear_air() -> void:
 func _try_transfer() -> void:
 	if not _airborne or _level == null:
 		return
+	var was_locked := _air_x_locked
 	var behind: float = _transfer_behind_sign
 	if _air_x_locked:
 		behind = _coping_sign(_air_side)
@@ -452,6 +459,13 @@ func _try_transfer() -> void:
 		target = {"zone": "flat", "lock_x": false, "anchor_x": probe_x}
 
 	_begin_air_over(target, keep_h, false)
+
+	# Locked pipe air spent stick X on height — release it as free-air horizontal.
+	if was_locked:
+		_velocity.x = behind * maxf(absf(_velocity.x), transfer_release_min)
+		_transfer_x_active = false
+		return
+
 	_transfer_x_from = from_x
 	_transfer_x_to = anchor_x
 	_transfer_x_t = 0.0
@@ -549,6 +563,25 @@ func debug_velocity_speed() -> float:
 	return Vector3(_actual_vel_x, _vert_vel, _actual_vel_z).length()
 
 
+## Stick-intent velocity (integrated every tick). Shown even when remapped
+## (e.g. locked pipe air uses vx for height, not horizontal).
+func debug_intent_screen() -> Vector2:
+	return Vector2(_velocity.x, -_velocity.y)
+
+
+func debug_intent_speed() -> float:
+	return _velocity.length()
+
+
+## Instantaneous control acceleration from last integrate (u/s²).
+func debug_accel_screen() -> Vector2:
+	return Vector2(_debug_accel.x, -_debug_accel.y)
+
+
+func debug_accel_mag() -> float:
+	return _debug_accel.length()
+
+
 func _refresh_head_debug() -> void:
 	if _head_debug_label == null:
 		return
@@ -565,8 +598,13 @@ func _read_move_input() -> Vector2:
 
 
 func _integrate_velocity(input: Vector2, delta: float) -> void:
+	var before := _velocity
 	var target := Vector2(input.x * max_speed_x, input.y * max_speed_z)
 	if input != Vector2.ZERO:
 		_velocity = _velocity.move_toward(target, acceleration * delta)
 	else:
 		_velocity = _velocity.move_toward(Vector2.ZERO, friction * delta)
+	if delta > 0.0001:
+		_debug_accel = (_velocity - before) / delta
+	else:
+		_debug_accel = Vector2.ZERO

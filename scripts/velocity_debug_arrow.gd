@@ -1,6 +1,8 @@
 extends Node2D
-## Debug arrow for player velocity (X + Z + vertical). Display-only.
+## Debug arrow over the player head. Display-only (reads sim state; does not step it).
+## source = actual → measured motion; intent → stick control velocity (even when remapped).
 
+@export_enum("actual", "intent") var source: String = "actual"
 @export var player_path: NodePath = NodePath("../..")
 @export var min_speed: float = 8.0
 @export var pixels_per_speed: float = 0.1
@@ -19,7 +21,7 @@ func _ready() -> void:
 	_speed_label = Label.new()
 	_speed_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_speed_label.add_theme_font_size_override("font_size", 11)
-	_speed_label.add_theme_color_override("font_color", Color(0.9, 0.95, 0.92, 1.0))
+	_speed_label.add_theme_color_override("font_color", Color(0.95, 0.95, 0.92, 1.0))
 	_speed_label.position = Vector2(-28, -14)
 	_speed_label.size = Vector2(56, 16)
 	add_child(_speed_label)
@@ -31,11 +33,22 @@ func _process(_delta: float) -> void:
 
 
 func _draw() -> void:
-	if _player == null or not _player.has_method("debug_velocity_screen"):
+	if _player == null:
 		_speed_label.visible = false
 		return
-	var screen_v: Vector2 = _player.call("debug_velocity_screen")
-	var speed: float = float(_player.call("debug_velocity_speed"))
+
+	var screen_method := "debug_velocity_screen"
+	var speed_method := "debug_velocity_speed"
+	if source == "intent":
+		screen_method = "debug_intent_screen"
+		speed_method = "debug_intent_speed"
+
+	if not _player.has_method(screen_method) or not _player.has_method(speed_method):
+		_speed_label.visible = false
+		return
+
+	var screen_v: Vector2 = _player.call(screen_method)
+	var speed: float = float(_player.call(speed_method))
 	if speed < min_speed or screen_v.length_squared() < 0.0001:
 		_speed_label.visible = false
 		return
