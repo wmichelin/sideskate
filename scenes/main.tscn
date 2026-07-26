@@ -7,6 +7,7 @@
 [ext_resource type="Script" uid="uid://cy2j0ajrjipwf" path="res://scripts/debug_overlay.gd" id="6_debug"]
 [ext_resource type="Script" uid="uid://bt2eynnt5cbqm" path="res://scripts/main.gd" id="7_main"]
 [ext_resource type="Script" uid="uid://bjukc50nc4o3b" path="res://scripts/follow_camera.gd" id="8_camera"]
+[ext_resource type="Script" path="res://scripts/debug_sliders.gd" id="9_sliders"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_head"]
 content_margin_left = 8.0
@@ -100,3 +101,53 @@ layout_mode = 2
 theme_override_colors/font_color = Color(0.9, 0.93, 0.98, 1)
 theme_override_font_sizes/font_size = 16
 text = "PSEUDO-DEPTH DEBUG"
+
+[node name="DebugSliders" type="CanvasLayer" parent="."]
+script = ExtResource("9_sliders")
+
+[node name="Panel" type="PanelContainer" parent="DebugSliders"]
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -320.0
+offset_top = 16.0
+offset_right = -16.0
+offset_bottom = 120.0
+grow_horizontal = 0
+theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
+
+[node name="VBox" type="VBoxContainer" parent="DebugSliders/Panel"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Title" type="Label" parent="DebugSliders/Panel/VBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.9, 0.93, 0.98, 1)
+theme_override_font_sizes/font_size = 14
+text = "Air"
+
+[node name="GravityRow" type="HBoxContainer" parent="DebugSliders/Panel/VBox"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Caption" type="Label" parent="DebugSliders/Panel/VBox/GravityRow"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.75, 0.8, 0.88, 1)
+theme_override_font_sizes/font_size = 12
+text = "g"
+
+[node name="Slider" type="HSlider" parent="DebugSliders/Panel/VBox/GravityRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+min_value = -30.0
+max_value = 0.0
+step = 0.1
+value = -9.8
+
+[node name="Value" type="Label" parent="DebugSliders/Panel/VBox/GravityRow"]
+layout_mode = 2
+custom_minimum_size = Vector2(72, 0)
+theme_override_colors/font_color = Color(0.9, 0.93, 0.98, 1)
+theme_override_font_sizes/font_size = 12
+text = "-9.8 m/s²"
+horizontal_alignment = 2
