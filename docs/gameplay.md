@@ -63,7 +63,7 @@ When grounded motion would place you on a surface lower than prior support (beyo
 
 ### Gravity
 
-Applied while unlocked air, or while acid-drop X-locked. Default ≈ `-12.8` m/s², converted with `logic_per_meter` (default 100). Tunable via top-right debug slider.
+Applied while unlocked air, or while acid-drop X-locked. Default `-19.0` m/s², converted with `logic_per_meter` (default 100). Tunable via top-right debug slider.
 
 ## Aerial actions (same button: `transfer` / P)
 

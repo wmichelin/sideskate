@@ -197,14 +197,14 @@ size_flags_horizontal = 3
 min_value = -30.0
 max_value = 0.0
 step = 0.1
-value = -12.8
+value = -19.0
 
 [node name="Value" type="Label" parent="DebugSliders/Panel/VBox/Body/GravityRow" unique_id=284586511]
 custom_minimum_size = Vector2(72, 0)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.9, 0.93, 0.98, 1)
 theme_override_font_sizes/font_size = 12
-text = "-12.8 m/s²"
+text = "-19.0 m/s²"
 horizontal_alignment = 2
 
 [node name="AcidDropRow" type="HBoxContainer" parent="DebugSliders/Panel/VBox/Body"]

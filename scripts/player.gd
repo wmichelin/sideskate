@@ -26,7 +26,7 @@ const _AerialMath := preload("res://scripts/aerial_math.gd")
 ## Min free-air |vx| when releasing locked pipe air via transfer.
 @export var transfer_release_min: float = 260.0
 ## Gravity while in unlocked air (m/s²). Debug slider writes this.
-@export var gravity_ms2: float = -12.8
+@export var gravity_ms2: float = -19.0
 ## Convert m/s² into logical units/s².
 @export var logic_per_meter: float = 100.0
 ## Feet must drop at least this far below prior support to ride off into air.
