@@ -1,31 +1,42 @@
-[gd_scene load_steps=8 format=3 uid="uid://bdepthproto01"]
+[gd_scene format=3 uid="uid://bdepthproto01"]
 
-[ext_resource type="Script" path="res://scripts/ramp_level.gd" id="1_level"]
-[ext_resource type="Script" path="res://scripts/ramp_visual.gd" id="3_visual"]
-[ext_resource type="Script" path="res://scripts/player.gd" id="4_player"]
-[ext_resource type="Script" path="res://scripts/pseudo_depth_body.gd" id="5_depth"]
-[ext_resource type="Script" path="res://scripts/debug_overlay.gd" id="6_debug"]
-[ext_resource type="Script" path="res://scripts/main.gd" id="7_main"]
-[ext_resource type="Script" path="res://scripts/follow_camera.gd" id="8_camera"]
+[ext_resource type="Script" uid="uid://df0xdkvcwl4gq" path="res://scripts/ramp_level.gd" id="1_level"]
+[ext_resource type="Script" uid="uid://bfl23pxmg6bg0" path="res://scripts/ramp_visual.gd" id="3_visual"]
+[ext_resource type="Script" uid="uid://bfqwqs48r0cyd" path="res://scripts/player.gd" id="4_player"]
+[ext_resource type="Script" uid="uid://ccsid5t7kcfm5" path="res://scripts/pseudo_depth_body.gd" id="5_depth"]
+[ext_resource type="Script" uid="uid://cy2j0ajrjipwf" path="res://scripts/debug_overlay.gd" id="6_debug"]
+[ext_resource type="Script" uid="uid://bt2eynnt5cbqm" path="res://scripts/main.gd" id="7_main"]
+[ext_resource type="Script" uid="uid://bjukc50nc4o3b" path="res://scripts/follow_camera.gd" id="8_camera"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_head"]
+content_margin_left = 8.0
+content_margin_top = 3.0
+content_margin_right = 8.0
+content_margin_bottom = 3.0
+bg_color = Color(0.05, 0.06, 0.09, 0.78)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_panel"]
+content_margin_left = 12.0
+content_margin_top = 10.0
+content_margin_right = 12.0
+content_margin_bottom = 10.0
 bg_color = Color(0.05, 0.06, 0.09, 0.72)
 corner_radius_top_left = 8
 corner_radius_top_right = 8
 corner_radius_bottom_right = 8
 corner_radius_bottom_left = 8
-content_margin_left = 12.0
-content_margin_top = 10.0
-content_margin_right = 12.0
-content_margin_bottom = 10.0
 
-[node name="Main" type="Node2D"]
+[node name="Main" type="Node2D" unique_id=2057660754]
 script = ExtResource("7_main")
 
-[node name="WorldBackdrop" type="CanvasLayer" parent="."]
+[node name="WorldBackdrop" type="CanvasLayer" parent="." unique_id=1463926595]
 layer = -100
 
-[node name="ColorRect" type="ColorRect" parent="WorldBackdrop"]
+[node name="ColorRect" type="ColorRect" parent="WorldBackdrop" unique_id=1552944546]
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
@@ -34,43 +45,57 @@ grow_vertical = 2
 mouse_filter = 2
 color = Color(0.08, 0.1, 0.14, 1)
 
-[node name="RampLevel" type="Node2D" parent="."]
+[node name="RampLevel" type="Node2D" parent="." unique_id=1434297277]
 script = ExtResource("1_level")
-level_path = "res://levels/plaza_default.ssk"
 
-[node name="RampVisual" type="Node2D" parent="RampLevel"]
+[node name="RampVisual" type="Node2D" parent="RampLevel" unique_id=283015009]
 script = ExtResource("3_visual")
 
-[node name="Player" type="Node2D" parent="."]
+[node name="Player" type="Node2D" parent="." unique_id=1706349078]
 script = ExtResource("4_player")
 
-[node name="PseudoDepthBody" type="Node" parent="Player"]
+[node name="PseudoDepthBody" type="Node" parent="Player" unique_id=1532835232]
 script = ExtResource("5_depth")
 
-[node name="Shadow" type="Polygon2D" parent="Player"]
+[node name="Shadow" type="Polygon2D" parent="Player" unique_id=1016364103]
 z_index = -1
 color = Color(0, 0, 0, 0.55)
 polygon = PackedVector2Array(-30, -8, 30, -8, 22, 8, -22, 8)
 
-[node name="Body" type="Polygon2D" parent="Player"]
+[node name="Body" type="Polygon2D" parent="Player" unique_id=58950740]
 color = Color(0.92, 0.25, 0.45, 1)
 polygon = PackedVector2Array(0, -72, 28, -20, 18, 0, -18, 0, -28, -20)
 
-[node name="FollowCamera" type="Camera2D" parent="."]
-script = ExtResource("8_camera")
-target_path = NodePath("../Player")
+[node name="HeadDebug" type="PanelContainer" parent="Player/Body" unique_id=786460520]
+z_index = 20
+offset_left = -36.0
+offset_top = -104.0
+offset_right = 36.0
+offset_bottom = -80.0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_head")
 
-[node name="DebugOverlay" type="CanvasLayer" parent="."]
+[node name="Label" type="Label" parent="Player/Body/HeadDebug" unique_id=1939827550]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.9, 0.93, 0.98, 1)
+theme_override_font_sizes/font_size = 13
+text = "flat"
+horizontal_alignment = 1
+
+[node name="FollowCamera" type="Camera2D" parent="." unique_id=1242588525]
+script = ExtResource("8_camera")
+
+[node name="DebugOverlay" type="CanvasLayer" parent="." unique_id=1788673540]
 script = ExtResource("6_debug")
 
-[node name="Panel" type="PanelContainer" parent="DebugOverlay"]
+[node name="Panel" type="PanelContainer" parent="DebugOverlay" unique_id=2129734930]
 offset_left = 16.0
 offset_top = 16.0
 offset_right = 360.0
 offset_bottom = 250.0
 theme_override_styles/panel = SubResource("StyleBoxFlat_panel")
 
-[node name="Label" type="Label" parent="DebugOverlay/Panel"]
+[node name="Label" type="Label" parent="DebugOverlay/Panel" unique_id=1801814963]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.9, 0.93, 0.98, 1)
 theme_override_font_sizes/font_size = 16

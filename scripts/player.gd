@@ -9,6 +9,7 @@ extends Node2D
 @export var level_path: NodePath = NodePath("../RampLevel")
 
 @onready var depth: PseudoDepthBody = $PseudoDepthBody
+@onready var _head_debug_label: Label = $Body/HeadDebug/Label
 
 var _velocity: Vector2 = Vector2.ZERO
 var _level: RampLevel
@@ -61,6 +62,7 @@ func _apply_surface() -> void:
 	if _level == null:
 		last_surface = {"zone": "flat", "height": 0.0, "angle": 0.0}
 		depth.surface_height = 0.0
+		_refresh_head_debug()
 		return
 	last_surface = _level.sample(depth.logical_x, depth.logical_z)
 	if not last_surface.get("active", true) and last_surface.get("zone", "") == "oob":
@@ -68,6 +70,13 @@ func _apply_surface() -> void:
 		depth.surface_height = 0.0
 	else:
 		depth.surface_height = float(last_surface.get("height", 0.0))
+	_refresh_head_debug()
+
+
+func _refresh_head_debug() -> void:
+	if _head_debug_label == null:
+		return
+	_head_debug_label.text = str(last_surface.get("zone", "flat"))
 
 
 func _read_move_input() -> Vector2:
