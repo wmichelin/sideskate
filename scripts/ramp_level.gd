@@ -4,6 +4,12 @@ extends Node2D
 
 @export var level_path: String = "res://levels/plaza_default.ssk"
 
+@export_group("World scale")
+## Logical units per ASCII column. Level width = columns × this.
+@export var cell_size_x: float = 47.0
+## Logical units per ASCII row. Level depth = rows × this.
+@export var cell_size_z: float = 26.0
+
 @export_group("Perspective")
 ## Screen Y of the near edge (z_min). Larger Y = lower on screen.
 @export var near_screen_y: float = 560.0
@@ -11,9 +17,15 @@ extends Node2D
 ## keep the same px/Z so they extend off-frame instead of compressing.
 @export var far_screen_y: float = 300.0
 ## Logical depth span that maps near_screen_y → far_screen_y.
-@export var reference_depth: float = 500.0
-@export var perspective_inset: float = 200.0
+@export var reference_depth: float = 485.0
+## Logical width used only for X convergence math — not the level's real span.
+@export var reference_width: float = 1280.0
+## X convergence toward the skater. 0 = side-on truck (parallel edges, camera
+## slides in Z). Higher values tilt into a looking-down vanishing point.
+@export var perspective_inset: float = 160.0
 @export var far_geometry_scale: float = 1.0
+
+signal rebuilt
 
 var spec: LevelSpec
 var pipes: Array = []  # QuarterPipe nodes
@@ -23,9 +35,9 @@ var z_max: float = 100.0
 var lip_left: float = 180.0
 var lip_right: float = 1100.0
 var pipe_radius: float = 150.0
-## Logical X that far geometry converges toward (follow-cam / player).
-## Level-centered VP made adjacent spine pipes lean opposite ways.
+## Far X converges toward the skater so adjacent pipes share lean.
 var perspective_origin_x: float = 640.0
+var _loaded_path: String = ""
 
 @onready var _visual: Node2D = $RampVisual
 
@@ -39,20 +51,29 @@ func _ready() -> void:
 
 
 func load_level(path: String) -> bool:
-	var loaded: LevelSpec = LevelLoader.load_path(path)
+	_loaded_path = path
+	level_path = path
+	LevelLoader.cell_size_x = cell_size_x
+	LevelLoader.cell_size_z = cell_size_z
+	var loaded: LevelSpec = LevelLoader.load_path(path, cell_size_x, cell_size_z)
 	# load_path aborts the process on malformed files; null is only possible if quit is deferred.
 	if loaded == null:
 		return false
 	apply_spec(loaded)
+	rebuilt.emit()
 	return true
+
+
+## Re-parse the current .ssk with the active cell sizes (debug tuning).
+func reload() -> bool:
+	var path := _loaded_path if _loaded_path != "" else level_path
+	if path == "":
+		return false
+	return load_level(path)
 
 
 func apply_spec(s: LevelSpec) -> void:
 	spec = s
-	perspective_inset = s.perspective_inset
-	far_geometry_scale = s.far_geometry_scale
-	if s.reference_depth > 0.0:
-		reference_depth = s.reference_depth
 	z_min = s.z_min
 	z_max = s.z_max
 
@@ -118,8 +139,8 @@ func depth_t(logical_z: float) -> float:
 	return clampf((logical_z - z_min) / span, 0.0, 1.0)
 
 
-## 0→1 over `reference_depth` (not full level depth). Keeps lean/scale consistent
-## for deep levels so the near band still reads isometric instead of flat.
+## 0→1 over `reference_depth` from level near edge. Absolute — no player-relative
+## or exponential tricks.
 func perspective_t(logical_z: float) -> float:
 	return clampf((logical_z - z_min) / maxf(reference_depth, 0.0001), 0.0, 1.0)
 
@@ -273,19 +294,16 @@ func project_deck_point(deck: Dictionary, logical_x: float, logical_z: float) ->
 ## Project logical (x,z,height) to screen.
 ## X scales toward perspective_origin_x with depth (same for floor/pipes/decks)
 ## so adjacent features share lean instead of fanning from the level midpoint.
-## Height uses geometry_scale alone. perspective_inset still controls how hard
-## X converges (far_x_scale = 1 - 2*inset/span).
+## Height uses geometry_scale alone. X lean uses reference_width (not level span)
+## so wider maps keep the same vanishing rate as a single bay.
 func project(logical_x: float, logical_z: float, surface_height: float = 0.0) -> Dictionary:
 	var t := perspective_t(logical_z)
 	var inset := inset_at(logical_z)
 	var gscale := geometry_scale_at(logical_z)
 	var ground_y := ground_screen_y(logical_z)
 
-	var span := x_max() - x_min()
-	var far_x_scale := 1.0
-	if span > 0.0001:
-		# Allow strong insets for vanishing-point looks (slider-driven).
-		far_x_scale = clampf(1.0 - (2.0 * perspective_inset) / span, 0.15, 1.0)
+	var ref_w := maxf(reference_width, 0.0001)
+	var far_x_scale := clampf(1.0 - (2.0 * perspective_inset) / ref_w, 0.15, 1.0)
 	var x_scale := lerpf(1.0, far_x_scale, t)
 	var screen_x := perspective_origin_x + (logical_x - perspective_origin_x) * x_scale
 

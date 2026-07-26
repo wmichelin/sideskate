@@ -1,9 +1,5 @@
 ssk 1
 name _template
-width 1280
-depth 100
-perspective_inset 80
-far_geometry_scale 0.72
 spawn_facing r
 ---
 <<<<========================>>>>

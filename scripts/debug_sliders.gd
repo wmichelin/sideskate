@@ -30,6 +30,10 @@ extends CanvasLayer
 @export var far_geom_max: float = 1.0
 @export var ref_depth_min: float = 20.0
 @export var ref_depth_max: float = 500.0
+@export var cell_x_min: float = 10.0
+@export var cell_x_max: float = 120.0
+@export var cell_z_min: float = 10.0
+@export var cell_z_max: float = 200.0
 
 @onready var _panel: PanelContainer = $Panel
 @onready var _body: VBoxContainer = $Panel/VBox/Body
@@ -58,6 +62,10 @@ extends CanvasLayer
 @onready var _far_geom_value: Label = $Panel/VBox/Body/FarGeomScaleRow/Value
 @onready var _ref_depth_slider: HSlider = $Panel/VBox/Body/RefDepthRow/Slider
 @onready var _ref_depth_value: Label = $Panel/VBox/Body/RefDepthRow/Value
+@onready var _cell_x_slider: HSlider = $Panel/VBox/Body/CellXRow/Slider
+@onready var _cell_x_value: Label = $Panel/VBox/Body/CellXRow/Value
+@onready var _cell_z_slider: HSlider = $Panel/VBox/Body/CellZRow/Slider
+@onready var _cell_z_value: Label = $Panel/VBox/Body/CellZRow/Value
 @onready var _depth_grid_check: CheckButton = $Panel/VBox/Body/DepthGridRow/Check
 @onready var _cell_check: CheckButton = $Panel/VBox/Body/CellHighlightRow/Check
 @onready var _god_check: CheckButton = $Panel/VBox/Body/GodModeRow/Check
@@ -92,9 +100,11 @@ func _ready() -> void:
 	_bind_float_slider(_ramp_friction_slider, ramp_friction_min, ramp_friction_max, 10.0, _player, "ramp_friction", 0.0, _on_ramp_friction_changed, _refresh_ramp_friction_label)
 	_bind_float_slider(_friction_slider, friction_min, friction_max, 10.0, _player, "friction", 0.0, _on_friction_changed, _refresh_friction_label)
 
-	_bind_float_slider(_persp_inset_slider, persp_inset_min, persp_inset_max, 1.0, _level, "perspective_inset", 200.0, _on_persp_inset_changed, _refresh_persp_inset_label)
+	_bind_float_slider(_persp_inset_slider, persp_inset_min, persp_inset_max, 1.0, _level, "perspective_inset", 160.0, _on_persp_inset_changed, _refresh_persp_inset_label)
 	_bind_float_slider(_far_geom_slider, far_geom_min, far_geom_max, 0.01, _level, "far_geometry_scale", 1.0, _on_far_geom_changed, _refresh_far_geom_label)
-	_bind_float_slider(_ref_depth_slider, ref_depth_min, ref_depth_max, 5.0, _level, "reference_depth", 500.0, _on_ref_depth_changed, _refresh_ref_depth_label)
+	_bind_float_slider(_ref_depth_slider, ref_depth_min, ref_depth_max, 5.0, _level, "reference_depth", 485.0, _on_ref_depth_changed, _refresh_ref_depth_label)
+	_bind_float_slider(_cell_x_slider, cell_x_min, cell_x_max, 1.0, _level, "cell_size_x", 47.0, _on_cell_x_changed, _refresh_cell_x_label)
+	_bind_float_slider(_cell_z_slider, cell_z_min, cell_z_max, 1.0, _level, "cell_size_z", 26.0, _on_cell_z_changed, _refresh_cell_z_label)
 
 	var depth_on := false
 	if _visual != null and _visual.get("show_depth_grid") != null:
@@ -121,6 +131,7 @@ func _ready() -> void:
 		_max_speed_z_slider, _accel_slider, _brake_slider,
 		_ramp_friction_slider, _friction_slider,
 		_persp_inset_slider, _far_geom_slider, _ref_depth_slider,
+		_cell_x_slider, _cell_z_slider,
 	]:
 		if row != null:
 			row.focus_mode = Control.FOCUS_NONE
@@ -301,6 +312,32 @@ func _on_ref_depth_changed(v: float) -> void:
 
 func _refresh_ref_depth_label(v: float) -> void:
 	_ref_depth_value.text = "%.0f" % v
+
+
+func _on_cell_x_changed(v: float) -> void:
+	if _level != null:
+		_level.set("cell_size_x", v)
+		LevelLoader.cell_size_x = v
+		if _level.has_method("reload"):
+			_level.call("reload")
+	_refresh_cell_x_label(v)
+
+
+func _refresh_cell_x_label(v: float) -> void:
+	_cell_x_value.text = "%.0f" % v
+
+
+func _on_cell_z_changed(v: float) -> void:
+	if _level != null:
+		_level.set("cell_size_z", v)
+		LevelLoader.cell_size_z = v
+		if _level.has_method("reload"):
+			_level.call("reload")
+	_refresh_cell_z_label(v)
+
+
+func _refresh_cell_z_label(v: float) -> void:
+	_cell_z_value.text = "%.0f" % v
 
 
 func _on_depth_grid_toggled(on: bool) -> void:

@@ -104,6 +104,17 @@ func _ready() -> void:
 
 func _spawn_from_level() -> void:
 	_level = get_node_or_null(level_path) as RampLevel
+	if _level and not _level.rebuilt.is_connected(_on_level_rebuilt):
+		_level.rebuilt.connect(_on_level_rebuilt)
+	_apply_spawn_from_level()
+
+
+func _on_level_rebuilt() -> void:
+	_apply_spawn_from_level()
+
+
+func _apply_spawn_from_level() -> void:
+	_level = get_node_or_null(level_path) as RampLevel
 	if _level and _level.spec:
 		depth.logical_x = _level.spec.spawn_x
 		depth.logical_z = _level.spec.spawn_z
@@ -114,6 +125,8 @@ func _spawn_from_level() -> void:
 		depth.logical_x = 640.0
 		depth.logical_z = 40.0
 		facing_h = "r"
+	_velocity = Vector2.ZERO
+	_ramp_along = 0.0
 	_clear_air()
 	_apply_surface()
 	_prev_logical_x = depth.logical_x

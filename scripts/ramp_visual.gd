@@ -3,6 +3,7 @@ extends Node2D
 ## Far features paint first so nearer geometry occludes without volume skirts.
 
 @export var grid_steps: int = 5
+## How many iso-u depth strokes to split the pipe face into (not cross-section arcs).
 @export var arc_ribs: int = 5
 ## Faint white depth bands across the plaza. Off by default (debug clutter).
 @export var show_depth_grid: bool = false
@@ -93,56 +94,16 @@ func _draw_backdrop_pad() -> void:
 
 
 func _project_poly(poly: PackedVector2Array, height: float) -> PackedVector2Array:
-	return _project_poly_densified(poly, height)
-
-
-func _project_poly_densified(poly: PackedVector2Array, height: float) -> PackedVector2Array:
-	## Insert midpoints on long Z edges so floor/deck outlines follow perspective_t.
-	var densified := PackedVector2Array()
-	var n := poly.size()
-	if n < 2:
-		return densified
-	var ref := 100.0
-	if _level.get("reference_depth") != null:
-		ref = maxf(float(_level.get("reference_depth")), 1.0)
-	var band := maxf(ref * 0.25, 20.0)
-	for i in range(n):
-		var a: Vector2 = poly[i]
-		var b: Vector2 = poly[(i + 1) % n]
-		densified.append(a)
-		var dz := absf(b.y - a.y)
-		var steps := clampi(int(ceil(dz / band)), 0, 64)
-		for s in range(1, steps):
-			var t := float(s) / float(steps)
-			densified.append(a.lerp(b, t))
 	var out := PackedVector2Array()
-	for v in densified:
+	for v in poly:
 		var p: Dictionary = _level.project(v.x, v.y, height)
 		out.append(Vector2(p.screen_x, p.ground_y - p.surface_screen_h))
 	return out
 
 
 func _project_deck_poly(deck: Dictionary) -> PackedVector2Array:
-	var poly: PackedVector2Array = deck.poly
-	var densified := PackedVector2Array()
-	var n := poly.size()
-	if n < 2:
-		return densified
-	var ref := 100.0
-	if _level.get("reference_depth") != null:
-		ref = maxf(float(_level.get("reference_depth")), 1.0)
-	var band := maxf(ref * 0.25, 20.0)
-	for i in range(n):
-		var a: Vector2 = poly[i]
-		var b: Vector2 = poly[(i + 1) % n]
-		densified.append(a)
-		var dz := absf(b.y - a.y)
-		var steps := clampi(int(ceil(dz / band)), 0, 64)
-		for s in range(1, steps):
-			var t := float(s) / float(steps)
-			densified.append(a.lerp(b, t))
 	var out := PackedVector2Array()
-	for v in densified:
+	for v in deck.poly:
 		var p: Dictionary = _level.project_deck_point(deck, v.x, v.y)
 		out.append(Vector2(p.screen_x, p.ground_y - p.surface_screen_h))
 	return out
@@ -184,7 +145,6 @@ func _draw_depth_grid() -> void:
 		)
 
 
-## Yellow outline/fill of the ASCII map cell under the player (air or grounded).
 func _draw_player_cell_highlight() -> void:
 	if not DebugTools.is_available() or not debug_cell_highlight:
 		return
@@ -201,7 +161,6 @@ func _draw_player_cell_highlight() -> void:
 	var lz: float = body.logical_z
 	var cell: Vector2i = _level.spec.cell_at(lx, lz)
 	var b: Dictionary = _level.spec.cell_bounds(cell.x, cell.y)
-	# Underfoot surface height (spawn is on floor → 0). Air still uses the tile below.
 	var under: Dictionary = _level.sample(lx, lz)
 	var h := 0.0
 	if under.get("active", true) or str(under.get("zone", "")) != "oob":
@@ -230,84 +189,47 @@ func _surf_point(logical_x: float, logical_z: float, height: float) -> Vector2:
 	return Vector2(p.screen_x, p.ground_y - p.surface_screen_h)
 
 
+## Simple ribbon: near→far fill, depth strokes (constant u), lip + coping.
+## No constant-Z arc ribs — those read as scallops under perspective.
 func _draw_pipe(pipe: QuarterPipe) -> void:
 	var steps := 10
+	var near_arc := _arc_points(pipe, pipe.z_min, steps)
+	var far_arc := _arc_points(pipe, pipe.z_max, steps)
 	var is_left := pipe.side == QuarterPipe.PipeSide.LEFT
 	var fill_col := Color(0.42, 0.38, 0.48, 0.92) if is_left else Color(0.38, 0.44, 0.52, 0.92)
 
-	# Subdivide along Z so lip/fill follow perspective_t (which saturates at
-	# reference_depth) instead of one straight near→far chord.
-	var z_steps := _pipe_z_steps(pipe)
-	var slices: Array = []
-	for r in range(z_steps + 1):
-		var zt := float(r) / float(z_steps)
-		var z := lerpf(pipe.z_min, pipe.z_max, zt)
-		slices.append(_arc_points(pipe, z, steps))
+	for i in range(steps):
+		var quad := PackedVector2Array([
+			near_arc[i],
+			near_arc[i + 1],
+			far_arc[i + 1],
+			far_arc[i],
+		])
+		if Geometry2D.triangulate_polygon(quad).is_empty():
+			continue
+		draw_colored_polygon(quad, fill_col)
 
-	for r in range(z_steps):
-		var near_arc: PackedVector2Array = slices[r]
-		var far_arc: PackedVector2Array = slices[r + 1]
-		for i in range(steps):
-			var quad := PackedVector2Array([
-				near_arc[i],
-				near_arc[i + 1],
-				far_arc[i + 1],
-				far_arc[i],
-			])
-			if Geometry2D.triangulate_polygon(quad).is_empty():
-				continue
-			draw_colored_polygon(quad, fill_col)
-
-	for r in range(z_steps + 1):
-		var arc: PackedVector2Array = slices[r]
-		var col := Color(1, 1, 1, 0.22 if r == 0 or r == z_steps else 0.12)
-		var width := 2.0 if r == 0 or r == z_steps else 1.25
-		for i in range(arc.size() - 1):
-			draw_line(arc[i], arc[i + 1], col, width)
+	# Faint iso-u lines running near→far (same perspective as the yellow lip).
+	var ribs := maxi(arc_ribs, 1)
+	for r in range(1, ribs):
+		var u := float(r) / float(ribs)
+		var a: Vector2 = _level.pipe_screen_point_for(pipe, pipe.z_min, u)
+		var b: Vector2 = _level.pipe_screen_point_for(pipe, pipe.z_max, u)
+		draw_line(a, b, Color(1, 1, 1, 0.14), 1.25)
 
 	_draw_pipe_top_stroke(pipe)
-	_draw_pipe_lip_stroke(pipe, z_steps)
+	var lip_near := _level.pipe_screen_point_for(pipe, pipe.z_min, 0.0)
+	var lip_far := _level.pipe_screen_point_for(pipe, pipe.z_max, 0.0)
+	draw_line(lip_near, lip_far, Color(0.95, 0.85, 0.35, 0.85), 2.5)
 
 
-func _pipe_z_steps(pipe: QuarterPipe) -> int:
-	var span := absf(pipe.z_max - pipe.z_min)
-	var ref := 100.0
-	if _level != null and _level.get("reference_depth") != null:
-		ref = maxf(float(_level.get("reference_depth")), 1.0)
-	# ~4 samples per reference band; clamp so deep plazas stay reasonable.
-	var steps := int(ceil(span / maxf(ref * 0.25, 20.0)))
-	return clampi(maxi(steps, arc_ribs), 4, 64)
-
-
-func _draw_pipe_lip_stroke(pipe: QuarterPipe, z_steps: int) -> void:
-	var prev: Vector2
-	for r in range(z_steps + 1):
-		var zt := float(r) / float(z_steps)
-		var z := lerpf(pipe.z_min, pipe.z_max, zt)
-		var pt: Vector2 = _level.pipe_screen_point_for(pipe, z, 0.0)
-		if r > 0:
-			draw_line(prev, pt, Color(0.95, 0.85, 0.35, 0.85), 2.5)
-		prev = pt
-
-
-## Orange coping stroke, broken where a deck covers this pipe's top.
 func _draw_pipe_top_stroke(pipe: QuarterPipe) -> void:
 	var covered := _deck_z_ranges_covering_pipe(pipe)
 	var segments := _z_segments_minus_covered(pipe.z_min, pipe.z_max, covered)
-	var z_steps := _pipe_z_steps(pipe)
 	for seg in segments:
-		var z0: float = float(seg.x)
-		var z1: float = float(seg.y)
-		var span := z1 - z0
-		var local_steps := maxi(1, int(round(float(z_steps) * span / maxf(pipe.z_max - pipe.z_min, 0.001))))
-		var prev: Vector2
-		for r in range(local_steps + 1):
-			var zt := float(r) / float(local_steps)
-			var z := lerpf(z0, z1, zt)
-			var pt: Vector2 = _level.pipe_screen_point_for(pipe, z, 1.0)
-			if r > 0:
-				draw_line(prev, pt, Color(0.95, 0.55, 0.35, 0.9), 3.0)
-			prev = pt
+		var a: Vector2 = _level.pipe_screen_point_for(pipe, float(seg.x), 1.0)
+		var b: Vector2 = _level.pipe_screen_point_for(pipe, float(seg.y), 1.0)
+		draw_line(a, b, Color(0.95, 0.55, 0.35, 0.9), 3.0)
 
 
 func _deck_z_ranges_covering_pipe(pipe: QuarterPipe) -> Array:
@@ -322,7 +244,6 @@ func _deck_z_ranges_covering_pipe(pipe: QuarterPipe) -> Array:
 				covers = true
 				break
 		if not covers:
-			# Fallback: deck edge shares this pipe's coping X.
 			for v in deck.poly:
 				if absf(v.x - coping) < 0.05:
 					covers = true
@@ -338,7 +259,6 @@ func _deck_z_ranges_covering_pipe(pipe: QuarterPipe) -> Array:
 	return out
 
 
-## Return uncovered [z0,z1] segments as Vector2(z0, z1).
 func _z_segments_minus_covered(z_min: float, z_max: float, covered: Array) -> Array:
 	if covered.is_empty():
 		return [Vector2(z_min, z_max)]

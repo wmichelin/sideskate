@@ -74,7 +74,12 @@ func _scan_level_paths() -> PackedStringArray:
 
 
 func _display_name_for(path: String) -> String:
-	var spec: LevelSpec = LevelLoader.load_path(path)
+	var f := FileAccess.open(path, FileAccess.READ)
+	if f == null:
+		return path.get_file().get_basename()
+	var text := f.get_as_text()
+	f.close()
+	var spec: LevelSpec = LevelLoader.parse_text(text, path.get_file().get_basename(), path)
 	if spec != null and spec.name != "":
 		return spec.name
 	return path.get_file().get_basename()

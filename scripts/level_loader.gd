@@ -1,12 +1,18 @@
 class_name LevelLoader
 extends RefCounted
 ## Parses .ssk ASCII levels into LevelSpec.
+## World size = glyph columns/rows × cell size (not header width/depth).
 ## Malformed files abort the process with a dialog naming the path and reason.
 
 static var last_error: String = ""
+## Global defaults; RampLevel / debug sliders override per load.
+static var cell_size_x: float = 47.0
+static var cell_size_z: float = 26.0
 
 
-static func load_path(path: String) -> LevelSpec:
+static func load_path(
+	path: String, cell_x: float = -1.0, cell_z: float = -1.0
+) -> LevelSpec:
 	last_error = ""
 	var f := FileAccess.open(path, FileAccess.READ)
 	if f == null:
@@ -14,7 +20,9 @@ static func load_path(path: String) -> LevelSpec:
 		return null
 	var text := f.get_as_text()
 	f.close()
-	var spec := parse_text(text, path.get_file().get_basename(), path)
+	var spec := parse_text(
+		text, path.get_file().get_basename(), path, cell_x, cell_z
+	)
 	if spec == null:
 		_abort(last_error if last_error != "" else "Malformed level:\n%s" % path)
 		return null
@@ -23,12 +31,18 @@ static func load_path(path: String) -> LevelSpec:
 
 ## Parse only — returns null on error and sets last_error (no quit). Prefer load_path.
 static func parse_text(
-	text: String, default_name: String = "level", source_path: String = ""
+	text: String,
+	default_name: String = "level",
+	source_path: String = "",
+	cell_x: float = -1.0,
+	cell_z: float = -1.0,
 ) -> LevelSpec:
 	var label := source_path if source_path != "" else default_name
 	var lines := text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
 	var spec := LevelSpec.new()
 	spec.name = default_name
+	var cx := cell_x if cell_x > 0.0 else cell_size_x
+	var cz := cell_z if cell_z > 0.0 else cell_size_z
 
 	var map_rows: PackedStringArray = PackedStringArray()
 	var in_map := false
@@ -74,14 +88,14 @@ static func parse_text(
 		return _fail(label, "missing 'ssk 1' version line")
 	if map_rows.is_empty():
 		return _fail(label, "no map rows (expected '---' then ASCII grid)")
-	if spec.width <= 0.0 or spec.depth <= 0.0:
-		return _fail(label, "width and depth are required and must be > 0")
+	if cx <= 0.0 or cz <= 0.0:
+		return _fail(label, "cell size must be > 0")
 
 	var width_err := _require_uniform_row_widths(map_rows)
 	if width_err != "":
 		return _fail(label, width_err)
 
-	var err := _build_geometry(spec, map_rows)
+	var err := _build_geometry(spec, map_rows, cx, cz)
 	if err != "":
 		return _fail(label, err)
 	return spec
@@ -111,7 +125,7 @@ static func _is_map_row(stripped: String) -> bool:
 		return false
 	# Header keys
 	var key := stripped.split(" ")[0]
-	if key in ["ssk", "name", "width", "depth", "pipe_radius", "deck_height", "perspective_inset", "far_geometry_scale", "reference_depth", "spawn_facing"]:
+	if key in ["ssk", "name", "width", "depth", "pipe_radius", "deck_height", "perspective_inset", "far_geometry_scale", "reference_depth", "reference_width", "spawn_facing"]:
 		return false
 	# Must contain at least one map glyph (not only spaces)
 	for glyph in stripped:
@@ -133,20 +147,16 @@ static func _parse_header_kv(spec: LevelSpec, stripped: String) -> void:
 	match key:
 		"name":
 			spec.name = val.strip_edges()
-		"width":
-			spec.width = float(val)
-		"depth":
-			spec.depth = float(val)
+		"width", "depth", "perspective_inset", "far_geometry_scale", "reference_depth", "reference_width":
+			# Deprecated: world size / perspective are game-global, not per-level.
+			push_warning(
+				"LevelLoader: header '%s' is ignored — set on RampLevel / TUNING, not in .ssk"
+				% key
+			)
 		"pipe_radius":
 			spec.pipe_radius_override = float(val)
 		"deck_height":
 			spec.deck_height_override = float(val)
-		"perspective_inset":
-			spec.perspective_inset = float(val)
-		"far_geometry_scale":
-			spec.far_geometry_scale = float(val)
-		"reference_depth":
-			spec.reference_depth = float(val)
 		"spawn_facing":
 			var f := val.strip_edges().to_lower()
 			if f == "l" or f == "left":
@@ -171,15 +181,19 @@ static func _require_uniform_row_widths(map_rows: PackedStringArray) -> String:
 	return ""
 
 
-static func _build_geometry(spec: LevelSpec, map_rows: PackedStringArray) -> String:
+static func _build_geometry(
+	spec: LevelSpec, map_rows: PackedStringArray, cell_x: float, cell_z: float
+) -> String:
 	var H := map_rows.size()
 	var W := map_rows[0].length()
-	var cw := spec.width / float(W)
-	var ch := spec.depth / float(H)
+	var cw := cell_x
+	var ch := cell_z
 	spec.grid_w = W
 	spec.grid_h = H
 	spec.cell_w = cw
 	spec.cell_h = ch
+	spec.width = float(W) * cw
+	spec.depth = float(H) * ch
 
 	# grid[row][col] character
 	var grid: Array = []

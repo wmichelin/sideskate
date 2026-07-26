@@ -1,6 +1,6 @@
 # SideSkate level format (`.ssk`)
 
-ASCII-first layout language. Absolute world size via `width` / `depth`.  
+ASCII-first layout language. World size is derived from the glyph grid × global cell size.  
 Top row = **far** (high Z). Bottom row = **near** (low Z). X increases left → right.
 
 ## Structure
@@ -8,11 +8,6 @@ Top row = **far** (high Z). Bottom row = **near** (low Z). X increases left → 
 ```text
 ssk 1
 name my_level
-width 1280
-depth 100
-perspective_inset 200
-far_geometry_scale 1.0
-reference_depth 500
 # optional header comments / keys:
 # pipe_radius 150
 # deck_height 150
@@ -30,20 +25,30 @@ Files in `levels/` whose names start with `_` (e.g. `_template.ssk`) are templat
 
 All map rows must be the **same length**. Uneven widths are a hard error (dialog + quit) naming the file and the mismatched row — short rows are not padded.
 
+## World size
+
+Level extents are automatic:
+
+- `width = columns × cell_size_x` (default cell X = **47**)
+- `depth = rows × cell_size_z` (default cell Z = **26**)
+
+Add glyphs to grow the plaza; do not set `width` / `depth` in the header (ignored if present). Cell sizes are game-wide (RampLevel exports + TUNING sliders `cell x` / `cell z`).
+
+Pipe radius follows run width in cells (`<<<<` → 4 × cell_x), so the same glyph pattern always builds the same logical ramp.
+
+Perspective (`perspective_inset`, `far_geometry_scale`, `reference_depth`, `reference_width`) lives on **RampLevel** / TUNING only — not in `.ssk` files. Default inset is 160; X convergence uses fixed `reference_width`.
+
 ## Header keys
 
 | Key | Required | Meaning |
 |-----|----------|---------|
 | `ssk 1` | yes (first line) | Format version |
 | `name` | no | Level id (default: filename) |
-| `width` | yes | Logical X span of the full ASCII grid |
-| `depth` | yes | Logical Z span of the full ASCII grid. Screen Y uses a fixed px/Z rate from `reference_depth`; deeper levels extend off-frame and the camera pans with the player. |
 | `pipe_radius` | no | Default pipe radius; else from `<>` run width |
 | `deck_height` | no | Override height for all `#` decks |
-| `perspective_inset` | no | How hard far X converges toward the skater (px; → `far_x_scale`). Lower ≈ more isometric / parallel. |
-| `far_geometry_scale` | no | Far size factor for vertical geometry (closer to 1 ≈ more isometric). Lean/scale use `reference_depth`, not the full level depth. |
-| `reference_depth` | no | Z span over which perspective lean/X converge saturate (default ~500). Deep plazas keep converging only for this band, then parallel. |
 | `spawn_facing` | no | Spawn horizontal facing: `l` or `r` (default `r`) |
+
+Deprecated (ignored with a warning): `width`, `depth`, `perspective_inset`, `far_geometry_scale`, `reference_depth`, `reference_width`.
 
 ## Glyphs
 
@@ -70,10 +75,6 @@ For each connected `#` component:
 ```text
 ssk 1
 name spine_demo
-width 1280
-depth 100
-perspective_inset 80
-far_geometry_scale 0.72
 ---
 <<<<=======>>>>##<<<<=======>>>>
 <<<<=======>>>>##<<<<=======>>>>
@@ -99,10 +100,6 @@ Both pipe runs must be the same width so coping height matches on both sides.
 ```text
 ssk 1
 name spine_demo
-width 1280
-depth 100
-perspective_inset 80
-far_geometry_scale 0.72
 ---
 <<<<===>>>>##<<<<=======>>>>##<<<<=======>>>>
 <<<<===>>>>##<<<<=======>>>>##<<<<=======>>>>
@@ -118,10 +115,6 @@ Bottom row drops the first spine deck (`>>>><<<<`) and shifts a bay — pipes st
 ```text
 ssk 1
 name partial_spine
-width 1280
-depth 100
-perspective_inset 80
-far_geometry_scale 0.72
 ---
 <<<<=======>>>>##<<<<=======>>>>
 <<<<=======>>>>##<<<<=======>>>>
@@ -135,10 +128,6 @@ Here the spine pipes and deck share the far rows only; plaza pipes on the sides 
 ```text
 ssk 1
 name plaza_default
-width 1280
-depth 100
-perspective_inset 80
-far_geometry_scale 0.72
 ---
 <<<<========================>>>>
 <<<<========================>>>>
@@ -149,7 +138,7 @@ far_geometry_scale 0.72
 
 ## Scaling
 
-Grid `W`×`H`, cell size `cw = width/W`, `ch = depth/H`.
+Grid `W`×`H`, cell size `cw = cell_size_x`, `ch = cell_size_z`.
 
 Tile `(col, row)` with `row=0` at top/far:
 

@@ -1,14 +1,11 @@
 class_name LevelSpec
 extends RefCounted
-## Parsed .ssk level: floors, decks, pipes, spawn, perspective.
+## Parsed .ssk level: floors, decks, pipes, spawn.
 
 var name: String = ""
-var width: float = 1280.0
-var depth: float = 100.0
-var perspective_inset: float = 200.0
-var far_geometry_scale: float = 1.0
-## Screen Y / lean saturate over this Z span from z_min (-1 = use RampLevel default).
-var reference_depth: float = -1.0
+## Derived: columns × cell_size_x / rows × cell_size_z.
+var width: float = 0.0
+var depth: float = 0.0
 var pipe_radius_override: float = -1.0
 var deck_height_override: float = -1.0
 
