@@ -48,6 +48,9 @@ var _debug_accel: Vector2 = Vector2.ZERO
 ## `_velocity.x` is the remaining horizontal component `along * cos(θ)` after projection.
 var _ramp_along: float = 0.0
 var _on_ramp: bool = false
+## Sticky pipe identity while riding — adjacent opposite pipes share coping X.
+var _ramp_side: int = QuarterPipe.PipeSide.RIGHT
+var _ramp_lip_x: float = 0.0
 var _level: RampLevel
 var last_surface: Dictionary = {}
 
@@ -237,6 +240,8 @@ func _apply_motion(delta: float, speed_mul: float) -> void:
 						_ramp_along = land_vy * side_sign
 						_velocity.x = _ramp_along
 						_on_ramp = true
+						_ramp_side = _air_side
+						_ramp_lip_x = _air_lip_x
 					if _ramp_along * side_sign < -1.0:
 						_move_along_pipe_or_flat(_ramp_along * speed_mul, delta)
 					else:
@@ -259,20 +264,41 @@ func _apply_motion(delta: float, speed_mul: float) -> void:
 	var prev_support_h := depth.surface_height
 	depth.logical_z = depth.clamp_z(depth.logical_z + _velocity.y * speed_mul * delta)
 
-	var hit: Dictionary = _level.sample(depth.logical_x, depth.logical_z) if _level else {}
+	var hit: Dictionary = _sample_underfoot()
 	if _is_pipe_hit(hit):
+		# If sticky pipe lost us onto an opposite neighbor at shared coping, launch
+		# instead of flipping walls mid-ride.
+		if _on_ramp and _is_opposite_pipe_swap(hit):
+			var up_speed: float = maxf(_velocity.x * _coping_sign(_ramp_side), 0.0)
+			_enter_air_from_pipe({
+				"side": _ramp_side,
+				"lip_x": _ramp_lip_x,
+				"radius": _sticky_pipe_radius(),
+			}, up_speed)
+			return
 		if not _on_ramp:
 			_ramp_along = _velocity.x
 			_on_ramp = true
+		_ramp_side = int(hit.get("side", _ramp_side))
+		_ramp_lip_x = float(hit.get("lip_x", _ramp_lip_x))
 		_apply_ramp_friction(delta)
 		_ramp_along = _velocity.x
 		var arc_speed := _ramp_along * speed_mul
 		_move_along_pipe(hit, arc_speed, delta)
 		# Re-sample after move so θ matches feet; project along → horiz remnant.
 		if _on_ramp and not _airborne:
-			var after: Dictionary = _level.sample(depth.logical_x, depth.logical_z) if _level else hit
-			if _is_pipe_hit(after):
+			var after: Dictionary = _sample_underfoot()
+			if _is_pipe_hit(after) and not _is_opposite_pipe_swap(after):
+				_ramp_side = int(after.get("side", _ramp_side))
+				_ramp_lip_x = float(after.get("lip_x", _ramp_lip_x))
 				_project_ramp_velocity(float(after.get("theta", 0.0)))
+			elif _is_pipe_hit(after) and _is_opposite_pipe_swap(after):
+				var up_speed2: float = maxf(_ramp_along * _coping_sign(_ramp_side), 0.0)
+				_enter_air_from_pipe({
+					"side": _ramp_side,
+					"lip_x": _ramp_lip_x,
+					"radius": _sticky_pipe_radius(),
+				}, up_speed2)
 			else:
 				_leave_ramp_to_flat()
 		return
@@ -424,6 +450,36 @@ func _project_ramp_velocity(theta: float) -> void:
 	_velocity.x = _ramp_along * c
 
 
+func _sample_underfoot() -> Dictionary:
+	if _level == null:
+		return {}
+	if _on_ramp:
+		return _level.sample(depth.logical_x, depth.logical_z, _ramp_side, _ramp_lip_x)
+	return _level.sample(depth.logical_x, depth.logical_z)
+
+
+func _is_opposite_pipe_swap(hit: Dictionary) -> bool:
+	if not _on_ramp or not _is_pipe_hit(hit):
+		return false
+	var side: int = int(hit.get("side", _ramp_side))
+	if side == _ramp_side:
+		return false
+	# Shared / near-shared coping: neighbor stole the sample at the top.
+	var their_lip := float(hit.get("lip_x", _ramp_lip_x))
+	var their_r := _pipe_radius_for_hit(hit)
+	var my_r := _sticky_pipe_radius()
+	var their_coping := _coping_x_for(side, their_lip, their_r)
+	var my_coping := _coping_x_for(_ramp_side, _ramp_lip_x, my_r)
+	return absf(their_coping - my_coping) < 1.0
+
+
+func _sticky_pipe_radius() -> float:
+	return _pipe_radius_for_hit({
+		"side": _ramp_side,
+		"lip_x": _ramp_lip_x,
+	})
+
+
 func _leave_ramp_to_flat() -> void:
 	# Back on flat: full along-speed is horizontal again.
 	_velocity.x = _ramp_along
@@ -487,7 +543,7 @@ func _apply_surface() -> void:
 		_refresh_head_debug()
 		return
 
-	last_surface = _level.sample(depth.logical_x, depth.logical_z)
+	last_surface = _sample_underfoot()
 	var zone := str(last_surface.get("zone", "flat"))
 
 	if _airborne:

@@ -187,7 +187,24 @@ func x_max() -> float:
 	return lip_right + pipe_radius
 
 
-func sample(logical_x: float, logical_z: float) -> Dictionary:
+## Prefer a specific pipe first (side + lip). Stops spine neighbors that share a
+## coping X from stealing the sample while still riding.
+func sample(
+	logical_x: float,
+	logical_z: float,
+	prefer_side: int = -1,
+	prefer_lip_x: float = NAN
+) -> Dictionary:
+	if prefer_side >= 0 and not is_nan(prefer_lip_x):
+		for pipe in pipes:
+			if int(pipe.side) != prefer_side:
+				continue
+			if absf(pipe.lip_x - prefer_lip_x) > 0.05:
+				continue
+			var preferred: Dictionary = pipe.query_surface(logical_x, logical_z)
+			if preferred.get("active", false):
+				return preferred
+
 	for pipe in pipes:
 		var hit: Dictionary = pipe.query_surface(logical_x, logical_z)
 		if hit.get("active", false):
