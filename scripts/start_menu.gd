@@ -1,27 +1,66 @@
 extends Control
 ## Start menu: splash title + one button per .ssk in res://levels/.
 ## Files whose names start with `_` (e.g. `_template.ssk`) are skipped.
+## Arrow / WASD moves focus; Enter selects; list scrolls with focus.
 
 const LEVELS_DIR := "res://levels"
 
 @onready var _list: VBoxContainer = %LevelList
+@onready var _scroll: ScrollContainer = %LevelScroll
 @onready var _status: Label = %StatusLabel
+
+var _buttons: Array[Button] = []
 
 
 func _ready() -> void:
 	_populate_levels()
 
 
+func _input(event: InputEvent) -> void:
+	if _buttons.is_empty():
+		return
+	# Own vertical nav so arrows + WASD both wrap and scroll via follow_focus.
+	if event.is_action_pressed("ui_up") or _is_key(event, KEY_W):
+		_move_focus(-1)
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("ui_down") or _is_key(event, KEY_S):
+		_move_focus(1)
+		get_viewport().set_input_as_handled()
+
+
+func _is_key(event: InputEvent, keycode: Key) -> bool:
+	if not (event is InputEventKey and event.pressed and not event.echo):
+		return false
+	var k := event as InputEventKey
+	return k.keycode == keycode or k.physical_keycode == keycode
+
+
+func _move_focus(delta: int) -> void:
+	if _buttons.is_empty():
+		return
+	var focused := get_viewport().gui_get_focus_owner()
+	var idx := 0
+	if focused is Button:
+		var found := _buttons.find(focused as Button)
+		if found >= 0:
+			idx = found
+	var next := (idx + delta) % _buttons.size()
+	if next < 0:
+		next += _buttons.size()
+	_buttons[next].grab_focus()
+
+
 func _populate_levels() -> void:
 	for child in _list.get_children():
-		child.queue_free()
+		child.free()
+	_buttons.clear()
 
 	var paths := _scan_level_paths()
 	if paths.is_empty():
 		_status.text = "No levels found in res://levels/"
 		return
 
-	_status.text = "Select a level"
+	_status.text = "Select a level  ·  ↑↓ / WS  ·  Enter"
 	var style_normal := _make_button_style(Color(0.14, 0.16, 0.18, 0.95), Color(0.85, 0.55, 0.28, 0.55))
 	var style_hover := _make_button_style(Color(0.22, 0.18, 0.12, 0.98), Color(0.95, 0.65, 0.3, 0.9))
 	for path in paths:
@@ -30,6 +69,7 @@ func _populate_levels() -> void:
 		btn.text = display
 		btn.custom_minimum_size = Vector2(420, 48)
 		btn.alignment = HORIZONTAL_ALIGNMENT_CENTER
+		btn.focus_mode = Control.FOCUS_ALL
 		btn.add_theme_font_size_override("font_size", 20)
 		btn.add_theme_stylebox_override("normal", style_normal)
 		btn.add_theme_stylebox_override("hover", style_hover)
@@ -37,6 +77,13 @@ func _populate_levels() -> void:
 		btn.add_theme_stylebox_override("focus", style_hover)
 		btn.pressed.connect(_on_level_pressed.bind(path))
 		_list.add_child(btn)
+		_buttons.append(btn)
+
+	if not _buttons.is_empty():
+		_buttons[0].grab_focus()
+		# ScrollContainer may need a frame before follow_focus can size.
+		if not _scroll.follow_focus:
+			_scroll.follow_focus = true
 
 
 func _make_button_style(bg: Color, border: Color) -> StyleBoxFlat:
