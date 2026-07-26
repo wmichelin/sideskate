@@ -8,6 +8,7 @@
 [ext_resource type="Script" uid="uid://bt2eynnt5cbqm" path="res://scripts/main.gd" id="7_main"]
 [ext_resource type="Script" uid="uid://bjukc50nc4o3b" path="res://scripts/follow_camera.gd" id="8_camera"]
 [ext_resource type="Script" path="res://scripts/debug_sliders.gd" id="9_sliders"]
+[ext_resource type="Script" path="res://scripts/velocity_debug_arrow.gd" id="10_vel_arrow"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_head"]
 content_margin_left = 8.0
@@ -82,6 +83,10 @@ theme_override_colors/font_color = Color(0.9, 0.93, 0.98, 1)
 theme_override_font_sizes/font_size = 13
 text = "flat"
 horizontal_alignment = 1
+
+[node name="VelocityArrow" type="Node2D" parent="Player/Body"]
+position = Vector2(0, -118)
+script = ExtResource("10_vel_arrow")
 
 [node name="FollowCamera" type="Camera2D" parent="." unique_id=1242588525]
 script = ExtResource("8_camera")

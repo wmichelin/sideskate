@@ -45,6 +45,13 @@ var _transfer_x_active: bool = false
 var _transfer_x_from: float = 0.0
 var _transfer_x_to: float = 0.0
 var _transfer_x_t: float = 0.0
+## Measured actual velocity from position deltas (not stick intent).
+var _actual_vel_x: float = 0.0
+var _actual_vel_z: float = 0.0
+var _vert_vel: float = 0.0
+var _prev_logical_x: float = 0.0
+var _prev_logical_z: float = 0.0
+var _prev_feet_h: float = 0.0
 
 
 func _ready() -> void:
@@ -64,6 +71,12 @@ func _spawn_from_level() -> void:
 		depth.logical_z = 40.0
 	_clear_air()
 	_apply_surface()
+	_prev_logical_x = depth.logical_x
+	_prev_logical_z = depth.logical_z
+	_prev_feet_h = _feet_height()
+	_actual_vel_x = 0.0
+	_actual_vel_z = 0.0
+	_vert_vel = 0.0
 	depth.apply()
 
 
@@ -88,7 +101,29 @@ func _physics_process(delta: float) -> void:
 		depth.logical_x = clampf(depth.logical_x, 80.0, 1200.0)
 
 	_apply_surface()
+	_update_actual_velocity(delta)
 	depth.apply()
+
+
+func _feet_height() -> float:
+	if _airborne:
+		return air_abs_height
+	return depth.surface_height
+
+
+func _update_actual_velocity(delta: float) -> void:
+	var h := _feet_height()
+	if delta > 0.0001:
+		_actual_vel_x = (depth.logical_x - _prev_logical_x) / delta
+		_actual_vel_z = (depth.logical_z - _prev_logical_z) / delta
+		_vert_vel = (h - _prev_feet_h) / delta
+	else:
+		_actual_vel_x = 0.0
+		_actual_vel_z = 0.0
+		_vert_vel = 0.0
+	_prev_logical_x = depth.logical_x
+	_prev_logical_z = depth.logical_z
+	_prev_feet_h = h
 
 
 func _apply_motion(delta: float, speed_mul: float) -> void:
@@ -97,14 +132,16 @@ func _apply_motion(delta: float, speed_mul: float) -> void:
 		_step_transfer_x(delta)
 
 		if _air_x_locked:
-			depth.logical_x = _air_coping_x
+			# Don't pin X while a transfer lerp is carrying us to the new coping.
+			if not _transfer_x_active:
+				depth.logical_x = _air_coping_x
 			depth.logical_z = depth.clamp_z(depth.logical_z + _velocity.y * speed_mul * delta)
 			var toward: float = _velocity.x * speed_mul * _coping_sign(_air_side)
 			var coping_h := _air_radius
 			var max_h := coping_h + maxf(_air_radius * pipe_air_max_extra, 1.0)
 			air_abs_height = clampf(air_abs_height + toward * delta, coping_h, max_h)
 			air_vel_y = 0.0
-			if air_abs_height <= coping_h + 0.001 and toward <= 1.0:
+			if air_abs_height <= coping_h + 0.001 and toward <= 1.0 and not _transfer_x_active:
 				_clear_air()
 				if toward < -1.0:
 					_move_along_pipe_or_flat(toward * delta)
@@ -159,8 +196,12 @@ func _step_transfer_x(delta: float) -> void:
 func _update_air_over_underfoot() -> void:
 	if _level == null:
 		return
-	# Keep transfer target zone until X settle finishes (coping sample would re-lock).
+	# Keep transfer target zone until X settle finishes.
 	if _transfer_x_active:
+		return
+	# Locked on a pipe coping: don't re-sample. Adjacent opposite pipes often share
+	# the coping X, and sample() would flip us back to the neighbor.
+	if _air_x_locked:
 		return
 	var under: Dictionary = _level.sample(depth.logical_x, depth.logical_z)
 	var zone := str(under.get("zone", "flat"))
@@ -303,10 +344,12 @@ func _enter_air_from_pipe(hit: Dictionary, extra_height: float = 0.0) -> void:
 		"radius": radius,
 		"lock_x": true,
 		"anchor_x": coping,
-	}, abs_h)
+	}, abs_h, true)
 
 
-func _begin_air_over(target: Dictionary, abs_height: float) -> void:
+## Start airborne over a target. snap_x pins to anchor immediately (pipe enter);
+## false keeps current X so a transfer lerp can carry us there.
+func _begin_air_over(target: Dictionary, abs_height: float, snap_x: bool = true) -> void:
 	_airborne = true
 	air_vel_y = 0.0
 	air_over = str(target.get("zone", "flat"))
@@ -320,7 +363,8 @@ func _begin_air_over(target: Dictionary, abs_height: float) -> void:
 		_air_radius = float(target.radius)
 	if _air_x_locked:
 		_air_coping_x = float(target.get("anchor_x", _coping_x_for(_air_side, _air_lip_x, _air_radius)))
-		depth.logical_x = _air_coping_x
+		if snap_x:
+			depth.logical_x = _air_coping_x
 		air_abs_height = maxf(abs_height, _air_radius)
 	else:
 		air_abs_height = abs_height
@@ -352,8 +396,15 @@ func _try_transfer() -> void:
 	var hit: Dictionary = _level.sample_transfer(
 		probe_x, depth.logical_z, exclude_side, exclude_lip
 	)
+	# Tight spine / gap: probe may land on flat between facing copings — pick the
+	# nearest opposite pipe in the behind direction when no deck claimed the spot.
+	if not _is_pipe_hit(hit) and str(hit.get("zone", "")) != "deck":
+		var pipe_hit := _find_pipe_behind(probe_from_x, behind, exclude_side, exclude_lip)
+		if not pipe_hit.is_empty():
+			hit = pipe_hit
 	var zone := str(hit.get("zone", "flat"))
 	var keep_h := air_abs_height
+	var from_x := depth.logical_x
 	var anchor_x := probe_x
 	var target := {"zone": zone, "lock_x": false, "anchor_x": probe_x}
 
@@ -376,15 +427,44 @@ func _try_transfer() -> void:
 	else:
 		target = {"zone": "flat", "lock_x": false, "anchor_x": probe_x}
 
-	_begin_air_over(target, keep_h)
-	_start_transfer_x_lerp(anchor_x)
-
-
-func _start_transfer_x_lerp(to_x: float) -> void:
-	_transfer_x_from = depth.logical_x
-	_transfer_x_to = to_x
+	_begin_air_over(target, keep_h, false)
+	_transfer_x_from = from_x
+	_transfer_x_to = anchor_x
 	_transfer_x_t = 0.0
-	_transfer_x_active = absf(to_x - depth.logical_x) > 0.05
+	_transfer_x_active = absf(anchor_x - from_x) > 0.05
+	if not _transfer_x_active and _air_x_locked:
+		depth.logical_x = _air_coping_x
+
+
+## Nearest other pipe whose coping lies behind us (spine / back-to-back).
+func _find_pipe_behind(
+	from_x: float, behind: float, exclude_side: int, exclude_lip_x: float
+) -> Dictionary:
+	if _level == null:
+		return {}
+	var best: Dictionary = {}
+	var best_dist := INF
+	for pipe in _level.pipes:
+		if pipe.side == exclude_side and absf(pipe.lip_x - exclude_lip_x) < 0.05:
+			continue
+		if depth.logical_z < pipe.z_min - 0.001 or depth.logical_z > pipe.z_max + 0.001:
+			continue
+		var coping: float = _coping_x_for(pipe.side, pipe.lip_x, pipe.radius)
+		var dist: float = (coping - from_x) * behind
+		# Allow shared coping (dist ~ 0) and nearby opposite transitions.
+		if dist < -0.05 or dist > maxf(pipe.radius * 2.0, 200.0):
+			continue
+		var score: float = absf(dist)
+		if score < best_dist:
+			best_dist = score
+			best = {
+				"active": true,
+				"zone": _pipe_zone_name(pipe.side),
+				"side": pipe.side,
+				"lip_x": pipe.lip_x,
+				"radius": pipe.radius,
+			}
+	return best
 
 
 func _coping_x_for(side: int, lip_x: float, radius: float) -> float:
@@ -432,6 +512,17 @@ func zone_debug_label() -> String:
 			return "air (over %s)" % over
 		return "air"
 	return zone
+
+
+## Screen-local velocity for the head debug arrow (+X right, -Y up).
+## Uses measured position rates, not stick intent (_velocity).
+func debug_velocity_screen() -> Vector2:
+	# +logical Z (farther) → up on screen; +vertical (rising) → up on screen.
+	return Vector2(_actual_vel_x, -_actual_vel_z - _vert_vel)
+
+
+func debug_velocity_speed() -> float:
+	return Vector3(_actual_vel_x, _vert_vel, _actual_vel_z).length()
 
 
 func _refresh_head_debug() -> void:
