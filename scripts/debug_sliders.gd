@@ -12,6 +12,12 @@ extends CanvasLayer
 @export var ollie_accel_max: float = 3000.0
 @export var max_speed_x_min: float = 50.0
 @export var max_speed_x_max: float = 2000.0
+@export var max_speed_z_min: float = 10.0
+@export var max_speed_z_max: float = 400.0
+@export var acceleration_min: float = 100.0
+@export var acceleration_max: float = 6000.0
+@export var brake_min: float = 0.0
+@export var brake_max: float = 12000.0
 @export var ramp_friction_min: float = 0.0
 @export var ramp_friction_max: float = 2000.0
 @export var friction_min: float = 0.0
@@ -25,6 +31,12 @@ extends CanvasLayer
 @onready var _ollie_value: Label = $Panel/VBox/OllieAccelRow/Value
 @onready var _max_speed_x_slider: HSlider = $Panel/VBox/MaxSpeedXRow/Slider
 @onready var _max_speed_x_value: Label = $Panel/VBox/MaxSpeedXRow/Value
+@onready var _max_speed_z_slider: HSlider = $Panel/VBox/MaxSpeedZRow/Slider
+@onready var _max_speed_z_value: Label = $Panel/VBox/MaxSpeedZRow/Value
+@onready var _accel_slider: HSlider = $Panel/VBox/AccelRow/Slider
+@onready var _accel_value: Label = $Panel/VBox/AccelRow/Value
+@onready var _brake_slider: HSlider = $Panel/VBox/BrakeRow/Slider
+@onready var _brake_value: Label = $Panel/VBox/BrakeRow/Value
 @onready var _ramp_friction_slider: HSlider = $Panel/VBox/RampFrictionRow/Slider
 @onready var _ramp_friction_value: Label = $Panel/VBox/RampFrictionRow/Value
 @onready var _friction_slider: HSlider = $Panel/VBox/FrictionRow/Slider
@@ -46,67 +58,17 @@ func _ready() -> void:
 	_player = get_node_or_null(player_path) as Node2D
 	_visual = get_node_or_null(ramp_visual_path) as Node2D
 
-	_gravity_slider.min_value = gravity_min
-	_gravity_slider.max_value = gravity_max
-	_gravity_slider.step = 0.1
-	var g := -9.8
-	if _player != null and _player.get("gravity_ms2") != null:
-		g = float(_player.get("gravity_ms2"))
-	_gravity_slider.value = g
-	_gravity_slider.value_changed.connect(_on_gravity_changed)
-	_refresh_gravity_label(g)
+	_bind_float_slider(_gravity_slider, gravity_min, gravity_max, 0.1, "gravity_ms2", -9.8, _on_gravity_changed, _refresh_gravity_label)
+	_bind_float_slider(_acid_slider, acid_buffer_min, acid_buffer_max, 1.0, "acid_drop_buffer", 44.0, _on_acid_buffer_changed, _refresh_acid_label)
+	_bind_float_slider(_ollie_slider, ollie_accel_min, ollie_accel_max, 10.0, "ollie_accel", 830.0, _on_ollie_accel_changed, _refresh_ollie_label)
+	_bind_float_slider(_max_speed_x_slider, max_speed_x_min, max_speed_x_max, 10.0, "max_speed_x", 900.0, _on_max_speed_x_changed, _refresh_max_speed_x_label)
+	_bind_float_slider(_max_speed_z_slider, max_speed_z_min, max_speed_z_max, 5.0, "max_speed_z", 60.0, _on_max_speed_z_changed, _refresh_max_speed_z_label)
+	_bind_float_slider(_accel_slider, acceleration_min, acceleration_max, 50.0, "acceleration", 2200.0, _on_accel_changed, _refresh_accel_label)
+	_bind_float_slider(_brake_slider, brake_min, brake_max, 50.0, "brake", 5500.0, _on_brake_changed, _refresh_brake_label)
+	_bind_float_slider(_ramp_friction_slider, ramp_friction_min, ramp_friction_max, 10.0, "ramp_friction", 160.0, _on_ramp_friction_changed, _refresh_ramp_friction_label)
+	_bind_float_slider(_friction_slider, friction_min, friction_max, 10.0, "friction", 0.0, _on_friction_changed, _refresh_friction_label)
 
-	_acid_slider.min_value = acid_buffer_min
-	_acid_slider.max_value = acid_buffer_max
-	_acid_slider.step = 1.0
-	var buf := 44.0
-	if _player != null and _player.get("acid_drop_buffer") != null:
-		buf = float(_player.get("acid_drop_buffer"))
-	_acid_slider.value = buf
-	_acid_slider.value_changed.connect(_on_acid_buffer_changed)
-	_refresh_acid_label(buf)
-
-	_ollie_slider.min_value = ollie_accel_min
-	_ollie_slider.max_value = ollie_accel_max
-	_ollie_slider.step = 10.0
-	var oa := 830.0
-	if _player != null and _player.get("ollie_accel") != null:
-		oa = float(_player.get("ollie_accel"))
-	_ollie_slider.value = oa
-	_ollie_slider.value_changed.connect(_on_ollie_accel_changed)
-	_refresh_ollie_label(oa)
-
-	_max_speed_x_slider.min_value = max_speed_x_min
-	_max_speed_x_slider.max_value = max_speed_x_max
-	_max_speed_x_slider.step = 10.0
-	var msx := 900.0
-	if _player != null and _player.get("max_speed_x") != null:
-		msx = float(_player.get("max_speed_x"))
-	_max_speed_x_slider.value = msx
-	_max_speed_x_slider.value_changed.connect(_on_max_speed_x_changed)
-	_refresh_max_speed_x_label(msx)
-
-	_ramp_friction_slider.min_value = ramp_friction_min
-	_ramp_friction_slider.max_value = ramp_friction_max
-	_ramp_friction_slider.step = 10.0
-	var rf := 160.0
-	if _player != null and _player.get("ramp_friction") != null:
-		rf = float(_player.get("ramp_friction"))
-	_ramp_friction_slider.value = rf
-	_ramp_friction_slider.value_changed.connect(_on_ramp_friction_changed)
-	_refresh_ramp_friction_label(rf)
-
-	_friction_slider.min_value = friction_min
-	_friction_slider.max_value = friction_max
-	_friction_slider.step = 10.0
-	var fr := 0.0
-	if _player != null and _player.get("friction") != null:
-		fr = float(_player.get("friction"))
-	_friction_slider.value = fr
-	_friction_slider.value_changed.connect(_on_friction_changed)
-	_refresh_friction_label(fr)
-
-	var cell_on := true
+	var cell_on := false
 	if _visual != null and _visual.get("debug_cell_highlight") != null:
 		cell_on = bool(_visual.get("debug_cell_highlight"))
 	_cell_check.button_pressed = cell_on
@@ -121,10 +83,32 @@ func _ready() -> void:
 	# Sliders: mouse only — Space is ollie and must not steal focus.
 	for row in [
 		_gravity_slider, _acid_slider, _ollie_slider, _max_speed_x_slider,
+		_max_speed_z_slider, _accel_slider, _brake_slider,
 		_ramp_friction_slider, _friction_slider,
 	]:
 		if row != null:
 			row.focus_mode = Control.FOCUS_NONE
+
+
+func _bind_float_slider(
+	slider: HSlider,
+	min_v: float,
+	max_v: float,
+	step: float,
+	prop: String,
+	fallback: float,
+	on_changed: Callable,
+	refresh: Callable,
+) -> void:
+	slider.min_value = min_v
+	slider.max_value = max_v
+	slider.step = step
+	var v := fallback
+	if _player != null and _player.get(prop) != null:
+		v = float(_player.get(prop))
+	slider.value = v
+	slider.value_changed.connect(on_changed)
+	refresh.call(v)
 
 
 func _on_gravity_changed(v: float) -> void:
@@ -165,6 +149,36 @@ func _on_max_speed_x_changed(v: float) -> void:
 
 func _refresh_max_speed_x_label(v: float) -> void:
 	_max_speed_x_value.text = "%.0f" % v
+
+
+func _on_max_speed_z_changed(v: float) -> void:
+	if _player != null:
+		_player.set("max_speed_z", v)
+	_refresh_max_speed_z_label(v)
+
+
+func _refresh_max_speed_z_label(v: float) -> void:
+	_max_speed_z_value.text = "%.0f" % v
+
+
+func _on_accel_changed(v: float) -> void:
+	if _player != null:
+		_player.set("acceleration", v)
+	_refresh_accel_label(v)
+
+
+func _refresh_accel_label(v: float) -> void:
+	_accel_value.text = "%.0f" % v
+
+
+func _on_brake_changed(v: float) -> void:
+	if _player != null:
+		_player.set("brake", v)
+	_refresh_brake_label(v)
+
+
+func _refresh_brake_label(v: float) -> void:
+	_brake_value.text = "%.0f" % v
 
 
 func _on_ramp_friction_changed(v: float) -> void:

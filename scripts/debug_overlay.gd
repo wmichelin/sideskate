@@ -1,11 +1,16 @@
 extends CanvasLayer
 ## Live readout of depth + surface (flat / pipe) state.
+## Header collapses the body; starts collapsed.
 
 @export var player_path: NodePath = NodePath("../Player")
+@export var start_collapsed: bool = true
 
-@onready var label: Label = $Panel/Label
+@onready var _panel: PanelContainer = $Panel
+@onready var _body: Label = $Panel/VBox/Body
+@onready var _toggle: Button = $Panel/VBox/Header/Toggle
 
 var _player: Node2D
+var _collapsed: bool = true
 
 
 func _ready() -> void:
@@ -14,11 +19,17 @@ func _ready() -> void:
 		queue_free()
 		return
 	_player = get_node_or_null(player_path) as Node2D
+	_toggle.focus_mode = Control.FOCUS_NONE
+	_toggle.pressed.connect(_on_toggle_pressed)
+	_set_collapsed(start_collapsed)
 
 
 func _process(_delta: float) -> void:
+	if _collapsed:
+		return
 	if _player == null or not _player.has_node("PseudoDepthBody"):
-		label.text = "No player / PseudoDepthBody"
+		_body.text = "No player / PseudoDepthBody"
+		_fit_panel()
 		return
 	var depth: PseudoDepthBody = _player.get_node("PseudoDepthBody")
 	var s := depth.debug_snapshot()
@@ -29,9 +40,8 @@ func _process(_delta: float) -> void:
 	if _player.has_method("zone_debug_label"):
 		zone = str(_player.call("zone_debug_label"))
 	var pipe_angle := float(surface.get("angle", 0.0))
-	label.text = (
-		"PSEUDO-DEPTH DEBUG\n"
-		+ "X: %.1f  (sx %.1f)\n" % [s.x, s.get("screen_x", s.x)]
+	_body.text = (
+		"X: %.1f  (sx %.1f)\n" % [s.x, s.get("screen_x", s.x)]
 		+ "Z: %.1f  (t=%.2f)\n" % [s.z, s.t]
 		+ "Scale: %.3f\n" % s.scale
 		+ "Screen Y: %.1f\n" % s.screen_y
@@ -42,6 +52,25 @@ func _process(_delta: float) -> void:
 		+ _cell_debug_line()
 		+ "WASD — Up = farther | Space = ollie | P = transfer↑ / acid↓ | G = god (j/k vert)"
 	)
+	_fit_panel()
+
+
+func _on_toggle_pressed() -> void:
+	_set_collapsed(not _collapsed)
+
+
+func _set_collapsed(on: bool) -> void:
+	_collapsed = on
+	_body.visible = not on
+	_toggle.text = "▶" if on else "▼"
+	call_deferred("_fit_panel")
+
+
+func _fit_panel() -> void:
+	if _panel == null:
+		return
+	var min_sz := _panel.get_combined_minimum_size()
+	_panel.size = Vector2(maxf(min_sz.x, 200.0), min_sz.y)
 
 
 func _cell_debug_line() -> String:

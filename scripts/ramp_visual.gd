@@ -5,7 +5,7 @@ extends Node2D
 @export var grid_steps: int = 5
 @export var arc_ribs: int = 5
 ## Highlight the .ssk ASCII cell under the player (logical unit 1:1). Debug only.
-@export var debug_cell_highlight: bool = true
+@export var debug_cell_highlight: bool = false
 @export var player_path: NodePath = NodePath("../../Player")
 @export var cell_highlight_fill: Color = Color(1.0, 0.92, 0.2, 0.35)
 @export var cell_highlight_stroke: Color = Color(1.0, 0.85, 0.1, 0.95)

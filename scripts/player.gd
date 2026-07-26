@@ -4,10 +4,12 @@ extends Node2D
 ## Ride-off a higher surface → free air (keep height + gravity). All sim on physics ticks.
 
 @export var max_speed_x: float = 900.0
-@export var max_speed_z: float = 260.0
+@export var max_speed_z: float = 60.0
 @export var acceleration: float = 2200.0
-## Coast / brake rate (logical u/s²). Opposite stick and no-input only use this — never acceleration. Debug slider writes this.
+## Coast rate when no input (logical u/s²). Debug slider writes this.
 @export var friction: float = 0.0
+## Opposite-stick brake rate (logical u/s²). Much stronger than friction. Debug slider writes this.
+@export var brake: float = 5500.0
 ## THPS-style forward accel while holding ollie (logical units/s²). Debug slider writes this.
 @export var ollie_accel: float = 830.0
 @export var depth_speed_feel: bool = true
@@ -37,6 +39,7 @@ extends Node2D
 
 @onready var depth: PseudoDepthBody = $PseudoDepthBody
 @onready var _head_debug_label: Label = $Body/HeadDebug/Label
+@onready var _face_nose: Polygon2D = $Body/FaceNose
 
 var _velocity: Vector2 = Vector2.ZERO
 ## Last physics-tick control acceleration (d(_velocity)/dt from integrate).
@@ -119,6 +122,7 @@ func _spawn_from_level() -> void:
 	_vert_vel = 0.0
 	_last_nonzero_vert_vel = 0.0
 	_refresh_head_debug()
+	_update_face_nose()
 	depth.apply()
 
 
@@ -139,6 +143,7 @@ func _physics_process(delta: float) -> void:
 	if _on_ramp:
 		_velocity.x = _ramp_along
 	_update_facing_h(input)
+	_update_face_nose()
 	_integrate_velocity(input, delta)
 	if _on_ramp:
 		_ramp_along = _velocity.x
@@ -825,6 +830,14 @@ func _update_facing_h(input: Vector2) -> void:
 		facing_h = "r" if input.x > 0.0 else "l"
 
 
+func _update_face_nose() -> void:
+	if _face_nose == null:
+		return
+	# Sit on the facing side of the body silhouette.
+	var side := 1.0 if facing_h == "r" else -1.0
+	_face_nose.position = Vector2(22.0 * side, -40.0)
+
+
 ## Screen-local velocity for the head debug arrow (+X right, -Y up).
 ## Uses measured position rates, not stick intent (_velocity).
 func debug_velocity_screen() -> Vector2:
@@ -887,9 +900,17 @@ func _integrate_velocity(input: Vector2, delta: float) -> void:
 	var holding_ollie := Input.is_action_pressed("ollie")
 	var step := acceleration * delta
 	var friction_step := friction * delta
+	var brake_step := brake * delta
 
-	# Horizontal X: opposite stick only brakes to zero (no reverse until stopped).
-	_velocity.x = _integrate_axis_no_reverse(_velocity.x, input.x * max_speed_x, step, friction_step, holding_ollie and input.x == 0.0)
+	# Horizontal X: opposite stick brakes hard to zero (no reverse until stopped).
+	_velocity.x = _integrate_axis_no_reverse(
+		_velocity.x,
+		input.x * max_speed_x,
+		step,
+		friction_step,
+		brake_step,
+		holding_ollie and input.x == 0.0,
+	)
 
 	# Depth Z: immediate — snap to stick (no accel / friction ramp).
 	_velocity.y = input.y * max_speed_z
@@ -908,13 +929,14 @@ func _integrate_velocity(input: Vector2, delta: float) -> void:
 		_debug_accel = Vector2.ZERO
 
 
-## Move `current` toward `want`. Opposite stick only brakes via friction (no reverse
-## until stopped). Acceleration is never used to decelerate.
+## Move `current` toward `want`. Opposite stick uses `brake_step` (no reverse until
+## stopped). Coast uses `friction_step`. Acceleration never decelerates.
 func _integrate_axis_no_reverse(
 	current: float,
 	want: float,
 	accel_step: float,
 	friction_step: float,
+	brake_step: float,
 	skip_friction: bool,
 ) -> float:
 	if want == 0.0:
@@ -922,5 +944,5 @@ func _integrate_axis_no_reverse(
 			return current
 		return move_toward(current, 0.0, friction_step)
 	if current != 0.0 and want * current < 0.0:
-		return move_toward(current, 0.0, friction_step)
+		return move_toward(current, 0.0, brake_step)
 	return move_toward(current, want, accel_step)

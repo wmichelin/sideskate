@@ -37,9 +37,9 @@ Player-facing zone labels include `flat`, `left_pipe`, `right_pipe`, `deck`, and
 ## Grounded motion
 
 - Stick integrates into intent velocity `_velocity` (X and Z).
-- **Horizontal X**: opposite stick **only brakes** toward zero via **friction** (never acceleration) — no reverse until `|vx|` reaches 0. Coasting also uses friction only.
-- **Depth Z**: immediate — stick maps straight to `±max_speed_z` (no accel/friction ramp).
-- **Friction** (default 0, debug slider): sole deceleration rate for coast / opposite-stick brake.
+- **Horizontal X**: opposite stick **brakes hard** toward zero via **`brake`** (default 5500) — no reverse until `|vx|` reaches 0. Coasting uses **friction** only (default 0).
+- **Depth Z**: immediate — stick maps straight to `±max_speed_z` (default 60; debug slider).
+- **Acceleration** / **brake** / **max speed z**: tunable via debug sliders.
 - **Horizontal facing** `facing_h` (`l` / `r`): follows motion while moving; stick only when nearly stopped. Spawn from level header `spawn_facing` (default `r`). Head debug shows `hd l` / `hd r`.
 - **Ollie** (hold Space): mild forward accel (`ollie_accel`, default 830) toward `max_speed_x` (default 900) in facing direction. Skipped while stick is braking opposite. Tunable via debug slider.
 - On flat/deck: move in X/Z; leaving a **higher** support into a lower one **rides off** into free air (keep prior height, apply gravity).
@@ -98,7 +98,7 @@ Each ASCII map glyph is one logical cell:
 - Row 0 = far (top of file); bottom row = near
 - Stored on `LevelSpec` (`grid_w`, `grid_h`, `cell_w`, `cell_h`); helpers `cell_at`, `cell_bounds`
 
-Debug **cell highlight** (default on) draws the cell under the player in yellow (air or grounded), using underfoot surface height (floor = 0 at spawn).
+Debug **cell highlight** (default off) draws the cell under the player in yellow (air or grounded), using underfoot surface height (floor = 0 at spawn).
 
 ## Debug overlays
 
