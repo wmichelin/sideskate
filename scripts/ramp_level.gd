@@ -181,6 +181,64 @@ func sample(logical_x: float, logical_z: float) -> Dictionary:
 	}
 
 
+## Transfer probe: decks first, then other pipes, then flat. Excludes the source pipe.
+func sample_transfer(
+	logical_x: float,
+	logical_z: float,
+	exclude_side: int,
+	exclude_lip_x: float
+) -> Dictionary:
+	var p := Vector2(logical_x, logical_z)
+	if spec:
+		for deck in spec.decks:
+			if LevelSpec.point_in_poly(p, deck.poly):
+				return {
+					"active": true,
+					"zone": "deck",
+					"height": float(deck.height),
+					"angle": 0.0,
+					"theta": 0.0,
+					"normal_x": 0.0,
+					"normal_y": 1.0,
+					"t_along_pipe": 0.0,
+					"deck": deck,
+				}
+
+	for pipe in pipes:
+		if pipe.side == exclude_side and absf(pipe.lip_x - exclude_lip_x) < 0.05:
+			continue
+		var hit: Dictionary = pipe.query_surface(logical_x, logical_z)
+		if hit.get("active", false):
+			hit["radius"] = pipe.radius
+			return hit
+
+	if spec:
+		for floor in spec.floors:
+			if LevelSpec.point_in_poly(p, floor.poly):
+				return {
+					"active": true,
+					"zone": "flat",
+					"height": 0.0,
+					"angle": 0.0,
+					"theta": 0.0,
+					"normal_x": 0.0,
+					"normal_y": 1.0,
+					"t_along_pipe": 0.0,
+				}
+
+	# Empty / oob still lands as flat at the probe point.
+	return {
+		"active": true,
+		"zone": "flat",
+		"height": 0.0,
+		"angle": 0.0,
+		"theta": 0.0,
+		"normal_x": 0.0,
+		"normal_y": 1.0,
+		"t_along_pipe": 0.0,
+	}
+
+
 ## Project a world point for gameplay visuals.
 func project_surface(logical_x: float, logical_z: float, surface_height: float = 0.0) -> Dictionary:
 	return project(logical_x, logical_z, surface_height)

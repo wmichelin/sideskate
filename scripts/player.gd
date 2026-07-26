@@ -8,6 +8,10 @@ extends Node2D
 @export var friction: float = 2400.0
 @export var depth_speed_feel: bool = true
 @export var level_path: NodePath = NodePath("../RampLevel")
+## How far past the coping to probe for transfer targets.
+@export var transfer_probe: float = 8.0
+## θ on a destination pipe after transfer (under PI/2 so we don't instantly re-air).
+@export var transfer_pipe_theta: float = 0.92
 
 @onready var depth: PseudoDepthBody = $PseudoDepthBody
 @onready var _head_debug_label: Label = $Body/HeadDebug/Label
@@ -18,6 +22,8 @@ var last_surface: Dictionary = {}
 
 var air_height: float = 0.0
 var _airborne: bool = false
+## Zone we launched from while airborne (e.g. "left_pipe" / "right_pipe").
+var air_over: String = ""
 var _air_side: int = QuarterPipe.PipeSide.RIGHT
 var _air_lip_x: float = 0.0
 var _air_coping_x: float = 0.0
@@ -47,6 +53,9 @@ func _spawn_from_level() -> void:
 func _physics_process(delta: float) -> void:
 	if _level == null:
 		_level = get_node_or_null(level_path) as RampLevel
+
+	if Input.is_action_just_pressed("transfer"):
+		_try_transfer()
 
 	var input := _read_move_input()
 	_integrate_velocity(input, delta)
@@ -165,6 +174,7 @@ func _apply_surface() -> void:
 	if _airborne:
 		last_surface = last_surface.duplicate()
 		last_surface["zone"] = "air"
+		last_surface["air_over"] = air_over
 		last_surface["height"] = _air_radius + air_height
 		depth.surface_height = _air_radius + air_height
 		depth.height_offset = 0.0
@@ -202,6 +212,7 @@ func _enter_air(hit: Dictionary) -> void:
 	_air_lip_x = float(hit.get("lip_x", depth.logical_x))
 	_air_radius = float(hit.get("radius", _pipe_radius_for_hit(hit)))
 	_air_coping_x = _coping_x_for(_air_side, _air_lip_x, _air_radius)
+	air_over = _pipe_zone_name(_air_side)
 	air_height = 0.0
 	depth.logical_x = _air_coping_x
 
@@ -209,7 +220,49 @@ func _enter_air(hit: Dictionary) -> void:
 func _clear_air() -> void:
 	_airborne = false
 	air_height = 0.0
+	air_over = ""
 	depth.height_offset = 0.0
+
+
+## Snap out of air onto whatever is behind the current pipe coping.
+func _try_transfer() -> void:
+	if not _airborne or _level == null:
+		return
+	var behind: float = _coping_sign(_air_side)
+	var probe_x: float = _air_coping_x + behind * transfer_probe
+	var hit: Dictionary = _level.sample_transfer(
+		probe_x, depth.logical_z, _air_side, _air_lip_x
+	)
+	var zone := str(hit.get("zone", "flat"))
+	if zone == "deck":
+		_land_on_deck(probe_x)
+	elif _is_pipe_hit(hit):
+		_land_on_pipe(hit)
+	else:
+		_land_on_flat(probe_x)
+
+
+func _land_on_deck(probe_x: float) -> void:
+	_clear_air()
+	depth.logical_x = probe_x
+
+
+func _land_on_flat(probe_x: float) -> void:
+	_clear_air()
+	depth.logical_x = probe_x
+
+
+func _land_on_pipe(hit: Dictionary) -> void:
+	var side: int = int(hit.get("side", QuarterPipe.PipeSide.RIGHT))
+	var lip: float = float(hit.get("lip_x", depth.logical_x))
+	var radius: float = _pipe_radius_for_hit(hit)
+	var theta: float = clampf(transfer_pipe_theta, 0.05, PI * 0.5 - 0.05)
+	var x_off: float = radius * sin(theta)
+	_clear_air()
+	if side == QuarterPipe.PipeSide.LEFT:
+		depth.logical_x = lip - x_off
+	else:
+		depth.logical_x = lip + x_off
 
 
 func _air_max_height() -> float:
@@ -245,10 +298,27 @@ func _coping_sign(side: int) -> float:
 	return -1.0 if side == QuarterPipe.PipeSide.LEFT else 1.0
 
 
+func _pipe_zone_name(side: int) -> String:
+	return "left_pipe" if side == QuarterPipe.PipeSide.LEFT else "right_pipe"
+
+
+## Debug label for current zone, e.g. "air (over left_pipe)" or "deck".
+func zone_debug_label() -> String:
+	var zone := str(last_surface.get("zone", "flat"))
+	if zone == "air":
+		var over := air_over
+		if over == "" and last_surface.has("air_over"):
+			over = str(last_surface.air_over)
+		if over != "":
+			return "air (over %s)" % over
+		return "air"
+	return zone
+
+
 func _refresh_head_debug() -> void:
 	if _head_debug_label == null:
 		return
-	_head_debug_label.text = str(last_surface.get("zone", "flat"))
+	_head_debug_label.text = zone_debug_label()
 
 
 func _read_move_input() -> Vector2:

@@ -22,6 +22,8 @@ func _process(_delta: float) -> void:
 	if _player.get("last_surface") != null:
 		surface = _player.last_surface
 	var zone := str(surface.get("zone", "flat"))
+	if _player.has_method("zone_debug_label"):
+		zone = str(_player.call("zone_debug_label"))
 	var pipe_angle := float(surface.get("angle", 0.0))
 	label.text = (
 		"PSEUDO-DEPTH DEBUG\n"
@@ -33,5 +35,5 @@ func _process(_delta: float) -> void:
 		+ "Zone: %s\n" % zone
 		+ "Surf H: %.1f (scr %.1f)\n" % [s.surface_height, s.get("surface_screen_h", 0.0)]
 		+ "Pipe angle: %.1f deg\n" % pipe_angle
-		+ "WASD — Up = farther"
+		+ "WASD — Up = farther | P = transfer"
 	)
