@@ -30,6 +30,7 @@ static func load_path(
 
 
 ## Parse only — returns null on error and sets last_error (no quit). Prefer load_path.
+## Format: ssk 2 with one or more `layer N` / `height` / ASCII map blocks after `---`.
 static func parse_text(
 	text: String,
 	default_name: String = "level",
@@ -44,61 +45,113 @@ static func parse_text(
 	var cx := cell_x if cell_x > 0.0 else cell_size_x
 	var cz := cell_z if cell_z > 0.0 else cell_size_z
 
-	var map_rows: PackedStringArray = PackedStringArray()
-	var in_map := false
 	var got_version := false
+	var header_done := false
+	var layers: Array = []  # {index, height, rows: PackedStringArray}
+	var cur: Dictionary = {}
+	var in_layer_map := false
 
 	for raw in lines:
 		var line: String = raw
-		# Strip UTF-8 BOM if present
 		if line.begins_with("\ufeff"):
 			line = line.substr(1)
-
 		var stripped := line.strip_edges()
-		if not in_map:
-			if stripped.is_empty():
-				continue
-			if stripped.begins_with("#"):
+
+		if not header_done:
+			if stripped.is_empty() or stripped.begins_with("#"):
 				continue
 			if stripped.begins_with("ssk"):
+				var ver := stripped.split(" ", false)
+				if ver.size() < 2 or ver[1] != "2":
+					return _fail(label, "expected 'ssk 2' (got '%s')" % stripped)
 				got_version = true
 				continue
 			if _is_map_separator(stripped):
-				in_map = true
-				continue
-			# Legacy: first map-looking row starts the grid (cannot begin with #
-			# because those lines are header comments until ---).
-			if _is_map_row(stripped):
-				push_warning(
-					"LevelLoader: %s — map started without '---' separator; add a '---' line after the header so rows can begin with #"
-					% label
-				)
-				in_map = true
-				map_rows.append(line.rstrip("\n").rstrip("\r"))
+				if not got_version:
+					return _fail(label, "missing 'ssk 2' version line")
+				header_done = true
 				continue
 			_parse_header_kv(spec, stripped)
-		else:
-			if stripped.is_empty():
-				continue
-			if _is_map_separator(stripped):
-				return _fail(label, "extra '---' separator inside map")
-			map_rows.append(line.rstrip("\n").rstrip("\r"))
+			continue
+
+		# Layer body: blank lines outside a map are separators.
+		if not in_layer_map and stripped.is_empty():
+			continue
+		if _is_map_separator(stripped):
+			if not cur.is_empty():
+				var ferr := _finalize_layer_block(cur, label)
+				if ferr != "":
+					return _fail(label, ferr)
+				layers.append(cur)
+				cur = {}
+				in_layer_map = false
+			continue
+		if stripped.begins_with("layer"):
+			if in_layer_map or not cur.is_empty():
+				var ferr2 := _finalize_layer_block(cur, label)
+				if ferr2 != "":
+					return _fail(label, ferr2)
+				layers.append(cur)
+				cur = {}
+				in_layer_map = false
+			var parts := stripped.split(" ", false)
+			if parts.size() < 2 or not str(parts[1]).is_valid_int():
+				return _fail(label, "expected 'layer N', got '%s'" % stripped)
+			cur = {
+				"index": int(parts[1]),
+				"height": NAN,
+				"rows": PackedStringArray(),
+				"got_height": false,
+			}
+			continue
+		if cur.is_empty():
+			return _fail(label, "map content before 'layer N' (ssk 2 requires layer blocks)")
+		if not in_layer_map and stripped.begins_with("height"):
+			var hp := stripped.split(" ", false, 1)
+			if hp.size() < 2 or not str(hp[1]).is_valid_float():
+				return _fail(label, "expected 'height <float>', got '%s'" % stripped)
+			cur.height = float(hp[1])
+			cur.got_height = true
+			continue
+		if not cur.get("got_height", false):
+			return _fail(label, "layer %s missing 'height' before map rows" % cur.get("index", "?"))
+		in_layer_map = true
+		var row := line.rstrip("\n").rstrip("\r")
+		# Zero-length lines are EOF noise; all-space rows are OOB cells (keep width).
+		if row.is_empty():
+			continue
+		cur.rows.append(row)
 
 	if not got_version:
-		return _fail(label, "missing 'ssk 1' version line")
-	if map_rows.is_empty():
-		return _fail(label, "no map rows (expected '---' then ASCII grid)")
+		return _fail(label, "missing 'ssk 2' version line")
+	if not cur.is_empty():
+		var ferr3 := _finalize_layer_block(cur, label)
+		if ferr3 != "":
+			return _fail(label, ferr3)
+		layers.append(cur)
+	if layers.is_empty():
+		return _fail(label, "no layers (expected '---' then 'layer N' / 'height' / map)")
 	if cx <= 0.0 or cz <= 0.0:
 		return _fail(label, "cell size must be > 0")
 
-	var width_err := _require_uniform_row_widths(map_rows)
-	if width_err != "":
-		return _fail(label, width_err)
-
-	var err := _build_geometry(spec, map_rows, cx, cz)
+	var err := _build_layered_geometry(spec, layers, cx, cz)
 	if err != "":
 		return _fail(label, err)
 	return spec
+
+
+static func _finalize_layer_block(cur: Dictionary, _label: String) -> String:
+	if cur.is_empty():
+		return ""
+	if not cur.get("got_height", false) or is_nan(float(cur.get("height", NAN))):
+		return "layer %s missing height" % cur.get("index", "?")
+	var rows: PackedStringArray = cur.rows
+	if rows.is_empty():
+		return "layer %s has no map rows" % cur.get("index", "?")
+	var width_err := _require_uniform_row_widths(rows)
+	if width_err != "":
+		return "layer %s: %s" % [cur.get("index", "?"), width_err]
+	return ""
 
 
 static func _fail(source: String, detail: String) -> LevelSpec:
@@ -125,7 +178,7 @@ static func _is_map_row(stripped: String) -> bool:
 		return false
 	# Header keys
 	var key := stripped.split(" ")[0]
-	if key in ["ssk", "name", "width", "depth", "pipe_radius", "deck_height", "perspective_inset", "far_geometry_scale", "reference_depth", "reference_width", "spawn_facing"]:
+	if key in ["ssk", "name", "width", "depth", "pipe_radius", "deck_height", "perspective_inset", "far_geometry_scale", "reference_depth", "reference_width", "spawn_facing", "layer", "height"]:
 		return false
 	# Must contain at least one map glyph (not only spaces)
 	for glyph in stripped:
@@ -181,21 +234,89 @@ static func _require_uniform_row_widths(map_rows: PackedStringArray) -> String:
 	return ""
 
 
-static func _build_geometry(
-	spec: LevelSpec, map_rows: PackedStringArray, cell_x: float, cell_z: float
+static func _build_layered_geometry(spec: LevelSpec, layers: Array, cell_x: float, cell_z: float) -> String:
+	layers.sort_custom(func(a, b): return int(a.index) < int(b.index))
+	var seen_idx := {}
+	for L in layers:
+		var idx: int = int(L.index)
+		if seen_idx.has(idx):
+			return "duplicate layer %d" % idx
+		seen_idx[idx] = true
+
+	var W := -1
+	var H := -1
+	spec.floors.clear()
+	spec.decks.clear()
+	spec.pipes.clear()
+	spec.floor_cells.clear()
+	spec.layers.clear()
+	spec.story_floor_masks.clear()
+	spec.playable_mask = PackedByteArray()
+	spec.floor_mask = PackedByteArray()
+
+	var spawn := {"found": false, "c": 0, "r": 0}
+	for L in layers:
+		var rows: PackedStringArray = L.rows
+		if W < 0:
+			W = rows[0].length()
+			H = rows.size()
+			spec.grid_w = W
+			spec.grid_h = H
+			spec.cell_w = cell_x
+			spec.cell_h = cell_z
+			spec.width = float(W) * cell_x
+			spec.depth = float(H) * cell_z
+			spec.floor_mask.resize(W * H)
+			spec.floor_mask.fill(0)
+			spec.playable_mask.resize(W * H)
+			spec.playable_mask.fill(0)
+		else:
+			if rows.size() != H:
+				return "layer %d row count %d != layer 0 row count %d" % [L.index, rows.size(), H]
+			if rows[0].length() != W:
+				return "layer %d width %d != layer 0 width %d" % [L.index, rows[0].length(), W]
+
+		var err := _append_layer_geometry(
+			spec, rows, cell_x, cell_z, float(L.height), int(L.index), spawn
+		)
+		if err != "":
+			return err
+
+		spec.layers.append({
+			"index": int(L.index),
+			"height": float(L.height),
+			"rows": rows,
+		})
+
+	if not spawn.found:
+		return "missing @ spawn"
+	spec.spawn_x = (float(spawn.c) + 0.5) * cell_x
+	spec.spawn_z = (float(H - 1 - spawn.r) + 0.5) * cell_z
+
+	var footprint_err := _validate_upper_layer_footprint(spec)
+	if footprint_err != "":
+		return footprint_err
+
+	_recompute_bounds(spec)
+	return ""
+
+
+## Build one layer into spec. `spawn` is {found, c, r} mutated in place.
+## `=` / `@` = floor; `.` = hole (no floor); space = OOB.
+static func _append_layer_geometry(
+	spec: LevelSpec,
+	map_rows: PackedStringArray,
+	cell_x: float,
+	cell_z: float,
+	base_height: float,
+	layer_index: int,
+	spawn: Dictionary,
 ) -> String:
 	var H := map_rows.size()
 	var W := map_rows[0].length()
 	var cw := cell_x
 	var ch := cell_z
-	spec.grid_w = W
-	spec.grid_h = H
-	spec.cell_w = cw
-	spec.cell_h = ch
-	spec.width = float(W) * cw
-	spec.depth = float(H) * ch
 
-	# grid[row][col] character
 	var grid: Array = []
 	for r in range(H):
 		var row_chars: Array = []
@@ -203,82 +324,88 @@ static func _build_geometry(
 			row_chars.append(map_rows[r][c])
 		grid.append(row_chars)
 
-	var spawn_found := false
-	var spawn_c := 0
-	var spawn_r := 0
-
-	# Classify cells
-	var floor_cells: Array = []  # Vector2i
+	var floor_cells: Array = []
 	var deck_cells: Array = []
-	var left_cells: Array = []
-	var right_cells: Array = []
+	var story_mask := PackedByteArray()
+	story_mask.resize(W * H)
+	story_mask.fill(0)
 
 	for r in range(H):
 		for c in range(W):
 			var glyph: String = grid[r][c]
 			match glyph:
-				"=", ".":
+				"=":
 					floor_cells.append(Vector2i(c, r))
+					story_mask[r * W + c] = 1
+				".":
+					pass  # hole — valid glyph, no floor
 				"@":
 					floor_cells.append(Vector2i(c, r))
-					if spawn_found:
+					story_mask[r * W + c] = 1
+					if spawn.found:
 						return "multiple @ spawn markers"
-					spawn_found = true
-					spawn_c = c
-					spawn_r = r
+					spawn.found = true
+					spawn.c = c
+					spawn.r = r
 				"#":
 					deck_cells.append(Vector2i(c, r))
-				"<":
-					left_cells.append(Vector2i(c, r))
-				">":
-					right_cells.append(Vector2i(c, r))
+				"<", ">":
+					pass
 				" ":
 					pass
 				_:
-					return "invalid glyph '%s' at col=%d row=%d" % [glyph, c, r]
+					return "invalid glyph '%s' at layer %d col=%d row=%d" % [
+						glyph, layer_index, c, r
+					]
 
-	if not spawn_found:
-		return "missing @ spawn"
+	if layer_index == 0:
+		for r in range(H):
+			for c in range(W):
+				if grid[r][c] != " ":
+					spec.playable_mask[r * W + c] = 1
 
-	spec.spawn_x = (float(spawn_c) + 0.5) * cw
-	spec.spawn_z = (float(H - 1 - spawn_r) + 0.5) * ch
-
-	# Pipes from column-aligned horizontal runs (jagged columns stay separate).
-	spec.pipes.clear()
-	for pipe in _pipes_from_aligned_runs(grid, W, H, cw, ch, spec.pipe_radius_override):
+	var layer_pipes: Array = _pipes_from_aligned_runs(
+		grid, W, H, cw, ch, spec.pipe_radius_override, base_height
+	)
+	for pipe in layer_pipes:
+		pipe["layer"] = layer_index
 		spec.pipes.append(pipe)
 
-	# Floors
-	spec.floors.clear()
-	spec.floor_cells = floor_cells
-	spec.floor_mask = PackedByteArray()
-	spec.floor_mask.resize(W * H)
-	spec.floor_mask.fill(0)
 	for cell in floor_cells:
 		var ci: Vector2i = cell
-		spec.floor_mask[ci.y * W + ci.x] = 1
+		spec.floor_cells.append(ci)
+		if layer_index == 0:
+			spec.floor_mask[ci.y * W + ci.x] = 1
+	spec.story_floor_masks.append({"height": base_height, "mask": story_mask, "layer": layer_index})
+
 	for comp in _components(floor_cells):
 		var poly := _outline_poly(comp, cw, ch, H)
-		spec.floors.append({"poly": poly, "height": 0.0})
+		spec.floors.append({
+			"poly": poly,
+			"height": base_height,
+			"layer": layer_index,
+		})
 
-	# Decks + height + lip anchors (for perspective-consistent drawing)
-	spec.decks.clear()
 	var deck_comps := _components(deck_cells)
 	for comp in deck_comps:
-		var neighbors := _deck_neighbor_pipes(comp, grid, W, H, spec.pipes, cw, ch)
+		var neighbors := _deck_neighbor_pipes(comp, grid, W, H, layer_pipes, cw, ch)
 		if neighbors.is_empty() and spec.deck_height_override < 0.0:
-			return "deck component has no neighboring pipe (set deck_height or place next to <> )"
-		var height := spec.deck_height_override
-		if height < 0.0:
-			height = float(neighbors[0].radius)
+			return (
+				"layer %d: deck component has no neighboring pipe (set deck_height or place next to <> )"
+				% layer_index
+			)
+		var rise := spec.deck_height_override
+		if rise < 0.0:
+			rise = float(neighbors[0].radius)
 			for i in range(1, neighbors.size()):
 				var rh := float(neighbors[i].radius)
-				if not is_equal_approx(rh, height):
+				if not is_equal_approx(rh, rise):
 					push_warning(
-						"LevelLoader: deck neighbors have unequal pipe radii (%.1f vs %.1f); spine coping will gap. Use matching <> run widths."
-						% [height, rh]
+						"LevelLoader: layer %d deck neighbors have unequal pipe radii (%.1f vs %.1f); spine coping will gap. Use matching <> run widths."
+						% [layer_index, rise, rh]
 					)
-				height = maxf(height, rh)
+				rise = maxf(rise, rh)
+		var height := base_height + rise
 		var anchors: Array = []
 		for pipe in neighbors:
 			var is_left: bool = pipe.side == QuarterPipe.PipeSide.LEFT
@@ -288,40 +415,72 @@ static func _build_geometry(
 				"radius": float(pipe.radius),
 				"coping_x": float(pipe.x_min) if is_left else float(pipe.x_max),
 			})
-		var poly := _outline_poly(comp, cw, ch, H)
-		spec.decks.append({"poly": poly, "height": height, "anchors": anchors})
-
-	# Bounds
-	spec.z_min = 0.0
-	spec.z_max = spec.depth
-	spec.x_min = 0.0
-	spec.x_max = spec.width
-	if not spec.pipes.is_empty() or not spec.floors.is_empty() or not spec.decks.is_empty():
-		var xmin := INF
-		var xmax := -INF
-		var zmin := INF
-		var zmax := -INF
-		for pipe in spec.pipes:
-			xmin = minf(xmin, pipe.x_min)
-			xmax = maxf(xmax, pipe.x_max)
-			zmin = minf(zmin, pipe.z_min)
-			zmax = maxf(zmax, pipe.z_max)
-		for region in spec.floors + spec.decks:
-			for v in region.poly:
-				xmin = minf(xmin, v.x)
-				xmax = maxf(xmax, v.x)
-				zmin = minf(zmin, v.y)
-				zmax = maxf(zmax, v.y)
-		spec.x_min = xmin
-		spec.x_max = xmax
-		spec.z_min = zmin
-		spec.z_max = zmax
+		var dpoly := _outline_poly(comp, cw, ch, H)
+		spec.decks.append({
+			"poly": dpoly,
+			"height": height,
+			"anchors": anchors,
+			"layer": layer_index,
+			"base_height": base_height,
+		})
 
 	return ""
 
 
+## Upper layers must use `.` (not space) inside the layer-0 playable footprint.
+static func _validate_upper_layer_footprint(spec: LevelSpec) -> String:
+	if spec.layers.size() <= 1 or spec.playable_mask.is_empty():
+		return ""
+	var W := spec.grid_w
+	var H := spec.grid_h
+	for L in spec.layers:
+		if int(L.get("index", 0)) == 0:
+			continue
+		var rows: PackedStringArray = L.get("rows", PackedStringArray())
+		for r in range(H):
+			var line: String = rows[r]
+			for c in range(W):
+				if spec.playable_mask[r * W + c] == 0:
+					continue
+				if line[c] == " ":
+					return (
+						"layer %d: space inside playable footprint at col=%d row=%d (use '.' for holes)"
+						% [L.get("index", -1), c, r]
+					)
+	return ""
+
+
+static func _recompute_bounds(spec: LevelSpec) -> void:
+	spec.z_min = 0.0
+	spec.z_max = spec.depth
+	spec.x_min = 0.0
+	spec.x_max = spec.width
+	if spec.pipes.is_empty() and spec.floors.is_empty() and spec.decks.is_empty():
+		return
+	var xmin := INF
+	var xmax := -INF
+	var zmin := INF
+	var zmax := -INF
+	for pipe in spec.pipes:
+		xmin = minf(xmin, pipe.x_min)
+		xmax = maxf(xmax, pipe.x_max)
+		zmin = minf(zmin, pipe.z_min)
+		zmax = maxf(zmax, pipe.z_max)
+	for region in spec.floors + spec.decks:
+		for v in region.poly:
+			xmin = minf(xmin, v.x)
+			xmax = maxf(xmax, v.x)
+			zmin = minf(zmin, v.y)
+			zmax = maxf(zmax, v.y)
+	spec.x_min = xmin
+	spec.x_max = xmax
+	spec.z_min = zmin
+	spec.z_max = zmax
+
+
 static func _pipes_from_aligned_runs(
-	grid: Array, W: int, H: int, cw: float, ch: float, radius_override: float
+	grid: Array, W: int, H: int, cw: float, ch: float, radius_override: float,
+	base_height: float = 0.0
 ) -> Array:
 	# Collect per-row horizontal <> runs, then merge only identical column spans
 	# that are contiguous in row — so stepped layouts don't fatten into one AABB.
@@ -368,12 +527,13 @@ static func _pipes_from_aligned_runs(
 				band.r1 = maxi(band.r1, other.r1)
 				used[j] = true
 				changed = true
-		pipes.append(_pipe_from_band(band, cw, ch, H, radius_override))
+		pipes.append(_pipe_from_band(band, cw, ch, H, radius_override, base_height))
 	return pipes
 
 
 static func _pipe_from_band(
-	band: Dictionary, cw: float, ch: float, H: int, radius_override: float
+	band: Dictionary, cw: float, ch: float, H: int, radius_override: float,
+	base_height: float = 0.0
 ) -> Dictionary:
 	var x0 := float(band.c0) * cw
 	var x1 := float(band.c1 + 1) * cw
@@ -386,6 +546,7 @@ static func _pipe_from_band(
 		"side": QuarterPipe.PipeSide.LEFT if is_left else QuarterPipe.PipeSide.RIGHT,
 		"lip_x": lip_x,
 		"radius": radius,
+		"base_height": base_height,
 		"z_min": z0,
 		"z_max": z1,
 		"x_min": lip_x - radius if is_left else lip_x,

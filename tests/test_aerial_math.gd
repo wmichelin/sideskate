@@ -46,10 +46,25 @@ func _horiz_resolve() -> bool:
 
 
 func _landing_height() -> bool:
-	# Pipe-exit lock may use radius as floor.
+	# Pipe-exit lock uses radius when sample is below coping (classic drop-in).
 	var locked := AerialMath.landing_support_height(true, false, "left_pipe", 150.0, 20.0)
 	if absf(locked - 150.0) > 0.01:
 		push_error("pipe-exit lock want radius floor, got %s" % locked)
+		return false
+	# Solid pad at/above coping wins (upper floor over pipe run).
+	var pad := AerialMath.landing_support_height(true, false, "left_pipe", 150.0, 150.0)
+	if absf(pad - 150.0) > 0.01:
+		push_error("pipe-exit on pad want sampled, got %s" % pad)
+		return false
+	var pad_hi := AerialMath.landing_support_height(true, false, "right_pipe", 150.0, 188.0)
+	if absf(pad_hi - 188.0) > 0.01:
+		push_error("pipe-exit above coping pad want 188, got %s" % pad_hi)
+		return false
+	# Stacked L1 coping floor (base 188 + radius 188) wins over lower sample.
+	var l1_coping := 376.0
+	var l1_lock := AerialMath.landing_support_height(true, false, "left_pipe", l1_coping, 200.0)
+	if absf(l1_lock - l1_coping) > 0.01:
+		push_error("L1 pipe-exit lock want coping 376, got %s" % l1_lock)
 		return false
 	# Acid-drop lock must sample (no upward snap to radius).
 	var acid := AerialMath.landing_support_height(true, true, "right_pipe", 150.0, 20.0)

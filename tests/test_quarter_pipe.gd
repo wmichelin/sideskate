@@ -71,4 +71,14 @@ func _check(pipe: QuarterPipe, right: QuarterPipe) -> bool:
 		push_error("right coping height want 80 got %s" % r_top.get("height"))
 		return false
 
+	# Elevated base_height shifts absolute height.
+	pipe.base_height = 50.0
+	var elev: Dictionary = pipe.query_surface(100.0, 25.0)
+	if absf(float(elev.height) - 150.0) > 0.5:
+		push_error("elevated coping want 150 got %s" % elev.height)
+		return false
+	if absf(float(elev.get("base_height", -1.0)) - 50.0) > 0.05:
+		push_error("query should report base_height")
+		return false
+
 	return true

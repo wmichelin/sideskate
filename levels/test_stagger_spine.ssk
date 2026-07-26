@@ -1,7 +1,9 @@
-ssk 1
+ssk 2
 name test_stagger_spine
 spawn_facing r
 ---
+layer 0
+height 0
 <<<<=====>>>>##<<<<=====>>>>
 <<<<=====>>>>##<<<<=====>>>>
 <<<<=====>>>>##<<<<=====>>>>

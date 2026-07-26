@@ -20,14 +20,15 @@ See also [AGENTS.md](../AGENTS.md).
 
 ## Surfaces & zones
 
-Underfoot sampling (see `RampLevel.sample`):
+**Air contact (label = collision):** each airborne physics tick, after XZ is committed, `RampLevel.resolve_air_contact` builds one underfoot record `{zone, layer, height, solid, hit}`. The **zone matches cell highlight** (`sample(x,z,prefer_h)`). Sticky pipe identity only overrides when you have already dipped below that pipe’s surface while still in its footprint (no tunnel). Glyph `.` → `hole` on that story. Grounded debug zones also show `L#` (e.g. `flat L1`).
 
-1. Pipe footprint  
-2. Deck  
-3. Floor (flat)  
-4. Out of bounds  
+**Vertical sweep (air):** when contact is a hole (or still above a solid), a sweep over `[h_before → h_after]` may still catch a **lower** solid crossed this tick. Holes contribute no floor on their story.
 
-Player-facing zone labels include `flat`, `left_pipe`, `right_pipe`, `deck`, and `air (over …)` while airborne.
+**Solids vs holes:** `=` / `#` are solid. `.` is a hole (fall-through on that story). Space is hard OOB — the skater is **clamped** into the layer-0 playable footprint (`LevelSpec.clamp_to_playable`); you cannot enter `air (over oob)`.
+
+**Contact vs fall:** fresh pipe mounts require the surface within `ride_off_height_eps` of the feet; solid pads at the same height block remounting the pipe underneath. Coping-exit launch only fires when underfoot is that same pipe identity (side + lip + base). While already on a pipe, height follows the arc. Leaving support into a hole rides off into free air at the prior feet height.
+
+Player-facing zone labels include `flat L#`, `left_pipe L#`, `right_pipe L#`, `deck L#`, and `air (over … L#)` / `air (over hole L#)` while airborne.
 
 **Pipe geometry (logical):**
 
@@ -82,9 +83,9 @@ Feet height while airborne: `air_abs_height`. Vertical rate for gravity: `air_ve
 
 ### Pipe fly-out
 
-While in **pipe coping lock** (not acid-drop), if still **rising** (`air_vel_y > 0`), feet height reaches `radius + fly_out_above_coping` (debug slider **fly out**, default 40), **and** **INPUT** X points toward that pipe’s side (right pipe → right; left pipe → left), unlock X into free air. Keep `air_abs_height` and `air_vel_y` so the skater continues on a **parabolic** arc. Falling or no outward input → stay locked and land as usual.
+While in **pipe coping lock** (not acid-drop), if still **rising** (`air_vel_y > 0`), feet height reaches `coping_floor + fly_out_above_coping` (coping floor = `base_height + radius`; debug slider **fly out**, default 40), **and** **INPUT** X points toward that pipe’s side (right pipe → right; left pipe → left), unlock X into free air. Keep `air_abs_height` and `air_vel_y` so the skater continues on a **parabolic** arc. Falling or no outward input → stay locked and land as usual.
 
-Pipe coping lock treats the top coping height (`radius`) as the floor. Acid-drop lock and free air **must not** use that shortcut (it would snap feet upward); they sample the real surface under `(x, z)`.
+Pipe coping lock treats the top coping height (`base_height + radius`) as the floor. Acid-drop lock and free air **must not** use that shortcut (it would snap feet upward); they sample the real surface under `(x, z)`.
 
 ### Ride-off
 

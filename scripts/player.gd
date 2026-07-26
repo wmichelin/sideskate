@@ -7,6 +7,7 @@ const _PipeMath := preload("res://scripts/pipe_math.gd")
 const _MotionMath := preload("res://scripts/motion_math.gd")
 const _AerialMath := preload("res://scripts/aerial_math.gd")
 const _MotionVectors := preload("res://scripts/motion_vectors.gd")
+const _ContactMath := preload("res://scripts/contact_math.gd")
 
 @export var max_speed_x: float = 880.0
 
@@ -64,6 +65,7 @@ var _on_ramp: bool = false
 ## Sticky pipe identity while riding — adjacent opposite pipes share coping X.
 var _ramp_side: int = QuarterPipe.PipeSide.RIGHT
 var _ramp_lip_x: float = 0.0
+var _ramp_base_height: float = 0.0
 var _level: RampLevel
 var last_surface: Dictionary = {}
 
@@ -74,11 +76,14 @@ var air_abs_height: float = 0.0
 var air_vel_y: float = 0.0
 ## Zone underneath while airborne (left_pipe / right_pipe / deck / flat).
 var air_over: String = ""
+## Layer index for current air_over surface (-1 unknown).
+var _air_over_layer: int = -1
 var _air_x_locked: bool = false
 var _air_side: int = QuarterPipe.PipeSide.RIGHT
 var _air_lip_x: float = 0.0
 var _air_coping_x: float = 0.0
 var _air_radius: float = 150.0
+var _air_base_height: float = 0.0
 ## Last behind-sign used for transfer probes when unlocked.
 var _transfer_behind_sign: float = 1.0
 
@@ -211,6 +216,32 @@ func _feet_height() -> float:
 	return depth.surface_height
 
 
+func _air_coping_floor() -> float:
+	return _air_base_height + _air_radius
+
+
+## Keep moves inside layer-0 playable footprint (hard boundary). Always commits.
+func _commit_xz(next_x: float, next_z: float) -> bool:
+	var z := depth.clamp_z(next_z)
+	var x := next_x
+	if _level and _level.spec:
+		var clamped: Vector2 = _level.spec.clamp_to_playable(x, z)
+		x = clamped.x
+		z = depth.clamp_z(clamped.y)
+	depth.logical_x = x
+	depth.logical_z = z
+	return true
+
+
+## Snap current pose into playable bounds (coping pin / transfer / pipe move).
+func _clamp_pose_playable() -> void:
+	if _level == null or _level.spec == null:
+		return
+	var clamped: Vector2 = _level.spec.clamp_to_playable(depth.logical_x, depth.logical_z)
+	depth.logical_x = clamped.x
+	depth.logical_z = depth.clamp_z(clamped.y)
+
+
 func _update_actual_velocity(delta: float) -> void:
 	var h := _feet_height()
 	if delta > 0.0001:
@@ -230,73 +261,66 @@ func _update_actual_velocity(delta: float) -> void:
 
 func _apply_motion(delta: float, speed_mul: float) -> void:
 	if _airborne:
-		_update_air_over_underfoot()
+		_clamp_pose_playable()
 		_step_transfer_x(delta)
 
 		if _air_x_locked:
 			# Don't pin X while a transfer/acid-drop lerp is carrying us to coping.
 			if not _transfer_x_active:
 				depth.logical_x = _air_coping_x
-			depth.logical_z = depth.clamp_z(depth.logical_z + _velocity.y * speed_mul * delta)
+			_clamp_pose_playable()
+			_commit_xz(depth.logical_x, depth.logical_z + _velocity.y * speed_mul * delta)
 
 			# God mode over a coping lock: keep X pin, free height via j/k.
 			if DebugTools.god_mode:
+				_resolve_and_apply_air_contact(air_abs_height)
 				air_vel_y = 0.0
 				return
 
-			# Horiz-locked air (pipe exit or acid drop): gravity always applies.
 			var prev_air_vy := air_vel_y
+			var h_before := air_abs_height
+			# Contact after XZ commit — label and collision share this resolve.
+			var contact: Dictionary = _resolve_and_apply_air_contact(h_before)
 			_integrate_air_gravity(delta)
 			_try_apex_facing_flip(prev_air_vy)
-			# Intent toward pipe side + height above coping → unlock; keep air_vel_y
-			# so free air continues on a parabola. Gravity already ran this tick.
+			# Fly-out unlocks X but must still run landing this tick.
 			if _try_fly_out_from_pipe_lock():
 				if not _transfer_x_active:
-					depth.logical_x += _velocity.x * speed_mul * delta
-				return
-			var floor_h := _underlying_surface_height()
-			# Only land when falling onto the surface — never snap height upward.
-			if air_vel_y <= 0.0 and air_abs_height <= floor_h + 0.05:
-				air_abs_height = floor_h
-				var pin_x := _air_coping_x
-				var land_side := _air_side
-				var land_lip := _air_lip_x
-				var side_sign := _coping_sign(land_side)
-				var land_vy := air_vel_y
-				var approach_x := _velocity.x
-				_clear_air()
-				# Pipe-exit / acid / spine: falling vert → along-arc; keep approach
-				# if already faster into the pipe.
-				var along := _AerialMath.merge_drop_in_along(approach_x, land_vy, land_side)
-				_ramp_along = along
-				_velocity.x = along
-				if along * side_sign < -1.0:
-					_on_ramp = true
-					_ramp_side = land_side
-					_ramp_lip_x = land_lip
-					_move_along_pipe_or_flat(along * speed_mul, delta)
-				else:
-					depth.logical_x = pin_x
+					_commit_xz(
+						depth.logical_x + _velocity.x * speed_mul * delta,
+						depth.logical_z
+					)
+				# Re-resolve after X nudge so contact matches new column.
+				contact = _resolve_and_apply_air_contact(h_before)
+			_try_land_from_air_contact(contact, h_before, delta, speed_mul)
 			return
 
-		# Unlocked air (rode off / transfer / fly-out / over any zone): free XZ + gravity.
-		# Position lerp owns X while active — don't also integrate velocity.x.
+		# Unlocked air: free XZ then contact → gravity → land from same contact.
 		if not _transfer_x_active:
-			depth.logical_x += _velocity.x * speed_mul * delta
-		depth.logical_z = depth.clamp_z(depth.logical_z + _velocity.y * speed_mul * delta)
+			_commit_xz(
+				depth.logical_x + _velocity.x * speed_mul * delta,
+				depth.logical_z + _velocity.y * speed_mul * delta
+			)
+		else:
+			_commit_xz(depth.logical_x, depth.logical_z + _velocity.y * speed_mul * delta)
 		if _air_over_uses_gravity():
+			var h_before_free := air_abs_height
+			var contact_free: Dictionary = _resolve_and_apply_air_contact(h_before_free)
 			_integrate_air_gravity(delta)
-		var floor_h := _underlying_surface_height()
-		if air_abs_height <= floor_h + 0.05:
-			air_abs_height = floor_h
-			_clear_air()
+			_try_land_from_air_contact(contact_free, h_before_free, delta, speed_mul)
+		else:
+			_resolve_and_apply_air_contact(air_abs_height)
 		return
 
 	var prev_support_h := depth.surface_height
-	depth.logical_z = depth.clamp_z(depth.logical_z + _velocity.y * speed_mul * delta)
+	_commit_xz(depth.logical_x, depth.logical_z + _velocity.y * speed_mul * delta)
 
 	var hit: Dictionary = _sample_underfoot()
-	if _is_pipe_hit(hit):
+	var solid_pad := _solid_pad_underfoot(prev_support_h)
+	var allow_pipe := _ContactMath.should_mount_pipe(
+		hit, prev_support_h, _on_ramp, solid_pad, ride_off_height_eps
+	)
+	if allow_pipe:
 		# If sticky pipe lost us onto an opposite neighbor at shared coping, launch
 		# instead of flipping walls mid-ride.
 		if _on_ramp and _is_opposite_pipe_swap(hit):
@@ -305,6 +329,7 @@ func _apply_motion(delta: float, speed_mul: float) -> void:
 				"side": _ramp_side,
 				"lip_x": _ramp_lip_x,
 				"radius": _sticky_pipe_radius(),
+				"base_height": _ramp_base_height,
 			}, up_speed)
 			return
 		if not _on_ramp:
@@ -312,6 +337,7 @@ func _apply_motion(delta: float, speed_mul: float) -> void:
 			_on_ramp = true
 		_ramp_side = int(hit.get("side", _ramp_side))
 		_ramp_lip_x = float(hit.get("lip_x", _ramp_lip_x))
+		_ramp_base_height = float(hit.get("base_height", _ramp_base_height))
 		_apply_ramp_friction(delta)
 		_ramp_along = _velocity.x
 		var arc_speed := _ramp_along * speed_mul
@@ -322,6 +348,7 @@ func _apply_motion(delta: float, speed_mul: float) -> void:
 			if _is_pipe_hit(after) and not _is_opposite_pipe_swap(after):
 				_ramp_side = int(after.get("side", _ramp_side))
 				_ramp_lip_x = float(after.get("lip_x", _ramp_lip_x))
+				_ramp_base_height = float(after.get("base_height", _ramp_base_height))
 				_project_ramp_velocity(float(after.get("theta", 0.0)))
 			elif _is_pipe_hit(after) and _is_opposite_pipe_swap(after):
 				var up_speed2: float = maxf(_ramp_along * _coping_sign(_ramp_side), 0.0)
@@ -329,6 +356,7 @@ func _apply_motion(delta: float, speed_mul: float) -> void:
 					"side": _ramp_side,
 					"lip_x": _ramp_lip_x,
 					"radius": _sticky_pipe_radius(),
+					"base_height": _ramp_base_height,
 				}, up_speed2)
 			else:
 				_leave_ramp_to_flat()
@@ -339,12 +367,16 @@ func _apply_motion(delta: float, speed_mul: float) -> void:
 	var arc_speed := _velocity.x * speed_mul
 	var next_x: float = depth.logical_x + arc_speed * delta
 	var cross := _coping_cross_hit(depth.logical_x, next_x)
-	if not cross.is_empty():
+	if (
+		not cross.is_empty()
+		and not solid_pad
+		and _ContactMath.should_coping_launch(hit, cross)
+	):
 		var side: int = int(cross.side)
 		var up_speed: float = maxf(arc_speed * _coping_sign(side), 0.0)
 		_enter_air_from_pipe(cross, up_speed)
 		return
-	depth.logical_x = next_x
+	_commit_xz(next_x, depth.logical_z)
 	_try_ride_off_air(prev_support_h)
 
 
@@ -353,7 +385,7 @@ func _step_transfer_x(delta: float) -> void:
 		return
 	var duration := maxf(_transfer_x_dur, 0.0001)
 	if _transfer_x_ease:
-		var above := maxf(air_abs_height - _air_radius, 0.0)
+		var above := maxf(air_abs_height - _air_coping_floor(), 0.0)
 		duration = maxf(
 			_AerialMath.lock_x_duration_for_height(
 				above,
@@ -369,6 +401,7 @@ func _step_transfer_x(delta: float) -> void:
 	if _transfer_x_u >= 1.0:
 		_transfer_x_active = false
 		depth.logical_x = _transfer_x_to
+	_clamp_pose_playable()
 
 
 ## Start horizontal settle onto `to_x`. Acid/spine: live duration from height above
@@ -384,28 +417,90 @@ func _begin_transfer_x_lerp(to_x: float, height_scaled: bool, _coping_radius: fl
 		depth.logical_x = to_x
 
 
-func _update_air_over_underfoot() -> void:
+## Resolve air contact at current XZ and write air_over / layer / sticky ids from it.
+## prefer_h is feet height before this tick's gravity (label = collision source).
+func _resolve_and_apply_air_contact(prefer_h: float) -> Dictionary:
 	if _level == null:
-		return
-	# Keep transfer target zone until X settle finishes.
-	if _transfer_x_active:
-		return
-	# Locked on a pipe coping: don't re-sample. Adjacent opposite pipes often share
-	# the coping X, and sample() would flip us back to the neighbor.
-	if _air_x_locked:
-		return
-	var under: Dictionary = _level.sample(depth.logical_x, depth.logical_z)
-	var zone := str(under.get("zone", "flat"))
-	if zone == "oob":
-		zone = "flat"
-	air_over = zone
-	if _is_pipe_hit(under):
-		_air_side = int(under.get("side", _air_side))
-		_air_lip_x = float(under.get("lip_x", _air_lip_x))
-		_air_radius = _pipe_radius_for_hit(under)
+		return _ContactMath.make_air_contact("oob", -1, 0.0, false, {})
+	var sticky_side := -1
+	var sticky_lip := NAN
+	var sticky_base := NAN
+	# Keep sticky pipe while airborne over a pipe (locked or free) so footprint
+	# stays solid even if feet dip below the arc.
+	if air_over == "left_pipe" or air_over == "right_pipe":
+		sticky_side = _air_side
+		sticky_lip = _air_lip_x
+		sticky_base = _air_base_height
+	elif _air_x_locked:
+		sticky_side = _air_side
+		sticky_lip = _air_lip_x
+		sticky_base = _air_base_height
+	var contact: Dictionary = _level.resolve_air_contact(
+		depth.logical_x, depth.logical_z, prefer_h, sticky_side, sticky_lip, sticky_base
+	)
+	# Pipe-exit lock: drop when leaving coping column (acid/spine keep lock).
+	if _air_x_locked and not _acid_drop_lock and not _spine_transfer_lock:
+		if not _is_aligned_with_air_coping():
+			_air_x_locked = false
+		# Higher stacked same-side pipe underfoot: retarget lock.
+		var hit: Dictionary = contact.get("hit", {})
+		if (
+			_air_x_locked
+			and _ContactMath.is_pipe(hit)
+			and int(hit.get("side", -1)) == _air_side
+			and float(hit.get("base_height", 0.0)) > _air_base_height + 0.5
+		):
+			_adopt_air_pipe_from_hit(hit, true)
+			contact = _level.resolve_air_contact(
+				depth.logical_x,
+				depth.logical_z,
+				prefer_h,
+				_air_side,
+				_air_lip_x,
+				_air_base_height,
+			)
+
+	air_over = str(contact.get("zone", "flat"))
+	_air_over_layer = int(contact.get("layer", -1))
+	var chit: Dictionary = contact.get("hit", {})
+	if _ContactMath.is_pipe(chit):
+		_air_side = int(chit.get("side", _air_side))
+		_air_lip_x = float(chit.get("lip_x", _air_lip_x))
+		_air_radius = _pipe_radius_for_hit(chit)
+		_air_base_height = float(chit.get("base_height", _air_base_height))
 		_air_coping_x = _coping_x_for(_air_side, _air_lip_x, _air_radius)
 		_transfer_behind_sign = _coping_sign(_air_side)
-	# Never auto-lock X from sampling — only pipe-coping entry locks.
+	elif air_over == "flat" or air_over == "deck":
+		_air_base_height = float(contact.get("height", chit.get("base_height", 0.0)))
+	elif air_over == "hole":
+		_air_base_height = float(contact.get("height", 0.0))
+	return contact
+
+
+## True when logical X is still on the locked pipe's top coping column.
+func _is_aligned_with_air_coping() -> bool:
+	var eps := maxf(_air_radius * 0.05, 2.0)
+	return absf(depth.logical_x - _air_coping_x) <= eps
+
+
+## Apply pipe identity from a sample hit. `keep_lock` pins X to that pipe's coping.
+func _adopt_air_pipe_from_hit(under: Dictionary, keep_lock: bool) -> void:
+	air_over = _pipe_zone_name(int(under.get("side", _air_side)))
+	_air_side = int(under.get("side", _air_side))
+	_air_lip_x = float(under.get("lip_x", _air_lip_x))
+	_air_radius = _pipe_radius_for_hit(under)
+	_air_base_height = float(under.get("base_height", _air_base_height))
+	_air_coping_x = _coping_x_for(_air_side, _air_lip_x, _air_radius)
+	_transfer_behind_sign = _coping_sign(_air_side)
+	if under.has("layer"):
+		_air_over_layer = int(under.get("layer", -1))
+	else:
+		_air_over_layer = _layer_index_for_base(_air_base_height)
+	if keep_lock:
+		_air_x_locked = true
+		if not _transfer_x_active:
+			depth.logical_x = _air_coping_x
+		_clamp_pose_playable()
 
 
 func _air_over_uses_gravity() -> bool:
@@ -431,7 +526,10 @@ func _step_god_vertical(delta: float) -> void:
 	if not _airborne:
 		if v <= 0.0:
 			return
-		var under: Dictionary = _level.sample(depth.logical_x, depth.logical_z) if _level else {}
+		var under: Dictionary = (
+			_level.sample(depth.logical_x, depth.logical_z, -1, NAN, depth.surface_height)
+			if _level else {}
+		)
 		var zone := str(under.get("zone", "flat"))
 		if zone == "oob":
 			zone = "flat"
@@ -440,33 +538,155 @@ func _step_god_vertical(delta: float) -> void:
 			target["side"] = int(under.get("side", QuarterPipe.PipeSide.RIGHT))
 			target["lip_x"] = float(under.get("lip_x", depth.logical_x))
 			target["radius"] = _pipe_radius_for_hit(under)
+			target["base_height"] = float(under.get("base_height", 0.0))
+			target["layer"] = int(under.get("layer", -1))
 		_begin_air_over(target, depth.surface_height, false)
 		air_vel_y = 0.0
+	var h_before_god := air_abs_height
 	air_abs_height += v * god_vert_speed * delta
 	air_vel_y = 0.0
-	var floor_h := _underlying_surface_height()
-	if air_abs_height <= floor_h + 0.05:
-		air_abs_height = floor_h
-		_clear_air()
+	if v < 0.0:
+		air_vel_y = -0.01
+		var contact: Dictionary = _resolve_and_apply_air_contact(h_before_god)
+		_try_land_from_air_contact(contact, h_before_god, delta, 1.0)
+		air_vel_y = 0.0
 
 
 func _underlying_surface_height() -> float:
-	# Pipe-exit X-lock may use coping radius; acid drop / free air sample real surface.
-	var sampled := 0.0
-	if _level != null:
-		var under: Dictionary = _level.sample(depth.logical_x, depth.logical_z)
-		if under.get("active", true) or str(under.get("zone", "")) != "oob":
-			sampled = float(under.get("height", 0.0))
-	return _AerialMath.landing_support_height(
-		_air_x_locked, _acid_drop_lock, air_over, _air_radius, sampled
+	if _level == null:
+		return 0.0
+	var contact: Dictionary = _level.resolve_air_contact(
+		depth.logical_x,
+		depth.logical_z,
+		air_abs_height,
+		_air_side if (air_over == "left_pipe" or air_over == "right_pipe") else -1,
+		_air_lip_x if (air_over == "left_pipe" or air_over == "right_pipe") else NAN,
+		_air_base_height if (air_over == "left_pipe" or air_over == "right_pipe") else NAN,
 	)
+	if _ContactMath.is_air_contact_solid(contact):
+		return float(contact.get("height", 0.0))
+	# Hole / oob: shadow on next solid below via sample.
+	var resolved: Dictionary = _level.sample_sweep(
+		depth.logical_x, depth.logical_z, air_abs_height, air_abs_height
+	)
+	return float(resolved.get("height", 0.0))
+
+
+## Land using the same air contact that drives the label. Solid contact is hard —
+## never tunnel through. Hole skips this story; may catch a lower solid in the sweep.
+func _try_land_from_air_contact(
+	contact: Dictionary, h_before: float, delta: float, speed_mul: float
+) -> bool:
+	if air_vel_y > 0.0:
+		return false
+	if _level == null:
+		return false
+	var h1 := air_abs_height
+	var land_hit: Dictionary = {}
+	var floor_h := 0.0
+
+	if _ContactMath.should_land_on_air_contact(contact, h_before, h1):
+		land_hit = contact.get("hit", {})
+		floor_h = float(contact.get("height", 0.0))
+	else:
+		# Hole / still above: optionally catch a lower solid crossed this tick.
+		if _ContactMath.is_air_contact_solid(contact) and h1 > float(contact.get("height", 0.0)) + 0.05:
+			return false
+		var resolved: Dictionary = _level.sample_sweep(
+			depth.logical_x, depth.logical_z, h_before, h1
+		)
+		land_hit = resolved.get("hit", {})
+		if land_hit.is_empty() or (
+			not land_hit.get("active", true) and str(land_hit.get("zone", "")) == "oob"
+		):
+			return false
+		floor_h = float(resolved.get("height", 0.0))
+		# Don't land on a surface above the hole story we're falling through without crossing.
+		if str(contact.get("zone", "")) == "hole":
+			var hole_h := float(contact.get("height", 0.0))
+			# Only accept surfaces strictly below this story's height.
+			if floor_h >= hole_h - 0.05:
+				# Re-resolve lower: exclude by picking below hole.
+				var lower: Dictionary = _level.sample(
+					depth.logical_x, depth.logical_z, -1, NAN, hole_h - 2.0
+				)
+				if lower.is_empty() or (
+					not lower.get("active", true) and str(lower.get("zone", "")) == "oob"
+				):
+					return false
+				var lh := float(lower.get("height", 0.0))
+				if lh >= hole_h - 0.05:
+					return false
+				if h1 > lh + 0.05:
+					return false
+				if not _ContactMath.height_in_sweep(lh, h_before, h1) and h_before < lh - 0.05:
+					return false
+				land_hit = lower
+				floor_h = lh
+			elif h1 > floor_h + 0.05:
+				return false
+			elif h_before < floor_h - 0.05 and not bool(resolved.get("crossed_solid", false)):
+				if not _ContactMath.height_in_sweep(floor_h, h_before, h1):
+					return false
+		else:
+			if h1 > floor_h + 0.05:
+				return false
+			if h_before < floor_h - 0.05 and not bool(resolved.get("crossed_solid", false)):
+				if not _ContactMath.height_in_sweep(floor_h, h_before, h1):
+					return false
+
+	if land_hit.is_empty():
+		return false
+
+	air_abs_height = floor_h
+	var pin_x := depth.logical_x
+	if _air_x_locked and _is_aligned_with_air_coping():
+		pin_x = _air_coping_x
+	var was_locked := _air_x_locked
+	var land_vy := air_vel_y
+	var approach_x := _velocity.x
+	_clear_air()
+
+	if _ContactMath.is_solid(land_hit):
+		depth.surface_height = floor_h
+		depth.logical_x = pin_x
+		_velocity.x = approach_x
+		_on_ramp = false
+		return true
+
+	if _ContactMath.is_pipe(land_hit):
+		var land_side := int(land_hit.get("side", QuarterPipe.PipeSide.RIGHT))
+		var land_lip := float(land_hit.get("lip_x", depth.logical_x))
+		var land_base := float(land_hit.get("base_height", 0.0))
+		var side_sign := _coping_sign(land_side)
+		var along := approach_x
+		if was_locked or land_vy < -1.0:
+			along = _AerialMath.merge_drop_in_along(approach_x, land_vy, land_side)
+		_ramp_along = along
+		_velocity.x = along
+		_on_ramp = true
+		_ramp_side = land_side
+		_ramp_lip_x = land_lip
+		_ramp_base_height = land_base
+		depth.surface_height = floor_h
+		if along * side_sign < -1.0 or absf(along) > 1.0:
+			_move_along_pipe(land_hit, along * speed_mul, delta)
+		else:
+			depth.logical_x = pin_x if was_locked else depth.logical_x
+		return true
+
+	depth.surface_height = floor_h
+	depth.logical_x = pin_x
+	return true
 
 
 ## Leave a higher support surface into free air (keep height, apply gravity).
 func _try_ride_off_air(prev_support_h: float) -> void:
 	if _airborne or _level == null:
 		return
-	var under: Dictionary = _level.sample(depth.logical_x, depth.logical_z)
+	var under: Dictionary = _level.sample(
+		depth.logical_x, depth.logical_z, -1, NAN, prev_support_h
+	)
 	var new_h := 0.0
 	if under.get("active", true) or str(under.get("zone", "")) != "oob":
 		new_h = float(under.get("height", 0.0))
@@ -480,7 +700,45 @@ func _try_ride_off_air(prev_support_h: float) -> void:
 		target["side"] = int(under.get("side", QuarterPipe.PipeSide.RIGHT))
 		target["lip_x"] = float(under.get("lip_x", depth.logical_x))
 		target["radius"] = _pipe_radius_for_hit(under)
+		target["base_height"] = float(under.get("base_height", 0.0))
+		target["layer"] = int(under.get("layer", -1))
 	_begin_air_over(target, prev_support_h, false)
+
+
+## True when feet are on a solid floor/deck pad (not a hole). Blocks fake
+## pipe-exit pops when an upper story sits at layer-0 coping height.
+func _solid_pad_underfoot(feet_h: float) -> bool:
+	if _level == null or _level.spec == null:
+		return false
+	var eps := ride_off_height_eps + 1.5
+	for h in _level.spec.floor_heights_at(depth.logical_x, depth.logical_z):
+		if absf(float(h) - feet_h) <= eps:
+			return true
+	var p := Vector2(depth.logical_x, depth.logical_z)
+	for deck in _level.spec.decks:
+		if absf(float(deck.get("height", 0.0)) - feet_h) > eps:
+			continue
+		if LevelSpec.point_in_poly(p, deck.poly):
+			return true
+	return false
+
+
+## Only stand on / mount surfaces within ride_off_height_eps of feet.
+func _can_mount_surface(hit: Dictionary, feet_h: float) -> bool:
+	var h := float(hit.get("height", 0.0))
+	return h >= feet_h - ride_off_height_eps
+
+
+func _sample_underfoot() -> Dictionary:
+	if _level == null:
+		return {}
+	var prefer_h := _feet_height()
+	if _on_ramp:
+		return _level.sample(
+			depth.logical_x, depth.logical_z,
+			_ramp_side, _ramp_lip_x, prefer_h, _ramp_base_height
+		)
+	return _level.sample(depth.logical_x, depth.logical_z, -1, NAN, prefer_h)
 
 
 ## Advance along the quarter-pipe arc. Past θ=PI/2 enters air at coping.
@@ -496,14 +754,6 @@ func _apply_ramp_friction(delta: float) -> void:
 func _project_ramp_velocity(theta: float) -> void:
 	var c := cos(clampf(theta, 0.0, PI * 0.5))
 	_velocity.x = _ramp_along * c
-
-
-func _sample_underfoot() -> Dictionary:
-	if _level == null:
-		return {}
-	if _on_ramp:
-		return _level.sample(depth.logical_x, depth.logical_z, _ramp_side, _ramp_lip_x)
-	return _level.sample(depth.logical_x, depth.logical_z)
 
 
 func _is_opposite_pipe_swap(hit: Dictionary) -> bool:
@@ -552,11 +802,13 @@ func _move_along_pipe(hit: Dictionary, arc_speed: float, delta: float) -> void:
 			"side": side,
 			"lip_x": lip,
 			"radius": radius,
+			"base_height": float(hit.get("base_height", _ramp_base_height)),
 		}, up_speed)
 		return
 
 	if new_theta <= 0.0:
 		depth.logical_x = lip - sign * absf(new_theta) * radius
+		_clamp_pose_playable()
 		_leave_ramp_to_flat()
 		return
 
@@ -565,6 +817,7 @@ func _move_along_pipe(hit: Dictionary, arc_speed: float, delta: float) -> void:
 		depth.logical_x = lip - x_off
 	else:
 		depth.logical_x = lip + x_off
+	_clamp_pose_playable()
 
 
 func _move_along_pipe_or_flat(arc_speed: float, delta: float) -> void:
@@ -576,6 +829,7 @@ func _move_along_pipe_or_flat(arc_speed: float, delta: float) -> void:
 		"theta": PI * 0.5,
 		"t_along_pipe": 1.0,
 		"radius": _air_radius,
+		"base_height": _air_base_height,
 	}
 	_move_along_pipe(hit, arc_speed, delta)
 
@@ -598,6 +852,7 @@ func _apply_surface() -> void:
 		last_surface = last_surface.duplicate()
 		last_surface["zone"] = "air"
 		last_surface["air_over"] = air_over
+		last_surface["air_over_layer"] = _air_over_layer
 		last_surface["height"] = air_abs_height
 		depth.surface_height = air_abs_height
 		depth.height_offset = 0.0
@@ -607,10 +862,16 @@ func _apply_surface() -> void:
 		depth.height_offset = 0.0
 		depth.airborne = false
 		if not last_surface.get("active", true) and zone == "oob":
-			depth.surface_height = 0.0
+			# Stay at current height — never snap down onto nothing.
+			depth.support_height = depth.surface_height
 		else:
-			depth.surface_height = float(last_surface.get("height", 0.0))
-		depth.support_height = depth.surface_height
+			var sample_h := float(last_surface.get("height", 0.0))
+			# Follow continuous support (pipe arc / flats) even when height drops
+			# faster than ride_off_eps per tick. Far-below stories are handled by
+			# ride-off into air before this runs — don't freeze height on the way down.
+			if _on_ramp or sample_h >= depth.surface_height - ride_off_height_eps:
+				depth.surface_height = sample_h
+			depth.support_height = depth.surface_height
 
 	_refresh_head_debug()
 
@@ -618,19 +879,28 @@ func _apply_surface() -> void:
 func _coping_cross_hit(from_x: float, to_x: float) -> Dictionary:
 	if _level == null or is_equal_approx(from_x, to_x):
 		return {}
+	var prefer_h := _feet_height()
+	var best := {}
+	var best_base := -INF
 	for pipe in _level.pipes:
 		if depth.logical_z < pipe.z_min - 0.001 or depth.logical_z > pipe.z_max + 0.001:
+			continue
+		# Don't cross onto a pipe story far above the feet.
+		if pipe.base_height > prefer_h + 1.5:
 			continue
 		var sign: float = _coping_sign(pipe.side)
 		var from_off: float = (from_x - pipe.lip_x) * sign
 		var to_off: float = (to_x - pipe.lip_x) * sign
 		if from_off < pipe.radius - 0.001 and to_off >= pipe.radius - 0.001:
-			return {
-				"side": pipe.side,
-				"lip_x": pipe.lip_x,
-				"radius": pipe.radius,
-			}
-	return {}
+			if pipe.base_height >= best_base:
+				best_base = pipe.base_height
+				best = {
+					"side": pipe.side,
+					"lip_x": pipe.lip_x,
+					"radius": pipe.radius,
+					"base_height": pipe.base_height,
+				}
+	return best
 
 
 ## Pipe-only entry path (today). Future entries should call _begin_air_over.
@@ -639,15 +909,19 @@ func _enter_air_from_pipe(hit: Dictionary, up_speed: float = 0.0) -> void:
 	var side: int = int(hit.get("side", QuarterPipe.PipeSide.RIGHT))
 	var lip: float = float(hit.get("lip_x", depth.logical_x))
 	var radius: float = float(hit.get("radius", _pipe_radius_for_hit(hit)))
+	var base_h: float = float(hit.get("base_height", _ramp_base_height))
 	var coping := _coping_x_for(side, lip, radius)
+	var coping_floor := base_h + radius
 	_begin_air_over({
 		"zone": _pipe_zone_name(side),
 		"side": side,
 		"lip_x": lip,
 		"radius": radius,
+		"base_height": base_h,
+		"layer": int(hit.get("layer", _layer_index_for_base(base_h))),
 		"lock_x": true,
 		"anchor_x": coping,
-	}, radius, true)
+	}, coping_floor, true)
 	# Fully convert remaining along-speed into vertical; horiz is gone at θ = π/2.
 	air_vel_y = maxf(up_speed, 0.0)
 	_ramp_along = 0.0
@@ -666,7 +940,7 @@ func _try_fly_out_from_pipe_lock() -> bool:
 		_acid_drop_lock,
 		_air_side,
 		air_abs_height,
-		_air_radius,
+		_air_coping_floor(),
 		fly_out_above_coping,
 		_last_input.x,
 		air_vel_y,
@@ -693,11 +967,17 @@ func _begin_air_over(target: Dictionary, abs_height: float, snap_x: bool = true)
 		_air_lip_x = float(target.lip_x)
 	if target.has("radius"):
 		_air_radius = float(target.radius)
+	_air_base_height = float(target.get("base_height", 0.0))
+	if target.has("layer"):
+		_air_over_layer = int(target.layer)
+	else:
+		_air_over_layer = _layer_index_for_base(_air_base_height)
+	var coping_floor := _air_coping_floor()
 	if _air_x_locked:
 		_air_coping_x = float(target.get("anchor_x", _coping_x_for(_air_side, _air_lip_x, _air_radius)))
 		if snap_x:
 			depth.logical_x = _air_coping_x
-		air_abs_height = maxf(abs_height, _air_radius)
+		air_abs_height = maxf(abs_height, coping_floor)
 	else:
 		air_abs_height = abs_height
 	depth.height_offset = 0.0
@@ -708,6 +988,7 @@ func _clear_air() -> void:
 	air_abs_height = 0.0
 	air_vel_y = 0.0
 	air_over = ""
+	_air_over_layer = -1
 	_air_x_locked = false
 	_acid_drop_lock = false
 	_spine_transfer_lock = false
@@ -755,8 +1036,10 @@ func _try_acid_drop() -> void:
 	_air_side = side
 	_air_lip_x = lip
 	_air_radius = radius
+	_air_base_height = float(hit.get("base_height", 0.0))
 	_air_coping_x = coping
 	air_over = _pipe_zone_name(side)
+	_air_over_layer = int(hit.get("layer", _layer_index_for_base(_air_base_height)))
 	_transfer_behind_sign = _coping_sign(side)
 	# Do not touch air_abs_height or air_vel_y — only horizontal lock + existing gravity.
 
@@ -809,8 +1092,10 @@ func _try_spine_transfer() -> bool:
 	_air_side = side
 	_air_lip_x = lip
 	_air_radius = radius
+	_air_base_height = float(hit.get("base_height", 0.0))
 	_air_coping_x = coping
 	air_over = _pipe_zone_name(side)
+	_air_over_layer = int(hit.get("layer", _layer_index_for_base(_air_base_height)))
 	_transfer_behind_sign = _coping_sign(side)
 
 	_begin_transfer_x_lerp(coping, true, radius)
@@ -854,7 +1139,7 @@ func _try_transfer() -> void:
 	var exclude_side := _air_side
 	var exclude_lip := _air_lip_x
 	var hit: Dictionary = _level.sample_transfer(
-		probe_x, depth.logical_z, exclude_side, exclude_lip
+		probe_x, depth.logical_z, exclude_side, exclude_lip, air_abs_height
 	)
 	# Tight spine / gap: probe may land on flat between facing copings — pick the
 	# nearest opposite pipe in the behind direction when no deck claimed the spot.
@@ -879,14 +1164,28 @@ func _try_transfer() -> void:
 			"side": side,
 			"lip_x": lip,
 			"radius": radius,
+			"base_height": float(hit.get("base_height", 0.0)),
+			"layer": int(hit.get("layer", -1)),
 			"lock_x": false,
 			"anchor_x": coping,
 		}
 		anchor_x = coping
 	elif zone == "deck":
-		target = {"zone": "deck", "lock_x": false, "anchor_x": probe_x}
+		target = {
+			"zone": "deck",
+			"lock_x": false,
+			"anchor_x": probe_x,
+			"layer": int(hit.get("layer", -1)),
+			"base_height": float(hit.get("base_height", 0.0)),
+		}
 	else:
-		target = {"zone": "flat", "lock_x": false, "anchor_x": probe_x}
+		target = {
+			"zone": "flat",
+			"lock_x": false,
+			"anchor_x": probe_x,
+			"layer": int(hit.get("layer", -1)),
+			"base_height": float(hit.get("height", 0.0)),
+		}
 
 	_begin_air_over(target, keep_h, false)
 	_transfer_available = false
@@ -952,11 +1251,42 @@ func zone_debug_label() -> String:
 		var over := air_over
 		if over == "" and last_surface.has("air_over"):
 			over = str(last_surface.air_over)
+		var layer := _air_over_layer
+		if layer < 0 and last_surface.has("air_over_layer"):
+			layer = int(last_surface.air_over_layer)
 		if over != "":
-			zone = "air (over %s)" % over
+			if layer >= 0:
+				zone = "air (over %s L%d)" % [over, layer]
+			else:
+				zone = "air (over %s)" % over
 		else:
 			zone = "air"
+	else:
+		var layer_g := _layer_from_surface(last_surface)
+		if layer_g >= 0:
+			zone = "%s L%d" % [zone, layer_g]
 	return "%s\nhd %s" % [zone, facing_h]
+
+
+## Layer index for a grounded/air sample hit.
+func _layer_from_surface(surf: Dictionary) -> int:
+	if surf.has("layer") and int(surf.layer) >= 0:
+		return int(surf.layer)
+	if surf.has("base_height"):
+		return _layer_index_for_base(float(surf.base_height))
+	if surf.has("height"):
+		return _layer_index_for_base(float(surf.height))
+	return -1
+
+
+## Map a story base_height to .ssk layer index when hits omit `layer`.
+func _layer_index_for_base(base_h: float) -> int:
+	if _level == null or _level.spec == null:
+		return -1
+	for L in _level.spec.layers:
+		if absf(float(L.get("height", 0.0)) - base_h) <= 0.5:
+			return int(L.get("index", -1))
+	return -1
 
 
 ## Logical XZ for cell queries (targeting / highlight / HUD). While X-locked on

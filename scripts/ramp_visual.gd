@@ -56,9 +56,10 @@ func _draw() -> void:
 		return
 	var band := _view_z_band()
 	_draw_backdrop_pad(band)
-	_draw_floors(band)
+	_draw_ground_floors(band)
 	for pipe in _pipes_far_to_near():
 		_draw_pipe(pipe, band)
+	_draw_elevated_floors(band)
 	_draw_decks(band)
 	if show_depth_grid:
 		_draw_depth_grid(band)
@@ -138,19 +139,66 @@ func _project_deck_poly(deck: Dictionary, poly: PackedVector2Array) -> PackedVec
 	return out
 
 
-func _draw_floors(band: Vector2) -> void:
+func _draw_ground_floors(band: Vector2) -> void:
 	if _level.spec == null:
 		return
 	if show_floor_checker and _level.spec.floor_mask.size() > 0:
 		_draw_floor_checker(band)
 		return
 	for floor in _level.spec.floors:
+		if float(floor.get("height", 0.0)) > 0.05:
+			continue
 		var clipped := _clip_poly_z_band(floor.poly, band.x, band.y)
 		if clipped.size() < 3:
 			continue
 		var pts := _project_poly(clipped, 0.0)
 		if pts.size() >= 3:
 			draw_colored_polygon(pts, Color(0.28, 0.34, 0.30, 0.95))
+
+
+## Elevated stories: per-cell quads (outline polys break on holes / rings).
+func _draw_elevated_floors(band: Vector2) -> void:
+	if _level.spec == null:
+		return
+	var spec := _level.spec
+	var W := spec.grid_w
+	var H := spec.grid_h
+	var cw := spec.cell_w
+	var ch := spec.cell_h
+	if W <= 0 or H <= 0 or cw <= 0.0 or ch <= 0.0:
+		return
+	var r_min := clampi(int(ceil(float(H) - 1.0 - band.y / ch)), 0, H - 1)
+	var r_max := clampi(int(floor(float(H) - band.x / ch - 0.0001)), 0, H - 1)
+	if r_max < r_min:
+		return
+	var fill := Color(0.32, 0.38, 0.42, 0.88)
+	var stroke := Color(0.55, 0.62, 0.70, 0.75)
+	for story in spec.story_floor_masks:
+		var h := float(story.get("height", 0.0))
+		if h <= 0.05:
+			continue
+		var mask: PackedByteArray = story.get("mask", PackedByteArray())
+		if mask.size() < W * H:
+			continue
+		for r in range(r_min, r_max + 1):
+			for c in range(W):
+				if mask[r * W + c] == 0:
+					continue
+				var x0 := float(c) * cw
+				var x1 := float(c + 1) * cw
+				var z0 := maxf(float(H - 1 - r) * ch, band.x)
+				var z1 := minf(float(H - r) * ch, band.y)
+				if z1 <= z0 + 0.001:
+					continue
+				var corners := PackedVector2Array([
+					_surf_point(x0, z0, h),
+					_surf_point(x1, z0, h),
+					_surf_point(x1, z1, h),
+					_surf_point(x0, z1, h),
+				])
+				draw_colored_polygon(corners, fill)
+				for i in range(corners.size()):
+					draw_line(corners[i], corners[(i + 1) % corners.size()], stroke, 1.25)
 
 
 func _ensure_checker_texture() -> void:
@@ -315,7 +363,10 @@ func _draw_player_cell_highlight() -> void:
 	else:
 		cell = _level.spec.cell_at(lx, lz)
 	var b: Dictionary = _level.spec.cell_bounds(cell.x, cell.y)
-	var under: Dictionary = _level.sample(lx, lz)
+	var prefer_h := float(body.surface_height)
+	if bool(_player.get("_airborne")):
+		prefer_h = float(_player.get("air_abs_height"))
+	var under: Dictionary = _level.sample(lx, lz, -1, NAN, prefer_h)
 	var h := 0.0
 	if under.get("active", true) or str(under.get("zone", "")) != "oob":
 		h = float(under.get("height", 0.0))

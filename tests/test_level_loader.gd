@@ -1,5 +1,5 @@
 extends RefCounted
-## LevelLoader.parse_text: fixtures, spawn, pipe radii, decks, uneven rows.
+## LevelLoader.parse_text: fixtures, spawn, pipe radii, decks, uneven rows, layers.
 
 
 func run() -> bool:
@@ -9,10 +9,16 @@ func run() -> bool:
 	ok = _smoke_fixture("res://levels/test_stagger_spine.ssk") and ok
 	ok = _smoke_fixture("res://levels/test_ledge_drop.ssk") and ok
 	ok = _smoke_fixture("res://levels/test_asymm_pipes.ssk") and ok
+	ok = _smoke_fixture("res://levels/layered_demo.ssk") and ok
 	ok = _halfpipe_geometry() and ok
 	ok = _ledge_spawn_facing() and ok
 	ok = _uneven_rows_fail() and ok
+	ok = _ssk1_rejected() and ok
 	ok = _stagger_deck_height() and ok
+	ok = _layered_upper_floor() and ok
+	ok = _dot_is_hole_not_floor() and ok
+	ok = _upper_space_in_footprint_fails() and ok
+	ok = _clamp_to_playable() and ok
 	return ok
 
 
@@ -38,7 +44,6 @@ func _smoke_fixture(path: String) -> bool:
 		push_error("%s: expected pipes" % path)
 		return false
 	if not spec.contains_playable(spec.spawn_x, spec.spawn_z):
-		# Spawn is on floor glyph; floors should cover it.
 		var on_floor := false
 		for region in spec.floors:
 			if LevelSpec.point_in_poly(Vector2(spec.spawn_x, spec.spawn_z), region.poly):
@@ -56,7 +61,6 @@ func _halfpipe_geometry() -> bool:
 	if spec == null:
 		push_error("halfpipe parse failed: %s" % LevelLoader.last_error)
 		return false
-	# 22 columns × cell, 8 rows
 	var cx := LevelLoader.cell_size_x
 	var cz := LevelLoader.cell_size_z
 	if not is_equal_approx(spec.width, 22.0 * cx):
@@ -65,13 +69,11 @@ func _halfpipe_geometry() -> bool:
 	if not is_equal_approx(spec.depth, 8.0 * cz):
 		push_error("halfpipe depth want %s got %s" % [8.0 * cz, spec.depth])
 		return false
-	# @ at col 11 (0-based), row 3 → spawn center
 	var want_x := (11.0 + 0.5) * cx
 	var want_z := (8.0 - 1.0 - 3.0 + 0.5) * cz
 	if not is_equal_approx(spec.spawn_x, want_x) or not is_equal_approx(spec.spawn_z, want_z):
 		push_error("halfpipe spawn want (%s,%s) got (%s,%s)" % [want_x, want_z, spec.spawn_x, spec.spawn_z])
 		return false
-	# <<<< run → radius = 4 cells
 	var left_r := -1.0
 	var right_r := -1.0
 	for p in spec.pipes:
@@ -83,6 +85,10 @@ func _halfpipe_geometry() -> bool:
 	if not is_equal_approx(left_r, want_r) or not is_equal_approx(right_r, want_r):
 		push_error("halfpipe pipe radii want %s got L=%s R=%s" % [want_r, left_r, right_r])
 		return false
+	for p2 in spec.pipes:
+		if absf(float(p2.get("base_height", -1.0))) > 0.001:
+			push_error("halfpipe pipes should have base_height 0")
+			return false
 	return true
 
 
@@ -102,9 +108,11 @@ func _ledge_spawn_facing() -> bool:
 
 
 func _uneven_rows_fail() -> bool:
-	var text := """ssk 1
+	var text := """ssk 2
 name bad_uneven
 ---
+layer 0
+height 0
 <<<<====@=>>>>
 <<<<=====>>>>
 """
@@ -119,6 +127,23 @@ name bad_uneven
 	return true
 
 
+func _ssk1_rejected() -> bool:
+	var text := """ssk 1
+name old
+---
+<<<<====@=>>>>
+<<<<========>>>>
+"""
+	var spec := LevelLoader.parse_text(text, "old")
+	if spec != null:
+		push_error("ssk 1 should be rejected")
+		return false
+	if LevelLoader.last_error.find("ssk 2") < 0:
+		push_error("ssk1 reject should mention ssk 2: %s" % LevelLoader.last_error)
+		return false
+	return true
+
+
 func _stagger_deck_height() -> bool:
 	var text := _read("res://levels/test_stagger_spine.ssk")
 	var spec := LevelLoader.parse_text(text, "test_stagger_spine")
@@ -128,10 +153,112 @@ func _stagger_deck_height() -> bool:
 	if spec.decks.is_empty():
 		push_error("stagger: expected decks from #")
 		return false
-	# Neighbor pipes are 4-wide <> runs (`<<<<` / `>>>>`) → radius 4 * cell_x
 	var want_h := 4.0 * LevelLoader.cell_size_x
 	for deck in spec.decks:
 		if not is_equal_approx(float(deck.height), want_h):
 			push_error("stagger deck height want %s got %s" % [want_h, deck.height])
 			return false
+	return true
+
+
+func _layered_upper_floor() -> bool:
+	var r := 4.0 * LevelLoader.cell_size_x
+	var text := (
+		"ssk 2\nname layered_unit\n---\nlayer 0\nheight 0\n"
+		+ "<<<<========>>>>\n<<<<====@===>>>>\n<<<<========>>>>\n"
+		+ "---\nlayer 1\nheight %s\n" % r
+		+ "....========....\n....========....\n....========....\n"
+	)
+	var spec := LevelLoader.parse_text(text, "layered_unit")
+	if spec == null:
+		push_error("layered parse failed: %s" % LevelLoader.last_error)
+		return false
+	var upper := 0
+	for floor in spec.floors:
+		if is_equal_approx(float(floor.height), r):
+			upper += 1
+	if upper < 1:
+		push_error("expected upper floor at height %s" % r)
+		return false
+	if spec.layers.size() != 2:
+		push_error("expected 2 layers got %s" % spec.layers.size())
+		return false
+	return true
+
+
+func _dot_is_hole_not_floor() -> bool:
+	var text := """ssk 2
+name holes
+---
+layer 0
+height 0
+<<<<====>>>>
+<<<<=@=.>>>>
+<<<<====>>>>
+"""
+	var spec := LevelLoader.parse_text(text, "holes")
+	if spec == null:
+		push_error("holes parse failed: %s" % LevelLoader.last_error)
+		return false
+	# Center of the '.' cell should not be inside any floor poly.
+	var cx := LevelLoader.cell_size_x
+	var cz := LevelLoader.cell_size_z
+	# Row 1, col 5 (0-based): <<<<====>>>> → cols 0-3 <, 4-7 =, 8-11 >
+	# Wait map is <<<<====>>>> = 12 wide. <<<<=@=.>>>> 
+	# Actually: <<<< = 4, =@=. = 4, >>>> = 4 → 12. Dot at col 7.
+	var dot_x := (7.0 + 0.5) * cx
+	var dot_z := (3.0 - 1.0 - 1.0 + 0.5) * cz  # H=3, row 1
+	for floor in spec.floors:
+		if LevelSpec.point_in_poly(Vector2(dot_x, dot_z), floor.poly):
+			push_error(". cell should not be floor")
+			return false
+	if not spec.is_playable_xz(dot_x, dot_z):
+		push_error(". cell should still be playable (not OOB)")
+		return false
+	return true
+
+
+func _upper_space_in_footprint_fails() -> bool:
+	var text := """ssk 2
+name bad_space
+---
+layer 0
+height 0
+<<<<====>>>>
+<<<<=@==>>>>
+<<<<====>>>>
+---
+layer 1
+height 100
+<<<<====>>>>
+<<<<  ==>>>>
+<<<<====>>>>
+"""
+	var spec := LevelLoader.parse_text(text, "bad_space")
+	if spec != null:
+		push_error("space inside footprint on upper layer should fail")
+		return false
+	if LevelLoader.last_error.find("space") < 0 and LevelLoader.last_error.find(".") < 0:
+		push_error("expected footprint space error: %s" % LevelLoader.last_error)
+		return false
+	return true
+
+
+func _clamp_to_playable() -> bool:
+	var text := FileAccess.get_file_as_string("res://levels/layered_demo.ssk")
+	var spec := LevelLoader.parse_text(text, "layered_demo")
+	if spec == null:
+		push_error("clamp fixture load failed: %s" % LevelLoader.last_error)
+		return false
+	var out := spec.clamp_to_playable(-50.0, spec.spawn_z)
+	if not spec.is_playable_xz(out.x, out.y):
+		push_error("clamp_to_playable must land in playable, got %s" % out)
+		return false
+	if out.x < -0.01:
+		push_error("clamp must not leave x negative, got %s" % out.x)
+		return false
+	var mid := spec.clamp_to_playable(spec.spawn_x, spec.spawn_z)
+	if absf(mid.x - spec.spawn_x) > 0.05 or absf(mid.y - spec.spawn_z) > 0.05:
+		push_error("clamp should preserve playable pose")
+		return false
 	return true

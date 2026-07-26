@@ -1,6 +1,6 @@
 class_name LevelSpec
 extends RefCounted
-## Parsed .ssk level: floors, decks, pipes, spawn.
+## Parsed .ssk level: layered floors, decks, pipes, spawn.
 
 var name: String = ""
 ## Derived: columns × cell_size_x / rows × cell_size_z.
@@ -14,17 +14,24 @@ var spawn_z: float = 40.0
 ## Spawn horizontal facing: "l" or "r" (default right).
 var spawn_facing: String = "r"
 
-## Each: { "poly": PackedVector2Array (x,z), "height": float }
+## Each: { "poly": PackedVector2Array (x,z), "height": float, "layer": int }
 var floors: Array = []
-## Each: { "poly": PackedVector2Array, "height": float }
+## Each: { "poly": PackedVector2Array, "height": float, "anchors": Array, "layer": int,
+##         "base_height": float }
 var decks: Array = []
-## Each: { "side": int, "lip_x": float, "radius": float, "z_min": float, "z_max": float,
-##         "x_min": float, "x_max": float }
+## Each: { "side": int, "lip_x": float, "radius": float, "base_height": float,
+##         "z_min": float, "z_max": float, "x_min": float, "x_max": float, "layer": int }
 var pipes: Array = []
-## Floor glyph cells as Vector2i(col, row) — row 0 = far/top.
+## Floor glyph cells as Vector2i(col, row) — row 0 = far/top (all stories).
 var floor_cells: Array = []
-## PackedByteArray length grid_w*grid_h; 1 = floor. Row-major, row 0 = far/top.
+## Ground-story (= / @) mask for checker draw. Row-major, row 0 = far/top.
 var floor_mask: PackedByteArray = PackedByteArray()
+## Per-story floor masks: [{ "height": float, "mask": PackedByteArray }, ...]
+var story_floor_masks: Array = []
+## Layer glyph grids for highlight / OOB: [{ "index": int, "height": float, "rows": PackedStringArray }]
+var layers: Array = []
+## Layer-0 non-space footprint: 1 = playable cell. Same size as floor_mask.
+var playable_mask: PackedByteArray = PackedByteArray()
 
 var z_min: float = 0.0
 var z_max: float = 100.0
@@ -76,6 +83,105 @@ func cell_bounds(col: int, row: int) -> Dictionary:
 	return {"x0": x0, "x1": x1, "z0": z0, "z1": z1}
 
 
+## True if layer-0 footprint marks this cell playable (non-space).
+func is_playable_cell(col: int, row: int) -> bool:
+	if playable_mask.is_empty() or grid_w <= 0:
+		return true
+	if col < 0 or row < 0 or col >= grid_w or row >= grid_h:
+		return false
+	return playable_mask[row * grid_w + col] != 0
+
+
+func is_playable_xz(logical_x: float, logical_z: float) -> bool:
+	# Outside the level AABB is always OOB (cell_at would otherwise clamp into col 0).
+	if logical_x < x_min - 0.001 or logical_x > x_max + 0.001:
+		return false
+	if logical_z < z_min - 0.001 or logical_z > z_max + 0.001:
+		return false
+	var cell := cell_at(logical_x, logical_z)
+	return is_playable_cell(cell.x, cell.y)
+
+
+## Keep (x,z) inside the layer-0 playable footprint. Never leaves the skater in OOB.
+func clamp_to_playable(logical_x: float, logical_z: float) -> Vector2:
+	if is_playable_xz(logical_x, logical_z):
+		return Vector2(logical_x, logical_z)
+	# Soft clamp into level AABB, then snap to nearest playable cell center.
+	var x := clampf(logical_x, x_min + 0.05, x_max - 0.05)
+	var z := clampf(logical_z, z_min + 0.05, z_max - 0.05)
+	if is_playable_xz(x, z):
+		return Vector2(x, z)
+	return nearest_playable_xz(x, z)
+
+
+## Nearest playable cell center to (x,z). Falls back to spawn / level mid if mask empty.
+func nearest_playable_xz(logical_x: float, logical_z: float) -> Vector2:
+	if playable_mask.is_empty() or grid_w <= 0 or grid_h <= 0:
+		return Vector2(
+			clampf(logical_x, x_min + 0.05, x_max - 0.05),
+			clampf(logical_z, z_min + 0.05, z_max - 0.05)
+		)
+	var best := Vector2(spawn_x, spawn_z)
+	var best_d := INF
+	for row in range(grid_h):
+		for col in range(grid_w):
+			if playable_mask[row * grid_w + col] == 0:
+				continue
+			var b: Dictionary = cell_bounds(col, row)
+			var cx := (float(b.x0) + float(b.x1)) * 0.5
+			var cz := (float(b.z0) + float(b.z1)) * 0.5
+			var d := Vector2(cx - logical_x, cz - logical_z).length_squared()
+			if d < best_d:
+				best_d = d
+				best = Vector2(cx, cz)
+	return best
+
+
+## Absolute floor heights with an `=` / `@` under (x,z). Uses per-cell story
+## masks so holes (`.`) are not filled by ring outline polys.
+func floor_heights_at(logical_x: float, logical_z: float) -> Array:
+	var out: Array = []
+	var cell := cell_at(logical_x, logical_z)
+	if not story_floor_masks.is_empty() and grid_w > 0:
+		for story in story_floor_masks:
+			var mask: PackedByteArray = story.get("mask", PackedByteArray())
+			if mask.size() < grid_w * grid_h:
+				continue
+			if cell.x < 0 or cell.y < 0 or cell.x >= grid_w or cell.y >= grid_h:
+				continue
+			if mask[cell.y * grid_w + cell.x] != 0:
+				out.append(float(story.get("height", 0.0)))
+		return out
+	var p := Vector2(logical_x, logical_z)
+	for floor in floors:
+		if point_in_poly(p, floor.poly):
+			out.append(float(floor.get("height", 0.0)))
+	return out
+
+
+## Glyph on the story with greatest height ≤ prefer_h at (col,row).
+## Returns { "glyph": String, "layer_height": float, "layer": int }.
+func glyph_at_prefer_h(col: int, row: int, prefer_h: float) -> Dictionary:
+	var best := {"glyph": " ", "layer_height": -INF, "layer": -1}
+	for L in layers:
+		var h := float(L.get("height", 0.0))
+		if h > prefer_h + 1.5:
+			continue
+		var rows: PackedStringArray = L.get("rows", PackedStringArray())
+		if row < 0 or row >= rows.size():
+			continue
+		var line: String = rows[row]
+		if col < 0 or col >= line.length():
+			continue
+		if h >= float(best.layer_height):
+			best = {
+				"glyph": line[col],
+				"layer_height": h,
+				"layer": int(L.get("index", -1)),
+			}
+	return best
+
+
 static func point_in_poly(point: Vector2, poly: PackedVector2Array) -> bool:
 	var n := poly.size()
 	if n < 3:
@@ -93,6 +199,8 @@ static func point_in_poly(point: Vector2, poly: PackedVector2Array) -> bool:
 
 
 func contains_playable(logical_x: float, logical_z: float) -> bool:
+	if not playable_mask.is_empty():
+		return is_playable_xz(logical_x, logical_z)
 	var p := Vector2(logical_x, logical_z)
 	for floor in floors:
 		if point_in_poly(p, floor.poly):

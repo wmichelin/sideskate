@@ -1,0 +1,282 @@
+extends RefCounted
+## ContactMath: vertical sweep, solid occlusion, mount / coping-launch guards.
+
+const ContactMath := preload("res://scripts/contact_math.gd")
+
+
+func run() -> bool:
+	var ok := true
+	ok = _sweep_catches_solid() and ok
+	ok = _already_below_misses_solid() and ok
+	ok = _hole_falls_to_pipe() and ok
+	ok = _l1_pipe_preferred() and ok
+	ok = _mount_and_coping_guards() and ok
+	ok = _sample_sweep_integration() and ok
+	ok = _air_contact_land_rules() and ok
+	ok = _resolve_air_contact_integration() and ok
+	return ok
+
+
+func _flat(h: float) -> Dictionary:
+	return {
+		"active": true,
+		"zone": "flat",
+		"height": h,
+		"base_height": h,
+	}
+
+
+func _pipe(h: float, base: float = 0.0, side: int = 0, lip: float = 300.0) -> Dictionary:
+	return {
+		"active": true,
+		"zone": "left_pipe" if side == 0 else "right_pipe",
+		"height": h,
+		"base_height": base,
+		"side": side,
+		"lip_x": lip,
+		"radius": 100.0,
+	}
+
+
+func _sweep_catches_solid() -> bool:
+	var cands := [_pipe(100.0, 0.0), _flat(188.0)]
+	var r: Dictionary = ContactMath.resolve_vertical(cands, 220.0, 150.0)
+	if not ContactMath.is_solid(r.hit):
+		push_error("sweep want solid floor, got %s" % r)
+		return false
+	if absf(float(r.height) - 188.0) > 0.05:
+		push_error("sweep want h=188 got %s" % r.height)
+		return false
+	if not bool(r.crossed_solid):
+		push_error("sweep should mark crossed_solid")
+		return false
+	return true
+
+
+func _already_below_misses_solid() -> bool:
+	# Truly already under the solid: fall continues to pipe (no climb).
+	var cands := [_pipe(100.0, 0.0), _flat(188.0)]
+	var r: Dictionary = ContactMath.resolve_vertical(cands, 170.0, 140.0)
+	if ContactMath.is_solid(r.hit) and absf(float(r.height) - 188.0) < 0.05:
+		push_error("already-below must not climb to solid 188: %s" % r)
+		return false
+	if not ContactMath.is_pipe(r.hit):
+		push_error("already-below want pipe, got %s" % r)
+		return false
+	return true
+
+
+func _hole_falls_to_pipe() -> bool:
+	var cands := [_pipe(100.0, 0.0)]
+	var r: Dictionary = ContactMath.resolve_vertical(cands, 220.0, 150.0)
+	if not ContactMath.is_pipe(r.hit):
+		push_error("hole want pipe land, got %s" % r)
+		return false
+	return true
+
+
+func _l1_pipe_preferred() -> bool:
+	# Upper pipe at base 188 vs lower pipe — prefer_h high picks upper surface.
+	var low := _pipe(100.0, 0.0, 0, 300.0)
+	var high := _pipe(200.0, 188.0, 0, 300.0)
+	var cands := [low, high]
+	var r: Dictionary = ContactMath.resolve_vertical(cands, 250.0, 195.0)
+	if absf(float(r.hit.get("base_height", -1.0)) - 188.0) > 0.05:
+		push_error("L1 pipe land want base 188 got %s" % r)
+		return false
+	if not ContactMath.should_mount_pipe(r.hit, 195.0, false, false):
+		push_error("should mount L1 pipe")
+		return false
+	if ContactMath.should_mount_pipe(r.hit, 195.0, false, true):
+		push_error("solid pad must block remount")
+		return false
+	# Tunnel past L1 pipe in one tick — still catch it (not only solids).
+	var tun: Dictionary = ContactMath.resolve_vertical(cands, 280.0, 150.0)
+	if absf(float(tun.hit.get("base_height", -1.0)) - 188.0) > 0.05:
+		push_error("pipe tunnel sweep want L1 base 188 got %s" % tun)
+		return false
+	# Slightly below surface still in sweep eps → height_in_sweep for land guard.
+	if not ContactMath.height_in_sweep(200.0, 199.5, 150.0):
+		push_error("height_in_sweep should catch near-miss below pipe")
+		return false
+	# Already well below L1: prefer_h sampling alone would skip it — landing must
+	# still treat a tracked air_over surface as solid (tested via height compare).
+	var below: Dictionary = ContactMath.pick_by_prefer_h(cands, 150.0)
+	if absf(float(below.get("base_height", -1.0)) - 188.0) < 0.05:
+		push_error("prefer_h below L1 must not keep L1 (use tracked air_over for that)")
+		return false
+	return true
+
+
+func _mount_and_coping_guards() -> bool:
+	var under := _pipe(188.0, 0.0, 0, 300.0)
+	var cross_same := {"side": 0, "lip_x": 300.0, "base_height": 0.0, "radius": 100.0}
+	var cross_l1 := {"side": 0, "lip_x": 300.0, "base_height": 188.0, "radius": 100.0}
+	if not ContactMath.should_coping_launch(under, cross_same):
+		push_error("same pipe identity should allow coping launch")
+		return false
+	if ContactMath.should_coping_launch(under, cross_l1):
+		push_error("different base_height must not coping-launch")
+		return false
+	if ContactMath.should_coping_launch(_flat(188.0), cross_same):
+		push_error("solid pad underfoot must not coping-launch")
+		return false
+	return true
+
+
+func _sample_sweep_integration() -> bool:
+	var level := RampLevel.new()
+	var pipe := QuarterPipe.new()
+	pipe.side = QuarterPipe.PipeSide.LEFT
+	pipe.lip_x = 300.0
+	pipe.radius = 100.0
+	pipe.base_height = 0.0
+	pipe.z_min = 0.0
+	pipe.z_max = 100.0
+	level.pipes = [pipe]
+	var spec := LevelSpec.new()
+	spec.grid_w = 4
+	spec.grid_h = 1
+	spec.cell_w = 100.0
+	spec.cell_h = 100.0
+	spec.story_floor_masks = [{
+		"height": 188.0,
+		"mask": PackedByteArray([1, 1, 1, 1]),
+		"layer": 1,
+	}]
+	level.spec = spec
+	var r: Dictionary = level.sample_sweep(200.0, 50.0, 220.0, 150.0)
+	if not ContactMath.is_solid(r.hit) or absf(float(r.height) - 188.0) > 0.05:
+		push_error("sample_sweep want flat 188 got %s" % r)
+		_free(level)
+		return false
+	_free(level)
+	return true
+
+
+func _air_contact_land_rules() -> bool:
+	var solid := ContactMath.make_air_contact("left_pipe", 1, 200.0, true, _pipe(200.0, 188.0))
+	if not ContactMath.should_land_on_air_contact(solid, 210.0, 195.0):
+		push_error("should land when falling onto solid air contact")
+		return false
+	if not ContactMath.should_land_on_air_contact(solid, 199.0, 150.0):
+		push_error("should land when already dipped below solid air contact")
+		return false
+	if ContactMath.should_land_on_air_contact(solid, 250.0, 220.0):
+		push_error("must not land while still above solid contact")
+		return false
+	var hole := ContactMath.make_air_contact("hole", 1, 188.0, false, {})
+	if ContactMath.should_land_on_air_contact(hole, 220.0, 150.0):
+		push_error("hole must not be a land surface")
+		return false
+	if ContactMath.zone_from_glyph(".") != "hole":
+		push_error("glyph . want hole")
+		return false
+	return true
+
+
+func _resolve_air_contact_integration() -> bool:
+	var level := RampLevel.new()
+	var low := QuarterPipe.new()
+	low.side = QuarterPipe.PipeSide.LEFT
+	low.lip_x = 400.0
+	low.radius = 100.0
+	low.base_height = 0.0
+	low.layer = 0
+	low.z_min = 0.0
+	low.z_max = 100.0
+	var high := QuarterPipe.new()
+	high.side = QuarterPipe.PipeSide.LEFT
+	high.lip_x = 400.0
+	high.radius = 100.0
+	high.base_height = 188.0
+	high.layer = 1
+	high.z_min = 0.0
+	high.z_max = 100.0
+	level.pipes = [low, high]
+	var spec := LevelSpec.new()
+	spec.grid_w = 8
+	spec.grid_h = 1
+	spec.cell_w = 50.0
+	spec.cell_h = 100.0
+	# Cols: pipe-ish left, floor, hole. Layer glyphs for prefer_h.
+	spec.layers = [
+		{"index": 0, "height": 0.0, "rows": PackedStringArray(["<<<<===="])},
+		{"index": 1, "height": 188.0, "rows": PackedStringArray(["<<<<..=="])},
+	]
+	spec.story_floor_masks = [
+		{"height": 0.0, "mask": PackedByteArray([0, 0, 0, 0, 1, 1, 1, 1]), "layer": 0},
+		{"height": 188.0, "mask": PackedByteArray([0, 0, 0, 0, 0, 0, 1, 1]), "layer": 1},
+	]
+	spec.playable_mask = PackedByteArray([1, 1, 1, 1, 1, 1, 1, 1])
+	level.spec = spec
+
+	# Sticky L1 pipe at mid bowl — prefer_h below surface still keeps sticky (no tunnel).
+	var mid_x := 400.0 - 100.0 * 0.5  # into left pipe
+	var sticky: Dictionary = level.resolve_air_contact(
+		mid_x, 50.0, 150.0, 0, 400.0, 188.0
+	)
+	if str(sticky.get("zone", "")) != "left_pipe":
+		push_error("sticky L1 pipe want left_pipe got %s" % sticky)
+		_free(level)
+		return false
+	if absf(float(sticky.get("hit", {}).get("base_height", -1.0)) - 188.0) > 0.05:
+		push_error("sticky L1 want base 188 got %s" % sticky)
+		_free(level)
+		return false
+	if not ContactMath.should_land_on_air_contact(sticky, 250.0, float(sticky.height) - 10.0):
+		push_error("sticky L1 must land when falling through surface")
+		_free(level)
+		return false
+
+	# High above pipe column: highlight sample wins (flat), not stale sticky L0.
+	# Floor mask on cols 6-7; place x on floor with L0 sticky that still covers pipe cols.
+	var floor_x := 6.5 * 50.0
+	# Add L0 pipe that does NOT cover floor_x so sticky inactive — and a case where
+	# sticky covers but highlight prefers flat at same height.
+	var over_pipe_high: Dictionary = level.resolve_air_contact(
+		mid_x, 50.0, 400.0, 0, 400.0, 0.0
+	)
+	# At prefer_h=400, topmost underfoot should match non-sticky sample (not force L0).
+	var highlight: Dictionary = level.sample(mid_x, 50.0, -1, NAN, 400.0)
+	if str(over_pipe_high.get("zone", "")) != str(highlight.get("zone", "")):
+		push_error(
+			"high prefer_h air contact must match highlight sample: contact=%s sample=%s"
+			% [over_pipe_high, highlight]
+		)
+		_free(level)
+		return false
+
+	# L1 hole cell (col 4-5 are '.'): x in hole column.
+	var hole_x := 4.5 * 50.0
+	var hole_c: Dictionary = level.resolve_air_contact(hole_x, 50.0, 220.0)
+	if str(hole_c.get("zone", "")) != "hole":
+		push_error("L1 hole cell want hole got %s" % hole_c)
+		_free(level)
+		return false
+	if int(hole_c.get("layer", -1)) != 1:
+		push_error("L1 hole want layer 1 got %s" % hole_c)
+		_free(level)
+		return false
+	if ContactMath.is_air_contact_solid(hole_c):
+		push_error("hole must not be solid")
+		_free(level)
+		return false
+
+	# Playable cell must never resolve to zone oob (even with absurd prefer_h).
+	var no_oob: Dictionary = level.resolve_air_contact(mid_x, 50.0, -9999.0)
+	if str(no_oob.get("zone", "")) == "oob":
+		push_error("playable pose must not resolve air contact oob: %s" % no_oob)
+		_free(level)
+		return false
+
+	_free(level)
+	return true
+
+
+func _free(level: RampLevel) -> void:
+	for p in level.pipes:
+		if is_instance_valid(p):
+			p.free()
+	level.pipes.clear()
+	level.free()

@@ -13,6 +13,18 @@ const ACTION_ACID_DROP := "acid_drop"
 const SPINE_GAP_MAX_CELLS := 2
 
 
+static func _pipe_base_height(pipe: Variant) -> float:
+	if typeof(pipe) == TYPE_DICTIONARY:
+		return float(pipe.get("base_height", 0.0))
+	return float(pipe.base_height)
+
+
+static func _pipe_layer(pipe: Variant) -> int:
+	if typeof(pipe) == TYPE_DICTIONARY:
+		return int(pipe.get("layer", -1))
+	return int(pipe.layer)
+
+
 ## Same-button routing: rising/apex → transfer; falling/rest-after-down → acid drop.
 static func choose_air_action(
 	vert_vel: float, last_nonzero_vert_vel: float, rest_eps: float = 0.5
@@ -39,19 +51,24 @@ static func acid_drop_want_side(horiz_vel: float) -> int:
 	return 0 if horiz_vel > 0.0 else 1  # QuarterPipe.PipeSide.LEFT / RIGHT
 
 
-## Landing floor while airborne. Pipe-exit X-lock may use coping radius; acid-drop
-## lock and free air must use the sampled underfoot height (no upward snap).
+## Landing floor while airborne.
+## Pipe-exit X-lock defaults to coping floor, but a solid sampled pad at/above
+## coping (layer `=` / deck) wins — you cannot fall through floors into the ramp.
+## Acid-drop lock and free air always use the sampled underfoot height.
 static func landing_support_height(
 	air_x_locked: bool,
 	acid_drop_lock: bool,
 	air_over: String,
-	air_radius: float,
+	coping_floor: float,
 	sampled_height: float,
 ) -> float:
 	if air_x_locked and not acid_drop_lock and (
 		air_over == "left_pipe" or air_over == "right_pipe"
 	):
-		return air_radius
+		# Solid at/above coping (upper-story floor over the pipe run).
+		if sampled_height >= coping_floor - 1.5:
+			return sampled_height
+		return coping_floor
 	return sampled_height
 
 
@@ -171,6 +188,8 @@ static func find_acid_drop_target(
 				"side": side,
 				"lip_x": lip,
 				"radius": radius,
+				"base_height": _pipe_base_height(pipe),
+				"layer": _pipe_layer(pipe),
 				"top_coping": top_coping,
 			}
 	return best
@@ -230,6 +249,8 @@ static func find_spine_transfer_target(
 				"side": side,
 				"lip_x": lip,
 				"radius": radius,
+				"base_height": _pipe_base_height(pipe),
+				"layer": _pipe_layer(pipe),
 				"top_coping": top_coping,
 			}
 	return best
@@ -268,5 +289,7 @@ static func find_pipe_behind(
 				"side": side,
 				"lip_x": lip,
 				"radius": radius,
+				"base_height": _pipe_base_height(pipe),
+				"layer": _pipe_layer(pipe),
 			}
 	return best

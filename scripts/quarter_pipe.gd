@@ -3,17 +3,21 @@ extends Node
 ## Interactable quarter-pipe surface on the left or right edge of the plaza.
 ##
 ## Logical profile (height up from flat):
-##   θ = 0 at the lip (meets flat), θ = PI/2 at the vertical top
+##   θ = 0 at the lip (meets base flat), θ = PI/2 at the vertical top
 ##   x_offset from lip into the pipe = radius * sin(θ)
-##   height                   = radius * (1 - cos(θ))
-## Given x: θ = asin(clamp(x_offset / radius)), height = radius * (1 - cos(θ))
+##   height = base_height + radius * (1 - cos(θ))
+## Given x: θ = asin(clamp(x_offset / radius))
 
 enum PipeSide { LEFT, RIGHT }
 
 @export var side: PipeSide = PipeSide.LEFT
-## X where the pipe meets the flat floor.
+## X where the pipe meets its base flat (layer floor).
 @export var lip_x: float = 180.0
 @export var radius: float = 150.0
+## Absolute logical height of the pipe's base flat (layer height).
+@export var base_height: float = 0.0
+## Source layer index from the .ssk (`layer N`).
+@export var layer: int = 0
 @export var z_min: float = 0.0
 @export var z_max: float = 100.0
 
@@ -52,7 +56,7 @@ func query_surface(logical_x: float, logical_z: float) -> Dictionary:
 	x_offset = clampf(x_offset, 0.0, radius)
 	var ratio := 0.0 if radius <= 0.0001 else clampf(x_offset / radius, 0.0, 1.0)
 	var theta := asin(ratio)
-	var height := radius * (1.0 - cos(theta))
+	var height := base_height + radius * (1.0 - cos(theta))
 	# Unit normal pointing toward the plaza / open air (away from the wall).
 	var normal_x := cos(theta) if side == PipeSide.LEFT else -cos(theta)
 	var normal_y := sin(theta)  # "up" in logical height space
@@ -68,4 +72,7 @@ func query_surface(logical_x: float, logical_z: float) -> Dictionary:
 		"t_along_pipe": ratio,
 		"lip_x": lip_x,
 		"side": side,
+		"base_height": base_height,
+		"radius": radius,
+		"layer": layer,
 	}

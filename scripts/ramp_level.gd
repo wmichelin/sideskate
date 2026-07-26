@@ -3,6 +3,7 @@ extends Node2D
 ## Level runtime: loads .ssk, samples floor/deck/pipes, projects to screen.
 
 const _PerspectiveMath := preload("res://scripts/perspective_math.gd")
+const ContactMath := preload("res://scripts/contact_math.gd")
 
 @export var level_path: String = "res://levels/plaza_default.ssk"
 
@@ -92,6 +93,8 @@ func apply_spec(s: LevelSpec) -> void:
 		n.side = pd.side
 		n.lip_x = pd.lip_x
 		n.radius = pd.radius
+		n.base_height = float(pd.get("base_height", 0.0))
+		n.layer = int(pd.get("layer", 0))
 		n.z_min = pd.z_min
 		n.z_max = pd.z_max
 		add_child(n)
@@ -175,53 +178,219 @@ func x_max() -> float:
 	return 1280.0
 
 
-## Prefer a specific pipe first (side + lip). Stops spine neighbors that share a
-## coping X from stealing the sample while still riding.
+## Prefer a specific pipe first (side + lip [+ base_height]). Stops spine
+## neighbors that share a coping X — and stacked-layer pipes that share lip —
+## from stealing the sample while still riding.
+## `prefer_h`: topmost surface at or below feet/support; else nearest below.
+## `prefer_base_h`: with sticky side/lip, only that story's pipe sticks.
 func sample(
 	logical_x: float,
 	logical_z: float,
 	prefer_side: int = -1,
-	prefer_lip_x: float = NAN
+	prefer_lip_x: float = NAN,
+	prefer_h: float = NAN,
+	prefer_base_h: float = NAN,
 ) -> Dictionary:
 	if prefer_side >= 0 and not is_nan(prefer_lip_x):
+		var sticky: Array = []
 		for pipe in pipes:
 			if int(pipe.side) != prefer_side:
 				continue
 			if absf(pipe.lip_x - prefer_lip_x) > 0.05:
 				continue
+			if not is_nan(prefer_base_h) and absf(pipe.base_height - prefer_base_h) > 0.5:
+				continue
 			var preferred: Dictionary = pipe.query_surface(logical_x, logical_z)
 			if preferred.get("active", false):
-				return preferred
+				sticky.append(preferred)
+		if not sticky.is_empty():
+			if is_nan(prefer_h):
+				return ContactMath.pick_highest(sticky)
+			return _pick_sticky_by_prefer_h(sticky, prefer_h)
 
+	var candidates: Array = sample_candidates(logical_x, logical_z)
+	if candidates.is_empty():
+		return _flat_hit(false, "oob", 0.0)
+	if is_nan(prefer_h):
+		return ContactMath.pick_highest(candidates)
+	return ContactMath.pick_by_prefer_h(candidates, prefer_h)
+
+
+## Vertical sweep for air landing: returns {hit, height, crossed_solid}.
+func sample_sweep(logical_x: float, logical_z: float, h0: float, h1: float) -> Dictionary:
+	var candidates: Array = sample_candidates(logical_x, logical_z)
+	if candidates.is_empty():
+		return {"hit": _flat_hit(false, "oob", 0.0), "height": 0.0, "crossed_solid": false}
+	return ContactMath.resolve_vertical(candidates, h0, h1)
+
+
+## Single air-contact resolve for label + collision.
+## Zone matches cell highlight: `sample(x,z,prefer_h)` (+ hole glyph).
+## Sticky pipe only overrides when that footprint is still under us AND the
+## highlight sample is the same pipe or has already fallen below it (no tunnel).
+## Returns ContactMath.make_air_contact(...).
+func resolve_air_contact(
+	logical_x: float,
+	logical_z: float,
+	prefer_h: float,
+	sticky_side: int = -1,
+	sticky_lip_x: float = NAN,
+	sticky_base_h: float = NAN,
+) -> Dictionary:
+	if spec == null:
+		return ContactMath.make_air_contact("oob", -1, 0.0, false, _flat_hit(false, "oob", 0.0))
+
+	# Same underfoot sample as cell highlight.
+	var highlight: Dictionary = sample(logical_x, logical_z, -1, NAN, prefer_h)
+	var cell := spec.cell_at(logical_x, logical_z)
+	var ginfo: Dictionary = spec.glyph_at_prefer_h(cell.x, cell.y, prefer_h)
+	var glyph := str(ginfo.get("glyph", " "))
+	var layer := int(ginfo.get("layer", -1))
+	var layer_h := float(ginfo.get("layer_height", 0.0))
+	var gzone := ContactMath.zone_from_glyph(glyph)
+
+	# Hole on this story — first-class, even if a lower surface samples below.
+	if gzone == "hole":
+		return ContactMath.make_air_contact("hole", layer, layer_h, false, {})
+
+	# Sticky: only if still in footprint and highlight agrees or dipped under the pipe.
+	var sticky: Dictionary = {}
+	if sticky_side >= 0 and not is_nan(sticky_lip_x):
+		for pipe in pipes:
+			if int(pipe.side) != sticky_side:
+				continue
+			if absf(pipe.lip_x - sticky_lip_x) > 0.05:
+				continue
+			if not is_nan(sticky_base_h) and absf(pipe.base_height - sticky_base_h) > 0.5:
+				continue
+			var q: Dictionary = pipe.query_surface(logical_x, logical_z)
+			if q.get("active", false):
+				sticky = q.duplicate()
+				sticky["radius"] = pipe.radius
+				if not sticky.has("layer"):
+					sticky["layer"] = int(pipe.layer)
+				break
+	if not sticky.is_empty():
+		var sticky_h := float(sticky.get("height", 0.0))
+		var use_sticky := false
+		if highlight.is_empty() or (
+			not highlight.get("active", true) and str(highlight.get("zone", "")) == "oob"
+		):
+			use_sticky = true
+		elif ContactMath.same_pipe(highlight, sticky):
+			use_sticky = true
+		else:
+			var hh := float(highlight.get("height", 0.0))
+			# Highlight already below this pipe surface → dipped through; keep sticky solid.
+			if hh < sticky_h - ContactMath.LAND_EPS:
+				use_sticky = true
+		if use_sticky:
+			return ContactMath.make_air_contact(
+				str(sticky.get("zone", "left_pipe")),
+				int(sticky.get("layer", -1)),
+				sticky_h,
+				true,
+				sticky,
+			)
+
+	var playable := spec.is_playable_xz(logical_x, logical_z)
+
+	var hit: Dictionary = highlight
+	if hit.is_empty() or (
+		not hit.get("active", true) and str(hit.get("zone", "")) == "oob"
+	):
+		hit = _sample_on_layer(logical_x, logical_z, layer, layer_h, prefer_h)
+	if hit.is_empty() or (
+		not hit.get("active", true) and str(hit.get("zone", "")) == "oob"
+	):
+		# Still playable but no sample (e.g. hairline past pipe edge): never "oob".
+		if playable:
+			var any_hit: Dictionary = sample(logical_x, logical_z, -1, NAN, NAN)
+			if not any_hit.is_empty() and (
+				any_hit.get("active", true) or str(any_hit.get("zone", "")) != "oob"
+			):
+				hit = any_hit
+			else:
+				hit = _flat_hit(true, "flat", maxf(layer_h, 0.0), maxi(layer, 0))
+		else:
+			# Outside footprint — caller should clamp pose; still avoid oob zone.
+			hit = _flat_hit(true, "flat", 0.0, 0)
+
+	var zone := str(hit.get("zone", "flat"))
+	if zone == "oob":
+		zone = "flat"
+		hit = _flat_hit(true, "flat", 0.0, maxi(layer, 0))
+	var hit_layer := int(hit.get("layer", layer))
+	if hit_layer < 0:
+		hit_layer = _layer_for_hit(hit, layer)
+	return ContactMath.make_air_contact(
+		zone,
+		hit_layer,
+		float(hit.get("height", 0.0)),
+		true,
+		hit,
+	)
+
+
+func _layer_for_hit(hit: Dictionary, fallback: int) -> int:
+	if hit.has("layer") and int(hit.layer) >= 0:
+		return int(hit.layer)
+	if spec == null:
+		return fallback
+	var base := float(hit.get("base_height", hit.get("height", 0.0)))
+	for L in spec.layers:
+		if absf(float(L.get("height", 0.0)) - base) <= 0.5:
+			return int(L.get("index", fallback))
+	return fallback
+
+
+func _sample_on_layer(
+	logical_x: float,
+	logical_z: float,
+	layer: int,
+	layer_h: float,
+	prefer_h: float,
+) -> Dictionary:
 	for pipe in pipes:
-		var hit: Dictionary = pipe.query_surface(logical_x, logical_z)
-		if hit.get("active", false):
-			return hit
-
-	var p := Vector2(logical_x, logical_z)
+		if layer >= 0 and int(pipe.layer) != layer:
+			continue
+		if layer < 0 and absf(pipe.base_height - layer_h) > 0.5:
+			continue
+		var ph: Dictionary = pipe.query_surface(logical_x, logical_z)
+		if ph.get("active", false):
+			ph = ph.duplicate()
+			ph["radius"] = pipe.radius
+			ph["layer"] = int(pipe.layer)
+			return ph
 	if spec:
+		for h in spec.floor_heights_at(logical_x, logical_z):
+			if absf(float(h) - layer_h) <= 0.5:
+				return _flat_hit(true, "flat", float(h), layer)
+		var p := Vector2(logical_x, logical_z)
 		for deck in spec.decks:
+			if layer >= 0 and int(deck.get("layer", -1)) != layer:
+				continue
+			if absf(float(deck.get("height", 0.0)) - layer_h) > 0.5 and layer >= 0:
+				continue
 			if LevelSpec.point_in_poly(p, deck.poly):
 				return _deck_hit(deck)
-		for floor in spec.floors:
-			if LevelSpec.point_in_poly(p, floor.poly):
-				return _flat_hit(true)
-
-	return _flat_hit(false, "oob")
+	return sample(logical_x, logical_z, -1, NAN, prefer_h)
 
 
-## Transfer probe: decks first, then other pipes, then flat. Excludes the source pipe.
+## Transfer probe: decks, other pipes, flats. Excludes the source pipe.
 func sample_transfer(
 	logical_x: float,
 	logical_z: float,
 	exclude_side: int,
-	exclude_lip_x: float
+	exclude_lip_x: float,
+	prefer_h: float = NAN,
 ) -> Dictionary:
+	var candidates: Array = []
 	var p := Vector2(logical_x, logical_z)
 	if spec:
 		for deck in spec.decks:
 			if LevelSpec.point_in_poly(p, deck.poly):
-				return _deck_hit(deck)
+				candidates.append(_deck_hit(deck))
 
 	for pipe in pipes:
 		if pipe.side == exclude_side and absf(pipe.lip_x - exclude_lip_x) < 0.05:
@@ -229,15 +398,69 @@ func sample_transfer(
 		var hit: Dictionary = pipe.query_surface(logical_x, logical_z)
 		if hit.get("active", false):
 			hit["radius"] = pipe.radius
-			return hit
+			candidates.append(hit)
 
 	if spec:
-		for floor in spec.floors:
-			if LevelSpec.point_in_poly(p, floor.poly):
-				return _flat_hit(true)
+		for h in spec.floor_heights_at(logical_x, logical_z):
+			candidates.append(_flat_hit(true, "flat", float(h)))
 
-	# Empty / oob still lands as flat at the probe point.
-	return _flat_hit(true)
+	if candidates.is_empty():
+		return _flat_hit(true, "flat", 0.0)
+	if is_nan(prefer_h):
+		return ContactMath.pick_highest(candidates)
+	return ContactMath.pick_by_prefer_h(candidates, prefer_h)
+
+
+func sample_candidates(logical_x: float, logical_z: float) -> Array:
+	var out: Array = []
+	for pipe in pipes:
+		var hit: Dictionary = pipe.query_surface(logical_x, logical_z)
+		if hit.get("active", false):
+			out.append(hit)
+	var p := Vector2(logical_x, logical_z)
+	if spec:
+		for deck in spec.decks:
+			if LevelSpec.point_in_poly(p, deck.poly):
+				out.append(_deck_hit(deck))
+		var cell := spec.cell_at(logical_x, logical_z)
+		if not spec.story_floor_masks.is_empty() and spec.grid_w > 0:
+			for story in spec.story_floor_masks:
+				var mask: PackedByteArray = story.get("mask", PackedByteArray())
+				if mask.size() < spec.grid_w * spec.grid_h:
+					continue
+				if cell.x < 0 or cell.y < 0 or cell.x >= spec.grid_w or cell.y >= spec.grid_h:
+					continue
+				if mask[cell.y * spec.grid_w + cell.x] != 0:
+					out.append(_flat_hit(
+						true,
+						"flat",
+						float(story.get("height", 0.0)),
+						int(story.get("layer", -1)),
+					))
+		else:
+			for h in spec.floor_heights_at(logical_x, logical_z):
+				out.append(_flat_hit(true, "flat", float(h)))
+	return out
+
+
+## Sticky side+lip: highest story whose base is at/below feet.
+func _pick_sticky_by_prefer_h(sticky: Array, prefer_h: float) -> Dictionary:
+	var land_eps := ContactMath.LAND_EPS
+	var best: Dictionary = {}
+	var best_base := -INF
+	var best_h := -INF
+	for c in sticky:
+		var base := float(c.get("base_height", 0.0))
+		if base > prefer_h + land_eps:
+			continue
+		var h := float(c.get("height", 0.0))
+		if base > best_base + 0.001 or (absf(base - best_base) <= 0.001 and h > best_h):
+			best = c
+			best_base = base
+			best_h = h
+	if not best.is_empty():
+		return best
+	return ContactMath.pick_by_prefer_h(sticky, prefer_h)
 
 
 func _deck_hit(deck: Dictionary) -> Dictionary:
@@ -251,19 +474,25 @@ func _deck_hit(deck: Dictionary) -> Dictionary:
 		"normal_y": 1.0,
 		"t_along_pipe": 0.0,
 		"deck": deck,
+		"base_height": float(deck.get("base_height", 0.0)),
+		"layer": int(deck.get("layer", -1)),
 	}
 
 
-func _flat_hit(active: bool, zone: String = "flat") -> Dictionary:
+func _flat_hit(
+	active: bool, zone: String = "flat", height: float = 0.0, layer: int = -1
+) -> Dictionary:
 	return {
 		"active": active,
 		"zone": zone,
-		"height": 0.0,
+		"height": height,
 		"angle": 0.0,
 		"theta": 0.0,
 		"normal_x": 0.0,
 		"normal_y": 1.0,
 		"t_along_pipe": 0.0,
+		"base_height": height,
+		"layer": layer,
 	}
 
 
@@ -302,7 +531,7 @@ func project(logical_x: float, logical_z: float, surface_height: float = 0.0) ->
 func pipe_screen_point_for(pipe: QuarterPipe, logical_z: float, u: float) -> Vector2:
 	var theta := clampf(u, 0.0, 1.0) * PI * 0.5
 	var x_off := pipe.radius * sin(theta)
-	var height := pipe.radius * (1.0 - cos(theta))
+	var height := pipe.base_height + pipe.radius * (1.0 - cos(theta))
 	var logical_x: float
 	if pipe.side == QuarterPipe.PipeSide.LEFT:
 		logical_x = pipe.lip_x - x_off
