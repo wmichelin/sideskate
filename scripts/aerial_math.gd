@@ -52,11 +52,11 @@ static func landing_support_height(
 	return sampled_height
 
 
-## Pipe-exit X-lock → free air (parabolic fly-out) when height clears coping+extra
-## and Momentum X points toward that pipe's side (right pipe → +X, left → −X).
-## See MotionVectors.Kind.MOMENTUM. Acid-drop lock never flies out this way.
-## `above_coping` is logical height above the coping floor (`air_radius`);
-## 0 means unlock as soon as at/above coping.
+## Pipe-exit X-lock → free air (parabolic fly-out) when still rising, height clears
+## coping+extra, and INPUT X points toward that pipe's side (right → +X, left → −X).
+## See MotionVectors.Kind.INPUT. Falling (`air_vel_y` ≤ 0) never flies out.
+## Acid-drop lock never flies out this way. `above_coping` is logical height above
+## coping (`air_radius`); 0 means unlock as soon as at/above coping.
 static func should_fly_out_pipe_lock(
 	air_x_locked: bool,
 	acid_drop_lock: bool,
@@ -64,15 +64,19 @@ static func should_fly_out_pipe_lock(
 	air_abs_height: float,
 	air_radius: float,
 	above_coping: float,
-	momentum_vx: float,
-	momentum_eps: float = 1.0,
+	input_x: float,
+	air_vel_y: float,
+	input_eps: float = 0.15,
 ) -> bool:
 	if not air_x_locked or acid_drop_lock:
+		return false
+	# Rising only — ignore while falling or at apex rest.
+	if air_vel_y <= 0.0:
 		return false
 	if air_abs_height + 0.001 < air_radius + maxf(above_coping, 0.0):
 		return false
 	var out := _PipeMath.coping_sign(air_side)
-	return momentum_vx * out > momentum_eps
+	return input_x * out > input_eps
 
 
 ## True when `x` is the top coping (lip ± radius), not the lip / flat edge.

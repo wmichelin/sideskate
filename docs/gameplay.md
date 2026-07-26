@@ -56,7 +56,7 @@ Canonical triad for control vs world motion — `MotionVectors.Kind` in [`script
 | **MOMENTUM** | `MotionVectors.Kind.MOMENTUM` | Integrated control (`_velocity` / `_ramp_along`) | X/Z; on ramp also shows converted vertical | Orange |
 | **ACTUAL** | `MotionVectors.Kind.ACTUAL` | Measured pose rates (`_actual_vel_*`, `_vert_vel`) | X, Z, **height** | Green |
 
-**API:** `Player.motion_screen(kind)` / `Player.motion_speed(kind)` — prefer these over ad-hoc strings. Fly-out and similar gates that care about “stick toward pipe side” read **momentum** X (`_velocity.x`), not INPUT (INPUT is the instantaneous wish; MOMENTUM is what control has already integrated).
+**API:** `Player.motion_screen(kind)` / `Player.motion_speed(kind)` — prefer these over ad-hoc strings. Fly-out gates on **INPUT** X (`_last_input.x`), not MOMENTUM (instantaneous stick wish toward the pipe side).
 
 ```gdscript
 # Example: branch on the named kind
@@ -81,7 +81,7 @@ Feet height while airborne: `air_abs_height`. Vertical rate for gravity: `air_ve
 
 ### Pipe fly-out
 
-While in **pipe coping lock** (not acid-drop), if feet height reaches `radius + fly_out_above_coping` (debug slider **fly out**, default 40) **and** **momentum** X points toward that pipe’s side (right pipe → right; left pipe → left), unlock X into free air. Keep `air_abs_height` and `air_vel_y` so the skater continues on a **parabolic** arc. Without outward momentum, stay locked and land as usual.
+While in **pipe coping lock** (not acid-drop), if still **rising** (`air_vel_y > 0`), feet height reaches `radius + fly_out_above_coping` (debug slider **fly out**, default 40), **and** **INPUT** X points toward that pipe’s side (right pipe → right; left pipe → left), unlock X into free air. Keep `air_abs_height` and `air_vel_y` so the skater continues on a **parabolic** arc. Falling or no outward input → stay locked and land as usual.
 
 Pipe coping lock treats the top coping height (`radius`) as the floor. Acid-drop lock and free air **must not** use that shortcut (it would snap feet upward); they sample the real surface under `(x, z)`.
 
@@ -162,11 +162,11 @@ Debug tools are gated by autoload `DebugTools`: available when `OS.is_debug_buil
 
 1. Sim only on physics ticks.  
 2. Top coping ≠ lip.  
-3. Pipe exit and acid drop both lock X; both use gravity. Acid drop must not snap height; pipe-exit lock may use coping radius as floor. Pipe fly-out unlocks X when above coping with outward momentum; preserves vertical velocity.  
+3. Pipe exit and acid drop both lock X; both use gravity. Acid drop must not snap height; pipe-exit lock may use coping radius as floor. Pipe fly-out unlocks X when above coping with outward INPUT; preserves vertical velocity.  
 4. One transfer + one acid drop per aerial; refill on surface contact.  
 5. Transfer at rising apex; acid drop must not steal that case.  
 6. Acid drop: opposite-facing pipe, top coping, logical-unit buffer/max-ahead.  
 7. Free air / acid drop land on **sampled** height — never snap up to coping radius as a fake floor.  
-8. Fly-out: right pipe needs momentum right; left pipe needs momentum left; never from acid-drop lock.
+8. Fly-out: only while rising; right pipe needs INPUT right; left pipe needs INPUT left; never from acid-drop lock.
 
 Covered by headless tests in `tests/test_aerial_math.gd` / `tests/test_motion_math.gd` (routing, acid selection, landing floor).

@@ -43,7 +43,7 @@ const _MotionVectors := preload("res://scripts/motion_vectors.gd")
 ## Along-arc speed drain while on a pipe (logical u/s²). Debug slider writes this.
 @export var ramp_friction: float = 0.0
 ## Pipe-exit X-lock fly-out: unlock into free air this far above coping (logical).
-## Intent must point toward that pipe's side. Debug slider writes this.
+## INPUT must point toward that pipe's side. Debug slider writes this.
 @export var fly_out_above_coping: float = 40.0
 
 @onready var depth: PseudoDepthBody = $PseudoDepthBody
@@ -616,8 +616,8 @@ func _enter_air_from_pipe(hit: Dictionary, up_speed: float = 0.0) -> void:
 	_on_ramp = false
 
 
-## Unlock pipe-exit X-lock into free air when above coping and Momentum points
-## toward that pipe's side (MotionVectors.Kind.MOMENTUM). Preserves height / vy.
+## Unlock pipe-exit X-lock into free air when rising, above coping, and INPUT
+## points toward that pipe's side (MotionVectors.Kind.INPUT). Preserves height / vy.
 func _try_fly_out_from_pipe_lock() -> bool:
 	if not _AerialMath.should_fly_out_pipe_lock(
 		_air_x_locked,
@@ -626,7 +626,8 @@ func _try_fly_out_from_pipe_lock() -> bool:
 		air_abs_height,
 		_air_radius,
 		fly_out_above_coping,
-		_velocity.x,
+		_last_input.x,
+		air_vel_y,
 	):
 		return false
 	_air_x_locked = false
