@@ -65,9 +65,11 @@ func _process(_delta: float) -> void:
 		+ "Screen Y: %.1f\n" % s.screen_y
 		+ "z_index: %d\n" % s.z_index
 		+ "Zone: %s\n" % zone
+		+ "Airborne: %s\n" % _airborne_debug()
 		+ "Surf H: %.1f (scr %.1f)\n" % [s.surface_height, s.get("surface_screen_h", 0.0)]
 		+ "Pipe angle: %.1f deg\n" % pipe_angle
 		+ _cell_debug_line()
+		+ _next_coping_debug_line()
 		+ "WASD — Up = farther | Space = ollie | P/T = transfer↑ / acid↓ | G = god (j/k vert)"
 	)
 	_fit_panel()
@@ -112,3 +114,23 @@ func _cell_debug_line() -> String:
 	return "Cell: col=%d row=%d (%.1f×%.1f)\n" % [
 		cell.x, cell.y, level.spec.cell_w, level.spec.cell_h
 	]
+
+
+func _airborne_debug() -> String:
+	if _player == null:
+		return "—"
+	if _player.get("_airborne") != null:
+		return "true" if bool(_player.get("_airborne")) else "false"
+	if _player.has_node("PseudoDepthBody"):
+		var body: PseudoDepthBody = _player.get_node("PseudoDepthBody")
+		return "true" if body.airborne else "false"
+	return "—"
+
+
+func _next_coping_debug_line() -> String:
+	if _player == null:
+		return "Next coping: —\n"
+	var label := "—"
+	if _player.has_method("next_facing_coping_debug"):
+		label = str(_player.call("next_facing_coping_debug"))
+	return "Next coping: %s\n" % label

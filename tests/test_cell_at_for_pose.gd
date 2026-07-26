@@ -109,7 +109,7 @@ func _non_pipe_air_no_nudge() -> bool:
 
 func _facing_cast_cells() -> bool:
 	var s := _spec(50.0, 25.0, 10, 4)
-	var right: Array[Vector2i] = s.facing_cast_cells(3, 1, "r", 3)
+	var right: Array[Vector2i] = FacingCastMath.cells_ahead(10, 4, 3, 1, "r", 3)
 	if right.size() != 3 or right[0] != Vector2i(4, 1) or right[2] != Vector2i(6, 1):
 		push_error("facing cast right want cols 4,5,6 row 1, got %s" % [right])
 		return false
@@ -117,7 +117,7 @@ func _facing_cast_cells() -> bool:
 	if left.size() != 2 or left[0] != Vector2i(1, 1) or left[1] != Vector2i(0, 1):
 		push_error("facing cast left should stop at grid edge, got %s" % [left])
 		return false
-	var none: Array[Vector2i] = s.facing_cast_cells(5, 1, "r", 0)
+	var none: Array[Vector2i] = FacingCastMath.cells_ahead(10, 4, 5, 1, "r", 0)
 	if not none.is_empty():
 		push_error("distance 0 must be empty")
 		return false

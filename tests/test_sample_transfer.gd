@@ -3,7 +3,7 @@ extends RefCounted
 
 
 func run() -> bool:
-	var text := FileAccess.get_file_as_string("res://levels/test_stagger_spine.ssk")
+	var text := FileAccess.get_file_as_string("res://tests/levels/test_stagger_spine.ssk")
 	if text.is_empty():
 		push_error("missing stagger fixture")
 		return false

@@ -80,7 +80,7 @@ Feet height while airborne: `air_abs_height`. Vertical rate for gravity: `air_ve
 | **Pipe coping lock** | Exit pipe at top coping | Locked to **top** coping | Gravity; land on coping height (`radius`). At vertical **apex**, facing flips unless stick holds L/R. |
 | **Free air** | Ride-off, transfer, fly-out, etc. | Free (unless lerping) | Gravity; land on **sampled** underfoot height |
 | **Acid-drop lock** | Acid drop action | Locked to opposite-facing **top** coping | Gravity only — action must not snap/alter height; land converts vert → along-arc (keep approach if faster) |
-| **Spine transfer lock** | Spine transfer (rising, 0–2 deck gap) | Locked to opposite **top** coping | Gravity; land same drop-in merge as acid / pipe-exit |
+| **Spine transfer lock** | Spine transfer (rising, facing-cast coping) | Locked to facing **top** coping | Gravity; land same drop-in merge as acid / pipe-exit |
 
 ### Pipe fly-out
 
@@ -113,15 +113,16 @@ Routing uses measured vertical rate (`_vert_vel`) and the last non-zero vertical
 
 ### Spine transfer
 
-When the transfer path runs and an **opposite** pipe’s top coping is within `0…2` deck cells of the current coping (`|Δlogical_x| ≤ 2 × cell_w`), fire spine transfer instead of free-air transfer. Gap is logical X only (aligned stacks on another story count; camera / perspective are not used):
+When the transfer path runs and FacingCastMath finds a **top coping** within `facing_coping_cells` deck cells ahead of `facing_h` (default **3**, debug **coping cells** slider; excludes the pipe you’re on), fire spine transfer instead of free-air transfer. Works while **airborne and rising**, or **grounded on a pipe riding up** toward coping (T/P leaves the wall into the spine lock):
 
-- **Layer-agnostic:** any story may be the target. Among gap matches, pick by coping floor (`base_height + radius`) vs current feet height: nearest at/below feet, else nearest above (so you can spine down or up). **Holes / empty glyphs are transparent** — a lower-story opposite pipe under an adjacent `.` still counts (high→low).
-- Lerp/lock X to that opposite **top coping** (never the lip); keep `air_abs_height` and `air_vel_y` (continue the rise). Same live height-scaled X settle + smoothstep as acid drop.
+- Lerp/lock X to that **top coping** (never the lip); keep `air_abs_height` and `air_vel_y` (continue the rise). Same live height-scaled X settle + smoothstep as acid drop.
+- While locked, air contact **force-sticky**s to that coping and does not adopt a different underfoot pipe (shared high→low column would otherwise snap identity back same tick).
 - On land: same drop-in as pipe-exit / acid — falling `air_vel_y` → `_ramp_along` (keep approach if faster into the pipe).
 - No fly-out while the spine lock is active.
+- Holes are transparent in the cast — a lower-story coping under `.` still counts (high→low).
 - Spend **both** transfer and acid-drop charges.
 
-Gap of **3+** deck cells (`Δx > 2 × cell_w`) → normal transfer below. Plaza `##` spines (2 cells) spine-transfer; a `###` spine would free-air transfer.
+If no coping is in range → normal free-air transfer below.
 
 ### Transfer
 
@@ -132,9 +133,8 @@ Gap of **3+** deck cells (`Δx > 2 × cell_w`) → normal transfer below. Plaza 
 
 ### Acid drop
 
-- Only opposite-facing pipe: velocity **right** → `left_pipe`; velocity **left** → `right_pipe`.
-- Target is **top coping** only (logical X), never the lip.
-- Coping must lie in front of horizontal velocity, with grace **behind** up to `acid_drop_buffer` (logical X units, default **44** — not screen pixels), and not farther ahead than `acid_drop_max_ahead` (default 120).
+- Falling only (same button as transfer).
+- Target is the first **top coping** within `facing_coping_cells` ahead of `facing_h` (same FacingCastMath cast as spine; excludes current pipe).
 - Animate/lerp X onto that coping; keep `air_abs_height` / `air_vel_y`; gravity continues. Land only when falling onto sampled surface (no upward height snap).
 - X settle is a continuous function of live height above coping: `acid_drop_x_duration + acid_drop_x_duration_per_height × h` (defaults 0.18 + 0.002×h, soft-capped at `acid_drop_x_duration_max` 0.9). Progress advances each physics tick by `δt / duration(h)` so rising slows the settle and falling speeds it up. Smoothstep ease.
 - On land: same drop-in as pipe-exit / spine — falling `air_vel_y` converts into `_ramp_along`, keeping approach speed when already faster into the pipe.
@@ -149,7 +149,7 @@ Each ASCII map glyph is one logical cell:
 
 Debug **cell highlight** (default off) draws the cell under the player in yellow (air or grounded), using underfoot surface height (floor = 0 at spawn). Cell indexing for targeting / highlight uses `LevelSpec.cell_at_for_pose` (via `Player.cell_under_feet` / `cell_sample_xz`): while X-locked on pipe coping, sample X is nudged into the pipe so half-open `cell_at` does not assign **right**-pipe coping to the next cell outward.
 
-Debug **facing cast** (default off) draws **N** green logical cells ahead of `facing_h` along X only (`LevelSpec.facing_cast_cells`; not including the feet cell). Cast length is the **cast cells** slider (default 3). Each tile is a **flat constant-height pad** like yellow cell highlight; height from `RampLevel.cast_surface_at` (glyph story at feet height, same-layer pipe arc). Holes fall through to the story below so a lower pipe under `.` still climbs that arc. Cells that own a pipe **top coping** draw amber (`is_coping`).
+Debug **facing cast** (default off) draws **N** green logical cells ahead of `facing_h` along X only. Cast length is the **cast cells** slider (default 3, max 16). Gameplay acid/spine use **`facing_coping_cells`** (**coping cells** slider, default 3) via the same FacingCastMath cast. Each tile is a flat constant-height pad; holes fall through; coping cells draw amber (`is_coping`).
 
 ## Debug overlays
 
@@ -158,8 +158,8 @@ Debug tools are gated by autoload `DebugTools`: available when `OS.is_debug_buil
 | Piece | Role |
 |-------|------|
 | Head arrows | [Motion vectors](#motion-vectors): green **ACTUAL**, orange **MOMENTUM**, cyan **INPUT** |
-| Top-left overlay | Depth/zone/surface + cell `col`/`row` |
-| Top-right sliders | Gravity, acid buffer, **fly out** (above coping), cell-highlight / facing-cast toggles, cast cells, **god mode** |
+| Top-left overlay | Depth/zone/surface + **airborne** + cell + **next coping** |
+| Top-right sliders | Gravity, acid buffer, **fly out**, cell-highlight / facing-cast, cast cells / **coping cells**, **god mode** |
 | **God mode** (default off; `G` or checkbox) | No gravity; **k** rise / **j** lower (`god_vert_speed`) |
 
 ## Key scripts
@@ -175,6 +175,7 @@ Debug tools are gated by autoload `DebugTools`: available when `OS.is_debug_buil
 | [`scripts/motion_math.gd`](../scripts/motion_math.gd) | Pure brake-no-reverse + facing / transfer-vert helpers |
 | [`scripts/motion_vectors.gd`](../scripts/motion_vectors.gd) | Named triad `INPUT` / `MOMENTUM` / `ACTUAL` |
 | [`scripts/aerial_math.gd`](../scripts/aerial_math.gd) | Pure transfer / spine-transfer / acid-drop routing + target selection |
+| [`scripts/facing_cast_math.gd`](../scripts/facing_cast_math.gd) | Pure facing-cast cells + story/pipe/coping surface resolve |
 | [`scripts/pseudo_depth_body.gd`](../scripts/pseudo_depth_body.gd) | Logical pose → screen body + air/ground shadow |
 | [`scripts/quarter_pipe.gd`](../scripts/quarter_pipe.gd) | Pipe sample (θ, height, zone) |
 | [`scripts/debug_tools.gd`](../scripts/debug_tools.gd) | Production gate + god mode state |
@@ -188,10 +189,10 @@ Debug tools are gated by autoload `DebugTools`: available when `OS.is_debug_buil
 3. Pipe exit and acid drop both lock X; both use gravity. Acid drop must not snap height; pipe-exit lock may use coping radius as floor. Pipe fly-out unlocks X when above coping with outward INPUT; preserves vertical velocity.  
 4. One transfer + one acid drop per aerial; refill on surface contact. Spine transfer spends both.  
 5. Transfer at rising apex; acid drop must not steal that case. Spine transfer only on the rising path.  
-6. Acid drop: opposite-facing pipe, top coping, logical-unit buffer/max-ahead.  
+6. Acid drop / spine: FacingCastMath first top coping within `facing_coping_cells` ahead of `facing_h` (excludes current pipe).  
 7. Free air / acid drop land on **sampled** height — never snap up to coping radius as a fake floor.  
 8. Fly-out: only while rising; right pipe needs INPUT right; left pipe needs INPUT left; never from acid-drop or spine-transfer lock.  
-9. Spine transfer: opposite coping within `|Δlogical_x|` 0–2 deck cells (aligned stacks OK; no perspective); holes transparent downward for high→low; layer-agnostic height pick (nearest at/below feet, else nearest above); keep height + `air_vel_y`; land uses shared drop-in merge; 3+ cells → normal transfer.
+9. Spine transfer: rising path + facing-cast coping in range; keep height + `air_vel_y`; land uses shared drop-in merge; else normal transfer.  
 10. Locked pipe land (pipe-exit / acid / spine): `merge_drop_in_along` — fall vert → along-arc, keep approach if faster into the pipe.
 11. Acid/spine X settle: live `duration = base + rate × height_above` (`lock_x_duration_for_height`); progress `+= δt/duration`; smoothstep ease.
 

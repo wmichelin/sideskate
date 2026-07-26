@@ -4,12 +4,12 @@ extends RefCounted
 
 func run() -> bool:
 	var ok := true
-	ok = _smoke_fixture("res://levels/test_halfpipe.ssk") and ok
-	ok = _smoke_fixture("res://levels/test_twin_bay.ssk") and ok
-	ok = _smoke_fixture("res://levels/test_stagger_spine.ssk") and ok
-	ok = _smoke_fixture("res://levels/test_ledge_drop.ssk") and ok
-	ok = _smoke_fixture("res://levels/test_asymm_pipes.ssk") and ok
-	ok = _smoke_fixture("res://levels/layered_demo.ssk") and ok
+	ok = _smoke_fixture("res://tests/levels/test_halfpipe.ssk") and ok
+	ok = _smoke_fixture("res://tests/levels/test_twin_bay.ssk") and ok
+	ok = _smoke_fixture("res://tests/levels/test_stagger_spine.ssk") and ok
+	ok = _smoke_fixture("res://tests/levels/test_ledge_drop.ssk") and ok
+	ok = _smoke_fixture("res://tests/levels/test_asymm_pipes.ssk") and ok
+	ok = _smoke_fixture("res://tests/levels/layered_demo.ssk") and ok
 	ok = _halfpipe_geometry() and ok
 	ok = _ledge_spawn_facing() and ok
 	ok = _uneven_rows_fail() and ok
@@ -58,7 +58,7 @@ func _smoke_fixture(path: String) -> bool:
 
 
 func _halfpipe_geometry() -> bool:
-	var text := _read("res://levels/test_halfpipe.ssk")
+	var text := _read("res://tests/levels/test_halfpipe.ssk")
 	var spec := LevelLoader.parse_text(text, "test_halfpipe")
 	if spec == null:
 		push_error("halfpipe parse failed: %s" % LevelLoader.last_error)
@@ -95,7 +95,7 @@ func _halfpipe_geometry() -> bool:
 
 
 func _ledge_spawn_facing() -> bool:
-	var text := _read("res://levels/test_ledge_drop.ssk")
+	var text := _read("res://tests/levels/test_ledge_drop.ssk")
 	var spec := LevelLoader.parse_text(text, "test_ledge_drop")
 	if spec == null:
 		push_error("ledge parse failed: %s" % LevelLoader.last_error)
@@ -147,7 +147,7 @@ name old
 
 
 func _stagger_deck_height() -> bool:
-	var text := _read("res://levels/test_stagger_spine.ssk")
+	var text := _read("res://tests/levels/test_stagger_spine.ssk")
 	var spec := LevelLoader.parse_text(text, "test_stagger_spine")
 	if spec == null:
 		push_error("stagger parse failed: %s" % LevelLoader.last_error)
@@ -268,7 +268,7 @@ height 100
 
 
 func _clamp_to_playable() -> bool:
-	var text := FileAccess.get_file_as_string("res://levels/layered_demo.ssk")
+	var text := FileAccess.get_file_as_string("res://tests/levels/layered_demo.ssk")
 	var spec := LevelLoader.parse_text(text, "layered_demo")
 	if spec == null:
 		push_error("clamp fixture load failed: %s" % LevelLoader.last_error)
@@ -289,7 +289,7 @@ func _clamp_to_playable() -> bool:
 
 ## Left edge of a `#` deck cell must sample as deck, never grounded oob.
 func _deck_edge_never_oob() -> bool:
-	var text := _read("res://levels/test_ledge_drop.ssk")
+	var text := _read("res://tests/levels/test_ledge_drop.ssk")
 	var spec := LevelLoader.parse_text(text, "test_ledge_drop")
 	if spec == null:
 		push_error("ledge parse failed: %s" % LevelLoader.last_error)

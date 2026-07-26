@@ -3,7 +3,7 @@ extends RefCounted
 
 
 func run() -> bool:
-	var text := FileAccess.get_file_as_string("res://levels/layered_demo.ssk")
+	var text := FileAccess.get_file_as_string("res://tests/levels/layered_demo.ssk")
 	var spec := LevelLoader.parse_text(text, "layered_demo")
 	if spec == null:
 		push_error("parse: %s" % LevelLoader.last_error)

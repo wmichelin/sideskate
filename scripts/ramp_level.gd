@@ -240,6 +240,7 @@ func resolve_air_contact(
 	sticky_side: int = -1,
 	sticky_lip_x: float = NAN,
 	sticky_base_h: float = NAN,
+	force_sticky: bool = false,
 ) -> Dictionary:
 	if spec == null:
 		return ContactMath.make_air_contact("oob", -1, 0.0, false, _flat_hit(false, "oob", 0.0))
@@ -253,19 +254,7 @@ func resolve_air_contact(
 	var layer_h := float(ginfo.get("layer_height", 0.0))
 	var gzone := ContactMath.zone_from_glyph(glyph)
 
-	# Hole on this story — first-class, even if a lower surface samples below.
-	if gzone == "hole":
-		return ContactMath.make_air_contact("hole", layer, layer_h, false, {})
-
-	# Deck glyph: keep deck solid even when outline poly misses the cell edge.
-	if gzone == "deck":
-		var deck_hit: Dictionary = _deck_hit_for_layer(layer)
-		if not deck_hit.is_empty():
-			var deck_h := float(deck_hit.get("height", layer_h))
-			if is_nan(prefer_h) or prefer_h + ContactMath.LAND_EPS >= deck_h:
-				return ContactMath.make_air_contact("deck", layer, deck_h, true, deck_hit)
-
-	# Sticky: only if still in footprint and highlight agrees or dipped under the pipe.
+	# Sticky footprint (acid/spine force_sticky wins even over hole/deck at this XZ).
 	var sticky: Dictionary = {}
 	if sticky_side >= 0 and not is_nan(sticky_lip_x):
 		for pipe in pipes:
@@ -284,18 +273,19 @@ func resolve_air_contact(
 				break
 	if not sticky.is_empty():
 		var sticky_h := float(sticky.get("height", 0.0))
-		var use_sticky := false
-		if highlight.is_empty() or (
-			not highlight.get("active", true) and str(highlight.get("zone", "")) == "oob"
-		):
-			use_sticky = true
-		elif ContactMath.same_pipe(highlight, sticky):
-			use_sticky = true
-		else:
-			var hh := float(highlight.get("height", 0.0))
-			# Highlight already below this pipe surface → dipped through; keep sticky solid.
-			if hh < sticky_h - ContactMath.LAND_EPS:
+		var use_sticky := force_sticky
+		if not use_sticky:
+			if highlight.is_empty() or (
+				not highlight.get("active", true) and str(highlight.get("zone", "")) == "oob"
+			):
 				use_sticky = true
+			elif ContactMath.same_pipe(highlight, sticky):
+				use_sticky = true
+			else:
+				var hh := float(highlight.get("height", 0.0))
+				# Highlight already below this pipe surface → dipped through; keep sticky solid.
+				if hh < sticky_h - ContactMath.LAND_EPS:
+					use_sticky = true
 		if use_sticky:
 			return ContactMath.make_air_contact(
 				str(sticky.get("zone", "left_pipe")),
@@ -304,6 +294,18 @@ func resolve_air_contact(
 				true,
 				sticky,
 			)
+
+	# Hole on this story — first-class, even if a lower surface samples below.
+	if gzone == "hole":
+		return ContactMath.make_air_contact("hole", layer, layer_h, false, {})
+
+	# Deck glyph: keep deck solid even when outline poly misses the cell edge.
+	if gzone == "deck":
+		var deck_hit: Dictionary = _deck_hit_for_layer(layer)
+		if not deck_hit.is_empty():
+			var deck_h := float(deck_hit.get("height", layer_h))
+			if is_nan(prefer_h) or prefer_h + ContactMath.LAND_EPS >= deck_h:
+				return ContactMath.make_air_contact("deck", layer, deck_h, true, deck_hit)
 
 	var playable := spec.is_playable_xz(logical_x, logical_z)
 
@@ -526,179 +528,28 @@ func _deck_hit_for_layer(layer: int) -> Dictionary:
 	return {}
 
 
-## Facing-cast viz: glyph story at prefer_h → that story’s surface.
-## Returns { height, zone, layer, is_coping, side, lip_x, radius, base_height }.
-## Pipe cells use the matching layer’s pipe only. Holes fall through below that story.
+## Facing cast — pure math lives in FacingCastMath; these wrap the level's
+## spec + pipes for gameplay / debug callers.
 func cast_surface_at(logical_x: float, logical_z: float, prefer_h: float) -> Dictionary:
-	if spec == null or spec.grid_w <= 0:
-		var fb: Dictionary = sample(logical_x, logical_z, -1, NAN, prefer_h)
-		return {
-			"height": float(fb.get("height", 0.0)),
-			"zone": str(fb.get("zone", "flat")),
-			"layer": int(fb.get("layer", -1)),
-			"is_coping": false,
-			"side": int(fb.get("side", -1)),
-			"lip_x": float(fb.get("lip_x", NAN)),
-			"radius": float(fb.get("radius", 0.0)),
-			"base_height": float(fb.get("base_height", 0.0)),
-		}
-	var cell := spec.cell_at(logical_x, logical_z)
-	return _cast_info_for_cell(cell.x, cell.y, logical_x, logical_z, prefer_h, 0)
+	return FacingCastMath.resolve_surface(spec, pipes, logical_x, logical_z, prefer_h)
 
 
 func cast_surface_height(logical_x: float, logical_z: float, prefer_h: float) -> float:
-	return float(cast_surface_at(logical_x, logical_z, prefer_h).get("height", 0.0))
+	return FacingCastMath.resolve_height(spec, pipes, logical_x, logical_z, prefer_h)
 
 
-func _cast_info_for_cell(
-	col: int,
-	row: int,
-	logical_x: float,
-	logical_z: float,
+## Full facing cast from a grid origin (cells + surfaces). See FacingCastMath.cast_ahead.
+func facing_cast(
+	origin_col: int,
+	origin_row: int,
+	facing_h: String,
+	distance: int,
+	trail_z: float,
 	prefer_h: float,
-	depth: int,
-) -> Dictionary:
-	var empty := {
-		"height": 0.0,
-		"zone": "hole",
-		"layer": -1,
-		"is_coping": false,
-		"side": -1,
-		"lip_x": NAN,
-		"radius": 0.0,
-		"base_height": 0.0,
-	}
-	if depth > 8:
-		return empty
-	var ginfo: Dictionary = spec.glyph_at_prefer_h(col, row, prefer_h)
-	var glyph := str(ginfo.get("glyph", " "))
-	var layer := int(ginfo.get("layer", -1))
-	var layer_h := float(ginfo.get("layer_height", 0.0))
-	var gzone := ContactMath.zone_from_glyph(glyph)
-	match gzone:
-		"pipe":
-			var want_side := 0 if glyph == "<" else 1
-			var pipe_info: Dictionary = _pipe_info_on_layer(
-				logical_x, logical_z, want_side, layer, col, row
-			)
-			if pipe_info.is_empty():
-				var mid: Dictionary = spec.cell_bounds(col, row)
-				var mx := (float(mid.x0) + float(mid.x1)) * 0.5
-				pipe_info = _pipe_info_on_layer(mx, logical_z, want_side, layer, col, row)
-			if pipe_info.is_empty():
-				return {
-					"height": layer_h,
-					"zone": "pipe",
-					"layer": layer,
-					"is_coping": false,
-					"side": want_side,
-					"lip_x": NAN,
-					"radius": 0.0,
-					"base_height": layer_h,
-				}
-			return pipe_info
-		"flat":
-			return {
-				"height": layer_h,
-				"zone": "flat",
-				"layer": layer,
-				"is_coping": false,
-				"side": -1,
-				"lip_x": NAN,
-				"radius": 0.0,
-				"base_height": layer_h,
-			}
-		"deck":
-			var deck: Dictionary = _deck_hit_for_layer(layer)
-			var dh := layer_h
-			if not deck.is_empty():
-				dh = float(deck.get("height", layer_h))
-			return {
-				"height": dh,
-				"zone": "deck",
-				"layer": layer,
-				"is_coping": false,
-				"side": -1,
-				"lip_x": NAN,
-				"radius": 0.0,
-				"base_height": layer_h,
-			}
-		"hole":
-			# Must drop prefer below this story’s glyph window (LAND_EPS band).
-			var below := layer_h - ContactMath.LAND_EPS - 0.05
-			if below < -0.01 and layer_h <= 0.0:
-				return empty
-			return _cast_info_for_cell(
-				col, row, logical_x, logical_z, below, depth + 1
-			)
-		_:
-			var hit: Dictionary = sample(logical_x, logical_z, -1, NAN, prefer_h)
-			return {
-				"height": float(hit.get("height", 0.0)),
-				"zone": str(hit.get("zone", "flat")),
-				"layer": int(hit.get("layer", -1)),
-				"is_coping": false,
-				"side": int(hit.get("side", -1)),
-				"lip_x": float(hit.get("lip_x", NAN)),
-				"radius": float(hit.get("radius", 0.0)),
-				"base_height": float(hit.get("base_height", 0.0)),
-			}
-
-
-func _pipe_info_on_layer(
-	logical_x: float,
-	logical_z: float,
-	want_side: int,
-	layer: int,
-	col: int,
-	row: int,
-) -> Dictionary:
-	for pipe in pipes:
-		if int(pipe.side) != want_side:
-			continue
-		if layer >= 0 and int(pipe.layer) != layer:
-			continue
-		var hit: Dictionary = pipe.query_surface(logical_x, logical_z)
-		if not hit.get("active", false):
-			continue
-		var lip := float(pipe.lip_x)
-		var radius := float(pipe.radius)
-		var side := int(pipe.side)
-		var cope := PipeMath.coping_x(side, lip, radius)
-		var is_cope := false
-		if spec != null:
-			var b: Dictionary = spec.cell_bounds(col, row)
-			# Cell owns coping if cope lies in [x0, x1] (inclusive edges).
-			is_cope = cope >= float(b.x0) - 0.05 and cope <= float(b.x1) + 0.05
-		else:
-			is_cope = AerialMath.is_top_coping(side, lip, radius, logical_x, 0.5 * radius)
-		return {
-			"height": float(hit.get("height", 0.0)),
-			"zone": str(hit.get("zone", "pipe")),
-			"layer": layer,
-			"is_coping": is_cope,
-			"side": side,
-			"lip_x": lip,
-			"radius": radius,
-			"base_height": float(pipe.base_height),
-			"top_coping": cope,
-			"theta": float(hit.get("theta", 0.0)),
-		}
-	return {}
-
-
-func _pipe_height_on_layer(
-	logical_x: float, logical_z: float, want_side: int, layer: int
-) -> float:
-	for pipe in pipes:
-		if int(pipe.side) != want_side:
-			continue
-		if layer >= 0 and int(pipe.layer) != layer:
-			continue
-		var hit: Dictionary = pipe.query_surface(logical_x, logical_z)
-		if hit.get("active", false):
-			return float(hit.get("height", 0.0))
-	return NAN
+) -> Array:
+	return FacingCastMath.cast_ahead(
+		spec, pipes, origin_col, origin_row, facing_h, distance, trail_z, prefer_h
+	)
 
 
 ## Sticky side+lip: highest story whose base is at/below feet.

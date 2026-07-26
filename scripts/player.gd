@@ -6,6 +6,7 @@ extends Node2D
 const _PipeMath := preload("res://scripts/pipe_math.gd")
 const _MotionMath := preload("res://scripts/motion_math.gd")
 const _AerialMath := preload("res://scripts/aerial_math.gd")
+const _FacingCastMath := preload("res://scripts/facing_cast_math.gd")
 const _MotionVectors := preload("res://scripts/motion_vectors.gd")
 const _ContactMath := preload("res://scripts/contact_math.gd")
 
@@ -34,9 +35,13 @@ const _ContactMath := preload("res://scripts/contact_math.gd")
 ## Feet must drop at least this far below prior support to ride off into air.
 @export var ride_off_height_eps: float = 0.5
 ## How far behind facing a top coping may still be acid-dropped (logical X, not screen px).
+## Legacy acid-drop search; gameplay targeting now uses facing_coping_cells.
 @export var acid_drop_buffer: float = 44.0
 ## Max distance ahead (logical X) to a top coping for acid drop — prevents cross-plaza lerps.
+## Legacy acid-drop search; gameplay targeting now uses facing_coping_cells.
 @export var acid_drop_max_ahead: float = 120.0
+## Acid/spine: max deck cells ahead of facing_h to accept a top coping (FacingCastMath).
+@export_range(1, 16, 1) var facing_coping_cells: int = 3
 ## Acid/spine X settle seconds at coping (height-above = 0).
 @export var acid_drop_x_duration: float = 0.18
 ## Extra settle seconds per logical unit of height above coping.
@@ -438,6 +443,8 @@ func _begin_transfer_x_lerp(to_x: float, height_scaled: bool, _coping_radius: fl
 
 ## Resolve air contact at current XZ and write air_over / layer / sticky ids from it.
 ## prefer_h is feet height before this tick's gravity (label = collision source).
+## Acid/spine X-lock: force sticky to the lock target and never adopt a different
+## underfoot pipe (shared coping / high→low would otherwise snap identity back).
 func _resolve_and_apply_air_contact(prefer_h: float) -> Dictionary:
 	if _level == null:
 		return _ContactMath.make_air_contact("oob", -1, 0.0, false, {})
@@ -454,11 +461,18 @@ func _resolve_and_apply_air_contact(prefer_h: float) -> Dictionary:
 		sticky_side = _air_side
 		sticky_lip = _air_lip_x
 		sticky_base = _air_base_height
+	var lock_target := _acid_drop_lock or _spine_transfer_lock
 	var contact: Dictionary = _level.resolve_air_contact(
-		depth.logical_x, depth.logical_z, prefer_h, sticky_side, sticky_lip, sticky_base
+		depth.logical_x,
+		depth.logical_z,
+		prefer_h,
+		sticky_side,
+		sticky_lip,
+		sticky_base,
+		lock_target,
 	)
 	# Pipe-exit lock: drop when leaving coping column (acid/spine keep lock).
-	if _air_x_locked and not _acid_drop_lock and not _spine_transfer_lock:
+	if _air_x_locked and not lock_target:
 		if not _is_aligned_with_air_coping():
 			_air_x_locked = false
 		# Higher stacked same-side pipe underfoot: retarget lock.
@@ -478,6 +492,10 @@ func _resolve_and_apply_air_contact(prefer_h: float) -> Dictionary:
 				_air_lip_x,
 				_air_base_height,
 			)
+
+	if lock_target:
+		# Collision/landing uses contact; keep locked coping identity for drop-in.
+		return contact
 
 	air_over = str(contact.get("zone", "flat"))
 	_air_over_layer = int(contact.get("layer", -1))
@@ -1069,7 +1087,7 @@ func _try_acid_drop() -> void:
 	# Not while rising or at a rising apex — that belongs to transfer.
 	if _transfer_vert_ok():
 		return
-	var hit := _find_acid_drop_pipe()
+	var hit := _find_facing_coping_target()
 	if hit.is_empty():
 		return
 
@@ -1096,58 +1114,74 @@ func _try_acid_drop() -> void:
 	_acid_drop_available = false
 
 
-## Spine transfer: rising P when an opposite pipe is within 0–2 deck cells
-## (|Δlogical_x|). Aligned stacks on another story count — no "behind" hemisphere,
-## no camera / perspective. Lock X to opposite top coping; keep height / air_vel_y;
-## land uses the same drop-in merge as acid / pipe-exit. Spends both charges.
+## Spine transfer: rising air, or rising on a pipe, when FacingCastMath finds a
+## top coping within `facing_coping_cells` ahead of facing_h (excludes current pipe).
+## Lock X to that coping; keep height / air_vel_y; land uses drop-in merge.
+## Spends both charges.
 func _try_spine_transfer() -> bool:
-	if not _airborne or _level == null or not _transfer_available:
+	if _level == null or not _transfer_available:
 		return false
-	if not _transfer_vert_ok():
+	var from_ramp := (not _airborne) and _on_ramp and _ramp_rising_toward_coping()
+	if _airborne:
+		if not _transfer_vert_ok():
+			return false
+	elif not from_ramp:
 		return false
-	var exclude_side := _spine_from_side()
-	if exclude_side < 0:
-		return false
-	var behind: float = _spine_behind_sign()
-	var cell_w := _level.cell_size_x
-	if _level.spec != null and _level.spec.cell_w > 0.0:
-		cell_w = _level.spec.cell_w
-	var exclude_lip := _air_lip_x
-	var prefer_h := _feet_height()
-	# Prefer locked coping X; also retry from live X (over hole) and last coping.
-	var from_candidates: Array[float] = []
-	if _air_x_locked:
-		from_candidates.append(_air_coping_x)
-	from_candidates.append(depth.logical_x)
-	if not is_nan(_air_coping_x) and absf(_air_coping_x - depth.logical_x) > 0.05:
-		from_candidates.append(_air_coping_x)
 
-	var hit: Dictionary = {}
-	for from_x in from_candidates:
-		hit = _AerialMath.find_spine_transfer_target(
-			_level.pipes,
-			from_x,
-			depth.logical_z,
-			behind,
-			exclude_side,
-			exclude_lip,
-			cell_w,
-			0.05,
-			prefer_h,
-			_level.spec,
-		)
-		if not hit.is_empty():
-			break
+	var hit: Dictionary = _find_facing_coping_target()
 	if hit.is_empty():
 		return false
 
+	# Leave the wall into air with upward speed, then spine-lock (don't pin to
+	# the source coping — lerp to the facing target).
+	if not _airborne:
+		_launch_air_for_spine_from_ramp()
+
+	_apply_spine_lock(hit)
+	return true
+
+
+## Along-arc is carrying us toward the top coping (up the wall).
+func _ramp_rising_toward_coping() -> bool:
+	if not _on_ramp:
+		return false
+	return _ramp_along * _coping_sign(_ramp_side) > 8.0
+
+
+## Enter air from a grounded pipe ride without X-locking to the source coping.
+func _launch_air_for_spine_from_ramp() -> void:
+	var th := 0.0
+	if last_surface.has("theta"):
+		th = float(last_surface.theta)
+	var up := absf(_ramp_along) * sin(clampf(th, 0.0, PI * 0.5))
+	_airborne = true
+	_on_ramp = false
+	_air_x_locked = false
+	_acid_drop_lock = false
+	_spine_transfer_lock = false
+	_apex_facing_done = false
+	_transfer_x_active = false
+	air_abs_height = depth.surface_height
+	air_vel_y = maxf(up, 0.0)
+	_ramp_along = 0.0
+	_velocity.x = 0.0
+	_air_side = _ramp_side
+	_air_lip_x = _ramp_lip_x
+	_air_radius = _sticky_pipe_radius()
+	_air_base_height = _ramp_base_height
+	air_over = _pipe_zone_name(_ramp_side)
+	_air_over_layer = _layer_index_for_base(_ramp_base_height)
+	_transfer_behind_sign = _coping_sign(_ramp_side)
+	depth.airborne = true
+	depth.surface_height = air_abs_height
+
+
+func _apply_spine_lock(hit: Dictionary) -> void:
 	var side: int = int(hit.get("side", QuarterPipe.PipeSide.RIGHT))
 	var lip: float = float(hit.get("lip_x", depth.logical_x))
 	var radius: float = float(hit.get("radius", 150.0))
 	var coping: float = float(hit.get("top_coping", _coping_x_for(side, lip, radius)))
 
-	# X-lock like acid, but not acid_drop_lock (that samples floor / blocks fly-out
-	# differently). Landing drop-in is shared for all locked pipe landings.
 	_air_x_locked = true
 	_acid_drop_lock = false
 	_spine_transfer_lock = true
@@ -1164,11 +1198,9 @@ func _try_spine_transfer() -> bool:
 
 	_transfer_available = false
 	_acid_drop_available = false
-	return true
 
 
-## Pipe side we're leaving for spine (want = opposite). Locked/pipe/hole keep
-## last pipe side; else infer from facing.
+## Pipe side we're leaving for spine exclude (want = other coping ahead).
 func _spine_from_side() -> int:
 	if _air_x_locked:
 		return _air_side
@@ -1194,20 +1226,61 @@ func _spine_behind_sign() -> float:
 	return 1.0 if facing_h == "r" else -1.0
 
 
-## Nearest opposite-facing TOP coping near horizontal velocity.
-## Moving right → left_pipe only; moving left → right_pipe only.
-## Buffer/max_ahead are logical X units (same as depth.logical_x), not screen pixels.
-func _find_acid_drop_pipe() -> Dictionary:
-	if _level == null:
+## First top coping within facing_coping_cells ahead of facing_h (FacingCastMath).
+## Skips the pipe currently locked / underfoot so acid/spine target another coping.
+func next_facing_coping() -> Dictionary:
+	return _find_facing_coping_target()
+
+
+## Debug label for next facing coping, e.g. "left_pipe L1" or "—".
+func next_facing_coping_debug() -> String:
+	var hit: Dictionary = next_facing_coping()
+	if hit.is_empty():
+		return "—"
+	var zone := str(hit.get("zone", "pipe"))
+	if zone == "pipe":
+		zone = _pipe_zone_name(int(hit.get("side", QuarterPipe.PipeSide.RIGHT)))
+	var layer := int(hit.get("layer", -1))
+	if layer < 0:
+		layer = _layer_index_for_base(float(hit.get("base_height", 0.0)))
+	if layer >= 0:
+		return "%s L%d" % [zone, layer]
+	return zone
+
+
+## First top coping within facing_coping_cells ahead of facing_h (FacingCastMath).
+## Skips the pipe currently locked / underfoot so acid/spine target another coping.
+func _find_facing_coping_target() -> Dictionary:
+	if _level == null or _level.spec == null:
 		return {}
-	var hx := _AerialMath.resolve_horiz_vel(_actual_vel_x, _velocity.x)
-	return _AerialMath.find_acid_drop_target(
+	var cell: Vector2i = cell_under_feet()
+	var xz: Vector2 = cell_sample_xz()
+	var facing := facing_h
+	if facing != "l" and facing != "r":
+		facing = "r"
+	var prefer_h := _feet_height()
+	var exclude_side := -1
+	var exclude_lip := NAN
+	if _air_x_locked or air_over == "left_pipe" or air_over == "right_pipe" \
+			or (air_over == "hole" and (_air_side == QuarterPipe.PipeSide.LEFT \
+				or _air_side == QuarterPipe.PipeSide.RIGHT)):
+		exclude_side = _air_side
+		exclude_lip = _air_lip_x
+	elif _on_ramp:
+		# Grounded pipe ride: skip this wall's coping so cast can see the next one.
+		exclude_side = _ramp_side
+		exclude_lip = _ramp_lip_x
+	return _FacingCastMath.first_coping_ahead(
+		_level.spec,
 		_level.pipes,
-		depth.logical_x,
-		depth.logical_z,
-		hx,
-		acid_drop_buffer,
-		acid_drop_max_ahead
+		cell.x,
+		cell.y,
+		facing,
+		facing_coping_cells,
+		xz.y,
+		prefer_h,
+		exclude_side,
+		exclude_lip,
 	)
 
 

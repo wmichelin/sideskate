@@ -36,3 +36,5 @@ godot4 --headless --path . --script res://tests/test_runner.gd
 ```
 
 Prefer `LevelLoader.parse_text` over `load_path` in tests (`load_path` aborts the process on bad maps).
+
+Level fixtures for tests live in `tests/levels/` — do not point tests at `res://levels/` (playable maps). Copy a playable `.ssk` into `tests/levels/` when a test needs it.

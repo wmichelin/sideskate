@@ -421,7 +421,7 @@ func _spine_transfer_layers() -> bool:
 
 ## layered_demo: L1 left coping shares X with L0 right — high→low spine.
 func _spine_layered_demo_high_to_low() -> bool:
-	var text := FileAccess.get_file_as_string("res://levels/layered_demo.ssk")
+	var text := FileAccess.get_file_as_string("res://tests/levels/layered_demo.ssk")
 	var spec := LevelLoader.parse_text(text, "layered_demo")
 	if spec == null:
 		push_error("layered_demo parse: %s" % LevelLoader.last_error)

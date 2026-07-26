@@ -21,7 +21,7 @@ extends Node2D
 @export var debug_cell_highlight: bool = false
 ## Green cells ahead of facing_h (logical X columns). Debug only; off by default.
 @export var debug_facing_cast: bool = false
-@export_range(1, 8, 1) var facing_cast_distance: int = 3
+@export_range(1, 16, 1) var facing_cast_distance: int = 3
 @export var player_path: NodePath = NodePath("../../Player")
 @export var cell_highlight_fill: Color = Color(1.0, 0.92, 0.2, 0.35)
 @export var cell_highlight_stroke: Color = Color(1.0, 0.85, 0.1, 0.95)
@@ -396,8 +396,7 @@ func _draw_player_cell_highlight() -> void:
 	_draw_logical_cell(cell, prefer_h, cell_highlight_fill, cell_highlight_stroke, lx, lz)
 
 
-## Green cells ahead of facing_h (logical X). Heights follow each cell’s glyph
-## on the story at prefer_h (same-layer pipe arc — not a lower stacked pipe).
+## Green cells ahead of facing_h — draw only; resolution is FacingCastMath.
 func _draw_facing_cast_highlight() -> void:
 	if not DebugTools.is_available() or not debug_facing_cast:
 		return
@@ -421,33 +420,29 @@ func _draw_facing_cast_highlight() -> void:
 	var facing := str(_player.get("facing_h"))
 	if facing != "l" and facing != "r":
 		facing = "r"
-	var cast: Array[Vector2i] = _level.spec.facing_cast_cells(
-		cell.x, cell.y, facing, facing_cast_distance
-	)
 	var prefer_h := float(body.surface_height)
 	if bool(_player.get("_airborne")):
 		prefer_h = float(_player.get("air_abs_height"))
 	var trail_z := body.logical_z
 	if _player.has_method("cell_sample_xz"):
 		trail_z = float(_player.call("cell_sample_xz").y)
-	for c in cast:
-		_draw_cast_cell(c, prefer_h, trail_z)
+	var hits: Array = _level.facing_cast(
+		cell.x, cell.y, facing, facing_cast_distance, trail_z, prefer_h
+	)
+	for hit in hits:
+		_draw_cast_hit(hit)
 
 
-## One cast cell: flat pad at the cell’s surface height (same style as yellow
-## cell highlight). Coping cells use amber fill/stroke.
-func _draw_cast_cell(cell: Vector2i, prefer_h: float, trail_z: float) -> void:
-	var b: Dictionary = _level.spec.cell_bounds(cell.x, cell.y)
-	var mid_x := (float(b.x0) + float(b.x1)) * 0.5
-	var info: Dictionary = _level.cast_surface_at(mid_x, trail_z, prefer_h)
-	var h := float(info.get("height", 0.0))
-	var is_cope := bool(info.get("is_coping", false))
+## Draw one FacingCastMath.cast_ahead hit (flat pad; amber if coping).
+func _draw_cast_hit(hit: Dictionary) -> void:
+	var h := float(hit.get("height", 0.0))
+	var is_cope := bool(hit.get("is_coping", false))
 	var fill := facing_cast_coping_fill if is_cope else facing_cast_fill
 	var stroke := facing_cast_coping_stroke if is_cope else facing_cast_stroke
-	var x0 := float(b.x0)
-	var x1 := float(b.x1)
-	var z0 := float(b.z0)
-	var z1 := float(b.z1)
+	var x0 := float(hit.get("x0", 0.0))
+	var x1 := float(hit.get("x1", 0.0))
+	var z0 := float(hit.get("z0", 0.0))
+	var z1 := float(hit.get("z1", 0.0))
 	var corners := PackedVector2Array([
 		_surf_point(x0, z0, h),
 		_surf_point(x1, z0, h),
@@ -463,11 +458,6 @@ func _draw_cast_cell(cell: Vector2i, prefer_h: float, trail_z: float) -> void:
 			3.0 if is_cope else 2.5,
 			true
 		)
-
-
-## Height for facing-cast viz (legacy helper).
-func _cast_height_at(logical_x: float, logical_z: float, prefer_h: float) -> float:
-	return _level.cast_surface_height(logical_x, logical_z, prefer_h)
 
 
 func _draw_logical_cell(

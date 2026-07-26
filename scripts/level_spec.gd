@@ -81,19 +81,9 @@ func cell_at_for_pose(
 func facing_cast_cells(
 	origin_col: int, origin_row: int, facing_h: String, distance: int
 ) -> Array[Vector2i]:
-	var out: Array[Vector2i] = []
-	var dist := maxi(distance, 0)
-	if dist <= 0 or grid_w <= 0 or grid_h <= 0:
-		return out
-	if origin_row < 0 or origin_row >= grid_h:
-		return out
-	var step := -1 if facing_h == "l" else 1
-	for i in range(1, dist + 1):
-		var col := origin_col + step * i
-		if col < 0 or col >= grid_w:
-			break
-		out.append(Vector2i(col, origin_row))
-	return out
+	return FacingCastMath.cells_ahead(
+		grid_w, grid_h, origin_col, origin_row, facing_h, distance
+	)
 
 
 ## Logical XZ bounds of ASCII cell (col, row). Returns {x0,x1,z0,z1}.

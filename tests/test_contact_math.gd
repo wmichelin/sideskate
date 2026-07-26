@@ -274,6 +274,72 @@ func _resolve_air_contact_integration() -> bool:
 		return false
 
 	_free(level)
+
+	# Shared coping high→low: highlight prefers L1 left; spine/acid force_sticky
+	# must keep L0 right so lock identity is not stolen same-tick.
+	if not _force_sticky_shared_coping():
+		return false
+	return true
+
+
+func _force_sticky_shared_coping() -> bool:
+	# layered_demo: L1 left coping shares X with L0 right — spine/acid lock target.
+	var text := FileAccess.get_file_as_string("res://tests/levels/layered_demo.ssk")
+	var spec := LevelLoader.parse_text(text, "layered_demo")
+	if spec == null:
+		push_error("layered_demo parse: %s" % LevelLoader.last_error)
+		return false
+	var level := RampLevel.new()
+	level.spec = spec
+	level.pipes.clear()
+	var l1_left: QuarterPipe = null
+	var l0_right: QuarterPipe = null
+	for pd in spec.pipes:
+		var qp := QuarterPipe.new()
+		qp.side = int(pd.side)
+		qp.lip_x = float(pd.lip_x)
+		qp.radius = float(pd.radius)
+		qp.base_height = float(pd.get("base_height", 0.0))
+		qp.layer = int(pd.get("layer", 0))
+		qp.z_min = float(pd.z_min)
+		qp.z_max = float(pd.z_max)
+		level.pipes.append(qp)
+		if qp.side == 0 and qp.layer == 1:
+			l1_left = qp
+		if qp.side == 1 and qp.layer == 0:
+			l0_right = qp
+	if l1_left == null or l0_right == null:
+		push_error("layered_demo missing L1 left / L0 right")
+		_free(level)
+		return false
+
+	var cope_x: float = PipeMath.coping_x(0, l1_left.lip_x, l1_left.radius)
+	var z: float = (l1_left.z_min + l1_left.z_max) * 0.5
+	var prefer_h: float = l1_left.base_height + l1_left.radius
+	# Into L1 left: highlight is left_pipe; L0 right sticky is inactive (outside footprint).
+	var into_left: float = cope_x + 0.5
+	var plain: Dictionary = level.resolve_air_contact(
+		into_left, z, prefer_h, 1, l0_right.lip_x, l0_right.base_height
+	)
+	if str(plain.get("zone", "")) != "left_pipe":
+		push_error("into L1 left without force_sticky want left_pipe: %s" % plain)
+		_free(level)
+		return false
+	# On shared coping both footprints active — force_sticky must keep L0 right even
+	# when highlight still prefers L1 left.
+	var forced: Dictionary = level.resolve_air_contact(
+		cope_x, z, prefer_h, 1, l0_right.lip_x, l0_right.base_height, true
+	)
+	if str(forced.get("zone", "")) != "right_pipe":
+		push_error("force_sticky on shared coping must keep L0 right: %s" % forced)
+		_free(level)
+		return false
+	if absf(float(forced.get("hit", {}).get("base_height", -1.0)) - l0_right.base_height) > 0.05:
+		push_error("force_sticky want L0 base got %s" % forced)
+		_free(level)
+		return false
+
+	_free(level)
 	return true
 
 
