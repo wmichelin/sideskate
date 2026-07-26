@@ -98,7 +98,7 @@ While airborne, a **circular** ground shadow sits on the underfoot support surfa
 
 Applied while unlocked air, or while acid-drop X-locked. Default `-19.0` m/s², converted with `logic_per_meter` (default 100). Tunable via top-right debug slider.
 
-## Aerial actions (same button: `transfer` / P)
+## Aerial actions (same button: `transfer` / P or T)
 
 One **transfer** and one **acid drop** per aerial. Both refill on any surface contact (`_clear_air`). Spine transfer spends **both**.
 
@@ -113,7 +113,7 @@ Routing uses measured vertical rate (`_vert_vel`) and the last non-zero vertical
 
 When the transfer path runs and an **opposite** pipe’s top coping lies **behind** the current coping with gap `0…2` deck cells (`Δx ≤ 2 × cell_w`), fire spine transfer instead of free-air transfer:
 
-- Lerp/lock X to that opposite **top coping** (never the lip); keep `air_abs_height` and `air_vel_y` (continue the rise).
+- Lerp/lock X to that opposite **top coping** (never the lip); keep `air_abs_height` and `air_vel_y` (continue the rise). Same live height-scaled X settle + smoothstep as acid drop.
 - On land: same drop-in as pipe-exit / acid — falling `air_vel_y` → `_ramp_along` (keep approach if faster into the pipe).
 - No fly-out while the spine lock is active.
 - Spend **both** transfer and acid-drop charges.
@@ -133,6 +133,7 @@ Gap of **3+** deck cells (`Δx > 2 × cell_w`) → normal transfer below. Plaza 
 - Target is **top coping** only (logical X), never the lip.
 - Coping must lie in front of horizontal velocity, with grace **behind** up to `acid_drop_buffer` (logical X units, default **44** — not screen pixels), and not farther ahead than `acid_drop_max_ahead` (default 120).
 - Animate/lerp X onto that coping; keep `air_abs_height` / `air_vel_y`; gravity continues. Land only when falling onto sampled surface (no upward height snap).
+- X settle is a continuous function of live height above coping: `acid_drop_x_duration + acid_drop_x_duration_per_height × h` (defaults 0.18 + 0.002×h, soft-capped at `acid_drop_x_duration_max` 0.9). Progress advances each physics tick by `δt / duration(h)` so rising slows the settle and falling speeds it up. Smoothstep ease.
 - On land: same drop-in as pipe-exit / spine — falling `air_vel_y` converts into `_ramp_along`, keeping approach speed when already faster into the pipe.
 
 ## Level units (.ssk cells)
@@ -187,5 +188,6 @@ Debug tools are gated by autoload `DebugTools`: available when `OS.is_debug_buil
 8. Fly-out: only while rising; right pipe needs INPUT right; left pipe needs INPUT left; never from acid-drop or spine-transfer lock.  
 9. Spine transfer: opposite coping behind within 0–2 deck cells; keep height + `air_vel_y`; land uses shared drop-in merge; 3+ cells → normal transfer.
 10. Locked pipe land (pipe-exit / acid / spine): `merge_drop_in_along` — fall vert → along-arc, keep approach if faster into the pipe.
+11. Acid/spine X settle: live `duration = base + rate × height_above` (`lock_x_duration_for_height`); progress `+= δt/duration`; smoothstep ease.
 
 Covered by headless tests in `tests/test_aerial_math.gd` / `tests/test_motion_math.gd` / `tests/test_cell_at_for_pose.gd` (routing, acid selection, landing floor, spine transfer gaps, coping-lock cell targeting).

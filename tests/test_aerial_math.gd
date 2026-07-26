@@ -8,6 +8,7 @@ func run() -> bool:
 	ok = _horiz_resolve() and ok
 	ok = _landing_height() and ok
 	ok = _drop_in_along() and ok
+	ok = _lock_x_duration() and ok
 	ok = _fly_out_pipe_lock() and ok
 	ok = _acid_drop_selection() and ok
 	ok = _spine_transfer() and ok
@@ -96,6 +97,41 @@ func _drop_in_along() -> bool:
 	var out_plus_fall := AerialMath.merge_drop_in_along(50.0, -70.0, 1)
 	if absf(out_plus_fall - (-70.0)) > 0.01:
 		push_error("outward+fall → fall, got %s" % out_plus_fall)
+		return false
+	return true
+
+
+func _lock_x_duration() -> bool:
+	# duration = base + rate * height
+	var at0 := AerialMath.lock_x_duration_for_height(0.0, 0.18, 0.002, 0.9)
+	if absf(at0 - 0.18) > 0.001:
+		push_error("at coping → base, got %s" % at0)
+		return false
+	var at100 := AerialMath.lock_x_duration_for_height(100.0, 0.18, 0.002, 0.9)
+	if absf(at100 - 0.38) > 0.001:
+		push_error("at 100 → 0.38, got %s" % at100)
+		return false
+	var at200 := AerialMath.lock_x_duration_for_height(200.0, 0.18, 0.002, 0.9)
+	if absf(at200 - 0.58) > 0.001:
+		push_error("at 200 → 0.58, got %s" % at200)
+		return false
+	var capped := AerialMath.lock_x_duration_for_height(1000.0, 0.18, 0.002, 0.9)
+	if absf(capped - 0.9) > 0.001:
+		push_error("above max soft-caps, got %s" % capped)
+		return false
+	var uncapped := AerialMath.lock_x_duration_for_height(1000.0, 0.18, 0.002, 0.0)
+	if absf(uncapped - 2.18) > 0.001:
+		push_error("max=0 uncapped, got %s" % uncapped)
+		return false
+	if absf(AerialMath.smoothstep01(0.0)) > 0.001:
+		push_error("smoothstep(0) → 0")
+		return false
+	if absf(AerialMath.smoothstep01(1.0) - 1.0) > 0.001:
+		push_error("smoothstep(1) → 1")
+		return false
+	var mid_s := AerialMath.smoothstep01(0.5)
+	if absf(mid_s - 0.5) > 0.001:
+		push_error("smoothstep(0.5) → 0.5, got %s" % mid_s)
 		return false
 	return true
 

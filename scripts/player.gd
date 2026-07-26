@@ -36,8 +36,12 @@ const _MotionVectors := preload("res://scripts/motion_vectors.gd")
 @export var acid_drop_buffer: float = 44.0
 ## Max distance ahead (logical X) to a top coping for acid drop — prevents cross-plaza lerps.
 @export var acid_drop_max_ahead: float = 120.0
-## Physics-time duration for acid-drop horizontal settle to coping.
-@export var acid_drop_x_duration: float = 0.15
+## Acid/spine X settle seconds at coping (height-above = 0).
+@export var acid_drop_x_duration: float = 0.18
+## Extra settle seconds per logical unit of height above coping.
+@export var acid_drop_x_duration_per_height: float = 0.002
+## Soft cap on acid/spine settle (0 = uncapped).
+@export var acid_drop_x_duration_max: float = 0.9
 ## God-mode vertical speed (logical units/s) for j/k. Debug only.
 @export var god_vert_speed: float = 320.0
 ## Along-arc speed drain while on a pipe (logical u/s²). Debug slider writes this.
@@ -81,7 +85,12 @@ var _transfer_behind_sign: float = 1.0
 var _transfer_x_active: bool = false
 var _transfer_x_from: float = 0.0
 var _transfer_x_to: float = 0.0
-var _transfer_x_t: float = 0.0
+## Progress 0…1 for the active X settle (advanced by delta / live duration).
+var _transfer_x_u: float = 0.0
+## Fixed duration when not height-scaled (free-air transfer).
+var _transfer_x_dur: float = 0.15
+## Height-scaled settle (acid / spine): duration = f(live height above coping).
+var _transfer_x_ease: bool = false
 ## One transfer per aerial; replenished on any surface contact.
 var _transfer_available: bool = true
 ## One acid drop per aerial; replenished on any surface contact.
@@ -342,17 +351,37 @@ func _apply_motion(delta: float, speed_mul: float) -> void:
 func _step_transfer_x(delta: float) -> void:
 	if not _transfer_x_active:
 		return
-	_transfer_x_t += delta
-	var duration := transfer_x_duration
-	if _acid_drop_lock or _spine_transfer_lock:
-		duration = acid_drop_x_duration
-	var u := 1.0
-	if duration > 0.0001:
-		u = clampf(_transfer_x_t / duration, 0.0, 1.0)
-	depth.logical_x = lerpf(_transfer_x_from, _transfer_x_to, u)
-	if u >= 1.0:
+	var duration := maxf(_transfer_x_dur, 0.0001)
+	if _transfer_x_ease:
+		var above := maxf(air_abs_height - _air_radius, 0.0)
+		duration = maxf(
+			_AerialMath.lock_x_duration_for_height(
+				above,
+				acid_drop_x_duration,
+				acid_drop_x_duration_per_height,
+				acid_drop_x_duration_max,
+			),
+			0.0001,
+		)
+	_transfer_x_u = clampf(_transfer_x_u + delta / duration, 0.0, 1.0)
+	var w := _AerialMath.smoothstep01(_transfer_x_u) if _transfer_x_ease else _transfer_x_u
+	depth.logical_x = lerpf(_transfer_x_from, _transfer_x_to, w)
+	if _transfer_x_u >= 1.0:
 		_transfer_x_active = false
 		depth.logical_x = _transfer_x_to
+
+
+## Start horizontal settle onto `to_x`. Acid/spine: live duration from height above
+## coping (`base + rate * h`) + smoothstep. Free transfer: fixed duration, linear.
+func _begin_transfer_x_lerp(to_x: float, height_scaled: bool, _coping_radius: float = 0.0) -> void:
+	_transfer_x_from = depth.logical_x
+	_transfer_x_to = to_x
+	_transfer_x_u = 0.0
+	_transfer_x_ease = height_scaled
+	_transfer_x_dur = transfer_x_duration
+	_transfer_x_active = absf(to_x - depth.logical_x) > 0.05
+	if not _transfer_x_active:
+		depth.logical_x = to_x
 
 
 func _update_air_over_underfoot() -> void:
@@ -731,12 +760,7 @@ func _try_acid_drop() -> void:
 	_transfer_behind_sign = _coping_sign(side)
 	# Do not touch air_abs_height or air_vel_y — only horizontal lock + existing gravity.
 
-	_transfer_x_from = depth.logical_x
-	_transfer_x_to = coping
-	_transfer_x_t = 0.0
-	_transfer_x_active = absf(coping - depth.logical_x) > 0.05
-	if not _transfer_x_active:
-		depth.logical_x = coping
+	_begin_transfer_x_lerp(coping, true, radius)
 
 	_acid_drop_available = false
 
@@ -789,12 +813,7 @@ func _try_spine_transfer() -> bool:
 	air_over = _pipe_zone_name(side)
 	_transfer_behind_sign = _coping_sign(side)
 
-	_transfer_x_from = depth.logical_x
-	_transfer_x_to = coping
-	_transfer_x_t = 0.0
-	_transfer_x_active = absf(coping - depth.logical_x) > 0.05
-	if not _transfer_x_active:
-		depth.logical_x = coping
+	_begin_transfer_x_lerp(coping, true, radius)
 
 	_transfer_available = false
 	_acid_drop_available = false
@@ -878,10 +897,7 @@ func _try_transfer() -> void:
 		_transfer_x_active = false
 		return
 
-	_transfer_x_from = from_x
-	_transfer_x_to = anchor_x
-	_transfer_x_t = 0.0
-	_transfer_x_active = absf(anchor_x - from_x) > 0.05
+	_begin_transfer_x_lerp(anchor_x, false)
 	if not _transfer_x_active and _air_x_locked:
 		depth.logical_x = _air_coping_x
 

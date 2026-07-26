@@ -73,6 +73,30 @@ static func merge_drop_in_along(approach_x: float, land_vy: float, side: int) ->
 	return minf(approach_x * sign, from_fall * sign) * sign
 
 
+## X settle duration for locking onto an opposite coping (acid / spine).
+## Continuous in height: `base + per_height * height_above_coping`.
+## If `duration_max` > 0, soft-cap (still continuous below the cap).
+static func lock_x_duration_for_height(
+	height_above_coping: float,
+	duration_base: float,
+	duration_per_height: float,
+	duration_max: float = 0.0,
+) -> float:
+	var d := (
+		maxf(duration_base, 0.0)
+		+ maxf(duration_per_height, 0.0) * maxf(height_above_coping, 0.0)
+	)
+	if duration_max > 0.0:
+		d = minf(d, duration_max)
+	return d
+
+
+## Cubic smoothstep on 0…1 (ease in/out for X settle).
+static func smoothstep01(u: float) -> float:
+	var t := clampf(u, 0.0, 1.0)
+	return t * t * (3.0 - 2.0 * t)
+
+
 
 ## Pipe-exit X-lock → free air (parabolic fly-out) when still rising, height clears
 ## coping+extra, and INPUT X points toward that pipe's side (right → +X, left → −X).
