@@ -234,65 +234,72 @@ func _lock_x_duration() -> bool:
 
 
 func _fly_out_pipe_lock() -> bool:
-	# Right pipe (side 1): need INPUT +X, rising, height >= radius + above.
-	if not AerialMath.should_fly_out_pipe_lock(true, false, 1, 200.0, 150.0, 40.0, 1.0, 80.0):
-		push_error("right pipe + input right + rising + height → fly out")
+	# Right pipe (side 1): need INPUT +X, rising, height within [coping, coping+above].
+	if not AerialMath.should_fly_out_pipe_lock(true, false, 1, 170.0, 150.0, 40.0, 1.0, 80.0):
+		push_error("right pipe + input right + rising + in window → fly out")
 		return false
-	if AerialMath.should_fly_out_pipe_lock(true, false, 1, 200.0, 150.0, 40.0, -1.0, 80.0):
+	if AerialMath.should_fly_out_pipe_lock(true, false, 1, 170.0, 150.0, 40.0, -1.0, 80.0):
 		push_error("right pipe + input left → no fly out")
 		return false
-	if AerialMath.should_fly_out_pipe_lock(true, false, 1, 170.0, 150.0, 40.0, 1.0, 80.0):
-		push_error("below coping+above → no fly out")
+	# Above the window (e.g. near apex with a small slider) → no fly out.
+	if AerialMath.should_fly_out_pipe_lock(true, false, 1, 200.0, 150.0, 40.0, 1.0, 80.0):
+		push_error("above window (coping+50 > +40) → no fly out")
 		return false
-	# Falling / apex: never fly out even with outward input and height.
-	if AerialMath.should_fly_out_pipe_lock(true, false, 1, 200.0, 150.0, 40.0, 1.0, -40.0):
+	if AerialMath.should_fly_out_pipe_lock(true, false, 1, 200.0, 150.0, 1.0, 1.0, 80.0):
+		push_error("near apex with above=1 → no fly out")
+		return false
+	if AerialMath.should_fly_out_pipe_lock(true, false, 1, 140.0, 150.0, 40.0, 1.0, 80.0):
+		push_error("below coping → no fly out")
+		return false
+	# Falling / apex: never fly out even with outward input and in-window height.
+	if AerialMath.should_fly_out_pipe_lock(true, false, 1, 170.0, 150.0, 40.0, 1.0, -40.0):
 		push_error("falling → no fly out")
 		return false
-	if AerialMath.should_fly_out_pipe_lock(true, false, 1, 200.0, 150.0, 40.0, 1.0, 0.0):
+	if AerialMath.should_fly_out_pipe_lock(true, false, 1, 170.0, 150.0, 40.0, 1.0, 0.0):
 		push_error("apex rest → no fly out")
 		return false
 	# Left pipe (side 0): need INPUT −X.
-	if not AerialMath.should_fly_out_pipe_lock(true, false, 0, 200.0, 150.0, 40.0, -1.0, 80.0):
-		push_error("left pipe + input left + rising + height → fly out")
+	if not AerialMath.should_fly_out_pipe_lock(true, false, 0, 170.0, 150.0, 40.0, -1.0, 80.0):
+		push_error("left pipe + input left + rising + in window → fly out")
 		return false
-	if AerialMath.should_fly_out_pipe_lock(true, false, 0, 200.0, 150.0, 40.0, 1.0, 80.0):
+	if AerialMath.should_fly_out_pipe_lock(true, false, 0, 170.0, 150.0, 40.0, 1.0, 80.0):
 		push_error("left pipe + input right → no fly out")
 		return false
 	# Stick deadzone: |input| below eps does not fly out.
-	if AerialMath.should_fly_out_pipe_lock(true, false, 1, 200.0, 150.0, 40.0, 0.1, 80.0):
+	if AerialMath.should_fly_out_pipe_lock(true, false, 1, 170.0, 150.0, 40.0, 0.1, 80.0):
 		push_error("input inside deadzone → no fly out")
 		return false
 	# Acid-drop lock never auto-flies out.
-	if AerialMath.should_fly_out_pipe_lock(true, true, 1, 200.0, 150.0, 40.0, 1.0, 80.0):
+	if AerialMath.should_fly_out_pipe_lock(true, true, 1, 170.0, 150.0, 40.0, 1.0, 80.0):
 		push_error("acid lock must not fly out")
 		return false
 	# Unlocked / not locked.
-	if AerialMath.should_fly_out_pipe_lock(false, false, 1, 200.0, 150.0, 40.0, 1.0, 80.0):
+	if AerialMath.should_fly_out_pipe_lock(false, false, 1, 170.0, 150.0, 40.0, 1.0, 80.0):
 		push_error("unlocked air must not fly out")
 		return false
-	# above_coping 0: unlock at coping height.
+	# above_coping 0: unlock only at coping height.
 	if not AerialMath.should_fly_out_pipe_lock(true, false, 1, 150.0, 150.0, 0.0, 1.0, 80.0):
 		push_error("above=0 at coping + outward input + rising → fly out")
 		return false
+	if AerialMath.should_fly_out_pipe_lock(true, false, 1, 151.0, 150.0, 0.0, 1.0, 80.0):
+		push_error("above=0 slightly over coping → no fly out")
+		return false
 	# Vertical / Z-dominant INPUT must not fly out (need X-dominant).
-	if AerialMath.should_fly_out_pipe_lock(true, false, 1, 200.0, 150.0, 40.0, 0.0, 80.0, 0.15, 1.0):
+	if AerialMath.should_fly_out_pipe_lock(true, false, 1, 170.0, 150.0, 40.0, 0.0, 80.0, 0.15, 1.0):
 		push_error("pure vertical INPUT → no fly out")
 		return false
-	if AerialMath.should_fly_out_pipe_lock(true, false, 1, 200.0, 150.0, 40.0, 0.5, 80.0, 0.15, 0.8):
+	if AerialMath.should_fly_out_pipe_lock(true, false, 1, 170.0, 150.0, 40.0, 0.5, 80.0, 0.15, 0.8):
 		push_error("Z-dominant INPUT → no fly out")
 		return false
-	if not AerialMath.should_fly_out_pipe_lock(true, false, 1, 200.0, 150.0, 40.0, 0.8, 80.0, 0.15, 0.3):
+	if not AerialMath.should_fly_out_pipe_lock(true, false, 1, 170.0, 150.0, 40.0, 0.8, 80.0, 0.15, 0.3):
 		push_error("X-dominant outward INPUT → fly out")
 		return false
-	# Elevated story: clearance is relative to coping_floor (base+radius), so the
-	# debug slider still gates L1 the same as L0. (Passing radius alone as floor
-	# would treat abs height as huge clearance and ignore the slider — call site
-	# must use _air_coping_floor().)
-	if AerialMath.should_fly_out_pipe_lock(true, false, 1, 360.0, 350.0, 40.0, 1.0, 80.0):
-		push_error("L1 at coping+10 < coping+40 → no fly out")
+	# Elevated story: window is relative to coping_floor (base+radius).
+	if not AerialMath.should_fly_out_pipe_lock(true, false, 1, 360.0, 350.0, 40.0, 1.0, 80.0):
+		push_error("L1 at coping+10 within +40 → fly out")
 		return false
-	if not AerialMath.should_fly_out_pipe_lock(true, false, 1, 400.0, 350.0, 40.0, 1.0, 80.0):
-		push_error("L1 at coping+50 with correct floor → fly out")
+	if AerialMath.should_fly_out_pipe_lock(true, false, 1, 400.0, 350.0, 40.0, 1.0, 80.0):
+		push_error("L1 at coping+50 outside +40 → no fly out")
 		return false
 	return true
 

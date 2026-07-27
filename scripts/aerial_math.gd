@@ -183,15 +183,16 @@ static func smoothstep01(u: float) -> float:
 
 
 
-## Pipe-exit X-lock → free air (parabolic fly-out) when still rising, height clears
-## coping+extra, and planar INPUT points toward that pipe's side (right → +X,
-## left → −X). MOMENTUM is ignored — only the stick wish. X must dominate Z
-## (`|input_x| > |input_z|`); pure/mostly vertical wish must not fly out.
-## Falling (`air_vel_y` ≤ 0) never flies out. Acid-drop lock never flies out
-## this way. `coping_floor` is absolute lip height (`base_height + radius`);
-## `above_coping` is the debug-tunable clearance above that floor (0 = unlock
-## as soon as at/above coping). Height is absolute feet height — never pass
-## radius alone as `coping_floor` on elevated stories or the slider is ignored.
+## Pipe-exit X-lock → free air (parabolic fly-out) when still rising, feet are
+## within `above_coping` of the lip (not higher), and planar INPUT points toward
+## that pipe's side (right → +X, left → −X). MOMENTUM is ignored — only the stick
+## wish. X must dominate Z (`|input_x| > |input_z|`); pure/mostly vertical wish
+## must not fly out. Falling (`air_vel_y` ≤ 0) never flies out. Acid-drop lock
+## never flies out this way.
+## `coping_floor` is absolute lip height (`base_height + radius`). `above_coping`
+## is the debug-tunable *max* height above that floor (0 = only at coping; small
+## values keep fly-out near the lip — apex is outside the window). Never pass
+## radius alone as `coping_floor` on elevated stories.
 static func should_fly_out_pipe_lock(
 	air_x_locked: bool,
 	acid_drop_lock: bool,
@@ -209,9 +210,11 @@ static func should_fly_out_pipe_lock(
 	# Rising only — ignore while falling or at apex rest.
 	if air_vel_y <= 0.0:
 		return false
-	# Clearance above coping must meet the debug slider (relative, not absolute).
+	# Window above coping: at/above lip, but not higher than the debug slider.
 	var height_above := air_abs_height - coping_floor
-	if height_above + 0.001 < maxf(above_coping, 0.0):
+	if height_above < -0.001:
+		return false
+	if height_above > maxf(above_coping, 0.0) + 0.001:
 		return false
 	# Stick must clearly push toward the pipe side; X must dominate Z (not vertical wish).
 	if absf(input_x) <= input_eps:

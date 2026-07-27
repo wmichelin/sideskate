@@ -377,7 +377,7 @@ func _on_fly_out_changed(v: float) -> void:
 
 
 func _refresh_fly_out_label(v: float) -> void:
-	_fly_out_value.text = "%.0f u" % v
+	_fly_out_value.text = "≤%.0f u" % v
 
 
 func _on_ollie_accel_changed(v: float) -> void:

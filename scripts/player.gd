@@ -52,7 +52,8 @@ const _ContactMath := preload("res://scripts/contact_math.gd")
 @export var god_vert_speed: float = 320.0
 ## Along-arc speed drain while on a pipe (logical u/s²). Debug slider writes this.
 @export var ramp_friction: float = 0.0
-## Pipe-exit X-lock fly-out: unlock into free air this far above coping (logical).
+## Pipe-exit X-lock fly-out: max height above coping (logical) where unlock is
+## still allowed. Higher = can fly out farther up the air; 1 keeps it near the lip.
 ## INPUT must point toward that pipe's side. Debug slider writes this.
 @export var fly_out_above_coping: float = 40.0
 

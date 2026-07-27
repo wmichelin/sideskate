@@ -86,7 +86,7 @@ Feet height while airborne: `air_abs_height`. Vertical rate for gravity: `air_ve
 
 ### Pipe fly-out
 
-While in **pipe coping lock** (not acid-drop / spine), X stays locked even if underfoot becomes hole / flat / another zone — only **fly-out** clears it. Fly-out requires still **rising** (`air_vel_y > 0`), feet height ≥ `coping_floor + fly_out_above_coping` (debug slider **fly out**, default 40; clearance is relative to `base_height + radius`, not radius alone), planar **INPUT** that is **X-dominant** (`|input_x| > |input_z|`) toward that pipe’s side (right pipe → right; left → left), **and** a playable cell outward via facing cast (edge of level / nowhere ahead → stay locked). MOMENTUM is never consulted. Keep `air_abs_height` / `air_vel_y` on unlock for a **parabolic** arc. Falling or Z-dominant / vertical-only stick → stay locked and land as usual. While locked, air contact **force-sticky**s to that coping — rising past a higher opposite pipe does **not** auto spine; press transfer for spine low→high.
+While in **pipe coping lock** (not acid-drop / spine), X stays locked even if underfoot becomes hole / flat / another zone — only **fly-out** clears it. Fly-out requires still **rising** (`air_vel_y > 0`), feet within `fly_out_above_coping` **above** the lip (`coping_floor`…`coping_floor + fly_out_above_coping`; debug slider **fly out**, default 40 — a *max* window, not a minimum; apex is outside a small window), planar **INPUT** that is **X-dominant** (`|input_x| > |input_z|`) toward that pipe’s side (right pipe → right; left → left), **and** a playable cell outward via facing cast (edge of level / nowhere ahead → stay locked). MOMENTUM is never consulted. Keep `air_abs_height` / `air_vel_y` on unlock for a **parabolic** arc. Falling or Z-dominant / vertical-only stick → stay locked and land as usual. While locked, air contact **force-sticky**s to that coping — rising past a higher opposite pipe does **not** auto spine; press transfer for spine low→high.
 
 Pipe coping lock treats the top coping height (`base_height + radius`) as the floor. Acid-drop lock and free air **must not** use that shortcut (it would snap feet upward); they sample the real surface under `(x, z)`.
 
@@ -195,7 +195,7 @@ Debug tools are gated by autoload `DebugTools`: available when `OS.is_debug_buil
 
 1. Sim only on physics ticks.  
 2. Top coping ≠ lip.  
-3. Pipe exit and acid drop both lock X; both use gravity. Acid drop must not snap height; pipe-exit lock may use coping radius as floor. Pipe fly-out unlocks X when above coping with outward INPUT; preserves vertical velocity.  
+3. Pipe exit and acid drop both lock X; both use gravity. Acid drop must not snap height; pipe-exit lock may use coping radius as floor. Pipe fly-out unlocks X when within the fly-out height window above coping with outward INPUT; preserves vertical velocity.  
 4. One transfer + one acid drop per aerial; refill on surface contact. Spine transfer spends both.  
 5. Transfer at rising apex; acid drop must not steal that case. Spine transfer only on the rising path.  
 6. Acid drop / spine: FacingCastMath first top coping within `facing_coping_cells` ahead of `facing_h` (excludes current pipe).  
