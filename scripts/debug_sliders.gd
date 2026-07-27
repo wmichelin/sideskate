@@ -94,6 +94,7 @@ extends CanvasLayer
 @onready var _motion_vectors_check: CheckButton = $Panel/VBox/Body/MotionVectorsRow/Check
 @onready var _head_debug_check: CheckButton = $Panel/VBox/Body/HeadDebugRow/Check
 @onready var _fps_check: CheckButton = $Panel/VBox/Body/FpsRow/Check
+@onready var _vsync_check: CheckButton = $Panel/VBox/Body/VsyncRow/Check
 @onready var _cast_cells_slider: HSlider = $Panel/VBox/Body/CastCellsRow/Slider
 @onready var _cast_cells_value: Label = $Panel/VBox/Body/CastCellsRow/Value
 @onready var _coping_cells_slider: HSlider = $Panel/VBox/Body/CopingCellsRow/Slider
@@ -211,6 +212,10 @@ func _ready() -> void:
 	_fps_check.button_pressed = DebugTools.show_fps
 	_fps_check.focus_mode = Control.FOCUS_NONE
 	_fps_check.toggled.connect(_on_fps_toggled)
+
+	_vsync_check.button_pressed = DebugTools.vsync_enabled
+	_vsync_check.focus_mode = Control.FOCUS_NONE
+	_vsync_check.toggled.connect(_on_vsync_toggled)
 
 	_bind_float_slider(
 		_cast_cells_slider,
@@ -595,6 +600,10 @@ func _on_head_debug_toggled(on: bool) -> void:
 
 func _on_fps_toggled(on: bool) -> void:
 	DebugTools.set_show_fps(on)
+
+
+func _on_vsync_toggled(on: bool) -> void:
+	DebugTools.set_vsync_enabled(on)
 
 
 func _on_cast_cells_changed(v: float) -> void:

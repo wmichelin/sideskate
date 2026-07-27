@@ -37,6 +37,8 @@ var _checker_tex: ImageTexture
 var _checker_tex_a: Color = Color(0, 0, 0, 0)
 var _checker_tex_b: Color = Color(0, 0, 0, 0)
 var _floor_checker_mesh: ArrayMesh = ArrayMesh.new()
+## Cached far→near pipe order; invalidated on refresh / pipe rebuild.
+var _pipes_draw_order: Array = []
 
 
 func _ready() -> void:
@@ -57,6 +59,7 @@ func _process(_delta: float) -> void:
 
 
 func refresh() -> void:
+	_pipes_draw_order.clear()
 	queue_redraw()
 
 
@@ -85,9 +88,16 @@ func _view_z_band() -> Vector2:
 
 
 func _pipes_far_to_near() -> Array:
-	var pipes: Array = _level.pipes.duplicate()
-	pipes.sort_custom(func(a, b): return a.z_max > b.z_max)
-	return pipes
+	var pipes: Array = _level.pipes
+	if (
+		not _pipes_draw_order.is_empty()
+		and _pipes_draw_order.size() == pipes.size()
+		and (pipes.is_empty() or is_instance_valid(_pipes_draw_order[0]) and _pipes_draw_order[0] == pipes[0])
+	):
+		return _pipes_draw_order
+	_pipes_draw_order = pipes.duplicate()
+	_pipes_draw_order.sort_custom(func(a, b): return a.z_max > b.z_max)
+	return _pipes_draw_order
 
 
 func _decks_far_to_near() -> Array:
@@ -198,7 +208,7 @@ func _draw_elevated_floors(band: Vector2) -> void:
 
 
 func _draw_story_floor_cells(
-	band: Vector2, mask: PackedByteArray, height: float, layer: int = -1
+	band: Vector2, mask: PackedByteArray, height: float, _layer: int = -1
 ) -> void:
 	var spec := _level.spec
 	var W := spec.grid_w
@@ -212,50 +222,35 @@ func _draw_story_floor_cells(
 	if r_max < r_min:
 		return
 	var fill := Color(0.32, 0.38, 0.42, 0.88)
-	var stroke := Color(0.55, 0.62, 0.70, 0.75)
 	var lava_fill := Color(0.72, 0.12, 0.05, 0.92)
-	var lava_stroke := Color(0.95, 0.35, 0.12, 0.85)
 	for r in range(r_min, r_max + 1):
-		for c in range(W):
-			if mask[r * W + c] == 0:
-				continue
-			var cell_fill := fill
-			var cell_stroke := stroke
-			if layer >= 0 and ContactMath.zone_from_glyph(_glyph_at_layer(layer, c, r)) == "lava":
-				cell_fill = lava_fill
-				cell_stroke = lava_stroke
-			var x0 := float(c) * cw
-			var x1 := float(c + 1) * cw
-			var z0 := maxf(float(H - 1 - r) * ch, band.x)
-			var z1 := minf(float(H - r) * ch, band.y)
-			if z1 <= z0 + 0.001:
-				continue
-			var corners := PackedVector2Array([
-				_surf_point(x0, z0, height),
-				_surf_point(x1, z0, height),
-				_surf_point(x1, z1, height),
-				_surf_point(x0, z1, height),
-			])
-			draw_colored_polygon(corners, cell_fill)
-			for i in range(corners.size()):
-				draw_line(corners[i], corners[(i + 1) % corners.size()], cell_stroke, 1.25)
-
-
-func _glyph_at_layer(layer: int, c: int, r: int) -> String:
-	var spec := _level.spec
-	if spec == null:
-		return ""
-	for L in spec.layers:
-		if int(L.get("index", -1)) != layer:
+		var z0 := maxf(float(H - 1 - r) * ch, band.x)
+		var z1 := minf(float(H - r) * ch, band.y)
+		if z1 <= z0 + 0.001:
 			continue
-		var rows: PackedStringArray = L.get("rows", PackedStringArray())
-		if r < 0 or r >= rows.size():
-			return ""
-		var line: String = rows[r]
-		if c < 0 or c >= line.length():
-			return ""
-		return line[c]
-	return ""
+		var c := 0
+		while c < W:
+			var kind: int = int(mask[r * W + c])
+			if kind == 0:
+				c += 1
+				continue
+			var c1 := c + 1
+			while c1 < W and int(mask[r * W + c1]) == kind:
+				c1 += 1
+			var x0 := float(c) * cw
+			var x1 := float(c1) * cw
+			var cell_fill := lava_fill if kind == 2 else fill
+			draw_colored_polygon(
+				PackedVector2Array([
+					_surf_point(x0, z0, height),
+					_surf_point(x1, z0, height),
+					_surf_point(x1, z1, height),
+					_surf_point(x0, z1, height),
+				]),
+				cell_fill
+			)
+			c = c1
+
 
 func _ensure_checker_texture() -> void:
 	if (

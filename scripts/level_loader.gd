@@ -341,8 +341,9 @@ static func _append_layer_geometry(
 					story_mask[r * W + c] = 1
 				"x", "X":
 					# Lava: solid pad at layer height (lethal when grounded).
+					# Story mask: 1 = floor, 2 = lava (draw/sample without glyph scan).
 					floor_cells.append(Vector2i(c, r))
-					story_mask[r * W + c] = 1
+					story_mask[r * W + c] = 2
 				".":
 					pass  # hole — valid glyph, no floor
 				"@":

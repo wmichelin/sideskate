@@ -119,8 +119,8 @@ func sync_lean_origin_z() -> void:
 ## (up/down truck) — never perspective_origin_z.
 ## Threshold avoids redrawing the whole park every physics tick while skating.
 func set_perspective_origin(logical_x: float, logical_z: float) -> void:
-	var x_moved := absf(logical_x - perspective_origin_x) >= 2.0
-	var z_moved := absf(logical_z - view_origin_z) >= 4.0
+	var x_moved := absf(logical_x - perspective_origin_x) >= 6.0
+	var z_moved := absf(logical_z - view_origin_z) >= 8.0
 	if not x_moved and not z_moved:
 		return
 	if x_moved:
@@ -478,10 +478,7 @@ func sample_candidates(logical_x: float, logical_z: float) -> Array:
 					continue
 				if mask[cell.y * spec.grid_w + cell.x] != 0:
 					var pad_zone := "flat"
-					var ginfo: Dictionary = spec.glyph_at_prefer_h(
-						cell.x, cell.y, float(story.get("height", 0.0))
-					)
-					if ContactMath.zone_from_glyph(str(ginfo.get("glyph", ""))) == "lava":
+					if mask[cell.y * spec.grid_w + cell.x] == 2:
 						pad_zone = "lava"
 					out.append(_flat_hit(
 						true,

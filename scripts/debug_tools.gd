@@ -12,15 +12,19 @@ var show_motion_vectors: bool = false
 var show_head_debug: bool = false
 ## Bottom-left FPS counter. On by default while debugging.
 var show_fps: bool = true
+## DisplayServer VSync. On by default to avoid tearing.
+var vsync_enabled: bool = true
 
 signal god_mode_changed(enabled: bool)
 signal show_motion_vectors_changed(enabled: bool)
 signal show_head_debug_changed(enabled: bool)
 signal show_fps_changed(enabled: bool)
+signal vsync_changed(enabled: bool)
 
 
 func _ready() -> void:
 	available = (OS.is_debug_build() or OS.has_feature("debug_tools")) and not _cmdline_disables_debug()
+	_apply_vsync(vsync_enabled)
 	if not available:
 		god_mode = false
 		call_deferred("_strip_debug_nodes")
@@ -76,6 +80,21 @@ func set_show_fps(on: bool) -> void:
 		return
 	show_fps = on
 	show_fps_changed.emit(show_fps)
+
+
+func set_vsync_enabled(on: bool) -> void:
+	if vsync_enabled == on:
+		return
+	vsync_enabled = on
+	_apply_vsync(vsync_enabled)
+	vsync_changed.emit(vsync_enabled)
+
+
+func _apply_vsync(on: bool) -> void:
+	var mode := (
+		DisplayServer.VSYNC_ENABLED if on else DisplayServer.VSYNC_DISABLED
+	)
+	DisplayServer.window_set_vsync_mode(mode)
 
 
 func _strip_debug_nodes() -> void:
