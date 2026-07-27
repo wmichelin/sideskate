@@ -14,9 +14,9 @@ name my_level
 ---
 layer 0
 height 0
-<<<<========================>>>>
-<<<<============@===========>>>>
-<<<<========================>>>>
+<<<==========================>>>
+<<<=============@============>>>
+<<<==========================>>>
 ```
 
 1. **Header** — `ssk 2`, keys, `#` comments, blank lines  
@@ -38,7 +38,7 @@ Level extents are automatic:
 
 Add glyphs to grow the plaza; do not set `width` / `depth` in the header (ignored if present). Cell sizes are game-wide (RampLevel exports + TUNING sliders `cell x` / `cell z`).
 
-Pipe radius follows run width in cells (`<<<<` → 4 × cell_x), so the same glyph pattern always builds the same logical ramp. Pipe **base** sits at the layer’s `height`; surface height is `base_height + radius * (1 − cos θ)`.
+Pipe radius follows run width in cells (`<<<` → 3 × cell_x), so the same glyph pattern always builds the same logical ramp. Pipe **base** sits at the layer’s `height`; surface height is `base_height + radius * (1 − cos θ)`.
 
 Perspective (`perspective_inset`, `far_geometry_scale`, `reference_depth`, `reference_width`) lives on **RampLevel** / TUNING only — not in `.ssk` files.
 
@@ -62,12 +62,12 @@ Deprecated (ignored with a warning): `width`, `depth`, `perspective_inset`, `far
 ---
 layer 0
 height 0
-<<<<====>>>>
-<<<<=@=>>>>
-<<<<====>>>>
+<<<======>>>
+<<<==@==>>>
+<<<======>>>
 ---
 layer 1
-height 188
+height 141
 ....====....
 ....====....
 ....====....
@@ -112,14 +112,14 @@ name spine_demo
 ---
 layer 0
 height 0
-<<<<=======>>>>##<<<<=======>>>>
-<<<<=======>>>>##<<<<=======>>>>
-<<<<============@===========>>>>
-<<<<========================>>>>
-<<<<========================>>>>
+<<<=========>>>##<<<=========>>>
+<<<=========>>>##<<<=========>>>
+<<<=============@============>>>
+<<<==========================>>>
+<<<==========================>>>
 ```
 
-`>>>>##<<<<` = right-pipe → elevated deck spine → left-pipe.  
+`>>>##<<<` = right-pipe → elevated deck spine → left-pipe.  
 Both pipe runs must be the same width so coping height matches on both sides.
 
 ## Multi-story example

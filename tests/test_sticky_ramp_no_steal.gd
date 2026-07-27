@@ -304,24 +304,26 @@ func _fresh_lower_l1_entry_stays_grounded() -> bool:
 	var coping := PipeMath.coping_x(
 		int(lower_left.side), lower_left.lip_x, lower_left.radius
 	)
+	# Start inside the pipe band (lip − a bit toward the trough), not past the lip.
+	var entry_x := lower_left.lip_x + PipeMath.coping_sign(int(lower_left.side)) * 23.0
 	player.call("_clear_air")
 	player._on_ramp = false
 	player._airborne = false
 	player.depth.airborne = false
 	player._velocity = Vector2(-120.0, 0.0)
-	player.depth.logical_x = 1105.0
+	player.depth.logical_x = entry_x
 	player.depth.logical_z = 169.0
-	player.depth.surface_height = 188.0
+	player.depth.surface_height = 141.0
 	player._physics_process(1.0 / 60.0)
 
 	var ok: bool = (
 		not bool(player._airborne)
 		and bool(player._on_ramp)
-		and absf(float(player._ramp_base_height) - 188.0) < 0.5
+		and absf(float(player._ramp_base_height) - 141.0) < 0.5
 		and absf(float(player._ramp_z_min) - lower_left.z_min) < 0.05
 		and absf(float(player._ramp_z_max) - lower_left.z_max) < 0.05
 		and player.depth.logical_x > coping + 10.0
-		and player.depth.surface_height < 376.0
+		and player.depth.surface_height < 282.0
 	)
 	if not ok:
 		push_error(
@@ -343,7 +345,7 @@ func _fresh_lower_l1_entry_stays_grounded() -> bool:
 			player._velocity = Vector2(sign * 120.0, 0.0)
 			player.depth.logical_x = pipe.lip_x + sign * 23.0
 			player.depth.logical_z = 169.0
-			player.depth.surface_height = 188.0
+			player.depth.surface_height = 141.0
 			for _tick in range(12):
 				player._physics_process(1.0 / 60.0)
 				if bool(player._airborne) or not bool(player._on_ramp) \

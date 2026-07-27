@@ -227,11 +227,11 @@ func _resolve_air_contact_integration() -> bool:
 	spec.cell_h = 100.0
 	# Cols: pipe-ish left, floor, hole. Layer glyphs for prefer_h.
 	spec.layers = [
-		{"index": 0, "height": 0.0, "rows": PackedStringArray(["<<<<===="])},
-		{"index": 1, "height": 188.0, "rows": PackedStringArray(["<<<<..=="])},
+		{"index": 0, "height": 0.0, "rows": PackedStringArray(["<<<====="])},
+		{"index": 1, "height": 188.0, "rows": PackedStringArray(["<<<=..=="])},
 	]
 	spec.story_floor_masks = [
-		{"height": 0.0, "mask": PackedByteArray([0, 0, 0, 0, 1, 1, 1, 1]), "layer": 0},
+		{"height": 0.0, "mask": PackedByteArray([0, 0, 0, 1, 1, 1, 1, 1]), "layer": 0},
 		{"height": 188.0, "mask": PackedByteArray([0, 0, 0, 0, 0, 0, 1, 1]), "layer": 1},
 	]
 	spec.playable_mask = PackedByteArray([1, 1, 1, 1, 1, 1, 1, 1])

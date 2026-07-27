@@ -85,7 +85,7 @@ func _halfpipe_geometry() -> bool:
 			left_r = float(p.radius)
 		elif p.side == QuarterPipe.PipeSide.RIGHT:
 			right_r = float(p.radius)
-	var want_r := 4.0 * cx
+	var want_r := 3.0 * cx
 	if not is_equal_approx(left_r, want_r) or not is_equal_approx(right_r, want_r):
 		push_error("halfpipe pipe radii want %s got L=%s R=%s" % [want_r, left_r, right_r])
 		return false
@@ -117,8 +117,8 @@ name bad_uneven
 ---
 layer 0
 height 0
-<<<<====@=>>>>
-<<<<=====>>>>
+<<<=====@==>>>
+<<<=======>>>
 """
 	var spec := LevelLoader.parse_text(text, "bad_uneven")
 	if spec != null:
@@ -135,8 +135,8 @@ func _ssk1_rejected() -> bool:
 	var text := """ssk 1
 name old
 ---
-<<<<====@=>>>>
-<<<<========>>>>
+<<<=====@==>>>
+<<<==========>>>
 """
 	var spec := LevelLoader.parse_text(text, "old")
 	if spec != null:
@@ -157,7 +157,7 @@ func _stagger_deck_height() -> bool:
 	if spec.decks.is_empty():
 		push_error("stagger: expected decks from #")
 		return false
-	var want_h := 4.0 * LevelLoader.cell_size_x
+	var want_h := 3.0 * LevelLoader.cell_size_x
 	for deck in spec.decks:
 		if not is_equal_approx(float(deck.height), want_h):
 			push_error("stagger deck height want %s got %s" % [want_h, deck.height])
@@ -166,10 +166,10 @@ func _stagger_deck_height() -> bool:
 
 
 func _layered_upper_floor() -> bool:
-	var r := 4.0 * LevelLoader.cell_size_x
+	var r := 3.0 * LevelLoader.cell_size_x
 	var text := (
 		"ssk 2\nname layered_unit\n---\nlayer 0\nheight 0\n"
-		+ "<<<<========>>>>\n<<<<====@===>>>>\n<<<<========>>>>\n"
+		+ "<<<==========>>>\n<<<=====@====>>>\n<<<==========>>>\n"
 		+ "---\nlayer 1\nheight %s\n" % r
 		+ "....========....\n....========....\n....========....\n"
 	)
@@ -191,10 +191,10 @@ func _layered_upper_floor() -> bool:
 
 
 func _spawn_on_upper_layer() -> bool:
-	var r := 4.0 * LevelLoader.cell_size_x
+	var r := 3.0 * LevelLoader.cell_size_x
 	var text := (
 		"ssk 2\nname spawn_l1\n---\nlayer 0\nheight 0\n"
-		+ "<<<<========>>>>\n<<<<========>>>>\n<<<<========>>>>\n"
+		+ "<<<==========>>>\n<<<==========>>>\n<<<==========>>>\n"
 		+ "---\nlayer 1\nheight %s\n" % r
 		+ "....========....\n....===@====....\n....========....\n"
 	)
@@ -217,20 +217,18 @@ name holes
 ---
 layer 0
 height 0
-<<<<====>>>>
-<<<<=@=.>>>>
-<<<<====>>>>
+<<<======>>>
+<<<=@=...>>>
+<<<======>>>
 """
 	var spec := LevelLoader.parse_text(text, "holes")
 	if spec == null:
 		push_error("holes parse failed: %s" % LevelLoader.last_error)
 		return false
-	# Center of the '.' cell should not be inside any floor poly.
+	# Center of a '.' cell should not be inside any floor poly.
+	# Map: <<< = 3, =@=... = 6, >>> = 3 → 12. Holes at cols 6-8 (against right pipe).
 	var cx := LevelLoader.cell_size_x
 	var cz := LevelLoader.cell_size_z
-	# Row 1, col 5 (0-based): <<<<====>>>> → cols 0-3 <, 4-7 =, 8-11 >
-	# Wait map is <<<<====>>>> = 12 wide. <<<<=@=.>>>> 
-	# Actually: <<<< = 4, =@=. = 4, >>>> = 4 → 12. Dot at col 7.
 	var dot_x := (7.0 + 0.5) * cx
 	var dot_z := (3.0 - 1.0 - 1.0 + 0.5) * cz  # H=3, row 1
 	for floor in spec.floors:
@@ -249,15 +247,15 @@ name bad_space
 ---
 layer 0
 height 0
-<<<<====>>>>
-<<<<=@==>>>>
-<<<<====>>>>
+<<<======>>>
+<<<==@===>>>
+<<<======>>>
 ---
 layer 1
 height 100
-<<<<====>>>>
-<<<<  ==>>>>
-<<<<====>>>>
+<<<======>>>
+<<<=  ===>>>
+<<<======>>>
 """
 	var spec := LevelLoader.parse_text(text, "bad_space")
 	if spec != null:
@@ -352,7 +350,7 @@ func _lava_glyph_samples() -> bool:
 	# Row with xxxx: grid row 1 (0-based from top). Cell centers.
 	var cw := spec.cell_w
 	var ch := spec.cell_h
-	var lava_c := 6  # first x in <<<<==xxxx==>>>>
+	var lava_c := 6  # first x in <<<===xxxx===>>>
 	var lava_r := 1
 	var lx := (float(lava_c) + 0.5) * cw
 	var lz := (float(spec.grid_h - 1 - lava_r) + 0.5) * ch
