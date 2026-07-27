@@ -119,7 +119,7 @@ func _ready() -> void:
 	_visual = get_node_or_null(ramp_visual_path) as Node2D
 
 	_wrap_body_in_scroll()
-	get_viewport().size_changed.connect(_fit_scroll_height)
+	get_viewport().size_changed.connect(_refit_panel_layout)
 	_wire_header_toggle()
 
 	_bind_float_slider(_gravity_slider, gravity_min, gravity_max, 0.1, _player, "gravity_ms2", -19.0, _on_gravity_changed, _refresh_gravity_label)
@@ -143,7 +143,7 @@ func _ready() -> void:
 	_bind_float_slider(_ramp_friction_slider, ramp_friction_min, ramp_friction_max, 10.0, _player, "ramp_friction", 0.0, _on_ramp_friction_changed, _refresh_ramp_friction_label)
 	_bind_float_slider(_friction_slider, friction_min, friction_max, 10.0, _player, "friction", 0.0, _on_friction_changed, _refresh_friction_label)
 
-	_bind_float_slider(_persp_inset_slider, persp_inset_min, persp_inset_max, 1.0, _level, "perspective_inset", 38.0, _on_persp_inset_changed, _refresh_persp_inset_label)
+	_bind_float_slider(_persp_inset_slider, persp_inset_min, persp_inset_max, 1.0, _level, "perspective_inset", 35.0, _on_persp_inset_changed, _refresh_persp_inset_label)
 	_bind_float_slider(_far_geom_slider, far_geom_min, far_geom_max, 0.01, _level, "far_geometry_scale", 1.0, _on_far_geom_changed, _refresh_far_geom_label)
 	_bind_float_slider(_ref_depth_slider, ref_depth_min, ref_depth_max, 5.0, _level, "reference_depth", 260.0, _on_ref_depth_changed, _refresh_ref_depth_label)
 	_bind_float_slider(
@@ -277,11 +277,21 @@ func _set_collapsed(on: bool) -> void:
 	if _scroll:
 		_scroll.visible = not on
 		_body.visible = true
-		if not on:
-			call_deferred("_fit_scroll_height")
+		if on:
+			# Expand sets an explicit scroll min-height + panel.size; clear both on collapse.
+			_scroll.custom_minimum_size = Vector2.ZERO
+			_scroll.size = Vector2.ZERO
 	else:
 		_body.visible = not on
 	_toggle.text = "▶" if on else "▼"
+	# Panel.size is set explicitly while open and does not auto-shrink when body hides.
+	call_deferred("_refit_panel_layout")
+
+
+func _refit_panel_layout() -> void:
+	_fit_scroll_height()
+	# Wait a frame so container min-sizes reflect scroll visibility / height.
+	call_deferred("_fit_panel")
 
 
 func _wrap_body_in_scroll() -> void:
@@ -302,11 +312,14 @@ func _wrap_body_in_scroll() -> void:
 	_body.visible = true
 	_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_scroll.add_child(_body)
-	_fit_scroll_height()
 
 
 func _fit_scroll_height() -> void:
-	if _scroll == null or _collapsed:
+	if _scroll == null:
+		return
+	if _collapsed:
+		_scroll.custom_minimum_size = Vector2.ZERO
+		_scroll.size = Vector2.ZERO
 		return
 	var vp_h := get_viewport().get_visible_rect().size.y
 	var panel_top := _panel.offset_top if _panel else 16.0
@@ -318,13 +331,16 @@ func _fit_scroll_height() -> void:
 	)
 	var content_h := _body.get_combined_minimum_size().y
 	_scroll.custom_minimum_size = Vector2(0.0, minf(content_h, max_h))
-	call_deferred("_fit_panel")
 
 
 func _fit_panel() -> void:
 	if _panel == null:
 		return
 	var min_sz := _panel.get_combined_minimum_size()
+	if _collapsed and _header != null and min_sz.y > _header.get_combined_minimum_size().y + 32.0:
+		# Fallback if a hidden scroll still contributes to min size.
+		min_sz.y = _header.get_combined_minimum_size().y + 16.0
+	_panel.custom_minimum_size = Vector2(maxf(min_sz.x, 280.0), 0.0)
 	_panel.size = Vector2(maxf(min_sz.x, 280.0), min_sz.y)
 
 

@@ -1770,20 +1770,20 @@ func _find_facing_coping_target(facing_override: String = "") -> Dictionary:
 	)
 
 
-func _try_transfer() -> void:
+func _try_transfer() -> bool:
 	if _flew_out_this_aerial:
-		return
+		return false
 	if not _airborne or _level == null or not _transfer_available:
-		return
+		return false
 	# Rising, or apex after rise (vert≈0 with last non-zero up).
 	if not _transfer_vert_ok():
-		return
+		return false
 	var was_locked := _air_x_locked
 	var behind: float = _transfer_behind_sign
 	if _air_x_locked:
 		behind = _coping_sign(_air_side)
 	elif behind == 0.0:
-		return
+		return false
 	var probe_from_x: float = _air_coping_x if _air_x_locked else depth.logical_x
 	var probe_x: float = probe_from_x + behind * transfer_probe
 	var exclude_side := _air_side
@@ -1797,9 +1797,13 @@ func _try_transfer() -> void:
 		var pipe_hit := _find_pipe_behind(probe_from_x, behind, exclude_side, exclude_lip)
 		if not pipe_hit.is_empty():
 			hit = pipe_hit
+	# Pipe-exit lock: only commit to a real destination (deck / foreign pipe).
+	# Flat/hole/oob probes used to call _begin_air_over and zero air_vel_y — felt
+	# like a dead-stop drop when spine/fly-out were both unavailable (level edge).
+	if was_locked and not _transfer_hit_is_meaningful(hit):
+		return false
 	var zone := str(hit.get("zone", "flat"))
 	var keep_h := air_abs_height
-	var from_x := depth.logical_x
 	var anchor_x := probe_x
 	var target := {"zone": zone, "lock_x": false, "anchor_x": probe_x}
 
@@ -1846,11 +1850,21 @@ func _try_transfer() -> void:
 	if was_locked:
 		_velocity.x = behind * maxf(absf(_velocity.x), transfer_release_min)
 		_transfer_x_active = false
-		return
+		return true
 
 	_begin_transfer_x_lerp(anchor_x, false)
 	if not _transfer_x_active and _air_x_locked:
 		depth.logical_x = _air_coping_x
+	return true
+
+
+## Deck or foreign pipe — not flat/hole fillers from sample_transfer.
+func _transfer_hit_is_meaningful(hit: Dictionary) -> bool:
+	if hit.is_empty():
+		return false
+	if _is_pipe_hit(hit):
+		return true
+	return str(hit.get("zone", "")) == "deck"
 
 
 ## Nearest other pipe whose coping lies behind us (spine / back-to-back).

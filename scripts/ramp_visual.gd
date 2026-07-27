@@ -321,10 +321,23 @@ func _draw_decks(band: Vector2) -> void:
 		if clipped.size() < 3:
 			continue
 		var pts := _project_deck_poly(deck, clipped)
-		if pts.size() >= 3:
-			_paint.draw_colored_polygon(pts, Color(0.55, 0.48, 0.32, 0.92))
-			for i in range(pts.size()):
-				_paint.draw_line(pts[i], pts[(i + 1) % pts.size()], Color(0.95, 0.55, 0.35, 0.85), 2.5)
+		if pts.size() < 3:
+			continue
+		_paint.draw_colored_polygon(pts, Color(0.55, 0.48, 0.32, 0.92))
+		# Skip edges introduced by the Far/Near (or view-band) Z clip — those
+		# were stroking a horizontal seam that tracked the skater's split_z.
+		var n := clipped.size()
+		for i in range(n):
+			var a: Vector2 = clipped[i]
+			var b: Vector2 = clipped[(i + 1) % n]
+			if _edge_on_z_plane(a, b, band.x) or _edge_on_z_plane(a, b, band.y):
+				continue
+			_paint.draw_line(pts[i], pts[(i + 1) % n], Color(0.95, 0.55, 0.35, 0.85), 2.5)
+
+
+## True when both endpoints lie on the same logical-Z clip plane.
+func _edge_on_z_plane(a: Vector2, b: Vector2, z_edge: float, eps: float = 0.05) -> bool:
+	return absf(a.y - z_edge) <= eps and absf(b.y - z_edge) <= eps
 
 
 func _draw_depth_grid(band: Vector2) -> void:

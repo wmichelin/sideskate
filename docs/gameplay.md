@@ -10,7 +10,7 @@ Godot 4 **pseudo-3D** skate prototype. Simulation lives in **logical** space:
 - **Z** — near/far depth (stick “up” = farther). Screen Y uses a fixed px/Z rate (not “fit whole level in frame”), so deep levels scroll off-screen; the camera pans with the player in X and Y.
 - **Height** — feet elevation above flat (pipe arc, deck, air)
 
-Screen placement is a **projection** of `(x, z, height)`. Far X converges toward the skater over a fixed `reference_width` (`perspective_inset` default 38). X lean vs depth uses a **world-fixed** Z band (`z_min` → `z_min + reference_depth`) and is **not** clamped — lip lines keep one continuous slope. Moving the skater in Z only trucks the camera / draw window up-down; it does **not** re-center perspective. Screen Y uses a fixed px/Z sized so one ASCII Z cell matches one ASCII X cell at the near plane (`reference_depth = (near_y − far_y) × cell_z / cell_x`); deep levels scroll off-screen instead of compressing. World size is `columns × cell_x` / `rows × cell_z` (defaults both **47**). Visuals are surface-only (floors, pipe ribbons, deck tops). Park draw uses a **Far → Player → Near** Z-split at the skater’s `logical_z` so nearer ribbons/floors composite above the player (occlusion when behind a ramp).
+Screen placement is a **projection** of `(x, z, height)`. Far X converges toward the skater over a fixed `reference_width` (`perspective_inset` default 35). X lean vs depth uses a **world-fixed** Z band (`z_min` → `z_min + reference_depth`) and is **not** clamped — lip lines keep one continuous slope. Moving the skater in Z only trucks the camera / draw window up-down; it does **not** re-center perspective. Screen Y uses a fixed px/Z sized so one ASCII Z cell matches one ASCII X cell at the near plane (`reference_depth = (near_y − far_y) × cell_z / cell_x`); deep levels scroll off-screen instead of compressing. World size is `columns × cell_x` / `rows × cell_z` (defaults both **47**). Visuals are surface-only (floors, pipe ribbons, deck tops). Park draw uses a **Far → Player → Near** Z-split at the skater’s `logical_z` so nearer ribbons/floors composite above the player (occlusion when behind a ramp).
 
 ## Simulation law
 
@@ -134,7 +134,7 @@ If no coping is in range → normal free-air transfer below.
 
 - Probe “behind” the current pipe / last behind-sign for deck, other pipe, or flat.
 - Enter free air over the target at **same** height; gravity applies.
-- Leaving **locked** coping air: seed horizontal `_velocity.x` in the behind direction (`max(|momentum|, transfer_release_min)`) and **skip** the slow X position lerp so motion doesn’t restart from near-zero.
+- Leaving **locked** coping air: only when the probe finds a **deck** or **foreign pipe**. Flat/hole/oob probes are ignored (no unlock, no `air_vel_y` kill) — edge cases with no spine / fly-out used to dead-stop the aerial. On a valid leave, seed horizontal `_velocity.x` in the behind direction (`max(|momentum|, transfer_release_min)`) and **skip** the slow X position lerp so motion doesn’t restart from near-zero.
 - Unlocked→unlocked transfers may still short-lerp X when needed; don’t double-apply X while a lerp owns position.
 
 ### Acid drop
