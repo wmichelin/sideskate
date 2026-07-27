@@ -32,11 +32,13 @@ extends CanvasLayer
 @export var persp_inset_min: float = 0.0
 @export var persp_inset_max: float = 200.0
 @export var far_geom_min: float = 0.4
-@export var far_geom_max: float = 1.0
+@export var far_geom_max: float = 3.0
 @export var ref_depth_min: float = 20.0
 @export var ref_depth_max: float = 500.0
 @export var draw_band_pad_min: float = 0.0
 @export var draw_band_pad_max: float = 2.0
+@export var arc_steps_min: float = 4.0
+@export var arc_steps_max: float = 32.0
 @export var checker_tile_min: float = 1.0
 @export var checker_tile_max: float = 16.0
 @export var cast_cells_min: float = 1.0
@@ -81,6 +83,8 @@ extends CanvasLayer
 @onready var _ref_depth_value: Label = $Panel/VBox/Body/RefDepthRow/Value
 @onready var _draw_band_pad_slider: HSlider = $Panel/VBox/Body/DrawBandPadRow/Slider
 @onready var _draw_band_pad_value: Label = $Panel/VBox/Body/DrawBandPadRow/Value
+@onready var _arc_steps_slider: HSlider = $Panel/VBox/Body/ArcStepsRow/Slider
+@onready var _arc_steps_value: Label = $Panel/VBox/Body/ArcStepsRow/Value
 @onready var _cell_x_slider: HSlider = $Panel/VBox/Body/CellXRow/Slider
 @onready var _cell_x_value: Label = $Panel/VBox/Body/CellXRow/Value
 @onready var _cell_z_slider: HSlider = $Panel/VBox/Body/CellZRow/Slider
@@ -157,6 +161,17 @@ func _ready() -> void:
 		1.15,
 		_on_draw_band_pad_changed,
 		_refresh_draw_band_pad_label
+	)
+	_bind_float_slider(
+		_arc_steps_slider,
+		arc_steps_min,
+		arc_steps_max,
+		1.0,
+		_visual,
+		"arc_steps",
+		16.0,
+		_on_arc_steps_changed,
+		_refresh_arc_steps_label
 	)
 	_bind_float_slider(_cell_x_slider, cell_x_min, cell_x_max, 1.0, _level, "cell_size_x", 47.0, _on_cell_x_changed, _refresh_cell_x_label)
 	_bind_float_slider(_cell_z_slider, cell_z_min, cell_z_max, 1.0, _level, "cell_size_z", 26.0, _on_cell_z_changed, _refresh_cell_z_label)
@@ -252,7 +267,7 @@ func _ready() -> void:
 		_max_speed_z_slider, _accel_slider, _brake_slider,
 		_ramp_friction_slider, _friction_slider,
 		_persp_inset_slider, _far_geom_slider, _ref_depth_slider,
-		_draw_band_pad_slider, _checker_tile_slider, _cast_cells_slider,
+		_draw_band_pad_slider, _arc_steps_slider, _checker_tile_slider, _cast_cells_slider,
 		_coping_cells_slider, _cell_x_slider, _cell_z_slider,
 	]:
 		if row != null:
@@ -515,6 +530,17 @@ func _on_draw_band_pad_changed(v: float) -> void:
 
 func _refresh_draw_band_pad_label(v: float) -> void:
 	_draw_band_pad_value.text = "%.2f" % v
+
+
+func _on_arc_steps_changed(v: float) -> void:
+	if _visual != null:
+		_visual.set("arc_steps", int(round(v)))
+	_refresh_arc_steps_label(v)
+	_refresh_level_visual()
+
+
+func _refresh_arc_steps_label(v: float) -> void:
+	_arc_steps_value.text = "%d" % int(round(v))
 
 
 func _on_cell_x_changed(v: float) -> void:

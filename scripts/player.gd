@@ -90,6 +90,18 @@ var _air_lip_x: float = 0.0
 var _air_coping_x: float = 0.0
 var _air_radius: float = 150.0
 var _air_base_height: float = 0.0
+## Pipe identity exited this aerial — keep excluding after fly-out / flat air_over.
+var _exit_pipe_side: int = -1
+var _exit_pipe_lip: float = NAN
+var _exit_pipe_coping: float = NAN
+## Last horizontal travel when leaving a pipe (outward). Acid fallback if vx≈0.
+var _exit_travel_x: float = 0.0
+## Travel sign locked at acid start — never allow horiz vx to flip against this.
+var _acid_travel_x: float = 0.0
+## True after pipe fly-out this aerial — land must not yank back into the exit wall.
+var _flew_out_this_aerial: bool = false
+## True after acid button this aerial (hit or miss) — never into-bowl reverse on exit.
+var _acid_pressed_this_aerial: bool = false
 ## Last behind-sign used for transfer probes when unlocked.
 var _transfer_behind_sign: float = 1.0
 
@@ -259,6 +271,10 @@ func _physics_process(delta: float) -> void:
 		depth.apply()
 		return
 	_update_actual_velocity(delta)
+	# Hold into a ramp: only auto-fire spine transfer while airborne + pressed.
+	# Never after fly-out (spine lock_carry is into-bowl = reverse of outward travel).
+	if Input.is_action_pressed("transfer") and _airborne and not _flew_out_this_aerial:
+		_try_spine_transfer()
 	_clear_momentum_if_at_rest()
 	depth.apply()
 
@@ -535,10 +551,21 @@ func _step_transfer_x(delta: float) -> void:
 		)
 	_transfer_x_u = clampf(_transfer_x_u + delta / duration, 0.0, 1.0)
 	var w := _AerialMath.smoothstep01(_transfer_x_u) if _transfer_x_ease else _transfer_x_u
-	depth.logical_x = lerpf(_transfer_x_from, _transfer_x_to, w)
+	var next_x := lerpf(_transfer_x_from, _transfer_x_to, w)
+	# Acid: hard clamp — settle may only advance along locked travel.
+	if _acid_drop_lock and absf(_acid_travel_x) >= 1.0:
+		next_x = _AerialMath.acid_clamp_x_step(
+			depth.logical_x, next_x, _transfer_x_to, _acid_travel_x
+		)
+	depth.logical_x = next_x
 	if _transfer_x_u >= 1.0:
 		_transfer_x_active = false
-		depth.logical_x = _transfer_x_to
+		if _acid_drop_lock and absf(_acid_travel_x) >= 1.0:
+			depth.logical_x = _AerialMath.acid_clamp_x_step(
+				depth.logical_x, _transfer_x_to, _transfer_x_to, _acid_travel_x
+			)
+		else:
+			depth.logical_x = _transfer_x_to
 	_clamp_pose_playable()
 
 
@@ -781,19 +808,44 @@ func _try_land_from_air_contact(
 	if land_hit.is_empty():
 		return false
 
+	# Acid: never land on the exit wall mid-lerp (underfoot is still that pipe until
+	# X reaches the target). Keep falling / settling — that land was the reverse snap.
+	if _acid_drop_lock and _ContactMath.is_pipe(land_hit) and _is_exit_pipe_hit(land_hit):
+		return false
+	# Acid: only pipe-land on the locked target wall (side+lip), not a random underfoot pipe.
+	if _acid_drop_lock and _ContactMath.is_pipe(land_hit):
+		var hit_side := int(land_hit.get("side", -1))
+		var hit_lip := float(land_hit.get("lip_x", NAN))
+		if hit_side != _air_side or is_nan(hit_lip) or absf(hit_lip - _air_lip_x) > 0.05:
+			return false
+
 	air_abs_height = floor_h
 	var pin_x := depth.logical_x
 	if _air_x_locked and _is_aligned_with_air_coping():
 		pin_x = _air_coping_x
 	var was_locked := _air_x_locked
+	var was_acid := _acid_drop_lock
+	var acid_travel := _acid_travel_x
+	var flew_out := _flew_out_this_aerial
+	var acid_pressed := _acid_pressed_this_aerial
+	var exit_travel := _exit_travel_x
 	var land_vy := air_vel_y
 	var approach_x := _velocity.x
 	var carry_peak := _air_carry_speed
+	# Acid press / fly-out: never allow into-bowl velocity against travel.
+	var no_reverse := was_acid or acid_pressed or flew_out
+	var hold_sign := 0.0
+	if absf(acid_travel) >= 1.0:
+		hold_sign = signf(acid_travel)
+	elif no_reverse and absf(exit_travel) >= 1.0:
+		hold_sign = signf(exit_travel)
 	_clear_air()
 
 	if _ContactMath.is_solid(land_hit):
 		depth.surface_height = floor_h
 		depth.logical_x = pin_x
+		if absf(hold_sign) >= 1.0 and approach_x * hold_sign < 0.0:
+			approach_x = 0.0
 		_velocity.x = approach_x
 		_on_ramp = false
 		return true
@@ -803,14 +855,22 @@ func _try_land_from_air_contact(
 		var land_lip := float(land_hit.get("lip_x", depth.logical_x))
 		var land_base := float(land_hit.get("base_height", 0.0))
 		var side_sign := _coping_sign(land_side)
-		# Locked acid/spine (and pipe-exit): use peak aerial carry so a climb to a
-		# higher coping does not drop-in at the drained land_vy only.
-		if was_locked:
+		# Classic pipe-exit drop-in only — never after acid press / fly-out.
+		if was_locked and not no_reverse:
 			var carry := maxf(absf(approach_x), carry_peak)
 			approach_x = _AerialMath.lock_carry_velocity_x(carry, land_side)
 		var along := approach_x
-		if was_locked or land_vy < -1.0:
+		if was_acid:
+			along = _AerialMath.acid_land_along(approach_x, land_vy, land_side, acid_travel)
+		elif no_reverse:
+			# Acid miss / fly-out: soft or keep travel — never merge into-bowl.
+			if absf(hold_sign) >= 1.0 and along * hold_sign < 0.0:
+				along = 0.0
+		elif was_locked or land_vy < -1.0:
 			along = _AerialMath.merge_drop_in_along(approach_x, land_vy, land_side)
+		# Final invariant.
+		if absf(hold_sign) >= 1.0 and along * hold_sign < 0.0:
+			along = 0.0
 		_ramp_along = along
 		_velocity.x = along
 		_on_ramp = true
@@ -1100,6 +1160,10 @@ func _enter_air_from_pipe(hit: Dictionary, up_speed: float = 0.0) -> void:
 		"lock_x": true,
 		"anchor_x": coping,
 	}, coping_floor, true)
+	_exit_pipe_side = side
+	_exit_pipe_lip = lip
+	_exit_pipe_coping = coping
+	_exit_travel_x = _coping_sign(side)
 	# Fully convert remaining along-speed into vertical; horiz is gone at θ = π/2.
 	air_vel_y = maxf(up_speed, 0.0)
 	_ramp_along = 0.0
@@ -1128,6 +1192,13 @@ func _try_fly_out_from_pipe_lock() -> bool:
 	):
 		return false
 	_air_x_locked = false
+	_flew_out_this_aerial = true
+	# Seed outward horiz so fly-out is a real arc (pipe exit zeros vx at θ=π/2).
+	var out := _exit_travel_x
+	if absf(out) < 1.0:
+		out = _coping_sign(_air_side)
+		_exit_travel_x = out
+	_velocity.x = out * maxf(_air_carry_speed, transfer_release_min)
 	return true
 
 
@@ -1179,6 +1250,13 @@ func _clear_air() -> void:
 	_acid_drop_available = true
 	_last_nonzero_vert_vel = 0.0
 	_air_carry_speed = 0.0
+	_exit_pipe_side = -1
+	_exit_pipe_lip = NAN
+	_exit_pipe_coping = NAN
+	_exit_travel_x = 0.0
+	_acid_travel_x = 0.0
+	_flew_out_this_aerial = false
+	_acid_pressed_this_aerial = false
 	depth.height_offset = 0.0
 
 
@@ -1188,7 +1266,12 @@ func _transfer_vert_ok() -> bool:
 
 
 ## Same button: transfer while rising/apex, acid drop while falling.
+## After fly-out, always acid — fly-out apex (vert≈0 after rise) used to route to
+## transfer/spine and slam into-bowl velocity (felt like acid reverse).
 func _try_air_action() -> void:
+	if _flew_out_this_aerial:
+		_try_acid_drop()
+		return
 	if _AerialMath.choose_air_action(_vert_vel, _last_nonzero_vert_vel) == _AerialMath.ACTION_TRANSFER:
 		if _try_spine_transfer():
 			return
@@ -1200,18 +1283,38 @@ func _try_air_action() -> void:
 func _try_acid_drop() -> void:
 	if not _airborne or _level == null or not _acid_drop_available:
 		return
-	# Not while rising or at a rising apex — that belongs to transfer.
-	if _transfer_vert_ok():
+	# Rising/apex → transfer — except after fly-out (apex of the parabola must
+	# still acid; transfer_vert_ok would otherwise no-op the press).
+	if _transfer_vert_ok() and not _flew_out_this_aerial:
 		return
-	var hit := _find_facing_coping_target()
+	# ACTUAL → exit outward → MOMENTUM. Stick-MOMENTUM must not beat exit travel
+	# (that cast acid back into the bowl after a fly-out).
+	var travel_x := _AerialMath.resolve_acid_travel_x(
+		_actual_vel_x, _velocity.x, _exit_travel_x
+	)
+	if absf(travel_x) < 1.0:
+		return
+	# Mark press immediately — even a miss must not reverse into the exit wall.
+	_acid_pressed_this_aerial = true
+	_acid_travel_x = travel_x
+	var hit := _find_acid_coping_target(travel_x)
 	if hit.is_empty():
+		# No forward coping: unlock exit pin and keep travel velocity. Landing must
+		# not run classic into-bowl drop-in (that felt like "acid reversed me").
+		_acid_abort_without_reverse(travel_x)
 		return
 
 	var side: int = int(hit.get("side", QuarterPipe.PipeSide.RIGHT))
 	var lip: float = float(hit.get("lip_x", depth.logical_x))
 	var radius: float = float(hit.get("radius", 150.0))
-	# Explicit top coping — never lip_x (flat / bottom edge of the quarter-pipe).
 	var coping: float = float(hit.get("top_coping", _coping_x_for(side, lip, radius)))
+	# Opposite wall only + strictly ahead — same-side coping lands reverse into-pipe.
+	if side != _AerialMath.acid_drop_want_side(travel_x):
+		_acid_abort_without_reverse(travel_x)
+		return
+	if not _AerialMath.acid_coping_ahead(depth.logical_x, coping, travel_x):
+		_acid_abort_without_reverse(travel_x)
+		return
 
 	_air_x_locked = true
 	_acid_drop_lock = true
@@ -1223,14 +1326,112 @@ func _try_acid_drop() -> void:
 	air_over = _pipe_zone_name(side)
 	_air_over_layer = int(hit.get("layer", _layer_index_for_base(_air_base_height)))
 	_transfer_behind_sign = _coping_sign(side)
-	# Do not touch air_abs_height or air_vel_y — only horizontal lock + existing gravity.
-	# Stash into-pipe carry from peak aerial speed (not drained live vy).
+	# Clear into-bowl stash; never rewrite to into-pipe carry.
 	_note_air_carry()
-	_velocity.x = _AerialMath.lock_carry_velocity_x(_air_carry_speed, side)
+	_preserve_acid_travel_velocity()
 
 	_begin_transfer_x_lerp(coping, true, radius)
+	if not _AerialMath.acid_coping_ahead(_transfer_x_from, _transfer_x_to, travel_x) \
+			and absf(_transfer_x_to - _transfer_x_from) > 0.05:
+		_transfer_x_active = false
+		_acid_drop_lock = false
+		_acid_abort_without_reverse(travel_x)
+		return
 
 	_acid_drop_available = false
+
+
+## Acid pressed but no valid forward coping: leave exit X-lock with travel velocity
+## so the coming land cannot lock_carry / merge into the bowl.
+func _acid_abort_without_reverse(travel_x: float) -> void:
+	_acid_drop_lock = false
+	_acid_travel_x = travel_x
+	_acid_pressed_this_aerial = true
+	if not _spine_transfer_lock:
+		_air_x_locked = false
+	_preserve_acid_travel_velocity()
+	if absf(_velocity.x) < 1.0:
+		var sgn := signf(travel_x)
+		_velocity.x = sgn * maxf(_air_carry_speed, transfer_release_min)
+
+
+## Keep horiz momentum on the acid travel side — never reverse sign.
+## Opposing MOMENTUM (stick into bowl while pipe-locked) is zeroed, not flipped
+## into a fake outward carry.
+func _preserve_acid_travel_velocity() -> void:
+	if absf(_acid_travel_x) < 1.0:
+		return
+	var sgn := signf(_acid_travel_x)
+	if _velocity.x * sgn < 0.0:
+		_velocity.x = 0.0
+
+
+## True when hit is the pipe (or coping column) left this aerial.
+func _is_exit_pipe_hit(hit: Dictionary) -> bool:
+	if hit.is_empty() or _exit_pipe_side < 0:
+		return false
+	var side := int(hit.get("side", -1))
+	var lip := float(hit.get("lip_x", NAN))
+	var coping := float(hit.get("top_coping", NAN))
+	if is_nan(coping) and not is_nan(lip):
+		coping = _coping_x_for(side, lip, float(hit.get("radius", 150.0)))
+	return _is_exit_pipe_coping(coping, side, lip)
+
+
+func _is_exit_pipe_coping(coping: float, side: int, lip: float) -> bool:
+	if _exit_pipe_side < 0:
+		return false
+	if side == _exit_pipe_side and not is_nan(_exit_pipe_lip) and not is_nan(lip) \
+			and absf(lip - _exit_pipe_lip) < 0.05:
+		return true
+	# Same coping column (stacked layers / twin lips share top X).
+	if not is_nan(_exit_pipe_coping) and not is_nan(coping) \
+			and absf(coping - _exit_pipe_coping) < 1.0:
+		return true
+	return false
+
+
+## First opposite-facing top coping strictly ahead along acid travel.
+## Same-side copings are rejected (landing drop-in would reverse travel).
+func _find_acid_coping_target(travel_x: float) -> Dictionary:
+	if _level == null or _level.spec == null:
+		return {}
+	if absf(travel_x) < 1.0:
+		return {}
+	var want_side := _AerialMath.acid_drop_want_side(travel_x)
+	var cell: Vector2i = cell_under_feet()
+	var xz: Vector2 = cell_sample_xz()
+	var face := "r" if travel_x > 0.0 else "l"
+	var prefer_h := _feet_height()
+	var hits: Array = _FacingCastMath.cast_ahead(
+		_level.spec,
+		_level.pipes,
+		cell.x,
+		cell.y,
+		face,
+		facing_coping_cells,
+		xz.y,
+		prefer_h,
+	)
+	for hit in hits:
+		if not bool(hit.get("is_coping", false)):
+			continue
+		var side := int(hit.get("side", -1))
+		if side != want_side:
+			continue
+		if _is_exit_pipe_hit(hit):
+			continue
+		var coping := float(hit.get("top_coping", NAN))
+		if is_nan(coping):
+			coping = _coping_x_for(
+				side,
+				float(hit.get("lip_x", depth.logical_x)),
+				float(hit.get("radius", 150.0)),
+			)
+		if not _AerialMath.acid_coping_ahead(depth.logical_x, coping, travel_x):
+			continue
+		return hit
+	return {}
 
 
 ## Spine transfer: rising air, or rising on a pipe, when FacingCastMath finds a
@@ -1238,6 +1439,8 @@ func _try_acid_drop() -> void:
 ## Lock X to that coping; keep height / air_vel_y; land uses drop-in merge.
 ## Spends both charges.
 func _try_spine_transfer() -> bool:
+	if _flew_out_this_aerial:
+		return false
 	if _level == null or not _transfer_available:
 		return false
 	var from_ramp := (not _airborne) and _on_ramp and _ramp_rising_toward_coping()
@@ -1294,6 +1497,10 @@ func _launch_air_for_spine_from_ramp() -> void:
 	_air_lip_x = _ramp_lip_x
 	_air_radius = _sticky_pipe_radius()
 	_air_base_height = _ramp_base_height
+	_exit_pipe_side = _ramp_side
+	_exit_pipe_lip = _ramp_lip_x
+	_exit_pipe_coping = _coping_x_for(_ramp_side, _ramp_lip_x, _sticky_pipe_radius())
+	_exit_travel_x = _coping_sign(_ramp_side)
 	air_over = _pipe_zone_name(_ramp_side)
 	_air_over_layer = _layer_index_for_base(_ramp_base_height)
 	_transfer_behind_sign = _coping_sign(_ramp_side)
@@ -1385,18 +1592,24 @@ func next_facing_coping_debug() -> String:
 
 ## First top coping within facing_coping_cells ahead of facing_h (FacingCastMath).
 ## Skips the pipe currently locked / underfoot so acid/spine target another coping.
-func _find_facing_coping_target() -> Dictionary:
+func _find_facing_coping_target(facing_override: String = "") -> Dictionary:
 	if _level == null or _level.spec == null:
 		return {}
 	var cell: Vector2i = cell_under_feet()
 	var xz: Vector2 = cell_sample_xz()
-	var facing := facing_h
+	var facing := facing_override
+	if facing != "l" and facing != "r":
+		facing = facing_h
 	if facing != "l" and facing != "r":
 		facing = "r"
 	var prefer_h := _feet_height()
 	var exclude_side := -1
 	var exclude_lip := NAN
-	if _air_x_locked or air_over == "left_pipe" or air_over == "right_pipe" \
+	if _exit_pipe_side >= 0 and not is_nan(_exit_pipe_lip):
+		# Survive fly-out → flat/hole air_over so we never re-target the exit wall.
+		exclude_side = _exit_pipe_side
+		exclude_lip = _exit_pipe_lip
+	elif _air_x_locked or air_over == "left_pipe" or air_over == "right_pipe" \
 			or (air_over == "hole" and (_air_side == QuarterPipe.PipeSide.LEFT \
 				or _air_side == QuarterPipe.PipeSide.RIGHT)):
 		exclude_side = _air_side
@@ -1420,6 +1633,8 @@ func _find_facing_coping_target() -> Dictionary:
 
 
 func _try_transfer() -> void:
+	if _flew_out_this_aerial:
+		return
 	if not _airborne or _level == null or not _transfer_available:
 		return
 	# Rising, or apex after rise (vert≈0 with last non-zero up).
@@ -1724,9 +1939,25 @@ func _read_move_input() -> Vector2:
 
 func _integrate_velocity(input: Vector2, delta: float) -> void:
 	var before := _velocity
-	# Acid/spine: X is a stashed into-pipe carry for landing — don't brake it away.
+	# Acid/spine: don't brake X away. Acid also never flips travel sign.
 	if _acid_drop_lock or _spine_transfer_lock:
 		_velocity.y = input.y * max_speed_z
+		if _acid_drop_lock:
+			_preserve_acid_travel_velocity()
+		_clamp_momentum_to_max_speed()
+		if delta > 0.0001:
+			_debug_accel = (_velocity - before) / delta
+		else:
+			_debug_accel = Vector2.ZERO
+		return
+
+	# Pipe-exit X-lock: stick still reads for fly-out INPUT, but must not stash
+	# into-bowl MOMENTUM (that used to poison acid travel before exit won).
+	if _air_x_locked and _airborne:
+		_velocity.y = input.y * max_speed_z
+		var out := _coping_sign(_air_side)
+		if _velocity.x * out < 0.0:
+			_velocity.x = 0.0
 		_clamp_momentum_to_max_speed()
 		if delta > 0.0001:
 			_debug_accel = (_velocity - before) / delta

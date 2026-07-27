@@ -106,6 +106,8 @@ Applied while unlocked air, or while acid-drop X-locked. Default `-19.0` m/s², 
 
 One **transfer** and one **acid drop** per aerial. Both refill on any surface contact (`_clear_air`). Spine transfer spends **both**.
 
+**Hold buffer:** keep `transfer` held while entering a ramp; once airborne, each physics tick retries **spine transfer only** while the button stays pressed and a facing coping is valid. Free-air transfer and acid drop still require a tap (`just_pressed`).
+
 Routing uses measured vertical rate (`_vert_vel`) and the last non-zero vertical rate (so a rising **apex** still counts as transfer, not acid drop):
 
 | Vertical condition | Action |
@@ -138,10 +140,13 @@ If no coping is in range → normal free-air transfer below.
 ### Acid drop
 
 - Falling only (same button as transfer).
-- Target is the first **top coping** within `facing_coping_cells` ahead of `facing_h` (same FacingCastMath cast as spine; excludes current pipe).
-- Animate/lerp X onto that coping; keep `air_abs_height` / `air_vel_y`; gravity continues. Land only when falling onto sampled surface (no upward height snap).
-- X settle is a continuous function of live height above coping: `acid_drop_x_duration + acid_drop_x_duration_per_height × h` (defaults 0.18 + 0.002×h, soft-capped at `acid_drop_x_duration_max` 0.9). Progress advances each physics tick by `δt / duration(h)` so rising slows the settle and falling speeds it up. Smoothstep ease.
-- On land: same drop-in as pipe-exit / spine — falling `air_vel_y` converts into `_ramp_along`, keeping approach speed when already faster into the pipe.
+- Travel = measured **ACTUAL** X if nonzero, else pipe-exit outward travel, else **MOMENTUM** X. Stick-MOMENTUM never beats exit travel (that used to cast back into the exit wall after fly-out). No travel signal → no acid. Facing is ignored.
+- Target is the first **opposite-facing** top coping within `facing_coping_cells` strictly ahead along that travel (right → left pipe; left → right pipe). Never the exit wall / coping column, never a same-side coping (same-side land drop-in reverses travel).
+- If acid is pressed with no valid forward coping: unlock the exit X-pin, keep/seed travel velocity, and mark the aerial so landing **cannot** run classic into-bowl `lock_carry` / merge (that was the “acid reversed me” snap when the cast missed).
+- Animate/lerp X onto that coping; settle is hard-clamped so X never moves opposite travel. Keep `air_abs_height` / `air_vel_y`; gravity continues. Opposing MOMENTUM is cleared (not flipped into-pipe). Land only when falling onto sampled surface (no upward height snap). While acid is active, **refuse to land on the exit pipe** (and any non-target pipe) so mid-lerp underfoot contact cannot slam you back into the bowl.
+- X settle duration from live height above coping: `acid_drop_x_duration + acid_drop_x_duration_per_height × h` (defaults 0.18 + 0.002×h, soft-capped at `acid_drop_x_duration_max` 0.9). Smoothstep ease.
+- On land: along-arc keeps acid travel sign. Falling vert → along only when that drop-in continues travel (opposite wall). Never emit along opposite travel.
+- Fly-out seeds outward horizontal speed and marks the aerial; falling back onto the exit wall soft-lands (no into-bowl yank). After fly-out, the transfer button always routes to **acid** (never transfer/spine) — fly-out apex used to count as transfer and slam into-bowl carry.
 
 ## Level units (.ssk cells)
 

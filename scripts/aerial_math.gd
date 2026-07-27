@@ -46,9 +46,71 @@ static func resolve_horiz_vel(
 	return hx
 
 
+## Acid travel direction for targeting / land.
+## Order: live ACTUAL → pipe-exit outward → MOMENTUM.
+## Never prefer stick-MOMENTUM over exit travel: while pipe X-locked, stick still
+## integrates into `_velocity` and often points into the bowl — that used to make
+## acid cast backward into the exit wall (felt like a reverse snap).
+static func resolve_acid_travel_x(
+	actual_vx: float,
+	momentum_vx: float,
+	exit_travel_x: float,
+	dead_eps: float = 1.0,
+) -> float:
+	if absf(actual_vx) >= dead_eps:
+		return actual_vx
+	if absf(exit_travel_x) >= dead_eps:
+		return exit_travel_x
+	if absf(momentum_vx) >= dead_eps:
+		return momentum_vx
+	return 0.0
+
+
 ## Opposite wall for acid drop: vel right → LEFT pipe; vel left → RIGHT pipe.
 static func acid_drop_want_side(horiz_vel: float) -> int:
 	return 0 if horiz_vel > 0.0 else 1  # QuarterPipe.PipeSide.LEFT / RIGHT
+
+
+## True when coping lies strictly ahead of `from_x` along travel.
+static func acid_coping_ahead(from_x: float, coping_x: float, travel_x: float) -> bool:
+	if absf(travel_x) < 1.0:
+		return false
+	return (coping_x - from_x) * travel_x > 0.0
+
+
+## Clamp a proposed X step so acid settle never moves opposite travel.
+static func acid_clamp_x_step(
+	from_x: float, next_x: float, to_x: float, travel_x: float
+) -> float:
+	if absf(travel_x) < 1.0:
+		return next_x
+	if travel_x > 0.0:
+		# Only rightward, and never past the target.
+		return clampf(next_x, from_x, maxf(from_x, to_x))
+	return clampf(next_x, minf(from_x, to_x), from_x)
+
+
+## Acid land along-arc: keep travel sign. Absorb fall into-pipe only when that
+## drop-in continues travel (opposite wall). Never emit along opposite travel.
+static func acid_land_along(
+	approach_x: float, land_vy: float, land_side: int, travel_x: float
+) -> float:
+	if absf(travel_x) < 1.0:
+		return approach_x
+	var travel_sgn := signf(travel_x)
+	var along := approach_x
+	if land_vy < -1.0:
+		var from_fall := drop_in_along_from_land_vy(land_vy, land_side)
+		# Opposite-wall drop-in matches travel; same-wall drop-in is a reverse.
+		if from_fall * travel_sgn > 0.0:
+			along = merge_drop_in_along(approach_x, land_vy, land_side)
+	if along * travel_sgn < 0.0:
+		along = absf(along) * travel_sgn
+	elif absf(along) < 1.0 and land_vy < -1.0:
+		var fall2 := drop_in_along_from_land_vy(land_vy, land_side)
+		if fall2 * travel_sgn > 0.0:
+			along = fall2
+	return along
 
 
 ## Landing floor while airborne.

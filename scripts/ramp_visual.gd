@@ -8,7 +8,7 @@ extends Node2D
 ## Extra Z past the lean band on near and far sides, as a fraction of reference_depth.
 @export_range(0.0, 2.0, 0.05) var draw_band_pad: float = 1.15
 ## Arc samples along the quarter-pipe profile (fill + ribs share this).
-@export_range(4, 16, 1) var arc_steps: int = 8
+@export_range(4, 32, 1) var arc_steps: int = 16
 ## Checkerboard flat ground using ASCII floor cells. Tunable in TUNING.
 @export var show_floor_checker: bool = true
 ## ASCII cells per checker tile (1 = finest / slowest; 4–8 is usually enough).

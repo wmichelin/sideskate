@@ -6,6 +6,8 @@ func run() -> bool:
 	var ok := true
 	ok = _action_routing() and ok
 	ok = _horiz_resolve() and ok
+	ok = _acid_travel_resolve() and ok
+	ok = _acid_land_along() and ok
 	ok = _landing_height() and ok
 	ok = _drop_in_along() and ok
 	ok = _lock_x_duration() and ok
@@ -43,6 +45,71 @@ func _horiz_resolve() -> bool:
 		return false
 	if absf(AerialMath.resolve_horiz_vel(0.0, 0.5)) > 0.01:
 		push_error("dead zone → 0")
+		return false
+	return true
+
+
+func _acid_travel_resolve() -> bool:
+	# Live ACTUAL wins even over exit / momentum.
+	if absf(AerialMath.resolve_acid_travel_x(40.0, -200.0, 1.0) - 40.0) > 0.01:
+		push_error("acid travel prefer actual")
+		return false
+	# Stick into-bowl MOMENTUM must NOT beat pipe-exit outward.
+	var after_exit := AerialMath.resolve_acid_travel_x(0.0, -180.0, 1.0)
+	if absf(after_exit - 1.0) > 0.01:
+		push_error("acid travel exit over into-bowl momentum, got %s" % after_exit)
+		return false
+	var left_exit := AerialMath.resolve_acid_travel_x(0.0, 90.0, -1.0)
+	if absf(left_exit - (-1.0)) > 0.01:
+		push_error("acid travel left exit over +momentum, got %s" % left_exit)
+		return false
+	# No exit → momentum.
+	if absf(AerialMath.resolve_acid_travel_x(0.0, -50.0, 0.0) - (-50.0)) > 0.01:
+		push_error("acid travel momentum when no exit")
+		return false
+	if absf(AerialMath.resolve_acid_travel_x(0.0, 0.0, 0.0)) > 0.01:
+		push_error("acid travel dead → 0")
+		return false
+	# Opposite wall + ahead helpers.
+	if AerialMath.acid_drop_want_side(80.0) != 0:
+		push_error("travel right → want LEFT pipe")
+		return false
+	if AerialMath.acid_drop_want_side(-80.0) != 1:
+		push_error("travel left → want RIGHT pipe")
+		return false
+	if not AerialMath.acid_coping_ahead(100.0, 200.0, 1.0):
+		push_error("coping ahead right")
+		return false
+	if AerialMath.acid_coping_ahead(100.0, 50.0, 1.0):
+		push_error("coping behind right must fail")
+		return false
+	# X step clamp: never left while travel +.
+	var step := AerialMath.acid_clamp_x_step(100.0, 80.0, 200.0, 1.0)
+	if absf(step - 100.0) > 0.01:
+		push_error("acid clamp must block reverse step, got %s" % step)
+		return false
+	var fwd := AerialMath.acid_clamp_x_step(100.0, 150.0, 200.0, 1.0)
+	if absf(fwd - 150.0) > 0.01:
+		push_error("acid clamp allow forward, got %s" % fwd)
+		return false
+	return true
+
+
+func _acid_land_along() -> bool:
+	# Travel right onto LEFT pipe: fall drop-in is + along — keep / merge.
+	var good := AerialMath.acid_land_along(20.0, -80.0, 0, 1.0)
+	if good < 1.0:
+		push_error("acid land opposite wall must keep +travel, got %s" % good)
+		return false
+	# Travel right onto RIGHT pipe (wrong wall): fall is − along — must not reverse.
+	var no_rev := AerialMath.acid_land_along(50.0, -80.0, 1, 1.0)
+	if no_rev * 1.0 < 0.0:
+		push_error("acid land must never reverse travel, got %s" % no_rev)
+		return false
+	# Into-bowl approach while travel + → flip to travel sign.
+	var flipped := AerialMath.acid_land_along(-120.0, -10.0, 1, 1.0)
+	if flipped < 0.0:
+		push_error("acid land must flip opposing approach, got %s" % flipped)
 		return false
 	return true
 
