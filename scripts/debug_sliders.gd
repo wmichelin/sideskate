@@ -36,7 +36,7 @@ extends CanvasLayer
 @export var ref_depth_min: float = 20.0
 @export var ref_depth_max: float = 500.0
 @export var draw_band_pad_min: float = 0.0
-@export var draw_band_pad_max: float = 2.0
+@export var draw_band_pad_max: float = 4.0
 @export var arc_steps_min: float = 4.0
 @export var arc_steps_max: float = 32.0
 @export var cast_cells_min: float = 1.0
@@ -153,7 +153,7 @@ func _ready() -> void:
 		0.05,
 		_visual,
 		"draw_band_pad",
-		1.15,
+		2.0,
 		_on_draw_band_pad_changed,
 		_refresh_draw_band_pad_label
 	)

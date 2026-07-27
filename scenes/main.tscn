@@ -543,16 +543,16 @@ text = "draw pad"
 [node name="Slider" type="HSlider" parent="DebugSliders/Panel/VBox/Body/DrawBandPadRow" unique_id=650598628]
 layout_mode = 2
 size_flags_horizontal = 3
-max_value = 2.0
+max_value = 4.0
 step = 0.05
-value = 1.15
+value = 2.0
 
 [node name="Value" type="Label" parent="DebugSliders/Panel/VBox/Body/DrawBandPadRow" unique_id=260002812]
 custom_minimum_size = Vector2(72, 0)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.9, 0.93, 0.98, 1)
 theme_override_font_sizes/font_size = 12
-text = "1.15"
+text = "2.00"
 horizontal_alignment = 2
 
 [node name="ArcStepsRow" type="HBoxContainer" parent="DebugSliders/Panel/VBox/Body" unique_id=967845752]

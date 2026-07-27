@@ -1,12 +1,16 @@
 extends Node2D
 ## Surface-only level draw: floors, pipe ribbons, elevated deck tops.
-## Draw window follows skater Z (truck only). X lean uses world-fixed origin_z.
+## Far → Player → Near Z-split: nearer park geometry composites above the skater
+## so the player is occluded when behind a ramp. Draw window follows skater Z
+## (truck only). X lean uses world-fixed origin_z.
+
+const _PassScript := preload("res://scripts/ramp_visual_pass.gd")
 
 @export var grid_steps: int = 5
 ## How many iso-u depth strokes to split the pipe face into (not cross-section arcs).
 @export var arc_ribs: int = 4
 ## Extra Z past the lean band on near and far sides, as a fraction of reference_depth.
-@export_range(0.0, 2.0, 0.05) var draw_band_pad: float = 1.15
+@export_range(0.0, 4.0, 0.05) var draw_band_pad: float = 2.0
 ## Arc samples along the quarter-pipe profile (fill + ribs share this).
 @export_range(4, 32, 1) var arc_steps: int = 16
 ## Faint white depth bands across the plaza. Off by default (debug clutter).
@@ -24,47 +28,117 @@ extends Node2D
 ## Cast cell that owns a pipe top coping (visual distinct from green pads).
 @export var facing_cast_coping_fill: Color = Color(1.0, 0.55, 0.15, 0.4)
 @export var facing_cast_coping_stroke: Color = Color(1.0, 0.7, 0.2, 1.0)
+## Relative z under RampLevel. Player sits between (typically 10–100).
+@export var far_pass_z_index: int = -50
+@export var near_pass_z_index: int = 200
 
 var _level: RampLevel
 var _player: Node2D
 ## Cached far→near pipe order; invalidated on refresh / pipe rebuild.
 var _pipes_draw_order: Array = []
+var _far: Node2D
+var _near: Node2D
+## CanvasItem currently receiving draw_* during paint_pass.
+var _paint: CanvasItem
 
 
 func _ready() -> void:
-	z_index = -50
+	z_index = 0
 	_level = get_parent() as RampLevel
 	_player = get_node_or_null(player_path) as Node2D
 	if not DebugTools.is_available():
 		debug_cell_highlight = false
 		debug_facing_cast = false
-	queue_redraw()
+	_ensure_passes()
+	refresh()
 
 
 func _process(_delta: float) -> void:
-	if DebugTools.is_available() and (debug_cell_highlight or debug_facing_cast):
-		queue_redraw()
+	_ensure_passes()
+	# Split moves with the skater — redraw both passes every frame.
+	if _far:
+		_far.queue_redraw()
+	if _near:
+		_near.queue_redraw()
 
 
 func refresh() -> void:
 	_pipes_draw_order.clear()
-	queue_redraw()
+	_ensure_passes()
+	if _far:
+		_far.queue_redraw()
+	if _near:
+		_near.queue_redraw()
 
 
-func _draw() -> void:
-	if _level == null:
+func _ensure_passes() -> void:
+	if _far != null and is_instance_valid(_far) and _near != null and is_instance_valid(_near):
+		_far.z_index = far_pass_z_index
+		_near.z_index = near_pass_z_index
 		return
-	var band := _view_z_band()
-	_draw_backdrop_pad(band)
-	_draw_ground_floors(band)
-	for pipe in _pipes_far_to_near():
-		_draw_pipe(pipe, band)
-	_draw_elevated_floors(band)
-	_draw_decks(band)
-	if show_depth_grid:
-		_draw_depth_grid(band)
-	_draw_player_cell_highlight()
-	_draw_facing_cast_highlight()
+	if _far == null or not is_instance_valid(_far):
+		_far = _make_pass("Far", false)
+	if _near == null or not is_instance_valid(_near):
+		_near = _make_pass("Near", true)
+
+
+func _make_pass(node_name: String, is_near: bool) -> Node2D:
+	var n := Node2D.new()
+	n.name = node_name
+	n.set_script(_PassScript)
+	n.set("pass_kind", 1 if is_near else 0)
+	n.set("host", self)
+	n.z_as_relative = true
+	n.z_index = near_pass_z_index if is_near else far_pass_z_index
+	add_child(n)
+	# Near after Far in tree so equal-z ties still prefer Near.
+	if is_near:
+		move_child(n, get_child_count() - 1)
+	return n
+
+
+## Called from RampVisualPass._draw. `near_pass`: Z nearer than the skater.
+func paint_pass(ci: CanvasItem, near_pass: bool) -> void:
+	if _level == null or ci == null:
+		return
+	_paint = ci
+	var view := _view_z_band()
+	var split_z := _player_split_z()
+	# Backdrop always on Far so an empty far band (skater at back) still clears.
+	if not near_pass:
+		_draw_backdrop_pad(view)
+	var band := _pass_band(view, near_pass, split_z)
+	if band.y > band.x + 0.001:
+		_draw_ground_floors(band)
+		for pipe in _pipes_far_to_near():
+			_draw_pipe(pipe, band)
+		_draw_elevated_floors(band)
+		_draw_decks(band)
+	if near_pass:
+		if show_depth_grid:
+			_draw_depth_grid(view)
+		_draw_player_cell_highlight()
+		_draw_facing_cast_highlight()
+	_paint = null
+
+
+## Larger logical Z = farther from camera. Split at skater Z.
+func _player_split_z() -> float:
+	if _player == null:
+		_player = get_node_or_null(player_path) as Node2D
+	if _player != null and _player.has_node("PseudoDepthBody"):
+		var body: PseudoDepthBody = _player.get_node("PseudoDepthBody")
+		return body.logical_z
+	if _level != null:
+		return _level.view_origin_z
+	return 0.0
+
+
+## Near pass: Z ∈ [view.x, split). Far pass: Z ∈ [split, view.y].
+func _pass_band(view: Vector2, near_pass: bool, split_z: float) -> Vector2:
+	if near_pass:
+		return Vector2(view.x, minf(view.y, split_z))
+	return Vector2(maxf(view.x, split_z), view.y)
 
 
 ## Skater-centered draw window (culling only — does not move X lean).
@@ -116,7 +190,7 @@ func _draw_backdrop_pad(band: Vector2) -> void:
 	var near_r := _level.project(_level.x_max() + pad, band.x, 0.0)
 	var far_l := _level.project(_level.x_min() - pad * 0.5, band.y, 0.0)
 	var far_r := _level.project(_level.x_max() + pad * 0.5, band.y, 0.0)
-	draw_colored_polygon(
+	_paint.draw_colored_polygon(
 		PackedVector2Array([
 			Vector2(near_l.screen_x, near_l.ground_y + 50.0),
 			Vector2(near_r.screen_x, near_r.ground_y + 50.0),
@@ -151,7 +225,6 @@ func _draw_ground_floors(band: Vector2) -> void:
 	if _level.spec == null:
 		return
 	var spec := _level.spec
-	# Per-cell blue tiles (same as elevated stories).
 	if not spec.story_floor_masks.is_empty() and spec.grid_w > 0:
 		for story in spec.story_floor_masks:
 			var h := float(story.get("height", 0.0))
@@ -173,7 +246,7 @@ func _draw_ground_floors(band: Vector2) -> void:
 			continue
 		var pts := _project_poly(clipped, 0.0)
 		if pts.size() >= 3:
-			draw_colored_polygon(pts, Color(0.32, 0.38, 0.42, 0.88))
+			_paint.draw_colored_polygon(pts, Color(0.32, 0.38, 0.42, 0.88))
 
 
 ## Elevated stories: per-cell quads (outline polys break on holes / rings).
@@ -228,7 +301,7 @@ func _draw_story_floor_cells(
 			var x0 := float(c) * cw
 			var x1 := float(c1) * cw
 			var cell_fill := lava_fill if kind == 2 else fill
-			draw_colored_polygon(
+			_paint.draw_colored_polygon(
 				PackedVector2Array([
 					_surf_point(x0, z0, height),
 					_surf_point(x1, z0, height),
@@ -249,9 +322,9 @@ func _draw_decks(band: Vector2) -> void:
 			continue
 		var pts := _project_deck_poly(deck, clipped)
 		if pts.size() >= 3:
-			draw_colored_polygon(pts, Color(0.55, 0.48, 0.32, 0.92))
+			_paint.draw_colored_polygon(pts, Color(0.55, 0.48, 0.32, 0.92))
 			for i in range(pts.size()):
-				draw_line(pts[i], pts[(i + 1) % pts.size()], Color(0.95, 0.55, 0.35, 0.85), 2.5)
+				_paint.draw_line(pts[i], pts[(i + 1) % pts.size()], Color(0.95, 0.55, 0.35, 0.85), 2.5)
 
 
 func _draw_depth_grid(band: Vector2) -> void:
@@ -262,7 +335,7 @@ func _draw_depth_grid(band: Vector2) -> void:
 		var z := lerpf(band.x, band.y, t)
 		var left := _level.project(_level.x_min(), z, 0.0)
 		var right := _level.project(_level.x_max(), z, 0.0)
-		draw_line(
+		_paint.draw_line(
 			Vector2(left.screen_x, left.ground_y),
 			Vector2(right.screen_x, right.ground_y),
 			Color(1, 1, 1, 0.10),
@@ -357,9 +430,9 @@ func _draw_cast_hit(hit: Dictionary) -> void:
 		_surf_point(x1, z1, h),
 		_surf_point(x0, z1, h),
 	])
-	draw_colored_polygon(corners, fill)
+	_paint.draw_colored_polygon(corners, fill)
 	for i in range(corners.size()):
-		draw_line(
+		_paint.draw_line(
 			corners[i],
 			corners[(i + 1) % corners.size()],
 			stroke,
@@ -418,9 +491,9 @@ func _draw_logical_cell(
 	for i in range(4):
 		var p: Vector2 = corners_xz[i]
 		corners.append(_surf_point(p.x, p.y, heights[i]))
-	draw_colored_polygon(corners, fill)
+	_paint.draw_colored_polygon(corners, fill)
 	for i in range(corners.size()):
-		draw_line(
+		_paint.draw_line(
 			corners[i],
 			corners[(i + 1) % corners.size()],
 			stroke,
@@ -451,7 +524,7 @@ func _surf_point(logical_x: float, logical_z: float, height: float) -> Vector2:
 	return Vector2(p.screen_x, p.ground_y - p.surface_screen_h)
 
 
-## One near→far ribbon (lean is linear/unclamped, so chords are exact — no Z slices).
+## One near→far ribbon clipped to `band` (pass Z window).
 func _draw_pipe(pipe: QuarterPipe, band: Vector2) -> void:
 	var z0 := maxf(pipe.z_min, band.x)
 	var z1 := minf(pipe.z_max, band.y)
@@ -465,7 +538,7 @@ func _draw_pipe(pipe: QuarterPipe, band: Vector2) -> void:
 	var fill_col := Color(0.42, 0.38, 0.48, 0.92) if is_left else Color(0.38, 0.44, 0.52, 0.92)
 
 	for i in range(steps):
-		draw_colored_polygon(
+		_paint.draw_colored_polygon(
 			PackedVector2Array([
 				near_arc[i],
 				near_arc[i + 1],
@@ -480,10 +553,10 @@ func _draw_pipe(pipe: QuarterPipe, band: Vector2) -> void:
 		var u := float(r) / float(ribs)
 		var a: Vector2 = _level.pipe_screen_point_for(pipe, z0, u)
 		var b: Vector2 = _level.pipe_screen_point_for(pipe, z1, u)
-		draw_line(a, b, Color(1, 1, 1, 0.14), 1.25)
+		_paint.draw_line(a, b, Color(1, 1, 1, 0.14), 1.25)
 
 	_draw_pipe_top_stroke(pipe, z0, z1)
-	draw_line(
+	_paint.draw_line(
 		_level.pipe_screen_point_for(pipe, z0, 0.0),
 		_level.pipe_screen_point_for(pipe, z1, 0.0),
 		Color(0.95, 0.85, 0.35, 0.85),
@@ -495,7 +568,7 @@ func _draw_pipe_top_stroke(pipe: QuarterPipe, z0: float, z1: float) -> void:
 	var covered := _deck_z_ranges_covering_pipe(pipe)
 	var segments := _z_segments_minus_covered(z0, z1, covered)
 	for seg in segments:
-		draw_line(
+		_paint.draw_line(
 			_level.pipe_screen_point_for(pipe, float(seg.x), 1.0),
 			_level.pipe_screen_point_for(pipe, float(seg.y), 1.0),
 			Color(0.95, 0.55, 0.35, 0.9),

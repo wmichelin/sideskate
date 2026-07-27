@@ -10,7 +10,7 @@ Godot 4 **pseudo-3D** skate prototype. Simulation lives in **logical** space:
 - **Z** — near/far depth (stick “up” = farther). Screen Y uses a fixed px/Z rate (not “fit whole level in frame”), so deep levels scroll off-screen; the camera pans with the player in X and Y.
 - **Height** — feet elevation above flat (pipe arc, deck, air)
 
-Screen placement is a **projection** of `(x, z, height)`. Far X converges toward the skater over a fixed `reference_width` (`perspective_inset` default 38). X lean vs depth uses a **world-fixed** Z band (`z_min` → `z_min + reference_depth`) and is **not** clamped — lip lines keep one continuous slope. Moving the skater in Z only trucks the camera / draw window up-down; it does **not** re-center perspective. Screen Y uses a fixed px/Z sized so one ASCII Z cell matches one ASCII X cell at the near plane (`reference_depth = (near_y − far_y) × cell_z / cell_x`); deep levels scroll off-screen instead of compressing. World size is `columns × cell_x` / `rows × cell_z` (defaults both **47**). Visuals are surface-only (floors, pipe ribbons, deck tops).
+Screen placement is a **projection** of `(x, z, height)`. Far X converges toward the skater over a fixed `reference_width` (`perspective_inset` default 38). X lean vs depth uses a **world-fixed** Z band (`z_min` → `z_min + reference_depth`) and is **not** clamped — lip lines keep one continuous slope. Moving the skater in Z only trucks the camera / draw window up-down; it does **not** re-center perspective. Screen Y uses a fixed px/Z sized so one ASCII Z cell matches one ASCII X cell at the near plane (`reference_depth = (near_y − far_y) × cell_z / cell_x`); deep levels scroll off-screen instead of compressing. World size is `columns × cell_x` / `rows × cell_z` (defaults both **47**). Visuals are surface-only (floors, pipe ribbons, deck tops). Park draw uses a **Far → Player → Near** Z-split at the skater’s `logical_z` so nearer ribbons/floors composite above the player (occlusion when behind a ramp).
 
 ## Simulation law
 
@@ -177,7 +177,8 @@ Debug tools are gated by autoload `DebugTools`: available when `OS.is_debug_buil
 |--------|------|
 | [`scripts/player.gd`](../scripts/player.gd) | Motion, air, transfer, acid drop, ride-off; `motion_screen` / `motion_speed` |
 | [`scripts/ramp_level.gd`](../scripts/ramp_level.gd) | Load `.ssk`, sample surfaces, project to screen |
-| [`scripts/ramp_visual.gd`](../scripts/ramp_visual.gd) | Surface draw + cell / facing-cast highlight |
+| [`scripts/ramp_visual.gd`](../scripts/ramp_visual.gd) | Surface draw (Far/Near Z-split) + cell / facing-cast highlight |
+| [`scripts/ramp_visual_pass.gd`](../scripts/ramp_visual_pass.gd) | CanvasItem half of the Far/Near painter split |
 | [`scripts/level_loader.gd`](../scripts/level_loader.gd) / [`level_spec.gd`](../scripts/level_spec.gd) | Parse IDL → floors, decks, pipes, grid metrics |
 | [`scripts/perspective_math.gd`](../scripts/perspective_math.gd) | Pure pseudo-depth projection helpers |
 | [`scripts/pipe_math.gd`](../scripts/pipe_math.gd) | Pure coping / opposite-pipe helpers |
