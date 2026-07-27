@@ -75,4 +75,6 @@ func query_surface(logical_x: float, logical_z: float) -> Dictionary:
 		"base_height": base_height,
 		"radius": radius,
 		"layer": layer,
+		"z_min": z_min,
+		"z_max": z_max,
 	}

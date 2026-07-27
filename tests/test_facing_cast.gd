@@ -24,10 +24,17 @@ func run() -> bool:
 	var l1_left: QuarterPipe = null
 	var l0_right: QuarterPipe = null
 	for p in pipes:
-		if int(p.side) == 0 and int(p.layer) == 1:
+		if int(p.side) == 0 and int(p.layer) == 1 and l1_left == null:
 			l1_left = p
-		if int(p.side) == 1 and int(p.layer) == 0:
-			l0_right = p
+	if l1_left != null:
+		var l1_coping := PipeMath.coping_x(0, l1_left.lip_x, l1_left.radius)
+		for p in pipes:
+			if int(p.side) != 1 or int(p.layer) != 0:
+				continue
+			var l0_coping := PipeMath.coping_x(1, p.lip_x, p.radius)
+			if absf(l0_coping - l1_coping) < 1.0:
+				l0_right = p
+				break
 	if l1_left == null or l0_right == null:
 		push_error("need L1 left + L0 right")
 		_free_pipes(pipes)

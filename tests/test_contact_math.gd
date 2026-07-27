@@ -327,10 +327,17 @@ func _force_sticky_shared_coping() -> bool:
 		qp.z_min = float(pd.z_min)
 		qp.z_max = float(pd.z_max)
 		level.pipes.append(qp)
-		if qp.side == 0 and qp.layer == 1:
+		if qp.side == 0 and qp.layer == 1 and l1_left == null:
 			l1_left = qp
-		if qp.side == 1 and qp.layer == 0:
-			l0_right = qp
+	if l1_left != null:
+		var l1_coping := PipeMath.coping_x(0, l1_left.lip_x, l1_left.radius)
+		for qp in level.pipes:
+			if qp.side != 1 or qp.layer != 0:
+				continue
+			var l0_coping := PipeMath.coping_x(1, qp.lip_x, qp.radius)
+			if absf(l0_coping - l1_coping) < 1.0:
+				l0_right = qp
+				break
 	if l1_left == null or l0_right == null:
 		push_error("layered_demo missing L1 left / L0 right")
 		_free(level)

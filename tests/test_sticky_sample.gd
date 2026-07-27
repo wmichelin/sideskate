@@ -9,6 +9,8 @@ func run() -> bool:
 		return false
 	if not _sticky_layered_base():
 		return false
+	if not _sticky_no_steal_shared_coping():
+		return false
 	return _solid_floor_blocks_pipe()
 
 
@@ -146,6 +148,47 @@ func _sticky_layered_base() -> bool:
 		_free_level(level)
 		return false
 
+	_free_level(level)
+	return true
+
+
+## layered_demo shared coping: sticky L1 past coping must not fall through to L0.
+func _sticky_no_steal_shared_coping() -> bool:
+	var text := FileAccess.get_file_as_string("res://tests/levels/layered_demo.ssk")
+	var spec := LevelLoader.parse_text(text, "layered_demo")
+	if spec == null:
+		push_error("layered_demo parse: %s" % LevelLoader.last_error)
+		return false
+	var level := RampLevel.new()
+	level.spec = spec
+	level.pipes.clear()
+	var l1: QuarterPipe = null
+	for pd in spec.pipes:
+		var qp := QuarterPipe.new()
+		qp.side = int(pd.side)
+		qp.lip_x = float(pd.lip_x)
+		qp.radius = float(pd.radius)
+		qp.base_height = float(pd.get("base_height", 0.0))
+		qp.layer = int(pd.get("layer", 0))
+		qp.z_min = float(pd.z_min)
+		qp.z_max = float(pd.z_max)
+		level.pipes.append(qp)
+		if int(qp.side) == 0 and int(qp.layer) == 1 and l1 == null:
+			l1 = qp
+	if l1 == null:
+		push_error("no L1 left")
+		_free_level(level)
+		return false
+	var cope := PipeMath.coping_x(0, l1.lip_x, l1.radius)
+	var z := (l1.z_min + l1.z_max) * 0.5
+	var past := cope - 2.0
+	var sticky: Dictionary = level.sample(
+		past, z, int(l1.side), l1.lip_x, l1.base_height + l1.radius, l1.base_height
+	)
+	if sticky.get("active", false) or str(sticky.get("zone", "")) in ["left_pipe", "right_pipe"]:
+		push_error("sticky past shared coping must not steal L0: %s" % sticky)
+		_free_level(level)
+		return false
 	_free_level(level)
 	return true
 

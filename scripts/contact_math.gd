@@ -213,12 +213,21 @@ static func should_coping_launch(underfoot_hit: Dictionary, cross_pipe: Dictiona
 		return false
 	if absf(float(underfoot_hit.get("lip_x", 0.0)) - float(cross_pipe.get("lip_x", 1.0))) > 0.05:
 		return false
-	var ub := float(underfoot_hit.get("base_height", 0.0))
-	var cb := float(cross_pipe.get("base_height", 0.0))
-	return absf(ub - cb) <= 0.5
+	if absf(float(underfoot_hit.get("base_height", 0.0)) \
+			- float(cross_pipe.get("base_height", 0.0))) > 0.5:
+		return false
+	# Runtime cross hits carry Z bounds. Preserve compatibility with small
+	# synthetic hits used by isolated motion tests.
+	if underfoot_hit.has("z_min") and cross_pipe.has("z_min") \
+			and absf(float(underfoot_hit.z_min) - float(cross_pipe.z_min)) > 0.05:
+		return false
+	if underfoot_hit.has("z_max") and cross_pipe.has("z_max") \
+			and absf(float(underfoot_hit.z_max) - float(cross_pipe.z_max)) > 0.05:
+		return false
+	return true
 
 
-## Same pipe identity (side + lip + base_height).
+## Same pipe identity (side + lip + base_height + optional Z span).
 static func same_pipe(a: Dictionary, b: Dictionary) -> bool:
 	if not is_pipe(a) or not is_pipe(b):
 		return false
@@ -226,7 +235,37 @@ static func same_pipe(a: Dictionary, b: Dictionary) -> bool:
 		return false
 	if absf(float(a.get("lip_x", 0.0)) - float(b.get("lip_x", 1.0))) > 0.05:
 		return false
-	return absf(float(a.get("base_height", 0.0)) - float(b.get("base_height", 0.0))) <= 0.5
+	if absf(float(a.get("base_height", 0.0)) - float(b.get("base_height", 0.0))) > 0.5:
+		return false
+	# Synthetic test hits may omit Z. Runtime pipe samples always include it.
+	if a.has("z_min") and b.has("z_min") \
+			and absf(float(a.z_min) - float(b.z_min)) > 0.05:
+		return false
+	if a.has("z_max") and b.has("z_max") \
+			and absf(float(a.z_max) - float(b.z_max)) > 0.05:
+		return false
+	return true
+
+
+## Sticky ride decision when own footprint may be inactive (e.g. past coping).
+## `own_active`: query_surface on the sticky identity is still underfoot.
+## `underfoot`: RampLevel.sample result (must not steal another pipe while sticky).
+## `toward_coping_speed`: along-arc speed toward the sticky pipe's coping (≥0 up).
+## Returns "ride" | "launch" | "leave".
+static func sticky_ramp_action(
+	own_active: bool,
+	underfoot: Dictionary,
+	current: Dictionary,
+	toward_coping_speed: float,
+) -> String:
+	if own_active:
+		return "ride"
+	# Past sticky footprint. Never adopt a different pipe (stacked L0 at shared X).
+	if is_pipe(underfoot) and not same_pipe(underfoot, current):
+		return "launch"
+	if toward_coping_speed > 0.0:
+		return "launch"
+	return "leave"
 
 
 ## Air-contact record: drives both debug label and landing collision.

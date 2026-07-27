@@ -178,7 +178,7 @@ func x_max() -> float:
 	return 1280.0
 
 
-## Prefer a specific pipe first (side + lip [+ base_height]). Stops spine
+## Prefer a specific pipe first (side + lip [+ base_height + Z span]). Stops spine
 ## neighbors that share a coping X — and stacked-layer pipes that share lip —
 ## from stealing the sample while still riding.
 ## `prefer_h`: topmost surface at or below feet/support; else nearest below.
@@ -190,9 +190,12 @@ func sample(
 	prefer_lip_x: float = NAN,
 	prefer_h: float = NAN,
 	prefer_base_h: float = NAN,
+	prefer_z_min: float = NAN,
+	prefer_z_max: float = NAN,
 ) -> Dictionary:
 	if prefer_side >= 0 and not is_nan(prefer_lip_x):
 		var sticky: Array = []
+		var matched_identity := false
 		for pipe in pipes:
 			if int(pipe.side) != prefer_side:
 				continue
@@ -200,6 +203,11 @@ func sample(
 				continue
 			if not is_nan(prefer_base_h) and absf(pipe.base_height - prefer_base_h) > 0.5:
 				continue
+			if not is_nan(prefer_z_min) and absf(pipe.z_min - prefer_z_min) > 0.05:
+				continue
+			if not is_nan(prefer_z_max) and absf(pipe.z_max - prefer_z_max) > 0.05:
+				continue
+			matched_identity = true
 			var preferred: Dictionary = pipe.query_surface(logical_x, logical_z)
 			if preferred.get("active", false):
 				sticky.append(preferred)
@@ -207,6 +215,10 @@ func sample(
 			if is_nan(prefer_h):
 				return ContactMath.pick_highest(sticky)
 			return _pick_sticky_by_prefer_h(sticky, prefer_h)
+		# Sticky identity known but footprint inactive (e.g. past L1 coping while
+		# stacked L0 still covers this X). Never fall through to another pipe.
+		if matched_identity:
+			return {"active": false}
 
 	var candidates: Array = sample_candidates(logical_x, logical_z)
 	if candidates.is_empty():
@@ -215,6 +227,29 @@ func sample(
 	if is_nan(prefer_h):
 		return ContactMath.pick_highest(candidates)
 	return ContactMath.pick_by_prefer_h(candidates, prefer_h)
+
+
+## Active pipe in the story selected at the player's feet. This prevents a
+## lower stacked pipe/lava from displacing a visible upper-story pipe merely
+## because that pipe's arc is above the current feet height.
+func sample_pipe_on_story(logical_x: float, logical_z: float, prefer_h: float) -> Dictionary:
+	if spec == null:
+		return {}
+	var cell := spec.cell_at(logical_x, logical_z)
+	var ginfo: Dictionary = spec.glyph_at_prefer_h(cell.x, cell.y, prefer_h)
+	if ContactMath.zone_from_glyph(str(ginfo.get("glyph", " "))) != "pipe":
+		return {}
+	var layer := int(ginfo.get("layer", -1))
+	var candidates: Array = []
+	for pipe in pipes:
+		if int(pipe.layer) != layer:
+			continue
+		var hit: Dictionary = pipe.query_surface(logical_x, logical_z)
+		if hit.get("active", false):
+			candidates.append(hit)
+	if candidates.is_empty():
+		return {}
+	return ContactMath.pick_highest(candidates)
 
 
 ## Vertical sweep for air landing: returns {hit, height, crossed_solid}.
@@ -241,6 +276,8 @@ func resolve_air_contact(
 	sticky_lip_x: float = NAN,
 	sticky_base_h: float = NAN,
 	force_sticky: bool = false,
+	sticky_z_min: float = NAN,
+	sticky_z_max: float = NAN,
 ) -> Dictionary:
 	if spec == null:
 		return ContactMath.make_air_contact("oob", -1, 0.0, false, _flat_hit(false, "oob", 0.0))
@@ -263,6 +300,10 @@ func resolve_air_contact(
 			if absf(pipe.lip_x - sticky_lip_x) > 0.05:
 				continue
 			if not is_nan(sticky_base_h) and absf(pipe.base_height - sticky_base_h) > 0.5:
+				continue
+			if not is_nan(sticky_z_min) and absf(pipe.z_min - sticky_z_min) > 0.05:
+				continue
+			if not is_nan(sticky_z_max) and absf(pipe.z_max - sticky_z_max) > 0.05:
 				continue
 			var q: Dictionary = pipe.query_surface(logical_x, logical_z)
 			if q.get("active", false):

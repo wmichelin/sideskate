@@ -106,7 +106,7 @@ Applied while unlocked air, or while acid-drop X-locked. Default `-19.0` m/s², 
 
 One **transfer** and one **acid drop** per aerial. Both refill on any surface contact (`_clear_air`). Spine transfer spends **both**.
 
-**Hold buffer:** keep `transfer` held while entering a ramp; once airborne, each physics tick retries **spine transfer only** while the button stays pressed and a facing coping is valid. Free-air transfer and acid drop still require a tap (`just_pressed`).
+**Hold buffer:** keep `transfer` held while entering a ramp; once airborne, each physics tick retries **spine transfer only** while the button stays pressed and a facing coping is valid. Spine **never** fires **high→low** (e.g. L1 → L0 shared coping) — not on hold and not on tap. Drop to a lower story by flying out / falling. Free-air transfer and acid drop still require a tap (`just_pressed`).
 
 Routing uses measured vertical rate (`_vert_vel`) and the last non-zero vertical rate (so a rising **apex** still counts as transfer, not acid drop):
 
@@ -125,7 +125,7 @@ When the transfer path runs and FacingCastMath finds a **top coping** within `fa
 - On land: same drop-in as pipe-exit / acid — falling `air_vel_y` → `_ramp_along` (keep approach if faster into the pipe).
 - No fly-out while the spine lock is active.
 - No apex facing flip while the spine lock is active (keep approach facing through the transfer).
-- Holes are transparent in the cast — a lower-story coping under `.` still counts (high→low).
+- Holes are transparent in the cast — a lower-story coping under `.` is visible but **spine will not lock high→low**; fly out / fall instead.
 - Spend **both** transfer and acid-drop charges.
 
 If no coping is in range → normal free-air transfer below.
