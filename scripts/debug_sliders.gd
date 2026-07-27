@@ -148,7 +148,7 @@ func _ready() -> void:
 	_bind_float_slider(_ramp_friction_slider, ramp_friction_min, ramp_friction_max, 10.0, _player, "ramp_friction", 0.0, _on_ramp_friction_changed, _refresh_ramp_friction_label)
 	_bind_float_slider(_friction_slider, friction_min, friction_max, 10.0, _player, "friction", 0.0, _on_friction_changed, _refresh_friction_label)
 
-	_bind_float_slider(_persp_inset_slider, persp_inset_min, persp_inset_max, 1.0, _level, "perspective_inset", 70.0, _on_persp_inset_changed, _refresh_persp_inset_label)
+	_bind_float_slider(_persp_inset_slider, persp_inset_min, persp_inset_max, 1.0, _level, "perspective_inset", 38.0, _on_persp_inset_changed, _refresh_persp_inset_label)
 	_bind_float_slider(_far_geom_slider, far_geom_min, far_geom_max, 0.01, _level, "far_geometry_scale", 1.0, _on_far_geom_changed, _refresh_far_geom_label)
 	_bind_float_slider(_ref_depth_slider, ref_depth_min, ref_depth_max, 5.0, _level, "reference_depth", 260.0, _on_ref_depth_changed, _refresh_ref_depth_label)
 	_bind_float_slider(

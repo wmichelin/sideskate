@@ -27,7 +27,7 @@ const ContactMath := preload("res://scripts/contact_math.gd")
 @export var reference_width: float = 1280.0
 ## X convergence toward the skater. 0 = side-on truck (parallel edges, camera
 ## slides in Z). Higher values tilt into a looking-down vanishing point.
-@export var perspective_inset: float = 70.0
+@export var perspective_inset: float = 38.0
 @export var far_geometry_scale: float = 1.0
 
 signal rebuilt
