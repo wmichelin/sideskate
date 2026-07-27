@@ -82,7 +82,7 @@ Feet height while airborne: `air_abs_height`. Vertical rate for gravity: `air_ve
 | **Pipe coping lock** | Exit pipe at top coping | Locked to **top** coping | Gravity; land on coping height (`radius`). At vertical **apex**, facing flips unless stick holds L/R. |
 | **Free air** | Ride-off, transfer, fly-out, etc. | Free (unless lerping) | Gravity; land on **sampled** underfoot height |
 | **Acid-drop lock** | Acid drop action | Locked to opposite-facing **top** coping | Gravity only — action must not snap/alter height; land converts vert → along-arc (keep approach if faster) |
-| **Spine transfer lock** | Spine transfer (rising, facing-cast coping) | Locked to facing **top** coping | Gravity; land same drop-in merge as acid / pipe-exit |
+| **Spine transfer lock** | Spine transfer (rising, facing-cast coping) | Locked to facing **top** coping | Gravity; land same drop-in merge as acid / pipe-exit. No apex facing flip. |
 
 ### Pipe fly-out
 
@@ -122,6 +122,7 @@ When the transfer path runs and FacingCastMath finds a **top coping** within `fa
 - While locked, air contact **force-sticky**s to that coping and does not adopt a different underfoot pipe (shared high→low column would otherwise snap identity back same tick).
 - On land: same drop-in as pipe-exit / acid — falling `air_vel_y` → `_ramp_along` (keep approach if faster into the pipe).
 - No fly-out while the spine lock is active.
+- No apex facing flip while the spine lock is active (keep approach facing through the transfer).
 - Holes are transparent in the cast — a lower-story coping under `.` still counts (high→low).
 - Spend **both** transfer and acid-drop charges.
 
@@ -195,7 +196,7 @@ Debug tools are gated by autoload `DebugTools`: available when `OS.is_debug_buil
 6. Acid drop / spine: FacingCastMath first top coping within `facing_coping_cells` ahead of `facing_h` (excludes current pipe).  
 7. Free air / acid drop land on **sampled** height — never snap up to coping radius as a fake floor.  
 8. Fly-out: only unlock for pipe-exit X-lock; rising + X-dominant INPUT toward pipe (never MOMENTUM); never from acid/spine; contact changing to hole/flat does not unlock.  
-9. Spine transfer: rising path + facing-cast coping in range; keep height + `air_vel_y`; land uses shared drop-in merge; else normal transfer.  
+9. Spine transfer: rising path + facing-cast coping in range; keep height + `air_vel_y`; land uses shared drop-in merge; else normal transfer. No apex facing flip while spine-locked.  
 10. Locked pipe land (pipe-exit / acid / spine): `merge_drop_in_along` — fall vert → along-arc, keep approach if faster into the pipe. Peak `_air_carry_speed` this aerial seeds approach so low→high climbs keep exit speed.  
 11. Acid/spine X settle: live `duration = base + rate × height_above` (`lock_x_duration_for_height`); progress `+= δt/duration`; smoothstep ease.
 

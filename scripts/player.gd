@@ -1621,10 +1621,11 @@ func _update_facing_h(_input: Vector2) -> void:
 		facing_h = from_actual
 
 
-## At vertical apex while X-locked over a pipe: flip facing, unless stick
-## holds a horizontal direction (then face that way). Once per aerial.
+## At vertical apex while X-locked over a pipe (pipe-exit lock only): flip
+## facing, unless stick holds a horizontal direction (then face that way).
+## Once per aerial. Skipped during spine transfer — keep approach facing.
 func _try_apex_facing_flip(prev_air_vy: float) -> void:
-	if _apex_facing_done or not _air_x_locked:
+	if _apex_facing_done or not _air_x_locked or _spine_transfer_lock:
 		return
 	if prev_air_vy <= 0.0 or air_vel_y > 0.0:
 		return
