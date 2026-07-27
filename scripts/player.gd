@@ -884,6 +884,20 @@ func _try_land_from_air_contact(
 		var hit_lip := float(land_hit.get("lip_x", NAN))
 		if hit_side != _air_side or is_nan(hit_lip) or absf(hit_lip - _air_lip_x) > 0.05:
 			return false
+	# Spine: same target-only rule. Mid-lerp often crosses an L1 deck / flat pad between
+	# misaligned copings — landing there clips the transfer instead of finishing on L0.
+	if _spine_transfer_lock:
+		if not _ContactMath.is_pipe(land_hit):
+			return false
+		var spine_side := int(land_hit.get("side", -1))
+		var spine_lip := float(land_hit.get("lip_x", NAN))
+		if spine_side != _air_side or is_nan(spine_lip) or absf(spine_lip - _air_lip_x) > 0.05:
+			return false
+		# Prefer matching story when stacked pipes share a lip column.
+		var spine_base := float(land_hit.get("base_height", NAN))
+		if not is_nan(spine_base) and not is_nan(_air_base_height) \
+				and absf(spine_base - _air_base_height) > 0.5:
+			return false
 
 	air_abs_height = floor_h
 	var pin_x := depth.logical_x

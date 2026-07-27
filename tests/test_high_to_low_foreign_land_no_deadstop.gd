@@ -117,8 +117,74 @@ func run() -> bool:
 			% [landed, landed_base, landed_side, landed_along, player._spine_transfer_lock]
 		)
 	var spine_ok := _held_high_to_low_spine_transfers(player, l1l, l0r, z)
+	var deck_ok := _spine_refuses_deck_land(player, l0r, z)
 	main.queue_free()
-	return land_ok and spine_ok
+	return land_ok and spine_ok and deck_ok
+
+
+## Mid-lerp over an L1 deck must not clip a spine lock aimed at L0.
+func _spine_refuses_deck_land(player, l0: QuarterPipe, z: float) -> bool:
+	player.call("_clear_air")
+	player._on_ramp = false
+	player._airborne = true
+	player.depth.airborne = true
+	player._air_x_locked = true
+	player._spine_transfer_lock = true
+	player._acid_drop_lock = false
+	player._air_side = int(l0.side)
+	player._air_lip_x = float(l0.lip_x)
+	player._air_radius = float(l0.radius)
+	player._air_base_height = float(l0.base_height)
+	player._air_coping_x = PipeMath.coping_x(int(l0.side), l0.lip_x, l0.radius)
+	player._air_z_min = float(l0.z_min)
+	player._air_z_max = float(l0.z_max)
+	player.air_over = PipeMath.zone_name(int(l0.side))
+	player._air_over_layer = int(l0.layer)
+	player.air_abs_height = 145.0
+	player.air_vel_y = -40.0
+	player._velocity = Vector2(PipeMath.coping_sign(int(l0.side)) * 80.0, 0.0)
+	player.depth.logical_x = player._air_coping_x + 20.0
+	player.depth.logical_z = z
+	player.depth.surface_height = player.air_abs_height
+
+	var deck_hit := {"zone": "deck", "active": true, "height": 141.0}
+	var contact := ContactMath.make_air_contact("deck", 1, 141.0, true, deck_hit)
+	var landed: bool = bool(player.call("_try_land_from_air_contact", contact, 150.0, 1.0 / 60.0, 1.0))
+	if landed or not bool(player._airborne) or not bool(player._spine_transfer_lock):
+		push_error(
+			"spine must refuse deck land: landed=%s air=%s spine=%s"
+			% [landed, player._airborne, player._spine_transfer_lock]
+		)
+		return false
+
+	var pipe_hit := {
+		"zone": PipeMath.zone_name(int(l0.side)),
+		"active": true,
+		"side": int(l0.side),
+		"lip_x": float(l0.lip_x),
+		"radius": float(l0.radius),
+		"base_height": float(l0.base_height),
+		"height": float(l0.base_height) + float(l0.radius),
+		"theta": PI * 0.5,
+	}
+	var pipe_contact := ContactMath.make_air_contact(
+		str(pipe_hit.zone), int(l0.layer), float(pipe_hit.height), true, pipe_hit
+	)
+	player.air_abs_height = float(pipe_hit.height) - 1.0
+	player.air_vel_y = -40.0
+	var pipe_landed: bool = bool(
+		player.call(
+			"_try_land_from_air_contact",
+			pipe_contact,
+			float(pipe_hit.height) + 10.0,
+			1.0 / 60.0,
+			1.0,
+		)
+	)
+	if not pipe_landed:
+		push_error("spine must still land on locked target pipe")
+		return false
+	return true
 
 
 func _held_high_to_low_spine_transfers(
