@@ -316,6 +316,8 @@ static func _pipe_hit_dict(pipe: Variant) -> Dictionary:
 	var lip: float = float(pipe.lip_x)
 	var radius: float = float(pipe.radius)
 	var base_h := _pipe_base_height(pipe)
+	var z_min := float(pipe.get("z_min", NAN)) if typeof(pipe) == TYPE_DICTIONARY else float(pipe.z_min)
+	var z_max := float(pipe.get("z_max", NAN)) if typeof(pipe) == TYPE_DICTIONARY else float(pipe.z_max)
 	return {
 		"active": true,
 		"zone": _PipeMath.zone_name(side),
@@ -323,6 +325,8 @@ static func _pipe_hit_dict(pipe: Variant) -> Dictionary:
 		"lip_x": lip,
 		"radius": radius,
 		"base_height": base_h,
+		"z_min": z_min,
+		"z_max": z_max,
 		"layer": _pipe_layer(pipe),
 		"top_coping": _PipeMath.coping_x(side, lip, radius),
 	}

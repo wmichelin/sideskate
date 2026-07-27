@@ -281,7 +281,7 @@ func _physics_process(delta: float) -> void:
 		return
 	_update_actual_velocity(delta)
 	# Hold into a ramp: only auto-fire spine while airborne + pressed.
-	# Never after fly-out. Hold buffer never high→low (L1→L0 felt like free spine).
+	# Never after fly-out. A held button is explicit input, including high→low.
 	if Input.is_action_pressed("transfer") and _airborne and not _flew_out_this_aerial:
 		_try_spine_transfer(true)
 	_clear_momentum_if_at_rest()
@@ -1555,7 +1555,7 @@ func _find_acid_coping_target(travel_x: float) -> Dictionary:
 ## Spine transfer: rising air, or rising on a pipe, when FacingCastMath finds a
 ## top coping within `facing_coping_cells` ahead of facing_h (excludes current pipe).
 ## Lock X to that coping; keep height / air_vel_y; land uses drop-in merge.
-## Spends both charges. Never high→low (L1→L0); hold and tap share that ban.
+## Spends both charges. A held transfer button is explicit input, including high→low.
 func _try_spine_transfer(_from_hold_buffer: bool = false) -> bool:
 	if _flew_out_this_aerial:
 		return false
@@ -1571,10 +1571,6 @@ func _try_spine_transfer(_from_hold_buffer: bool = false) -> bool:
 	var hit: Dictionary = _find_facing_coping_target()
 	if hit.is_empty():
 		return false
-	# Never high→low (L1→L0 shared coping) — hold or tap. Drop via fly-out / fall.
-	if _spine_target_is_high_to_low(hit):
-		return false
-
 	# Peak aerial carry (exit speed), not live air_vel_y after a gravity climb.
 	_note_air_carry()
 	var carry: float = _air_carry_speed
@@ -1588,18 +1584,6 @@ func _try_spine_transfer(_from_hold_buffer: bool = false) -> bool:
 
 	_apply_spine_lock(hit, carry)
 	return true
-
-
-## True when spine target coping floor sits meaningfully below our current feet /
-## exit coping floor (stacked high→low). Hold buffer must not auto-fire these.
-func _spine_target_is_high_to_low(hit: Dictionary) -> bool:
-	var target_floor := float(hit.get("base_height", 0.0)) + float(hit.get("radius", 0.0))
-	var from_floor := _feet_height()
-	if _airborne and _air_x_locked:
-		from_floor = maxf(from_floor, _air_coping_floor())
-	elif _on_ramp:
-		from_floor = maxf(from_floor, _ramp_base_height + _sticky_pipe_radius())
-	return target_floor < from_floor - 5.0
 
 
 ## Along-arc is carrying us toward the top coping (up the wall).

@@ -254,6 +254,8 @@ static func _pipe_info_on_layer(
 			"lip_x": lip,
 			"radius": radius,
 			"base_height": _pipe_base_height(pipe),
+			"z_min": _pipe_z_min(pipe),
+			"z_max": _pipe_z_max(pipe),
 			"top_coping": cope,
 			"theta": float(hit.get("theta", 0.0)),
 		}
@@ -270,6 +272,18 @@ static func _pipe_base_height(pipe: Variant) -> float:
 	if typeof(pipe) == TYPE_DICTIONARY:
 		return float(pipe.get("base_height", 0.0))
 	return float(pipe.base_height)
+
+
+static func _pipe_z_min(pipe: Variant) -> float:
+	if typeof(pipe) == TYPE_DICTIONARY:
+		return float(pipe.get("z_min", NAN))
+	return float(pipe.z_min)
+
+
+static func _pipe_z_max(pipe: Variant) -> float:
+	if typeof(pipe) == TYPE_DICTIONARY:
+		return float(pipe.get("z_max", NAN))
+	return float(pipe.z_max)
 
 
 static func _pipe_query(pipe: Variant, logical_x: float, logical_z: float) -> Dictionary:
@@ -315,4 +329,6 @@ static func _pipe_query(pipe: Variant, logical_x: float, logical_z: float) -> Di
 		"base_height": base_h,
 		"radius": radius,
 		"layer": _pipe_layer(pipe),
+		"z_min": z_min,
+		"z_max": z_max,
 	}

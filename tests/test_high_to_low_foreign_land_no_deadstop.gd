@@ -103,8 +103,7 @@ func run() -> bool:
 			landed_side = int(player._ramp_side)
 			break
 
-	main.queue_free()
-	return (
+	var land_ok := (
 		landed
 		and absf(landed_base - 0.0) < 0.5
 		and landed_side == int(l0r.side)
@@ -112,4 +111,65 @@ func run() -> bool:
 		and signf(landed_along) == signf(approach_vx)
 		and not bool(player._spine_transfer_lock)
 	)
+	if not land_ok:
+		push_error(
+			"high→low land regression: landed=%s base=%s side=%s along=%s spine=%s"
+			% [landed, landed_base, landed_side, landed_along, player._spine_transfer_lock]
+		)
+	var spine_ok := _held_high_to_low_spine_transfers(player, l1l, l0r, z)
+	main.queue_free()
+	return land_ok and spine_ok
+
+
+func _held_high_to_low_spine_transfers(
+	player, l1: QuarterPipe, l0: QuarterPipe, z: float
+) -> bool:
+	var coping := PipeMath.coping_x(int(l1.side), l1.lip_x, l1.radius)
+	player.call("_clear_air")
+	player._on_ramp = false
+	player._airborne = true
+	player.depth.airborne = true
+	player._air_x_locked = true
+	player._spine_transfer_lock = false
+	player._acid_drop_lock = false
+	player._transfer_available = true
+	player._acid_drop_available = true
+	player._air_side = int(l1.side)
+	player._air_lip_x = l1.lip_x
+	player._air_radius = l1.radius
+	player._air_base_height = l1.base_height
+	player._air_z_min = l1.z_min
+	player._air_z_max = l1.z_max
+	player._air_coping_x = coping
+	player._exit_pipe_side = int(l1.side)
+	player._exit_pipe_lip = l1.lip_x
+	player._exit_pipe_coping = coping
+	player._exit_pipe_z_min = l1.z_min
+	player._exit_pipe_z_max = l1.z_max
+	player.air_over = "left_pipe"
+	player._air_over_layer = int(l1.layer)
+	player.air_abs_height = l1.base_height + l1.radius + 40.0
+	player.air_vel_y = 100.0
+	player._vert_vel = 100.0
+	player._last_nonzero_vert_vel = 100.0
+	player.facing_h = "l"
+	player.depth.logical_x = coping
+	player.depth.logical_z = z
+	player.depth.surface_height = player.air_abs_height
+
+	if not player._try_spine_transfer(true):
+		push_error("held transfer must spine high→low")
+		return false
+	var target_ok := (
+		bool(player._spine_transfer_lock)
+		and absf(float(player._air_base_height) - float(l0.base_height)) < 0.5
+		and absf(float(player._air_z_min) - float(l0.z_min)) < 0.05
+		and absf(float(player._air_z_max) - float(l0.z_max)) < 0.05
+	)
+	if not target_ok:
+		push_error(
+			"held high→low spine picked wrong target: base=%s z=[%s,%s]"
+			% [player._air_base_height, player._air_z_min, player._air_z_max]
+		)
+	return target_ok
 
