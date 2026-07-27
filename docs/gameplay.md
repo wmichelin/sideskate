@@ -10,7 +10,7 @@ Godot 4 **pseudo-3D** skate prototype. Simulation lives in **logical** space:
 - **Z** — near/far depth (stick “up” = farther). Screen Y uses a fixed px/Z rate (not “fit whole level in frame”), so deep levels scroll off-screen; the camera pans with the player in X and Y.
 - **Height** — feet elevation above flat (pipe arc, deck, air)
 
-Screen placement is a **projection** of `(x, z, height)`. Far X converges toward the skater over a fixed `reference_width` (`perspective_inset` default 70). X lean vs depth uses a **world-fixed** Z band (`z_min` → `z_min + reference_depth`) and is **not** clamped — lip lines keep one continuous slope. Moving the skater in Z only trucks the camera / draw window up-down; it does **not** re-center perspective. Screen Y uses a fixed px/Z. World size is `columns × cell_x` / `rows × cell_z`. Visuals are surface-only (floors, pipe ribbons, deck tops).
+Screen placement is a **projection** of `(x, z, height)`. Far X converges toward the skater over a fixed `reference_width` (`perspective_inset` default 70). X lean vs depth uses a **world-fixed** Z band (`z_min` → `z_min + reference_depth`) and is **not** clamped — lip lines keep one continuous slope. Moving the skater in Z only trucks the camera / draw window up-down; it does **not** re-center perspective. Screen Y uses a fixed px/Z sized so one ASCII Z cell matches one ASCII X cell at the near plane (`reference_depth = (near_y − far_y) × cell_z / cell_x`); deep levels scroll off-screen instead of compressing. World size is `columns × cell_x` / `rows × cell_z` (defaults both **47**). Visuals are surface-only (floors, pipe ribbons, deck tops).
 
 ## Simulation law
 

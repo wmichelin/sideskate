@@ -34,7 +34,7 @@ All map rows in a layer must be the **same length**. Every layer shares the same
 Level extents are automatic:
 
 - `width = columns × cell_size_x` (default cell X = **47**)
-- `depth = rows × cell_size_z` (default cell Z = **26**)
+- `depth = rows × cell_size_z` (default cell Z = **47**, matching X so glyphs are square)
 
 Add glyphs to grow the plaza; do not set `width` / `depth` in the header (ignored if present). Cell sizes are game-wide (RampLevel exports + TUNING sliders `cell x` / `cell z`).
 

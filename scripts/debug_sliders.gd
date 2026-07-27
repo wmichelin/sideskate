@@ -150,7 +150,7 @@ func _ready() -> void:
 
 	_bind_float_slider(_persp_inset_slider, persp_inset_min, persp_inset_max, 1.0, _level, "perspective_inset", 70.0, _on_persp_inset_changed, _refresh_persp_inset_label)
 	_bind_float_slider(_far_geom_slider, far_geom_min, far_geom_max, 0.01, _level, "far_geometry_scale", 1.0, _on_far_geom_changed, _refresh_far_geom_label)
-	_bind_float_slider(_ref_depth_slider, ref_depth_min, ref_depth_max, 5.0, _level, "reference_depth", 485.0, _on_ref_depth_changed, _refresh_ref_depth_label)
+	_bind_float_slider(_ref_depth_slider, ref_depth_min, ref_depth_max, 5.0, _level, "reference_depth", 260.0, _on_ref_depth_changed, _refresh_ref_depth_label)
 	_bind_float_slider(
 		_draw_band_pad_slider,
 		draw_band_pad_min,
@@ -174,7 +174,7 @@ func _ready() -> void:
 		_refresh_arc_steps_label
 	)
 	_bind_float_slider(_cell_x_slider, cell_x_min, cell_x_max, 1.0, _level, "cell_size_x", 47.0, _on_cell_x_changed, _refresh_cell_x_label)
-	_bind_float_slider(_cell_z_slider, cell_z_min, cell_z_max, 1.0, _level, "cell_size_z", 26.0, _on_cell_z_changed, _refresh_cell_z_label)
+	_bind_float_slider(_cell_z_slider, cell_z_min, cell_z_max, 1.0, _level, "cell_size_z", 47.0, _on_cell_z_changed, _refresh_cell_z_label)
 
 	var checker_on := true
 	if _visual != null and _visual.get("show_floor_checker") != null:
@@ -547,6 +547,10 @@ func _on_cell_x_changed(v: float) -> void:
 	if _level != null:
 		_level.set("cell_size_x", v)
 		LevelLoader.cell_size_x = v
+		if _level.has_method("sync_reference_depth_to_glyphs"):
+			_level.call("sync_reference_depth_to_glyphs")
+			if _ref_depth_slider != null:
+				_ref_depth_slider.value = float(_level.get("reference_depth"))
 		if _level.has_method("reload"):
 			_level.call("reload")
 	_refresh_cell_x_label(v)
@@ -560,6 +564,10 @@ func _on_cell_z_changed(v: float) -> void:
 	if _level != null:
 		_level.set("cell_size_z", v)
 		LevelLoader.cell_size_z = v
+		if _level.has_method("sync_reference_depth_to_glyphs"):
+			_level.call("sync_reference_depth_to_glyphs")
+			if _ref_depth_slider != null:
+				_ref_depth_slider.value = float(_level.get("reference_depth"))
 		if _level.has_method("reload"):
 			_level.call("reload")
 	_refresh_cell_z_label(v)

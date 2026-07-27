@@ -7,7 +7,7 @@ extends RefCounted
 static var last_error: String = ""
 ## Global defaults; RampLevel / debug sliders override per load.
 static var cell_size_x: float = 47.0
-static var cell_size_z: float = 26.0
+static var cell_size_z: float = 47.0
 
 
 static func load_path(

@@ -37,6 +37,19 @@ static func screen_y_per_z(
 	return (near_screen_y - far_screen_y) / ref
 
 
+## Reference depth that makes one ASCII Z cell the same near-plane screen size
+## as one ASCII X cell. Tall maps stay scrollable instead of Z-compressing.
+static func glyph_matched_reference_depth(
+	near_screen_y: float,
+	far_screen_y: float,
+	cell_size_x: float,
+	cell_size_z: float,
+) -> float:
+	var cell_x := maxf(cell_size_x, 0.0001)
+	var span := near_screen_y - far_screen_y
+	return maxf(span * maxf(cell_size_z, 0.0001) / cell_x, 0.0001)
+
+
 static func ground_screen_y(
 	logical_z: float,
 	z_min: float,

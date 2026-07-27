@@ -88,9 +88,32 @@ func run() -> bool:
 		push_error("farther Z should move up the screen (smaller Y)")
 		return false
 
+	if not _glyph_matched_reference_depth():
+		return false
+
 	if not _air_shadow_scale():
 		return false
 
+	return true
+
+
+func _glyph_matched_reference_depth() -> bool:
+	# Equal cells → reference_depth equals the near→far screen span.
+	var equal := PerspectiveMath.glyph_matched_reference_depth(560.0, 300.0, 47.0, 47.0)
+	if absf(equal - 260.0) > 0.01:
+		push_error("equal cells want reference_depth 260, got %s" % equal)
+		return false
+	# Half-height Z cells need half the reference depth to keep on-screen glyph size.
+	var half := PerspectiveMath.glyph_matched_reference_depth(560.0, 300.0, 47.0, 23.5)
+	if absf(half - 130.0) > 0.01:
+		push_error("half cell_z want reference_depth 130, got %s" % half)
+		return false
+	var per_z := PerspectiveMath.screen_y_per_z(560.0, 300.0, equal)
+	var px_x := 47.0
+	var px_z := 47.0 * per_z
+	if absf(px_z - px_x) > 0.01:
+		push_error("glyph-matched depth must equalize near-plane cell px (%s vs %s)" % [px_x, px_z])
+		return false
 	return true
 
 

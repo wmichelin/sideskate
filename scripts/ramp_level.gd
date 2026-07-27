@@ -11,7 +11,8 @@ const ContactMath := preload("res://scripts/contact_math.gd")
 ## Logical units per ASCII column. Level width = columns × this.
 @export var cell_size_x: float = 47.0
 ## Logical units per ASCII row. Level depth = rows × this.
-@export var cell_size_z: float = 26.0
+## Default matches cell_size_x so one glyph is square in world space.
+@export var cell_size_z: float = 47.0
 
 @export_group("Perspective")
 ## Screen Y of the near edge (z_min). Larger Y = lower on screen.
@@ -20,7 +21,8 @@ const ContactMath := preload("res://scripts/contact_math.gd")
 ## keep the same px/Z so they extend off-frame instead of compressing.
 @export var far_screen_y: float = 300.0
 ## Logical depth span that maps near_screen_y → far_screen_y.
-@export var reference_depth: float = 485.0
+## Default matches glyph cells: one Z cell ≈ one X cell on screen at the near plane.
+@export var reference_depth: float = 260.0
 ## Logical width used only for X convergence math — not the level's real span.
 @export var reference_width: float = 1280.0
 ## X convergence toward the skater. 0 = side-on truck (parallel edges, camera
@@ -113,6 +115,14 @@ func apply_spec(s: LevelSpec) -> void:
 ## Absolute lean band: t=0 at z_min, t=1 at z_min+reference_depth.
 func sync_lean_origin_z() -> void:
 	perspective_origin_z = z_min + reference_depth * 0.5
+
+
+## Keep near-plane screen size of one Z cell matched to one X cell.
+func sync_reference_depth_to_glyphs() -> void:
+	reference_depth = _PerspectiveMath.glyph_matched_reference_depth(
+		near_screen_y, far_screen_y, cell_size_x, cell_size_z
+	)
+	sync_lean_origin_z()
 
 
 ## Skater X recenters horizontal lean. Skater Z only moves the draw window
