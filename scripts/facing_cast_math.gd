@@ -35,6 +35,29 @@ static func cells_ahead(
 	return out
 
 
+## True if any playable cell lies ahead along facing within `distance`.
+## Empty cast (grid edge) or all non-playable → false. Used to block pipe
+## fly-out when there is nowhere in front of the ramp.
+static func has_playable_ahead(
+	spec: Variant,
+	origin_col: int,
+	origin_row: int,
+	facing_h: String,
+	distance: int = 1,
+) -> bool:
+	if spec == null:
+		return false
+	var cells: Array[Vector2i] = cells_ahead(
+		int(spec.grid_w), int(spec.grid_h), origin_col, origin_row, facing_h, distance
+	)
+	if cells.is_empty():
+		return false
+	for cell in cells:
+		if spec.is_playable_cell(cell.x, cell.y):
+			return true
+	return false
+
+
 ## Surface under (x,z) for cast: glyph story at prefer_h, same-layer pipe arc,
 ## holes fall through. Returns { height, zone, layer, is_coping, side, lip_x,
 ## radius, base_height, top_coping?, theta? }.

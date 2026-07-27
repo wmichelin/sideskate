@@ -284,6 +284,16 @@ func _fly_out_pipe_lock() -> bool:
 	if not AerialMath.should_fly_out_pipe_lock(true, false, 1, 200.0, 150.0, 40.0, 0.8, 80.0, 0.15, 0.3):
 		push_error("X-dominant outward INPUT → fly out")
 		return false
+	# Elevated story: clearance is relative to coping_floor (base+radius), so the
+	# debug slider still gates L1 the same as L0. (Passing radius alone as floor
+	# would treat abs height as huge clearance and ignore the slider — call site
+	# must use _air_coping_floor().)
+	if AerialMath.should_fly_out_pipe_lock(true, false, 1, 360.0, 350.0, 40.0, 1.0, 80.0):
+		push_error("L1 at coping+10 < coping+40 → no fly out")
+		return false
+	if not AerialMath.should_fly_out_pipe_lock(true, false, 1, 400.0, 350.0, 40.0, 1.0, 80.0):
+		push_error("L1 at coping+50 with correct floor → fly out")
+		return false
 	return true
 
 

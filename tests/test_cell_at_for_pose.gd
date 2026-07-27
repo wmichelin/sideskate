@@ -121,4 +121,14 @@ func _facing_cast_cells() -> bool:
 	if not none.is_empty():
 		push_error("distance 0 must be empty")
 		return false
+	# Edge column: nowhere ahead → fly-out must stay locked.
+	if FacingCastMath.has_playable_ahead(s, 9, 1, "r", 1):
+		push_error("rightmost col facing right must have no playable ahead")
+		return false
+	if FacingCastMath.has_playable_ahead(s, 0, 1, "l", 1):
+		push_error("leftmost col facing left must have no playable ahead")
+		return false
+	if not FacingCastMath.has_playable_ahead(s, 3, 1, "r", 1):
+		push_error("interior col facing right should have playable ahead")
+		return false
 	return true

@@ -1274,11 +1274,14 @@ func _enter_air_from_pipe(hit: Dictionary, up_speed: float = 0.0) -> void:
 
 ## Unlock pipe-exit X-lock into free air when rising, above coping, and planar
 ## INPUT is X-dominant toward that pipe's side (not MOMENTUM, not Z-dominant).
+## No room outward (facing cast) → keep X lock (avoids edge clamp bounce).
 ## Spine transfer stays locked (no fly-out) until drop-in.
 func _try_fly_out_from_pipe_lock() -> bool:
 	if not _crossed_pipe_coping_this_aerial:
 		return false
 	if _spine_transfer_lock:
+		return false
+	if not _fly_out_has_outward_room():
 		return false
 	if not _AerialMath.should_fly_out_pipe_lock(
 		_air_x_locked,
@@ -1302,6 +1305,17 @@ func _try_fly_out_from_pipe_lock() -> bool:
 		_exit_travel_x = out
 	_velocity.x = out * maxf(_air_carry_speed, transfer_release_min)
 	return true
+
+
+## True when the facing cast finds a playable cell outward from this pipe's
+## coping. Use coping X (not inward-nudged cell_under_feet) so edge columns
+## correctly report nowhere ahead.
+func _fly_out_has_outward_room() -> bool:
+	if _level == null or _level.spec == null:
+		return false
+	var cell: Vector2i = _level.spec.cell_at(_air_coping_x, depth.logical_z)
+	var facing := "r" if _air_side == QuarterPipe.PipeSide.RIGHT else "l"
+	return _FacingCastMath.has_playable_ahead(_level.spec, cell.x, cell.y, facing, 1)
 
 
 ## Start airborne over a target. snap_x pins to anchor immediately (pipe enter);

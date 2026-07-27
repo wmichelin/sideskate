@@ -28,7 +28,7 @@ var decks: Array = []
 var pipes: Array = []
 ## Floor glyph cells as Vector2i(col, row) — row 0 = far/top (all stories).
 var floor_cells: Array = []
-## Ground-story (= / @) mask for checker draw. Row-major, row 0 = far/top.
+## Ground-story (= / @) mask for floor draw. Row-major, row 0 = far/top.
 var floor_mask: PackedByteArray = PackedByteArray()
 ## Per-story floor masks: [{ "height": float, "mask": PackedByteArray }, ...]
 var story_floor_masks: Array = []

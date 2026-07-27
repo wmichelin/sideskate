@@ -9,12 +9,6 @@ extends Node2D
 @export_range(0.0, 2.0, 0.05) var draw_band_pad: float = 1.15
 ## Arc samples along the quarter-pipe profile (fill + ribs share this).
 @export_range(4, 32, 1) var arc_steps: int = 16
-## Checkerboard flat ground using ASCII floor cells. Tunable in TUNING.
-@export var show_floor_checker: bool = true
-## ASCII cells per checker tile (1 = finest / slowest; 4–8 is usually enough).
-@export_range(1, 16, 1) var floor_checker_tile: int = 6
-@export var floor_checker_a: Color = Color(0.24, 0.30, 0.26, 0.95)
-@export var floor_checker_b: Color = Color(0.33, 0.39, 0.34, 0.95)
 ## Faint white depth bands across the plaza. Off by default (debug clutter).
 @export var show_depth_grid: bool = false
 ## Highlight the .ssk ASCII cell under the player (logical unit 1:1). Debug only.
@@ -33,18 +27,12 @@ extends Node2D
 
 var _level: RampLevel
 var _player: Node2D
-var _checker_tex: ImageTexture
-var _checker_tex_a: Color = Color(0, 0, 0, 0)
-var _checker_tex_b: Color = Color(0, 0, 0, 0)
-var _floor_checker_mesh: ArrayMesh = ArrayMesh.new()
 ## Cached far→near pipe order; invalidated on refresh / pipe rebuild.
 var _pipes_draw_order: Array = []
 
 
 func _ready() -> void:
 	z_index = -50
-	texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
-	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	_level = get_parent() as RampLevel
 	_player = get_node_or_null(player_path) as Node2D
 	if not DebugTools.is_available():
@@ -163,7 +151,7 @@ func _draw_ground_floors(band: Vector2) -> void:
 	if _level.spec == null:
 		return
 	var spec := _level.spec
-	# Same per-cell blue tiles as elevated stories (checker is unused).
+	# Per-cell blue tiles (same as elevated stories).
 	if not spec.story_floor_masks.is_empty() and spec.grid_w > 0:
 		for story in spec.story_floor_masks:
 			var h := float(story.get("height", 0.0))
@@ -250,106 +238,6 @@ func _draw_story_floor_cells(
 				cell_fill
 			)
 			c = c1
-
-
-func _ensure_checker_texture() -> void:
-	if (
-		_checker_tex != null
-		and _checker_tex_a.is_equal_approx(floor_checker_a)
-		and _checker_tex_b.is_equal_approx(floor_checker_b)
-	):
-		return
-	var img := Image.create(2, 2, false, Image.FORMAT_RGBA8)
-	img.set_pixel(0, 0, floor_checker_a)
-	img.set_pixel(1, 1, floor_checker_a)
-	img.set_pixel(1, 0, floor_checker_b)
-	img.set_pixel(0, 1, floor_checker_b)
-	if _checker_tex == null:
-		_checker_tex = ImageTexture.create_from_image(img)
-	else:
-		_checker_tex.update(img)
-	_checker_tex_a = floor_checker_a
-	_checker_tex_b = floor_checker_b
-
-
-## Coarse tiles baked into one textured mesh. `floor_checker_tile` ASCII cells per square.
-## Ground story only — elevated floors use per-cell blue tiles.
-func _draw_floor_checker(band: Vector2) -> void:
-	_ensure_checker_texture()
-	var spec := _level.spec
-	var W := spec.grid_w
-	var H := spec.grid_h
-	var cw := spec.cell_w
-	var ch := spec.cell_h
-	var mask := spec.floor_mask
-	if W <= 0 or H <= 0 or cw <= 0.0 or ch <= 0.0 or mask.size() < W * H:
-		return
-
-	var r_min := clampi(int(ceil(float(H) - 1.0 - band.y / ch)), 0, H - 1)
-	var r_max := clampi(int(floor(float(H) - band.x / ch - 0.0001)), 0, H - 1)
-	if r_max < r_min:
-		return
-
-	var tile := maxi(floor_checker_tile, 1)
-	var verts := PackedVector2Array()
-	var uvs := PackedVector2Array()
-	var r0 := r_min - (r_min % tile)
-	for r in range(r0, r_max + 1, tile):
-		var r_far := maxi(r, 0)
-		var r_near := mini(r + tile - 1, H - 1)
-		if r_near < r_min or r_far > r_max:
-			continue
-		var z0 := maxf(float(H - 1 - r_near) * ch, band.x)
-		var z1 := minf(float(H - r_far) * ch, band.y)
-		if z1 <= z0 + 0.001:
-			continue
-		var ty := int(r_far / tile)
-		for c in range(0, W, tile):
-			var c1 := mini(c + tile, W)
-			if not _tile_has_floor(mask, W, c, c1, r_far, r_near + 1):
-				continue
-			var x0 := float(c) * cw
-			var x1 := float(c1) * cw
-			var s00 := _surf_point(x0, z0, 0.0)
-			var s10 := _surf_point(x1, z0, 0.0)
-			var s11 := _surf_point(x1, z1, 0.0)
-			var s01 := _surf_point(x0, z1, 0.0)
-			# Solid UV sample from 2×2 checker tex (NEAREST).
-			var tx := int(c / tile)
-			var uv := Vector2(0.25, 0.25) if ((tx + ty) & 1) == 0 else Vector2(0.75, 0.25)
-			verts.append(s00)
-			verts.append(s10)
-			verts.append(s11)
-			uvs.append(uv)
-			uvs.append(uv)
-			uvs.append(uv)
-			verts.append(s00)
-			verts.append(s11)
-			verts.append(s01)
-			uvs.append(uv)
-			uvs.append(uv)
-			uvs.append(uv)
-
-	if verts.is_empty():
-		return
-	_floor_checker_mesh.clear_surfaces()
-	var arrays: Array = []
-	arrays.resize(Mesh.ARRAY_MAX)
-	arrays[Mesh.ARRAY_VERTEX] = verts
-	arrays[Mesh.ARRAY_TEX_UV] = uvs
-	_floor_checker_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
-	draw_mesh(_floor_checker_mesh, _checker_tex)
-
-
-func _tile_has_floor(
-	mask: PackedByteArray, W: int, c0: int, c1: int, r0: int, r1: int
-) -> bool:
-	for r in range(r0, r1):
-		var row_base := r * W
-		for c in range(c0, c1):
-			if mask[row_base + c] != 0:
-				return true
-	return false
 
 
 func _draw_decks(band: Vector2) -> void:

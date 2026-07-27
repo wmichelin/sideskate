@@ -188,14 +188,16 @@ static func smoothstep01(u: float) -> float:
 ## left → −X). MOMENTUM is ignored — only the stick wish. X must dominate Z
 ## (`|input_x| > |input_z|`); pure/mostly vertical wish must not fly out.
 ## Falling (`air_vel_y` ≤ 0) never flies out. Acid-drop lock never flies out
-## this way. `above_coping` is logical height above coping (`air_radius`);
-## 0 means unlock as soon as at/above coping.
+## this way. `coping_floor` is absolute lip height (`base_height + radius`);
+## `above_coping` is the debug-tunable clearance above that floor (0 = unlock
+## as soon as at/above coping). Height is absolute feet height — never pass
+## radius alone as `coping_floor` on elevated stories or the slider is ignored.
 static func should_fly_out_pipe_lock(
 	air_x_locked: bool,
 	acid_drop_lock: bool,
 	air_side: int,
 	air_abs_height: float,
-	air_radius: float,
+	coping_floor: float,
 	above_coping: float,
 	input_x: float,
 	air_vel_y: float,
@@ -207,7 +209,9 @@ static func should_fly_out_pipe_lock(
 	# Rising only — ignore while falling or at apex rest.
 	if air_vel_y <= 0.0:
 		return false
-	if air_abs_height + 0.001 < air_radius + maxf(above_coping, 0.0):
+	# Clearance above coping must meet the debug slider (relative, not absolute).
+	var height_above := air_abs_height - coping_floor
+	if height_above + 0.001 < maxf(above_coping, 0.0):
 		return false
 	# Stick must clearly push toward the pipe side; X must dominate Z (not vertical wish).
 	if absf(input_x) <= input_eps:
