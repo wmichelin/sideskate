@@ -6,6 +6,9 @@ extends CanvasLayer
 @export var ramp_level_path: NodePath = NodePath("../RampLevel")
 @export var ramp_visual_path: NodePath = NodePath("../RampLevel/RampVisual")
 @export var start_collapsed: bool = true
+## Max height of the expanded slider list before vertical scroll (viewport-clamped).
+@export var body_max_height: float = 640.0
+@export var body_bottom_margin: float = 24.0
 @export var gravity_min: float = -30.0
 @export var gravity_max: float = 0.0
 @export var acid_buffer_min: float = 0.0
@@ -88,6 +91,9 @@ extends CanvasLayer
 @onready var _depth_grid_check: CheckButton = $Panel/VBox/Body/DepthGridRow/Check
 @onready var _cell_check: CheckButton = $Panel/VBox/Body/CellHighlightRow/Check
 @onready var _facing_cast_check: CheckButton = $Panel/VBox/Body/FacingCastRow/Check
+@onready var _motion_vectors_check: CheckButton = $Panel/VBox/Body/MotionVectorsRow/Check
+@onready var _head_debug_check: CheckButton = $Panel/VBox/Body/HeadDebugRow/Check
+@onready var _fps_check: CheckButton = $Panel/VBox/Body/FpsRow/Check
 @onready var _cast_cells_slider: HSlider = $Panel/VBox/Body/CastCellsRow/Slider
 @onready var _cast_cells_value: Label = $Panel/VBox/Body/CastCellsRow/Value
 @onready var _coping_cells_slider: HSlider = $Panel/VBox/Body/CopingCellsRow/Slider
@@ -99,6 +105,7 @@ var _level: Node2D
 var _visual: Node2D
 var _syncing_god := false
 var _collapsed: bool = true
+var _scroll: ScrollContainer
 
 
 func _ready() -> void:
@@ -111,6 +118,8 @@ func _ready() -> void:
 	_level = get_node_or_null(ramp_level_path) as Node2D
 	_visual = get_node_or_null(ramp_visual_path) as Node2D
 
+	_wrap_body_in_scroll()
+	get_viewport().size_changed.connect(_fit_scroll_height)
 	_wire_header_toggle()
 
 	_bind_float_slider(_gravity_slider, gravity_min, gravity_max, 0.1, _player, "gravity_ms2", -19.0, _on_gravity_changed, _refresh_gravity_label)
@@ -191,6 +200,18 @@ func _ready() -> void:
 	_facing_cast_check.focus_mode = Control.FOCUS_NONE
 	_facing_cast_check.toggled.connect(_on_facing_cast_toggled)
 
+	_motion_vectors_check.button_pressed = DebugTools.show_motion_vectors
+	_motion_vectors_check.focus_mode = Control.FOCUS_NONE
+	_motion_vectors_check.toggled.connect(_on_motion_vectors_toggled)
+
+	_head_debug_check.button_pressed = DebugTools.show_head_debug
+	_head_debug_check.focus_mode = Control.FOCUS_NONE
+	_head_debug_check.toggled.connect(_on_head_debug_toggled)
+
+	_fps_check.button_pressed = DebugTools.show_fps
+	_fps_check.focus_mode = Control.FOCUS_NONE
+	_fps_check.toggled.connect(_on_fps_toggled)
+
 	_bind_float_slider(
 		_cast_cells_slider,
 		cast_cells_min,
@@ -257,8 +278,50 @@ func _on_toggle_pressed() -> void:
 
 func _set_collapsed(on: bool) -> void:
 	_collapsed = on
-	_body.visible = not on
+	if _scroll:
+		_scroll.visible = not on
+		_body.visible = true
+		if not on:
+			call_deferred("_fit_scroll_height")
+	else:
+		_body.visible = not on
 	_toggle.text = "▶" if on else "▼"
+
+
+func _wrap_body_in_scroll() -> void:
+	if _body == null or _body.get_parent() is ScrollContainer:
+		return
+	var parent := _body.get_parent()
+	var idx := _body.get_index()
+	var was_visible := _body.visible
+	parent.remove_child(_body)
+	_scroll = ScrollContainer.new()
+	_scroll.name = "Scroll"
+	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_scroll.visible = was_visible
+	parent.add_child(_scroll)
+	parent.move_child(_scroll, idx)
+	_body.visible = true
+	_body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_scroll.add_child(_body)
+	_fit_scroll_height()
+
+
+func _fit_scroll_height() -> void:
+	if _scroll == null or _collapsed:
+		return
+	var vp_h := get_viewport().get_visible_rect().size.y
+	var panel_top := _panel.offset_top if _panel else 16.0
+	var header_h := _header.get_combined_minimum_size().y if _header else 28.0
+	var sep := 8.0
+	var max_h := minf(
+		body_max_height,
+		maxf(120.0, vp_h - panel_top - header_h - sep - body_bottom_margin)
+	)
+	var content_h := _body.get_combined_minimum_size().y
+	_scroll.custom_minimum_size = Vector2(0.0, minf(content_h, max_h))
 	call_deferred("_fit_panel")
 
 
@@ -520,6 +583,18 @@ func _on_facing_cast_toggled(on: bool) -> void:
 			_visual.call("refresh")
 		else:
 			_visual.queue_redraw()
+
+
+func _on_motion_vectors_toggled(on: bool) -> void:
+	DebugTools.set_show_motion_vectors(on)
+
+
+func _on_head_debug_toggled(on: bool) -> void:
+	DebugTools.set_show_head_debug(on)
+
+
+func _on_fps_toggled(on: bool) -> void:
+	DebugTools.set_show_fps(on)
 
 
 func _on_cast_cells_changed(v: float) -> void:

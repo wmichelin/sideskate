@@ -10,6 +10,8 @@ func run() -> bool:
 	ok = _smoke_fixture("res://tests/levels/test_ledge_drop.ssk") and ok
 	ok = _smoke_fixture("res://tests/levels/test_asymm_pipes.ssk") and ok
 	ok = _smoke_fixture("res://tests/levels/layered_demo.ssk") and ok
+	ok = _smoke_fixture("res://tests/levels/test_lava.ssk") and ok
+	ok = _lava_glyph_samples() and ok
 	ok = _halfpipe_geometry() and ok
 	ok = _ledge_spawn_facing() and ok
 	ok = _uneven_rows_fail() and ok
@@ -322,6 +324,50 @@ func _deck_edge_never_oob() -> bool:
 	var outside: Dictionary = level.sample(-20.0, z)
 	if str(outside.get("zone", "")) == "oob":
 		push_error("outside footprint must not report oob (hole/fallback), got %s" % outside)
+		_free_node(level)
+		return false
+	_free_node(level)
+	return true
+
+
+func _lava_glyph_samples() -> bool:
+	var text := _read("res://tests/levels/test_lava.ssk")
+	var spec := LevelLoader.parse_text(text, "test_lava")
+	if spec == null:
+		push_error("lava parse failed: %s" % LevelLoader.last_error)
+		return false
+	var level := RampLevel.new()
+	level.spec = spec
+	level.pipes.clear()
+	for pd in spec.pipes:
+		var qp := QuarterPipe.new()
+		qp.side = int(pd.side)
+		qp.lip_x = float(pd.lip_x)
+		qp.radius = float(pd.radius)
+		qp.base_height = float(pd.get("base_height", 0.0))
+		qp.z_min = float(pd.z_min)
+		qp.z_max = float(pd.z_max)
+		qp.layer = int(pd.get("layer", 0))
+		level.pipes.append(qp)
+	# Row with xxxx: grid row 1 (0-based from top). Cell centers.
+	var cw := spec.cell_w
+	var ch := spec.cell_h
+	var lava_c := 6  # first x in <<<<==xxxx==>>>>
+	var lava_r := 1
+	var lx := (float(lava_c) + 0.5) * cw
+	var lz := (float(spec.grid_h - 1 - lava_r) + 0.5) * ch
+	var hit: Dictionary = level.sample(lx, lz)
+	if str(hit.get("zone", "")) != "lava":
+		push_error("lava cell want zone lava, got %s" % hit)
+		_free_node(level)
+		return false
+	if not hit.get("active", false):
+		push_error("lava cell should be active solid")
+		_free_node(level)
+		return false
+	var flat: Dictionary = level.sample(spec.spawn_x, spec.spawn_z)
+	if str(flat.get("zone", "")) != "flat":
+		push_error("spawn want flat, got %s" % flat)
 		_free_node(level)
 		return false
 	_free_node(level)

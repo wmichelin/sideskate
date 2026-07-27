@@ -182,7 +182,7 @@ static func _is_map_row(stripped: String) -> bool:
 		return false
 	# Must contain at least one map glyph (not only spaces)
 	for glyph in stripped:
-		if glyph in ["<", ">", "=", ".", "#", "@", " "]:
+		if glyph in ["<", ">", "=", ".", "#", "@", "x", "X", " "]:
 			continue
 		return false
 	for glyph2 in stripped:
@@ -337,6 +337,10 @@ static func _append_layer_geometry(
 			var glyph: String = grid[r][c]
 			match glyph:
 				"=":
+					floor_cells.append(Vector2i(c, r))
+					story_mask[r * W + c] = 1
+				"x", "X":
+					# Lava: solid pad at layer height (lethal when grounded).
 					floor_cells.append(Vector2i(c, r))
 					story_mask[r * W + c] = 1
 				".":

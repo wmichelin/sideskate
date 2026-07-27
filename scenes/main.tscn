@@ -9,6 +9,7 @@
 [ext_resource type="Script" uid="uid://bjukc50nc4o3b" path="res://scripts/follow_camera.gd" id="8_camera"]
 [ext_resource type="Script" uid="uid://b5c20xe6x0frg" path="res://scripts/debug_sliders.gd" id="9_sliders"]
 [ext_resource type="Script" uid="uid://bq6pejaq1h5br" path="res://scripts/velocity_debug_arrow.gd" id="10_vel_arrow"]
+[ext_resource type="Script" path="res://scripts/fps_debug.gd" id="11_fps"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_head"]
 content_margin_left = 8.0
@@ -75,6 +76,7 @@ color = Color(0.98, 0.92, 0.55, 1)
 polygon = PackedVector2Array(0, -7, 6, -3, 6, 3, 0, 7, -6, 3, -6, -3)
 
 [node name="HeadDebug" type="PanelContainer" parent="Player/Body" unique_id=786460520]
+visible = false
 z_index = 20
 offset_left = -40.0
 offset_top = -118.0
@@ -113,6 +115,22 @@ script = ExtResource("8_camera")
 
 [node name="DebugOverlay" type="CanvasLayer" parent="." unique_id=1788673540]
 script = ExtResource("6_debug")
+
+[node name="FpsDebug" type="CanvasLayer" parent="."]
+script = ExtResource("11_fps")
+
+[node name="Label" type="Label" parent="FpsDebug"]
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 12.0
+offset_top = -36.0
+offset_right = 120.0
+offset_bottom = -12.0
+grow_vertical = 0
+theme_override_colors/font_color = Color(0.85, 0.9, 0.95, 0.9)
+theme_override_font_sizes/font_size = 14
+text = "0 FPS"
 
 [node name="Panel" type="PanelContainer" parent="DebugOverlay" unique_id=2129734930]
 offset_left = 16.0
@@ -666,6 +684,33 @@ theme_override_constants/separation = 8
 layout_mode = 2
 button_pressed = false
 text = "facing cast"
+
+[node name="MotionVectorsRow" type="HBoxContainer" parent="DebugSliders/Panel/VBox/Body"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Check" type="CheckButton" parent="DebugSliders/Panel/VBox/Body/MotionVectorsRow"]
+layout_mode = 2
+button_pressed = false
+text = "motion vectors"
+
+[node name="HeadDebugRow" type="HBoxContainer" parent="DebugSliders/Panel/VBox/Body"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Check" type="CheckButton" parent="DebugSliders/Panel/VBox/Body/HeadDebugRow"]
+layout_mode = 2
+button_pressed = false
+text = "head debug"
+
+[node name="FpsRow" type="HBoxContainer" parent="DebugSliders/Panel/VBox/Body"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Check" type="CheckButton" parent="DebugSliders/Panel/VBox/Body/FpsRow"]
+layout_mode = 2
+button_pressed = true
+text = "FPS"
 
 [node name="CastCellsRow" type="HBoxContainer" parent="DebugSliders/Panel/VBox/Body"]
 layout_mode = 2

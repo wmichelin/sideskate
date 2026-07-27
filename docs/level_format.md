@@ -87,6 +87,7 @@ height 188
 | Glyph | Kind | Height |
 |-------|------|--------|
 | `=` | Floor at layer height | `layer.height` |
+| `x` / `X` | Lava pad (solid; lethal when grounded) | `layer.height` |
 | `.` | Hole (nil) on this layer — fall through | — |
 | `#` | Deck (spine / coping flat) | `layer.height + pipe rise` |
 | `@` | Spawn + floor | `layer.height` |

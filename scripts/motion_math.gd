@@ -10,6 +10,18 @@ static func normalize_facing(raw: String) -> String:
 	return "r"
 
 
+## Facing from measured ACTUAL planar velocity. Empty = do not change facing.
+## Requires X-dominant motion (`|vx| > |vz|`) above `speed_eps` — never MOMENTUM.
+static func facing_from_actual_vel(
+	actual_vx: float, actual_vz: float, speed_eps: float = 8.0
+) -> String:
+	if absf(actual_vx) < speed_eps:
+		return ""
+	if absf(actual_vx) <= absf(actual_vz):
+		return ""
+	return "r" if actual_vx > 0.0 else "l"
+
+
 ## Rising, or at apex after a rise (vert≈0 but last non-zero was up).
 static func transfer_vert_ok(
 	vert_vel: float, last_nonzero_vert_vel: float, rest_eps: float = 0.5

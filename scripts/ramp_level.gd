@@ -307,6 +307,13 @@ func resolve_air_contact(
 			if is_nan(prefer_h) or prefer_h + ContactMath.LAND_EPS >= deck_h:
 				return ContactMath.make_air_contact("deck", layer, deck_h, true, deck_hit)
 
+	# Lava glyph: solid lethal pad at layer height.
+	if gzone == "lava":
+		if is_nan(prefer_h) or prefer_h + ContactMath.LAND_EPS >= layer_h:
+			return ContactMath.make_air_contact(
+				"lava", layer, layer_h, true, _flat_hit(true, "lava", layer_h, layer)
+			)
+
 	var playable := spec.is_playable_xz(logical_x, logical_z)
 
 	var hit: Dictionary = highlight
@@ -470,9 +477,15 @@ func sample_candidates(logical_x: float, logical_z: float) -> Array:
 				if cell.x < 0 or cell.y < 0 or cell.x >= spec.grid_w or cell.y >= spec.grid_h:
 					continue
 				if mask[cell.y * spec.grid_w + cell.x] != 0:
+					var pad_zone := "flat"
+					var ginfo: Dictionary = spec.glyph_at_prefer_h(
+						cell.x, cell.y, float(story.get("height", 0.0))
+					)
+					if ContactMath.zone_from_glyph(str(ginfo.get("glyph", ""))) == "lava":
+						pad_zone = "lava"
 					out.append(_flat_hit(
 						true,
-						"flat",
+						pad_zone,
 						float(story.get("height", 0.0)),
 						int(story.get("layer", -1)),
 					))
@@ -506,6 +519,8 @@ func _fallback_hit(logical_x: float, logical_z: float, prefer_h: float = NAN) ->
 			if not deck_hit.is_empty():
 				return deck_hit
 			return _flat_hit(true, "deck", layer_h, layer)
+		"lava":
+			return _flat_hit(true, "lava", maxf(layer_h, 0.0), maxi(layer, 0))
 		"pipe":
 			for pipe in pipes:
 				var q: Dictionary = pipe.query_surface(logical_x, logical_z)

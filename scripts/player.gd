@@ -58,6 +58,7 @@ const _ContactMath := preload("res://scripts/contact_math.gd")
 
 @onready var depth: PseudoDepthBody = $PseudoDepthBody
 @onready var _head_debug_label: Label = $Body/HeadDebug/Label
+@onready var _head_debug_panel: Control = $Body/HeadDebug
 @onready var _face_nose: Polygon2D = $Body/FaceNose
 
 var _velocity: Vector2 = Vector2.ZERO
@@ -109,6 +110,8 @@ var _acid_drop_available: bool = true
 var _acid_drop_lock: bool = false
 ## Spine transfer: X-lock to opposite coping; land converts vert → along-arc (drop-in).
 var _spine_transfer_lock: bool = false
+## Peak |along|/|air_vy|/|vx| this aerial — survives gravity climb for low→high drop-in.
+var _air_carry_speed: float = 0.0
 ## Once per locked aerial: facing flip (or stick override) at vertical apex.
 var _apex_facing_done: bool = false
 ## Measured actual velocity from position deltas (not stick / momentum).
@@ -124,6 +127,14 @@ var _prev_feet_h: float = 0.0
 var _last_input: Vector2 = Vector2.ZERO
 ## Horizontal facing: "l" or "r". Spawn default from level (usually r).
 var facing_h: String = "r"
+## Grounded on lava — freeze sim until death overlay finishes + respawn.
+var _dead: bool = false
+## Last grounded floor/deck pad (respawn). Seeded from `@` spawn.
+var _safe_x: float = 640.0
+var _safe_z: float = 40.0
+var _safe_h: float = 0.0
+var _safe_facing: String = "r"
+var _death_overlay: Node = null
 
 
 func _ready() -> void:
@@ -134,7 +145,31 @@ func _ready() -> void:
 		if not DebugTools.is_available():
 			head_dbg.queue_free()
 			_head_debug_label = null
+			_head_debug_panel = null
+		else:
+			_apply_head_debug_visible(DebugTools.show_head_debug)
+			if not DebugTools.show_head_debug_changed.is_connected(_apply_head_debug_visible):
+				DebugTools.show_head_debug_changed.connect(_apply_head_debug_visible)
+	_ensure_death_overlay()
 	call_deferred("_spawn_from_level")
+
+
+func _ensure_death_overlay() -> void:
+	_death_overlay = get_tree().get_first_node_in_group("death_overlay")
+	if _death_overlay != null:
+		return
+	var overlay_script: Script = load("res://scripts/death_overlay.gd") as Script
+	if overlay_script == null:
+		return
+	var overlay: CanvasLayer = CanvasLayer.new()
+	overlay.set_script(overlay_script)
+	overlay.add_to_group("death_overlay")
+	var host := get_tree().current_scene
+	if host == null:
+		host = get_parent()
+	if host:
+		host.add_child(overlay)
+	_death_overlay = overlay
 
 
 func _spawn_from_level() -> void:
@@ -160,29 +195,29 @@ func _apply_spawn_from_level() -> void:
 		var spawn_h := float(_level.spec.spawn_height)
 		depth.surface_height = spawn_h
 		depth.support_height = spawn_h
+		_remember_safe_pad(depth.logical_x, depth.logical_z, spawn_h, facing_h)
 	else:
 		depth.logical_x = 640.0
 		depth.logical_z = 40.0
 		facing_h = "r"
 		depth.surface_height = 0.0
 		depth.support_height = 0.0
-	_velocity = Vector2.ZERO
-	_ramp_along = 0.0
+		_remember_safe_pad(640.0, 40.0, 0.0, "r")
+	_dead = false
+	_reset_all_motion()
 	_clear_air()
 	_apply_surface()
 	_prev_logical_x = depth.logical_x
 	_prev_logical_z = depth.logical_z
 	_prev_feet_h = _feet_height()
-	_actual_vel_x = 0.0
-	_actual_vel_z = 0.0
-	_vert_vel = 0.0
-	_last_nonzero_vert_vel = 0.0
 	_refresh_head_debug()
 	_update_face_nose()
 	depth.apply()
 
 
 func _physics_process(delta: float) -> void:
+	if _dead:
+		return
 	if _level == null:
 		_level = get_node_or_null(level_path) as RampLevel
 
@@ -219,8 +254,87 @@ func _physics_process(delta: float) -> void:
 		depth.logical_x = clampf(depth.logical_x, 80.0, 1200.0)
 
 	_apply_surface()
+	_note_safe_pad_from_surface()
+	if _try_lava_death():
+		depth.apply()
+		return
 	_update_actual_velocity(delta)
 	_clear_momentum_if_at_rest()
+	depth.apply()
+
+
+func _remember_safe_pad(x: float, z: float, h: float, face: String) -> void:
+	_safe_x = x
+	_safe_z = z
+	_safe_h = h
+	_safe_facing = _normalize_facing(face)
+
+
+func _note_safe_pad_from_surface() -> void:
+	if _airborne or last_surface.is_empty():
+		return
+	if not ContactMath.is_safe_pad(last_surface):
+		return
+	_remember_safe_pad(
+		depth.logical_x,
+		depth.logical_z,
+		float(last_surface.get("height", depth.surface_height)),
+		facing_h,
+	)
+
+
+func _reset_all_motion() -> void:
+	_velocity = Vector2.ZERO
+	_ramp_along = 0.0
+	_debug_accel = Vector2.ZERO
+	_actual_vel_x = 0.0
+	_actual_vel_z = 0.0
+	_vert_vel = 0.0
+	_last_nonzero_vert_vel = 0.0
+	_air_carry_speed = 0.0
+	_last_input = Vector2.ZERO
+	air_vel_y = 0.0
+
+
+## Grounded lava (`aerial=false`, zone lava): red death flash → last safe pad.
+func _try_lava_death() -> bool:
+	if _airborne or last_surface.is_empty():
+		return false
+	if not ContactMath.is_lava(last_surface):
+		return false
+	_dead = true
+	_reset_all_motion()
+	_ensure_death_overlay()
+	if _death_overlay != null and _death_overlay.has_method("play"):
+		if _death_overlay.has_signal("finished") \
+				and not _death_overlay.finished.is_connected(_on_death_overlay_finished):
+			_death_overlay.finished.connect(_on_death_overlay_finished, CONNECT_ONE_SHOT)
+		_death_overlay.play()
+	else:
+		_respawn_at_safe_pad()
+	return true
+
+
+func _on_death_overlay_finished() -> void:
+	_respawn_at_safe_pad()
+
+
+func _respawn_at_safe_pad() -> void:
+	depth.logical_x = _safe_x
+	depth.logical_z = _safe_z
+	facing_h = _normalize_facing(_safe_facing)
+	depth.surface_height = _safe_h
+	depth.support_height = _safe_h
+	_on_ramp = false
+	_dead = false
+	_reset_all_motion()
+	_clear_air()
+	_apply_surface()
+	_prev_logical_x = depth.logical_x
+	_prev_logical_z = depth.logical_z
+	_prev_feet_h = _feet_height()
+	_refresh_head_debug()
+	_update_face_nose()
 	depth.apply()
 
 
@@ -443,8 +557,8 @@ func _begin_transfer_x_lerp(to_x: float, height_scaled: bool, _coping_radius: fl
 
 ## Resolve air contact at current XZ and write air_over / layer / sticky ids from it.
 ## prefer_h is feet height before this tick's gravity (label = collision source).
-## Acid/spine X-lock: force sticky to the lock target and never adopt a different
-## underfoot pipe (shared coping / high→low would otherwise snap identity back).
+## Any X-lock force-stickys to the lock target and never adopts a different
+## underfoot pipe (avoids free spine onto a higher coping; press transfer).
 func _resolve_and_apply_air_contact(prefer_h: float) -> Dictionary:
 	if _level == null:
 		return _ContactMath.make_air_contact("oob", -1, 0.0, false, {})
@@ -461,7 +575,8 @@ func _resolve_and_apply_air_contact(prefer_h: float) -> Dictionary:
 		sticky_side = _air_side
 		sticky_lip = _air_lip_x
 		sticky_base = _air_base_height
-	var lock_target := _acid_drop_lock or _spine_transfer_lock
+	# Any X-lock keeps its coping pipe — do not adopt a higher/other underfoot
+	# pipe (that felt like free spine low→high). Transfer button required.
 	var contact: Dictionary = _level.resolve_air_contact(
 		depth.logical_x,
 		depth.logical_z,
@@ -469,32 +584,11 @@ func _resolve_and_apply_air_contact(prefer_h: float) -> Dictionary:
 		sticky_side,
 		sticky_lip,
 		sticky_base,
-		lock_target,
+		_air_x_locked,
 	)
-	# Pipe-exit lock: drop when leaving coping column (acid/spine keep lock).
-	if _air_x_locked and not lock_target:
-		if not _is_aligned_with_air_coping():
-			_air_x_locked = false
-		# Higher stacked same-side pipe underfoot: retarget lock.
-		var hit: Dictionary = contact.get("hit", {})
-		if (
-			_air_x_locked
-			and _ContactMath.is_pipe(hit)
-			and int(hit.get("side", -1)) == _air_side
-			and float(hit.get("base_height", 0.0)) > _air_base_height + 0.5
-		):
-			_adopt_air_pipe_from_hit(hit, true)
-			contact = _level.resolve_air_contact(
-				depth.logical_x,
-				depth.logical_z,
-				prefer_h,
-				_air_side,
-				_air_lip_x,
-				_air_base_height,
-			)
 
-	if lock_target:
-		# Collision/landing uses contact; keep locked coping identity for drop-in.
+	if _air_x_locked:
+		# Collision/landing uses contact; keep locked coping identity for pin / drop-in.
 		return contact
 
 	air_over = str(contact.get("zone", "flat"))
@@ -551,6 +645,18 @@ func _integrate_air_gravity(delta: float) -> void:
 		return
 	air_vel_y += gravity_ms2 * logic_per_meter * delta
 	air_abs_height += air_vel_y * delta
+	_note_air_carry()
+
+
+## Bump peak aerial carry (never shrinks). Used so low→high spine keeps exit speed.
+func _note_air_carry(extra: float = 0.0) -> void:
+	_air_carry_speed = max(
+		_air_carry_speed,
+		absf(extra),
+		absf(air_vel_y),
+		absf(_velocity.x),
+		absf(_ramp_along),
+	)
 
 
 ## Debug god mode: j/k change height; take off from ground with k.
@@ -638,11 +744,11 @@ func _try_land_from_air_contact(
 		):
 			return false
 		floor_h = float(resolved.get("height", 0.0))
-		# Don't land on a surface above the hole story we're falling through without crossing.
+		# Don't land on a surface above the hole story we're falling through.
+		# Equal height is OK (L0 coping often sits at L1 floor under `.` gaps).
 		if str(contact.get("zone", "")) == "hole":
 			var hole_h := float(contact.get("height", 0.0))
-			# Only accept surfaces strictly below this story's height.
-			if floor_h >= hole_h - 0.05:
+			if not _ContactMath.hole_fall_allows_floor(floor_h, hole_h):
 				# Re-resolve lower: exclude by picking below hole.
 				var lower: Dictionary = _level.sample(
 					depth.logical_x, depth.logical_z, -1, NAN, hole_h - 2.0
@@ -652,7 +758,7 @@ func _try_land_from_air_contact(
 				):
 					return false
 				var lh := float(lower.get("height", 0.0))
-				if lh >= hole_h - 0.05:
+				if not _ContactMath.hole_fall_allows_floor(lh, hole_h):
 					return false
 				if h1 > lh + 0.05:
 					return false
@@ -682,6 +788,7 @@ func _try_land_from_air_contact(
 	var was_locked := _air_x_locked
 	var land_vy := air_vel_y
 	var approach_x := _velocity.x
+	var carry_peak := _air_carry_speed
 	_clear_air()
 
 	if _ContactMath.is_solid(land_hit):
@@ -696,6 +803,11 @@ func _try_land_from_air_contact(
 		var land_lip := float(land_hit.get("lip_x", depth.logical_x))
 		var land_base := float(land_hit.get("base_height", 0.0))
 		var side_sign := _coping_sign(land_side)
+		# Locked acid/spine (and pipe-exit): use peak aerial carry so a climb to a
+		# higher coping does not drop-in at the drained land_vy only.
+		if was_locked:
+			var carry := maxf(absf(approach_x), carry_peak)
+			approach_x = _AerialMath.lock_carry_velocity_x(carry, land_side)
 		var along := approach_x
 		if was_locked or land_vy < -1.0:
 			along = _AerialMath.merge_drop_in_along(approach_x, land_vy, land_side)
@@ -993,10 +1105,11 @@ func _enter_air_from_pipe(hit: Dictionary, up_speed: float = 0.0) -> void:
 	_ramp_along = 0.0
 	_velocity.x = 0.0
 	_on_ramp = false
+	_note_air_carry(up_speed)
 
 
-## Unlock pipe-exit X-lock into free air when rising, above coping, and INPUT
-## points toward that pipe's side (MotionVectors.Kind.INPUT). Preserves height / vy.
+## Unlock pipe-exit X-lock into free air when rising, above coping, and planar
+## INPUT is X-dominant toward that pipe's side (not MOMENTUM, not Z-dominant).
 ## Spine transfer stays locked (no fly-out) until drop-in.
 func _try_fly_out_from_pipe_lock() -> bool:
 	if _spine_transfer_lock:
@@ -1010,6 +1123,8 @@ func _try_fly_out_from_pipe_lock() -> bool:
 		fly_out_above_coping,
 		_last_input.x,
 		air_vel_y,
+		0.15,
+		_last_input.y,
 	):
 		return false
 	_air_x_locked = false
@@ -1063,6 +1178,7 @@ func _clear_air() -> void:
 	_transfer_available = true
 	_acid_drop_available = true
 	_last_nonzero_vert_vel = 0.0
+	_air_carry_speed = 0.0
 	depth.height_offset = 0.0
 
 
@@ -1108,6 +1224,9 @@ func _try_acid_drop() -> void:
 	_air_over_layer = int(hit.get("layer", _layer_index_for_base(_air_base_height)))
 	_transfer_behind_sign = _coping_sign(side)
 	# Do not touch air_abs_height or air_vel_y — only horizontal lock + existing gravity.
+	# Stash into-pipe carry from peak aerial speed (not drained live vy).
+	_note_air_carry()
+	_velocity.x = _AerialMath.lock_carry_velocity_x(_air_carry_speed, side)
 
 	_begin_transfer_x_lerp(coping, true, radius)
 
@@ -1132,12 +1251,18 @@ func _try_spine_transfer() -> bool:
 	if hit.is_empty():
 		return false
 
+	# Peak aerial carry (exit speed), not live air_vel_y after a gravity climb.
+	_note_air_carry()
+	var carry: float = _air_carry_speed
+
 	# Leave the wall into air with upward speed, then spine-lock (don't pin to
 	# the source coping — lerp to the facing target).
 	if not _airborne:
 		_launch_air_for_spine_from_ramp()
+		_note_air_carry()
+		carry = _air_carry_speed
 
-	_apply_spine_lock(hit)
+	_apply_spine_lock(hit, carry)
 	return true
 
 
@@ -1174,9 +1299,10 @@ func _launch_air_for_spine_from_ramp() -> void:
 	_transfer_behind_sign = _coping_sign(_ramp_side)
 	depth.airborne = true
 	depth.surface_height = air_abs_height
+	_note_air_carry(up)
 
 
-func _apply_spine_lock(hit: Dictionary) -> void:
+func _apply_spine_lock(hit: Dictionary, carry_speed: float = -1.0) -> void:
 	var side: int = int(hit.get("side", QuarterPipe.PipeSide.RIGHT))
 	var lip: float = float(hit.get("lip_x", depth.logical_x))
 	var radius: float = float(hit.get("radius", 150.0))
@@ -1193,6 +1319,15 @@ func _apply_spine_lock(hit: Dictionary) -> void:
 	air_over = _pipe_zone_name(side)
 	_air_over_layer = int(hit.get("layer", _layer_index_for_base(_air_base_height)))
 	_transfer_behind_sign = _coping_sign(side)
+
+	var carry := carry_speed
+	if carry < 0.0:
+		_note_air_carry()
+		carry = _air_carry_speed
+	else:
+		_note_air_carry(carry)
+		carry = _air_carry_speed
+	_velocity.x = _AerialMath.lock_carry_velocity_x(carry, side)
 
 	_begin_transfer_x_lerp(coping, true, radius)
 
@@ -1478,17 +1613,12 @@ func _normalize_facing(raw: String) -> String:
 	return _MotionMath.normalize_facing(raw)
 
 
-func _update_facing_h(input: Vector2) -> void:
-	# Facing follows along-speed on ramps (not the cos-projected remnant).
-	var horiz := _ramp_along if _on_ramp else _velocity.x
-	if absf(horiz) >= 8.0:
-		facing_h = "r" if horiz > 0.0 else "l"
-		return
-	if absf(_actual_vel_x) >= 8.0:
-		facing_h = "r" if _actual_vel_x > 0.0 else "l"
-		return
-	if absf(input.x) >= 0.15:
-		facing_h = "r" if input.x > 0.0 else "l"
+func _update_facing_h(_input: Vector2) -> void:
+	# Facing follows measured ACTUAL X only (X-dominant) — never MOMENTUM.
+	# Ollie thrust must not flip facing via leftover `_velocity.x`.
+	var from_actual := _MotionMath.facing_from_actual_vel(_actual_vel_x, _actual_vel_z)
+	if from_actual != "":
+		facing_h = from_actual
 
 
 ## At vertical apex while X-locked over a pipe: flip facing, unless stick
@@ -1548,6 +1678,11 @@ func motion_speed(kind: _MotionVectors.Kind) -> float:
 		_MotionVectors.Kind.ACTUAL:
 			return Vector3(_actual_vel_x, _vert_vel, _actual_vel_z).length()
 		_MotionVectors.Kind.MOMENTUM:
+			# Along-arc is the control speed on a pipe; horiz remnant is only display split.
+			if _on_ramp:
+				return absf(_ramp_along)
+			if _airborne:
+				return max(absf(_velocity.x), absf(air_vel_y), _air_carry_speed)
 			return _velocity.length()
 		_MotionVectors.Kind.INPUT:
 			return Vector2(_last_input.x * max_speed_x, _last_input.y * max_speed_z).length()
@@ -1564,9 +1699,17 @@ func debug_accel_mag() -> float:
 
 
 func _refresh_head_debug() -> void:
-	if _head_debug_label == null:
+	if _head_debug_label == null or not DebugTools.show_head_debug:
 		return
 	_head_debug_label.text = zone_debug_label()
+
+
+func _apply_head_debug_visible(on: bool) -> void:
+	if _head_debug_panel == null:
+		return
+	_head_debug_panel.visible = on
+	if on:
+		_refresh_head_debug()
 
 
 func _read_move_input() -> Vector2:
@@ -1580,6 +1723,16 @@ func _read_move_input() -> Vector2:
 
 func _integrate_velocity(input: Vector2, delta: float) -> void:
 	var before := _velocity
+	# Acid/spine: X is a stashed into-pipe carry for landing — don't brake it away.
+	if _acid_drop_lock or _spine_transfer_lock:
+		_velocity.y = input.y * max_speed_z
+		_clamp_momentum_to_max_speed()
+		if delta > 0.0001:
+			_debug_accel = (_velocity - before) / delta
+		else:
+			_debug_accel = Vector2.ZERO
+		return
+
 	var holding_ollie := Input.is_action_pressed("ollie")
 	var step := acceleration * delta
 	var friction_step := friction * delta

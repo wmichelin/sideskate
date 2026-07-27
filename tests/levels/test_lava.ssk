@@ -1,0 +1,10 @@
+ssk 2
+name test_lava
+spawn_facing r
+---
+layer 0
+height 0
+<<<<========>>>>
+<<<<==xxxx==>>>>
+<<<<====@===>>>>
+<<<<========>>>>

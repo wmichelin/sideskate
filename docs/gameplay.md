@@ -22,9 +22,11 @@ See also [AGENTS.md](../AGENTS.md).
 
 **Air contact (label = collision):** each airborne physics tick, after XZ is committed, `RampLevel.resolve_air_contact` builds one underfoot record `{zone, layer, height, solid, hit}`. The **zone matches cell highlight** (`sample(x,z,prefer_h)`). Sticky pipe identity only overrides when you have already dipped below that pipe’s surface while still in its footprint (no tunnel). Glyph `.` → `hole` on that story. Grounded debug zones also show `L#` (e.g. `flat L1`).
 
-**Vertical sweep (air):** when contact is a hole (or still above a solid), a sweep over `[h_before → h_after]` may still catch a **lower** solid crossed this tick. Holes contribute no floor on their story.
+**Vertical sweep (air):** when contact is a hole (or still above a solid), a sweep over `[h_before → h_after]` may still catch a **lower** solid crossed this tick. Holes contribute no floor on their story. Landing through a hole may use a surface at **equal** height to the hole story (e.g. L0 coping floor matching L1 `height` under `.`) — only surfaces *above* the hole plane are rejected.
 
-**Solids vs holes:** `=` / `#` are solid. `.` is a hole (fall-through on that story). Space is hard OOB — the skater is **clamped** into the layer-0 playable footprint (`LevelSpec.clamp_to_playable`). Grounded/`sample` never reports `oob` on a playable cell (deck `#` cells stay `deck` even on outline-poly edges); outside the footprint resolves as a hole so ride-off works until clamp corrects pose.
+**Solids vs holes:** `=` / `#` / `x` are solid. `.` is a hole (fall-through on that story). Space is hard OOB — the skater is **clamped** into the layer-0 playable footprint (`LevelSpec.clamp_to_playable`). Grounded/`sample` never reports `oob` on a playable cell (deck `#` cells stay `deck` even on outline-poly edges); outside the footprint resolves as a hole so ride-off works until clamp corrects pose.
+
+**Lava (`x`):** zone `lava`. Flying over lava is fine. Landing / standing with `aerial = false` and zone lava freezes the skater, flashes the screen red with “you're dead”, then respawns at the last grounded **floor** or **deck** pad with all MOMENTUM / ACTUAL / air velocity cleared. Spawn `@` seeds the first safe pad.
 
 **Contact vs fall:** fresh pipe mounts require the surface within `ride_off_height_eps` of the feet; solid pads at the same height block remounting the pipe underneath. Coping-exit launch only fires when underfoot is that same pipe identity (side + lip + base). While already on a pipe, height follows the arc. Leaving support into a hole rides off into free air at the prior feet height.
 
@@ -43,7 +45,7 @@ Stick integrates into **momentum** (`_velocity` on X/Z). See [Motion vectors](#m
 - **Depth Z**: immediate — stick maps straight to `±max_speed_z` (default 400; debug slider).
 - **Rest reset**: when measured **ACTUAL** speed is ≈0, integrated **MOMENTUM** (`_velocity` / `_ramp_along`) is cleared so reverse isn’t fighting leftover control speed (e.g. jammed on a bound). Skipped while air **gravity** applies (horizontal remnant must survive apex / free fall).
 - **Acceleration** (default 3250) / **brake** / **max speed x** (default 880) / **max speed z**: tunable via debug sliders.
-- **Horizontal facing** `facing_h` (`l` / `r`): follows motion while moving; stick only when nearly stopped. Spawn from level header `spawn_facing` (default `r`). Head debug shows `hd l` / `hd r`.
+- **Horizontal facing** `facing_h` (`l` / `r`): follows measured **ACTUAL** X only when `|vx|` is above a small eps and **X-dominant** (`|vx| > |vz|`). Never MOMENTUM (so ollie thrust / leftover `_velocity.x` cannot flip facing). Spawn from level header `spawn_facing` (default `r`). Head debug shows `hd l` / `hd r`.
 - **Ollie** (hold Space): mild forward accel (`ollie_accel`, default 650) toward `max_speed_x` in facing direction. Skipped while stick is braking opposite. Tunable via debug slider.
 - On flat/deck: move in X/Z; leaving a **higher** support into a lower one **rides off** into free air (keep prior height, apply gravity).
 - On a pipe: along-arc speed (`_ramp_along`) follows the arc (θ). Horiz remnant is `along * cosθ`; vertical is `along * sinθ`. At the top coping (θ = π/2) **all** remaining along-speed converts into `air_vel_y` (horiz → 0). **`ramp_friction`** (default 0, debug slider) drains along-speed while on the pipe.
@@ -58,7 +60,7 @@ Canonical triad for control vs world motion — `MotionVectors.Kind` in [`script
 | **MOMENTUM** | `MotionVectors.Kind.MOMENTUM` | Integrated control (`_velocity` / `_ramp_along`) | X/Z; on ramp also shows converted vertical | Orange |
 | **ACTUAL** | `MotionVectors.Kind.ACTUAL` | Measured pose rates (`_actual_vel_*`, `_vert_vel`) | X, Z, **height** | Green |
 
-**API:** `Player.motion_screen(kind)` / `Player.motion_speed(kind)` — prefer these over ad-hoc strings. Fly-out gates on **INPUT** X (`_last_input.x`), not MOMENTUM (instantaneous stick wish toward the pipe side).
+**API:** `Player.motion_screen(kind)` / `Player.motion_speed(kind)` — prefer these over ad-hoc strings. Fly-out gates on **INPUT** only (`|input_x| > |input_z|` and X toward the pipe side); never MOMENTUM.
 
 ```gdscript
 # Example: branch on the named kind
@@ -84,7 +86,7 @@ Feet height while airborne: `air_abs_height`. Vertical rate for gravity: `air_ve
 
 ### Pipe fly-out
 
-While in **pipe coping lock** (not acid-drop), if still **rising** (`air_vel_y > 0`), feet height reaches `coping_floor + fly_out_above_coping` (coping floor = `base_height + radius`; debug slider **fly out**, default 40), **and** **INPUT** X points toward that pipe’s side (right pipe → right; left pipe → left), unlock X into free air. Keep `air_abs_height` and `air_vel_y` so the skater continues on a **parabolic** arc. Falling or no outward input → stay locked and land as usual.
+While in **pipe coping lock** (not acid-drop / spine), X stays locked even if underfoot becomes hole / flat / another zone — only **fly-out** clears it. Fly-out requires still **rising** (`air_vel_y > 0`), feet height ≥ `coping_floor + fly_out_above_coping` (debug slider **fly out**, default 40), **and** planar **INPUT** that is **X-dominant** (`|input_x| > |input_z|`) toward that pipe’s side (right pipe → right; left → left). MOMENTUM is never consulted. Keep `air_abs_height` / `air_vel_y` on unlock for a **parabolic** arc. Falling or Z-dominant / vertical-only stick → stay locked and land as usual. While locked, air contact **force-sticky**s to that coping — rising past a higher opposite pipe does **not** auto spine; press transfer for spine low→high.
 
 Pipe coping lock treats the top coping height (`base_height + radius`) as the floor. Acid-drop lock and free air **must not** use that shortcut (it would snap feet upward); they sample the real surface under `(x, z)`.
 
@@ -116,6 +118,7 @@ Routing uses measured vertical rate (`_vert_vel`) and the last non-zero vertical
 When the transfer path runs and FacingCastMath finds a **top coping** within `facing_coping_cells` deck cells ahead of `facing_h` (default **3**, debug **coping cells** slider; excludes the pipe you’re on), fire spine transfer instead of free-air transfer. Works while **airborne and rising**, or **grounded on a pipe riding up** toward coping (T/P leaves the wall into the spine lock):
 
 - Lerp/lock X to that **top coping** (never the lip); keep `air_abs_height` and `air_vel_y` (continue the rise). Same live height-scaled X settle + smoothstep as acid drop.
+- Stash into-pipe **MOMENTUM** from **peak** aerial speed (`_air_carry_speed` / `lock_carry_velocity_x`) — not live `air_vel_y` after a gravity climb — so low→high still drop-ins at exit speed (`merge_drop_in_along` keeps the faster approach). Stick does not brake that carry while locked.
 - While locked, air contact **force-sticky**s to that coping and does not adopt a different underfoot pipe (shared high→low column would otherwise snap identity back same tick).
 - On land: same drop-in as pipe-exit / acid — falling `air_vel_y` → `_ramp_along` (keep approach if faster into the pipe).
 - No fly-out while the spine lock is active.
@@ -174,7 +177,7 @@ Debug tools are gated by autoload `DebugTools`: available when `OS.is_debug_buil
 | [`scripts/pipe_math.gd`](../scripts/pipe_math.gd) | Pure coping / opposite-pipe helpers |
 | [`scripts/motion_math.gd`](../scripts/motion_math.gd) | Pure brake-no-reverse + facing / transfer-vert helpers |
 | [`scripts/motion_vectors.gd`](../scripts/motion_vectors.gd) | Named triad `INPUT` / `MOMENTUM` / `ACTUAL` |
-| [`scripts/aerial_math.gd`](../scripts/aerial_math.gd) | Pure transfer / spine-transfer / acid-drop routing + target selection |
+| [`scripts/aerial_math.gd`](../scripts/aerial_math.gd) | Pure transfer / spine / acid routing + `merge_drop_in_along` / `lock_carry_velocity_x` |
 | [`scripts/facing_cast_math.gd`](../scripts/facing_cast_math.gd) | Pure facing-cast cells + story/pipe/coping surface resolve |
 | [`scripts/pseudo_depth_body.gd`](../scripts/pseudo_depth_body.gd) | Logical pose → screen body + air/ground shadow |
 | [`scripts/quarter_pipe.gd`](../scripts/quarter_pipe.gd) | Pipe sample (θ, height, zone) |
@@ -191,9 +194,9 @@ Debug tools are gated by autoload `DebugTools`: available when `OS.is_debug_buil
 5. Transfer at rising apex; acid drop must not steal that case. Spine transfer only on the rising path.  
 6. Acid drop / spine: FacingCastMath first top coping within `facing_coping_cells` ahead of `facing_h` (excludes current pipe).  
 7. Free air / acid drop land on **sampled** height — never snap up to coping radius as a fake floor.  
-8. Fly-out: only while rising; right pipe needs INPUT right; left pipe needs INPUT left; never from acid-drop or spine-transfer lock.  
+8. Fly-out: only unlock for pipe-exit X-lock; rising + X-dominant INPUT toward pipe (never MOMENTUM); never from acid/spine; contact changing to hole/flat does not unlock.  
 9. Spine transfer: rising path + facing-cast coping in range; keep height + `air_vel_y`; land uses shared drop-in merge; else normal transfer.  
-10. Locked pipe land (pipe-exit / acid / spine): `merge_drop_in_along` — fall vert → along-arc, keep approach if faster into the pipe.
+10. Locked pipe land (pipe-exit / acid / spine): `merge_drop_in_along` — fall vert → along-arc, keep approach if faster into the pipe. Peak `_air_carry_speed` this aerial seeds approach so low→high climbs keep exit speed.  
 11. Acid/spine X settle: live `duration = base + rate × height_above` (`lock_x_duration_for_height`); progress `+= δt/duration`; smoothstep ease.
 
-Covered by headless tests in `tests/test_aerial_math.gd` / `tests/test_motion_math.gd` / `tests/test_cell_at_for_pose.gd` (routing, acid selection, landing floor, spine transfer gaps, coping-lock cell targeting).
+Covered by headless tests in `tests/test_aerial_math.gd` / `tests/test_motion_math.gd` / `tests/test_cell_at_for_pose.gd` (routing, acid selection, landing floor, spine gaps, lock carry vs weak land_vy, coping-lock cell targeting).

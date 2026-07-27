@@ -90,6 +90,12 @@ static func merge_drop_in_along(approach_x: float, land_vy: float, side: int) ->
 	return minf(approach_x * sign, from_fall * sign) * sign
 
 
+## Horizontal MOMENTUM to stash while acid/spine X-locked: into the target pipe
+## at `carry_speed`. Survives gravity climb so low→high land keeps approach.
+static func lock_carry_velocity_x(carry_speed: float, side: int) -> float:
+	return -maxf(carry_speed, 0.0) * _PipeMath.coping_sign(side)
+
+
 ## X settle duration for locking onto an opposite coping (acid / spine).
 ## Continuous in height: `base + per_height * height_above_coping`.
 ## If `duration_max` > 0, soft-cap (still continuous below the cap).
@@ -116,10 +122,12 @@ static func smoothstep01(u: float) -> float:
 
 
 ## Pipe-exit X-lock → free air (parabolic fly-out) when still rising, height clears
-## coping+extra, and INPUT X points toward that pipe's side (right → +X, left → −X).
-## See MotionVectors.Kind.INPUT. Falling (`air_vel_y` ≤ 0) never flies out.
-## Acid-drop lock never flies out this way. `above_coping` is logical height above
-## coping (`air_radius`); 0 means unlock as soon as at/above coping.
+## coping+extra, and planar INPUT points toward that pipe's side (right → +X,
+## left → −X). MOMENTUM is ignored — only the stick wish. X must dominate Z
+## (`|input_x| > |input_z|`); pure/mostly vertical wish must not fly out.
+## Falling (`air_vel_y` ≤ 0) never flies out. Acid-drop lock never flies out
+## this way. `above_coping` is logical height above coping (`air_radius`);
+## 0 means unlock as soon as at/above coping.
 static func should_fly_out_pipe_lock(
 	air_x_locked: bool,
 	acid_drop_lock: bool,
@@ -130,6 +138,7 @@ static func should_fly_out_pipe_lock(
 	input_x: float,
 	air_vel_y: float,
 	input_eps: float = 0.15,
+	input_z: float = 0.0,
 ) -> bool:
 	if not air_x_locked or acid_drop_lock:
 		return false
@@ -137,6 +146,11 @@ static func should_fly_out_pipe_lock(
 	if air_vel_y <= 0.0:
 		return false
 	if air_abs_height + 0.001 < air_radius + maxf(above_coping, 0.0):
+		return false
+	# Stick must clearly push toward the pipe side; X must dominate Z (not vertical wish).
+	if absf(input_x) <= input_eps:
+		return false
+	if absf(input_x) <= absf(input_z):
 		return false
 	var out := _PipeMath.coping_sign(air_side)
 	return input_x * out > input_eps

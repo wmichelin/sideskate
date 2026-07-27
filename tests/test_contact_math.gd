@@ -169,11 +169,34 @@ func _air_contact_land_rules() -> bool:
 	if ContactMath.should_land_on_air_contact(hole, 220.0, 150.0):
 		push_error("hole must not be a land surface")
 		return false
+	# L0 coping at L1 floor height under a `.` — must be allowed (was rejected before).
+	if not ContactMath.hole_fall_allows_floor(188.0, 188.0):
+		push_error("hole fall must allow floor_h == hole_h (stacked coping)")
+		return false
+	if not ContactMath.hole_fall_allows_floor(100.0, 188.0):
+		push_error("hole fall must allow lower floor")
+		return false
+	if ContactMath.hole_fall_allows_floor(200.0, 188.0):
+		push_error("hole fall must reject floor above hole story")
+		return false
 	if ContactMath.zone_from_glyph(".") != "hole":
 		push_error("glyph . want hole")
 		return false
 	if ContactMath.zone_from_glyph("#") != "deck":
 		push_error("glyph # want deck")
+		return false
+	if ContactMath.zone_from_glyph("x") != "lava" or ContactMath.zone_from_glyph("X") != "lava":
+		push_error("glyph x/X want lava")
+		return false
+	var lava := {"zone": "lava", "height": 0.0}
+	if not ContactMath.is_solid(lava) or not ContactMath.is_lava(lava):
+		push_error("lava must be solid + is_lava")
+		return false
+	if ContactMath.is_safe_pad(lava):
+		push_error("lava must not be a safe pad")
+		return false
+	if not ContactMath.is_safe_pad({"zone": "flat"}) or not ContactMath.is_safe_pad({"zone": "deck"}):
+		push_error("flat/deck must be safe pads")
 		return false
 	return true
 

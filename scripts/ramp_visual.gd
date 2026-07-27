@@ -162,10 +162,10 @@ func _draw_ground_floors(band: Vector2) -> void:
 			var mask: PackedByteArray = story.get("mask", PackedByteArray())
 			if mask.size() < spec.grid_w * spec.grid_h:
 				continue
-			_draw_story_floor_cells(band, mask, 0.0)
+			_draw_story_floor_cells(band, mask, 0.0, int(story.get("layer", -1)))
 		return
 	if spec.floor_mask.size() > 0 and spec.grid_w > 0:
-		_draw_story_floor_cells(band, spec.floor_mask, 0.0)
+		_draw_story_floor_cells(band, spec.floor_mask, 0.0, 0)
 		return
 	for floor in spec.floors:
 		if float(floor.get("height", 0.0)) > 0.05:
@@ -194,10 +194,12 @@ func _draw_elevated_floors(band: Vector2) -> void:
 		var mask: PackedByteArray = story.get("mask", PackedByteArray())
 		if mask.size() < W * H:
 			continue
-		_draw_story_floor_cells(band, mask, h)
+		_draw_story_floor_cells(band, mask, h, int(story.get("layer", -1)))
 
 
-func _draw_story_floor_cells(band: Vector2, mask: PackedByteArray, height: float) -> void:
+func _draw_story_floor_cells(
+	band: Vector2, mask: PackedByteArray, height: float, layer: int = -1
+) -> void:
 	var spec := _level.spec
 	var W := spec.grid_w
 	var H := spec.grid_h
@@ -211,10 +213,17 @@ func _draw_story_floor_cells(band: Vector2, mask: PackedByteArray, height: float
 		return
 	var fill := Color(0.32, 0.38, 0.42, 0.88)
 	var stroke := Color(0.55, 0.62, 0.70, 0.75)
+	var lava_fill := Color(0.72, 0.12, 0.05, 0.92)
+	var lava_stroke := Color(0.95, 0.35, 0.12, 0.85)
 	for r in range(r_min, r_max + 1):
 		for c in range(W):
 			if mask[r * W + c] == 0:
 				continue
+			var cell_fill := fill
+			var cell_stroke := stroke
+			if layer >= 0 and ContactMath.zone_from_glyph(_glyph_at_layer(layer, c, r)) == "lava":
+				cell_fill = lava_fill
+				cell_stroke = lava_stroke
 			var x0 := float(c) * cw
 			var x1 := float(c + 1) * cw
 			var z0 := maxf(float(H - 1 - r) * ch, band.x)
@@ -227,10 +236,26 @@ func _draw_story_floor_cells(band: Vector2, mask: PackedByteArray, height: float
 				_surf_point(x1, z1, height),
 				_surf_point(x0, z1, height),
 			])
-			draw_colored_polygon(corners, fill)
+			draw_colored_polygon(corners, cell_fill)
 			for i in range(corners.size()):
-				draw_line(corners[i], corners[(i + 1) % corners.size()], stroke, 1.25)
+				draw_line(corners[i], corners[(i + 1) % corners.size()], cell_stroke, 1.25)
 
+
+func _glyph_at_layer(layer: int, c: int, r: int) -> String:
+	var spec := _level.spec
+	if spec == null:
+		return ""
+	for L in spec.layers:
+		if int(L.get("index", -1)) != layer:
+			continue
+		var rows: PackedStringArray = L.get("rows", PackedStringArray())
+		if r < 0 or r >= rows.size():
+			return ""
+		var line: String = rows[r]
+		if c < 0 or c >= line.length():
+			return ""
+		return line[c]
+	return ""
 
 func _ensure_checker_texture() -> void:
 	if (

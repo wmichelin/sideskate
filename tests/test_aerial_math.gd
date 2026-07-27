@@ -115,6 +115,19 @@ func _drop_in_along() -> bool:
 	if absf(out_plus_fall - (-70.0)) > 0.01:
 		push_error("outward+fall → fall, got %s" % out_plus_fall)
 		return false
+	# Low→high: climb drains land_vy; stashed into-pipe carry must win.
+	var carry_x := AerialMath.lock_carry_velocity_x(200.0, 1)
+	if absf(carry_x - (-200.0)) > 0.01:
+		push_error("right carry want -200, got %s" % carry_x)
+		return false
+	var after_climb := AerialMath.merge_drop_in_along(carry_x, -15.0, 1)
+	if absf(after_climb - (-200.0)) > 0.01:
+		push_error("carry must survive weak land_vy, got %s" % after_climb)
+		return false
+	var carry_l := AerialMath.lock_carry_velocity_x(150.0, 0)
+	if absf(carry_l - 150.0) > 0.01:
+		push_error("left carry want +150, got %s" % carry_l)
+		return false
 	return true
 
 
@@ -193,6 +206,16 @@ func _fly_out_pipe_lock() -> bool:
 	# above_coping 0: unlock at coping height.
 	if not AerialMath.should_fly_out_pipe_lock(true, false, 1, 150.0, 150.0, 0.0, 1.0, 80.0):
 		push_error("above=0 at coping + outward input + rising → fly out")
+		return false
+	# Vertical / Z-dominant INPUT must not fly out (need X-dominant).
+	if AerialMath.should_fly_out_pipe_lock(true, false, 1, 200.0, 150.0, 40.0, 0.0, 80.0, 0.15, 1.0):
+		push_error("pure vertical INPUT → no fly out")
+		return false
+	if AerialMath.should_fly_out_pipe_lock(true, false, 1, 200.0, 150.0, 40.0, 0.5, 80.0, 0.15, 0.8):
+		push_error("Z-dominant INPUT → no fly out")
+		return false
+	if not AerialMath.should_fly_out_pipe_lock(true, false, 1, 200.0, 150.0, 40.0, 0.8, 80.0, 0.15, 0.3):
+		push_error("X-dominant outward INPUT → fly out")
 		return false
 	return true
 

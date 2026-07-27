@@ -6,8 +6,17 @@ extends Node
 var available: bool = false
 ## Flight assist: no gravity; j/k adjust height. Only when available.
 var god_mode: bool = false
+## Head arrows for INPUT / MOMENTUM / ACTUAL. Off by default.
+var show_motion_vectors: bool = false
+## Zone / facing box over the skater's head. Off by default.
+var show_head_debug: bool = false
+## Bottom-left FPS counter. On by default while debugging.
+var show_fps: bool = true
 
 signal god_mode_changed(enabled: bool)
+signal show_motion_vectors_changed(enabled: bool)
+signal show_head_debug_changed(enabled: bool)
+signal show_fps_changed(enabled: bool)
 
 
 func _ready() -> void:
@@ -40,6 +49,33 @@ func set_god_mode(on: bool) -> void:
 
 func toggle_god_mode() -> void:
 	set_god_mode(not god_mode)
+
+
+func set_show_motion_vectors(on: bool) -> void:
+	if not available:
+		on = false
+	if show_motion_vectors == on:
+		return
+	show_motion_vectors = on
+	show_motion_vectors_changed.emit(show_motion_vectors)
+
+
+func set_show_head_debug(on: bool) -> void:
+	if not available:
+		on = false
+	if show_head_debug == on:
+		return
+	show_head_debug = on
+	show_head_debug_changed.emit(show_head_debug)
+
+
+func set_show_fps(on: bool) -> void:
+	if not available:
+		on = false
+	if show_fps == on:
+		return
+	show_fps = on
+	show_fps_changed.emit(show_fps)
 
 
 func _strip_debug_nodes() -> void:

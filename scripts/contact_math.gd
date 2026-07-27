@@ -9,6 +9,16 @@ const HEIGHT_TIE_EPS := 0.05
 
 static func is_solid(hit: Dictionary) -> bool:
 	var zone := str(hit.get("zone", ""))
+	return zone == "flat" or zone == "deck" or zone == "lava"
+
+
+static func is_lava(hit: Dictionary) -> bool:
+	return str(hit.get("zone", "")) == "lava"
+
+
+## Floor / deck pads that count as a safe respawn anchor (not lava).
+static func is_safe_pad(hit: Dictionary) -> bool:
+	var zone := str(hit.get("zone", ""))
 	return zone == "flat" or zone == "deck"
 
 
@@ -254,13 +264,24 @@ static func should_land_on_air_contact(
 	return true
 
 
-## Glyph on a story: hole / floor / pipe / deck / empty.
+## Falling through a hole at story height `hole_h`: may land on `floor_h`?
+## Reject only surfaces *above* the hole plane. Equal height is allowed (e.g. L0
+## coping floor matching L1 story height under a `.` gap).
+static func hole_fall_allows_floor(
+	floor_h: float, hole_h: float, eps: float = 0.05
+) -> bool:
+	return floor_h <= hole_h + eps
+
+
+## Glyph on a story: hole / floor / lava / deck / pipe / empty.
 static func zone_from_glyph(glyph: String) -> String:
 	match glyph:
 		".":
 			return "hole"
 		"=", "@":
 			return "flat"
+		"x", "X":
+			return "lava"
 		"#", "^", "v", "V":
 			return "deck"
 		"<", ">":

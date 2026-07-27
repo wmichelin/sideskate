@@ -25,6 +25,18 @@ func _facing() -> bool:
 	if MotionMath.normalize_facing("nope") != "r":
 		push_error("normalize_facing default r")
 		return false
+	if MotionMath.facing_from_actual_vel(20.0, 5.0) != "r":
+		push_error("X-dominant +vx → face r")
+		return false
+	if MotionMath.facing_from_actual_vel(-20.0, 5.0) != "l":
+		push_error("X-dominant -vx → face l")
+		return false
+	if MotionMath.facing_from_actual_vel(5.0, 20.0) != "":
+		push_error("Z-dominant actual → no facing change")
+		return false
+	if MotionMath.facing_from_actual_vel(4.0, 0.0) != "":
+		push_error("below speed eps → no facing change")
+		return false
 	return true
 
 

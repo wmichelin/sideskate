@@ -186,6 +186,8 @@ static func _resolve_cell(
 			return pipe_info
 		"flat":
 			return _empty_surface("flat", layer_h, layer)
+		"lava":
+			return _empty_surface("lava", layer_h, layer)
 		"deck":
 			var dh := _deck_height_for_layer(spec, layer)
 			if is_nan(dh):

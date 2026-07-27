@@ -36,6 +36,9 @@ func _process(_delta: float) -> void:
 
 
 func _draw() -> void:
+	if not DebugTools.show_motion_vectors:
+		_speed_label.visible = false
+		return
 	if _player == null or not _player.has_method("motion_screen") or not _player.has_method("motion_speed"):
 		_speed_label.visible = false
 		return
