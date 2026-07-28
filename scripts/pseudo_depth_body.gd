@@ -6,6 +6,7 @@ extends Node
 ## scale use the same perspective math as level geometry (`geometry_scale_at`).
 ## Airborne: body rises with feet height; circular shadow shows only in air,
 ## pinned to underfoot support and shrinking with height above that surface.
+## Air shadow uses absolute z above RampVisual Near so coplanar deck tops do not hide it.
 
 const _PerspectiveMath := preload("res://scripts/perspective_math.gd")
 
@@ -137,6 +138,9 @@ func apply() -> void:
 			_apply_air_shadow(s, t)
 		else:
 			_shadow.visible = false
+			# Restore tree-relative sort under Body while grounded.
+			_shadow.z_as_relative = true
+			_shadow.z_index = -1
 
 
 func _apply_air_shadow(geom_scale: float, depth_t_val: float) -> void:
@@ -148,7 +152,10 @@ func _apply_air_shadow(geom_scale: float, depth_t_val: float) -> void:
 
 	# Pin to underfoot support — never floats with air feet.
 	_shadow.position = Vector2(0.0, shadow_ground_nudge * geom_scale - support_screen_h)
-	_shadow.z_index = 0
+	# Absolute above RampVisual Near (200): coplanar Near deck tops would otherwise
+	# composite over the skater and hide the shadow during spine transfers.
+	_shadow.z_as_relative = false
+	_shadow.z_index = 210
 
 	var width_mul := _PerspectiveMath.air_shadow_width_scale(
 		surface_height - support_height,

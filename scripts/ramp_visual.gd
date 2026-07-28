@@ -1,5 +1,7 @@
 extends Node2D
 ## Surface + solid-wall level draw: floors, pipe ribbons/walls/endcaps, deck tops/sides.
+## Per pass: floors → deck walls → pipes → elevated → deck tops.
+## Deck walls precede pipes so a pad end face never composites through a ribbon.
 ## Far → Player → Near Z-split: nearer park geometry composites above the skater
 ## so the player is occluded when behind a ramp. Draw window follows skater Z
 ## (truck only). X lean uses world-fixed origin_z.
@@ -110,13 +112,13 @@ func paint_pass(ci: CanvasItem, near_pass: bool) -> void:
 	var band := _pass_band(view, near_pass, split_z)
 	if band.y > band.x + 0.001:
 		_draw_ground_floors(band)
+		# Deck side/end walls first, then pipes — the ride ribbon must composite
+		# over the pad walls so a deck end face never shows through a pipe.
+		_draw_deck_walls(band)
 		for pipe in _pipes_far_to_near():
 			_draw_pipe_walls(pipe, band)
 			_draw_pipe(pipe, band)
 		_draw_elevated_floors(band)
-		# After ribbons: near/far deck faces hide pipe guts under the pad.
-		# Coping edges are skipped so this does not re-slice the arc.
-		_draw_deck_walls(band)
 		_draw_decks(band)
 	if near_pass:
 		if show_depth_grid:
@@ -341,12 +343,11 @@ func _draw_decks(band: Vector2) -> void:
 
 
 ## Vertical faces under each deck edge (height → base_height).
-## Coping edges are omitted here — under a deck that plane is filled earlier as a
-## deck-colored pipe outer wall (before the ribbon), so the ride surface is not cut.
+## Drawn before pipe ribbons so the pipe occludes any projective overlap at the
+## coping. Coping-aligned edges are omitted (pipe outer wall owns that plane).
 func _draw_deck_walls(band: Vector2) -> void:
 	if _level.spec == null:
 		return
-	# Opaque so pipe ribbons drawn earlier cannot bleed through the face.
 	var wall_col := Color(0.38, 0.32, 0.22, 1.0)
 	for deck in _decks_far_to_near():
 		var clipped := _clip_poly_z_band(deck.poly, band.x, band.y)
@@ -356,11 +357,20 @@ func _draw_deck_walls(band: Vector2) -> void:
 		var h_bot := float(deck.get("base_height", 0.0))
 		if h_top <= h_bot + 0.05:
 			continue
+		var deck_z0 := _deck_z_min(deck)
+		var deck_z1 := _deck_z_max(deck)
 		var n := clipped.size()
 		for i in range(n):
 			var a: Vector2 = clipped[i]
 			var b: Vector2 = clipped[(i + 1) % n]
-			if _edge_on_z_plane(a, b, band.x) or _edge_on_z_plane(a, b, band.y):
+			var on_pass_seam := (
+				_edge_on_z_plane(a, b, band.x) or _edge_on_z_plane(a, b, band.y)
+			)
+			var on_pad_end := (
+				_edge_on_z_plane(a, b, deck_z0) or _edge_on_z_plane(a, b, deck_z1)
+			)
+			# Skip artificial Z-split seams only — keep the pad's own end walls.
+			if on_pass_seam and not on_pad_end:
 				continue
 			if _deck_edge_on_coping(deck, a, b):
 				continue

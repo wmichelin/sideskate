@@ -804,16 +804,21 @@ func _step_god_vertical(delta: float) -> void:
 func _underlying_surface_height() -> float:
 	if _level == null:
 		return 0.0
+	# Spine lock keeps air_over on the target pipe while X lerps across a deck.
+	# Sample underfoot with no sticky so the shadow sits on the pad, not the pipe.
+	var use_sticky := (not _spine_transfer_lock) and (
+		air_over == "left_pipe" or air_over == "right_pipe"
+	)
 	var contact: Dictionary = _level.resolve_air_contact(
 		depth.logical_x,
 		depth.logical_z,
 		air_abs_height,
-		_air_side if (air_over == "left_pipe" or air_over == "right_pipe") else -1,
-		_air_lip_x if (air_over == "left_pipe" or air_over == "right_pipe") else NAN,
-		_air_base_height if (air_over == "left_pipe" or air_over == "right_pipe") else NAN,
+		_air_side if use_sticky else -1,
+		_air_lip_x if use_sticky else NAN,
+		_air_base_height if use_sticky else NAN,
 		false,
-		_air_z_min if (air_over == "left_pipe" or air_over == "right_pipe") else NAN,
-		_air_z_max if (air_over == "left_pipe" or air_over == "right_pipe") else NAN,
+		_air_z_min if use_sticky else NAN,
+		_air_z_max if use_sticky else NAN,
 	)
 	if _ContactMath.is_air_contact_solid(contact):
 		return float(contact.get("height", 0.0))
