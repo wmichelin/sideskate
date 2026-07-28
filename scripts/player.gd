@@ -525,6 +525,8 @@ func _teleport_body_to_logical() -> void:
 
 
 ## Push out of overlapping solids after teleports / large corrections.
+## Pipe ride/back normals are near-horizontal at the lip — full separation would
+## shove logical X off the arc. Keep those contacts vertical-only.
 func _depenetrate_body() -> void:
 	_refresh_action_collision_filters()
 	if collision_mask == 0:
@@ -543,15 +545,31 @@ func _depenetrate_body() -> void:
 			var col := move_and_collide(dir * recover * 0.25)
 			if col == null:
 				break
-			# Nudge along contact normal out of the solid.
-			var n := col.get_normal()
-			global_position += n * maxf(col.get_depth(), 0.002)
+			global_position += _depenetrate_push(col)
 	# Final zero-length collide to settle contacts if still overlapping.
 	for _j in range(3):
 		var hit := move_and_collide(Vector3.ZERO)
 		if hit == null:
 			break
-		global_position += hit.get_normal() * maxf(hit.get_depth(), 0.002)
+		global_position += _depenetrate_push(hit)
+
+
+func _depenetrate_push(col: KinematicCollision3D) -> Vector3:
+	var push: Vector3 = col.get_normal() * maxf(col.get_depth(), 0.002)
+	if _collider_is_pipe_ride_or_back(col.get_collider()):
+		push.x = 0.0
+		push.z = 0.0
+	return push
+
+
+func _collider_is_pipe_ride_or_back(collider: Object) -> bool:
+	if collider == null or not (collider is CollisionObject3D):
+		return false
+	var body := collider as CollisionObject3D
+	var role := str(body.get_meta("face_role", ""))
+	if role != "ride" and role != "back":
+		return false
+	return str(body.get_meta("zone", "")).ends_with("_pipe") or body.has_meta("mesh_part_meta")
 
 
 ## Swept move toward a logical pose; body transform is the authority afterward.
@@ -601,8 +619,10 @@ func _derive_depth_presentation() -> void:
 	depth.height_offset = 0.0
 
 
-## Acid/spine/sticky: suppress origin pipe ride+back so settle isn't snagged on the
-## coping back wall. Sticky ride uses analytical arc (mask cleared). Other walls stay.
+## Sticky ride clears mask (analytical arc). Airborne hang/settle: suppress the
+## exit/origin pipe ride+back so the capsule doesn't embed in the coping wall.
+## Free-fall keeps exit ride (high→low needs it); always drop exit *back*.
+## Never exclude spine dest (`_air_*`) — landing would fall through.
 func _refresh_action_collision_filters() -> void:
 	_clear_ride_exceptions()
 	if _on_ramp:
@@ -612,11 +632,19 @@ func _refresh_action_collision_filters() -> void:
 	collision_mask = _CollisionLayers.player_mask()
 	if not _airborne:
 		return
-	if not (_acid_drop_lock or _spine_transfer_lock or _settle.x_active or _flew_out_this_aerial):
+	if _exit_pipe_side < 0:
 		return
-	# Exit/origin only — never the spine dest (`_air_*`), or landing falls through.
-	if _exit_pipe_side >= 0:
-		_exclude_pipe_faces(_exit_pipe_side, _exit_pipe_lip, ["ride", "back"])
+	# Thin back plane at coping tunnels/sticks during any aerial over the exit pipe.
+	_exclude_pipe_faces(_exit_pipe_side, _exit_pipe_lip, ["back"])
+	var hang := (
+		_air_x_locked
+		or _acid_drop_lock
+		or _spine_transfer_lock
+		or _settle.x_active
+		or _flew_out_this_aerial
+	)
+	if hang:
+		_exclude_pipe_faces(_exit_pipe_side, _exit_pipe_lip, ["ride"])
 
 
 func _exclude_pipe_faces(side: int, lip_x: float, roles: Array) -> void:
@@ -1032,11 +1060,9 @@ func _move_along_pipe(hit: Dictionary, arc_speed: float, delta: float) -> void:
 			)
 			_leave_ramp_to_flat()
 		"arc":
-			_sweep_to_logical(
-				float(step.get("logical_x", depth.logical_x)),
-				depth.logical_z,
-				_feet_height()
-			)
+			# Analytical sticky pose — don't let Godot contacts rewrite X mid-arc.
+			depth.logical_x = float(step.get("logical_x", depth.logical_x))
+			_teleport_body_to_logical()
 			_clamp_pose_playable()
 
 

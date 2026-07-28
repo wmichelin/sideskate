@@ -86,6 +86,12 @@ func _add_part(part) -> void:
 		if solid == null:
 			return
 		cs.shape = solid
+	elif face_role == "back":
+		# Thin plane trimeshes tunnel; solid slab thickened outward from coping.
+		var back := _pipe_back_solid_shape(part)
+		if back == null:
+			return
+		cs.shape = back
 	elif face_role == "top" or face_role == "lava":
 		var ab: AABB = part.aabb()
 		if ab.size.length() < 0.0001:
@@ -94,8 +100,8 @@ func _add_part(part) -> void:
 		var sz := ab.size
 		sz.y = maxf(sz.y, 0.05)
 		box.size = sz
-		cs.shape = box
 		cs.position = ab.position + sz * 0.5
+		cs.shape = box
 	else:
 		var shape: ConcavePolygonShape3D = part.to_concave_shape()
 		if shape == null:
@@ -105,6 +111,38 @@ func _add_part(part) -> void:
 	_body_root.add_child(body)
 	_meta_by_owner[body.get_instance_id()] = part.meta.duplicate(true)
 	part_count += 1
+
+
+## Outer pipe wall as a convex slab, thickened away from the bowl so approaches
+## from behind the coping cannot tunnel through a zero-thickness trimesh.
+func _pipe_back_solid_shape(part) -> Shape3D:
+	var side := int(part.meta.get("side", -1))
+	var radius := float(part.meta.get("radius", 0.0))
+	var base_h := float(part.meta.get("base_height", 0.0))
+	var z0 := float(part.meta.get("z_min", 0.0))
+	var z1 := float(part.meta.get("z_max", 0.0))
+	var cope := float(part.meta.get("top_coping", NAN))
+	if is_nan(cope):
+		var lip := float(part.meta.get("lip_x", NAN))
+		if side < 0 or is_nan(lip) or radius <= 0.001:
+			return null
+		cope = lip - radius if side == 0 else lip + radius
+	if side < 0 or radius <= 0.001 or absf(z1 - z0) < 0.01:
+		return null
+	var top_h := base_h + radius
+	# Outward from bowl: LEFT → −X logical, RIGHT → +X.
+	var outward := -1.0 if side == 0 else 1.0
+	var thick_logic := 8.0
+	var x_in := cope
+	var x_out := cope + outward * thick_logic
+	var pts := PackedVector3Array()
+	for x in [x_in, x_out]:
+		for z in [z0, z1]:
+			for h in [base_h, top_h]:
+				pts.append(_WorldSpace.logical_to_world(x, z, h))
+	var convex := ConvexPolygonShape3D.new()
+	convex.points = pts
+	return convex
 
 
 ## Solid convex prism for deck footprint (base→top). Hollow wall trimeshes let
