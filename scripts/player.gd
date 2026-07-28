@@ -10,6 +10,7 @@ const _AerialMath := preload("res://scripts/aerial_math.gd")
 const _AerialSettle := preload("res://scripts/aerial_settle.gd")
 const _AerialTargeting := preload("res://scripts/aerial_targeting.gd")
 const _AerialLanding := preload("res://scripts/aerial_landing.gd")
+const _AerialContact := preload("res://scripts/aerial_contact.gd")
 const _FacingCastMath := preload("res://scripts/facing_cast_math.gd")
 const _MotionVectors := preload("res://scripts/motion_vectors.gd")
 const _ContactMath := preload("res://scripts/contact_math.gd")
@@ -462,55 +463,66 @@ func _apply_motion(delta: float, speed_mul: float) -> void:
 	if _airborne:
 		_clamp_pose_playable()
 		_step_transfer_x(delta)
-
 		if _air_x_locked:
-			# Don't pin X while a transfer/acid-drop lerp is carrying us to coping.
-			if not _settle.x_active:
-				depth.logical_x = _air_coping_x
-			_clamp_pose_playable()
-			_commit_xz(depth.logical_x, depth.logical_z + _velocity.y * speed_mul * delta)
+			_apply_locked_air_motion(delta, speed_mul)
+		else:
+			_apply_free_air_motion(delta, speed_mul)
+		return
 
-			# God mode over a coping lock: keep X pin, free height via j/k.
-			if DebugTools.god_mode:
-				_resolve_and_apply_air_contact(air_abs_height)
-				air_vel_y = 0.0
-				return
+	_apply_grounded_motion(delta, speed_mul)
 
-			var prev_air_vy := air_vel_y
-			var h_before := air_abs_height
-			# Contact after XZ commit — label and collision share this resolve.
-			var contact: Dictionary = _resolve_and_apply_air_contact(h_before)
-			_integrate_air_gravity(delta)
-			_try_apex_facing_flip(prev_air_vy)
-			# Fly-out unlocks X but must still run landing this tick.
-			if _try_fly_out_from_pipe_lock():
-				if not _settle.x_active:
-					_commit_xz(
-						depth.logical_x + _velocity.x * speed_mul * delta,
-						depth.logical_z
-					)
-				# Re-resolve after X nudge so contact matches new column.
-				contact = _resolve_and_apply_air_contact(h_before)
-			_try_land_from_air_contact(contact, h_before, delta, speed_mul)
-			return
 
-		# Unlocked air: free XZ then contact → gravity → land from same contact.
+## X-locked air: pin coping, gravity, optional fly-out, land from shared contact.
+func _apply_locked_air_motion(delta: float, speed_mul: float) -> void:
+	# Don't pin X while a transfer/acid-drop lerp is carrying us to coping.
+	if not _settle.x_active:
+		depth.logical_x = _air_coping_x
+	_clamp_pose_playable()
+	_commit_xz(depth.logical_x, depth.logical_z + _velocity.y * speed_mul * delta)
+
+	# God mode over a coping lock: keep X pin, free height via j/k.
+	if DebugTools.god_mode:
+		_resolve_and_apply_air_contact(air_abs_height)
+		air_vel_y = 0.0
+		return
+
+	var prev_air_vy := air_vel_y
+	var h_before := air_abs_height
+	# Contact after XZ commit — label and collision share this resolve.
+	var contact: Dictionary = _resolve_and_apply_air_contact(h_before)
+	_integrate_air_gravity(delta)
+	_try_apex_facing_flip(prev_air_vy)
+	# Fly-out unlocks X but must still run landing this tick.
+	if _try_fly_out_from_pipe_lock():
 		if not _settle.x_active:
 			_commit_xz(
 				depth.logical_x + _velocity.x * speed_mul * delta,
-				depth.logical_z + _velocity.y * speed_mul * delta
+				depth.logical_z
 			)
-		else:
-			_commit_xz(depth.logical_x, depth.logical_z + _velocity.y * speed_mul * delta)
-		if _air_over_uses_gravity():
-			var h_before_free := air_abs_height
-			var contact_free: Dictionary = _resolve_and_apply_air_contact(h_before_free)
-			_integrate_air_gravity(delta)
-			_try_land_from_air_contact(contact_free, h_before_free, delta, speed_mul)
-		else:
-			_resolve_and_apply_air_contact(air_abs_height)
-		return
+		# Re-resolve after X nudge so contact matches new column.
+		contact = _resolve_and_apply_air_contact(h_before)
+	_try_land_from_air_contact(contact, h_before, delta, speed_mul)
 
+
+## Unlocked air: free XZ then contact → gravity → land from same contact.
+func _apply_free_air_motion(delta: float, speed_mul: float) -> void:
+	if not _settle.x_active:
+		_commit_xz(
+			depth.logical_x + _velocity.x * speed_mul * delta,
+			depth.logical_z + _velocity.y * speed_mul * delta
+		)
+	else:
+		_commit_xz(depth.logical_x, depth.logical_z + _velocity.y * speed_mul * delta)
+	if _air_over_uses_gravity():
+		var h_before_free := air_abs_height
+		var contact_free: Dictionary = _resolve_and_apply_air_contact(h_before_free)
+		_integrate_air_gravity(delta)
+		_try_land_from_air_contact(contact_free, h_before_free, delta, speed_mul)
+	else:
+		_resolve_and_apply_air_contact(air_abs_height)
+
+
+func _apply_grounded_motion(delta: float, speed_mul: float) -> void:
 	var prev_support_h := depth.surface_height
 	_commit_xz(depth.logical_x, depth.logical_z + _velocity.y * speed_mul * delta)
 
@@ -664,47 +676,38 @@ func _begin_transfer_x_lerp(to_x: float, height_scaled: bool, _coping_radius: fl
 func _resolve_and_apply_air_contact(prefer_h: float) -> Dictionary:
 	if _level == null:
 		return _ContactMath.make_air_contact("oob", -1, 0.0, false, {})
-	var sticky_side := -1
-	var sticky_lip := NAN
-	var sticky_base := NAN
-	var sticky_z_min := NAN
-	var sticky_z_max := NAN
-	# Keep sticky pipe while airborne over a pipe (locked or free) so footprint
-	# stays solid even if feet dip below the arc.
-	if air_over == "left_pipe" or air_over == "right_pipe":
-		sticky_side = _air_side
-		sticky_lip = _air_lip_x
-		sticky_base = _air_base_height
-		sticky_z_min = _air_z_min
-		sticky_z_max = _air_z_max
-	elif _air_x_locked:
-		sticky_side = _air_side
-		sticky_lip = _air_lip_x
-		sticky_base = _air_base_height
-		sticky_z_min = _air_z_min
-		sticky_z_max = _air_z_max
-	# Any X-lock keeps its coping pipe — do not adopt a higher/other underfoot
-	# pipe (that felt like free spine low→high). Transfer button required.
+	var sticky: Dictionary = _AerialContact.sticky_query(
+		air_over,
+		_air_x_locked,
+		_air_side,
+		_air_lip_x,
+		_air_base_height,
+		_air_z_min,
+		_air_z_max,
+	)
 	var contact: Dictionary = _level.resolve_air_contact(
 		depth.logical_x,
 		depth.logical_z,
 		prefer_h,
-		sticky_side,
-		sticky_lip,
-		sticky_base,
+		int(sticky.get("side", -1)),
+		float(sticky.get("lip_x", NAN)),
+		float(sticky.get("base_height", NAN)),
 		_air_x_locked,
-		sticky_z_min,
-		sticky_z_max,
+		float(sticky.get("z_min", NAN)),
+		float(sticky.get("z_max", NAN)),
 	)
-
-	if _air_x_locked:
+	var patch: Dictionary = _AerialContact.unlocked_identity_from_contact(
+		contact, _air_x_locked
+	)
+	if not bool(patch.get("apply", false)):
 		# Collision/landing uses contact; keep locked coping identity for pin / drop-in.
 		return contact
 
-	air_over = str(contact.get("zone", "flat"))
-	_air_over_layer = int(contact.get("layer", -1))
-	var chit: Dictionary = contact.get("hit", {})
-	if _ContactMath.is_pipe(chit):
+	air_over = str(patch.get("air_over", "flat"))
+	_air_over_layer = int(patch.get("air_over_layer", -1))
+	var kind := str(patch.get("kind", "plain"))
+	if kind == "pipe":
+		var chit: Dictionary = patch.get("hit", {})
 		_air_side = int(chit.get("side", _air_side))
 		_air_lip_x = float(chit.get("lip_x", _air_lip_x))
 		_air_radius = _pipe_radius_for_hit(chit)
@@ -713,10 +716,8 @@ func _resolve_and_apply_air_contact(prefer_h: float) -> Dictionary:
 		_air_z_max = float(chit.get("z_max", _air_z_max))
 		_air_coping_x = _coping_x_for(_air_side, _air_lip_x, _air_radius)
 		_transfer_behind_sign = _coping_sign(_air_side)
-	elif air_over == "flat" or air_over == "deck":
-		_air_base_height = float(contact.get("height", chit.get("base_height", 0.0)))
-	elif air_over == "hole":
-		_air_base_height = float(contact.get("height", 0.0))
+	elif patch.has("air_base_height"):
+		_air_base_height = float(patch.get("air_base_height", 0.0))
 	return contact
 
 
@@ -728,19 +729,26 @@ func _is_aligned_with_air_coping() -> bool:
 
 ## Apply pipe identity from a sample hit. `keep_lock` pins X to that pipe's coping.
 func _adopt_air_pipe_from_hit(under: Dictionary, keep_lock: bool) -> void:
-	air_over = _pipe_zone_name(int(under.get("side", _air_side)))
-	_air_side = int(under.get("side", _air_side))
-	_air_lip_x = float(under.get("lip_x", _air_lip_x))
-	_air_radius = _pipe_radius_for_hit(under)
-	_air_base_height = float(under.get("base_height", _air_base_height))
-	_air_z_min = float(under.get("z_min", _air_z_min))
-	_air_z_max = float(under.get("z_max", _air_z_max))
-	_air_coping_x = _coping_x_for(_air_side, _air_lip_x, _air_radius)
-	_transfer_behind_sign = _coping_sign(_air_side)
-	if under.has("layer"):
-		_air_over_layer = int(under.get("layer", -1))
-	else:
-		_air_over_layer = _layer_index_for_base(_air_base_height)
+	var id: Dictionary = _AerialContact.pipe_identity_from_hit(
+		under,
+		_air_side,
+		_air_lip_x,
+		_air_base_height,
+		_air_z_min,
+		_air_z_max,
+		_pipe_radius_for_hit(under),
+		_layer_index_for_base(float(under.get("base_height", _air_base_height))),
+	)
+	air_over = str(id.get("air_over", air_over))
+	_air_side = int(id.get("air_side", _air_side))
+	_air_lip_x = float(id.get("air_lip_x", _air_lip_x))
+	_air_radius = float(id.get("air_radius", _air_radius))
+	_air_base_height = float(id.get("air_base_height", _air_base_height))
+	_air_z_min = float(id.get("air_z_min", _air_z_min))
+	_air_z_max = float(id.get("air_z_max", _air_z_max))
+	_air_coping_x = float(id.get("air_coping_x", _air_coping_x))
+	_transfer_behind_sign = float(id.get("transfer_behind_sign", _transfer_behind_sign))
+	_air_over_layer = int(id.get("air_over_layer", _air_over_layer))
 	if keep_lock:
 		_air_x_locked = true
 		if not _settle.x_active:
