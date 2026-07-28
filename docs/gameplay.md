@@ -201,8 +201,8 @@ Debug tools are gated by autoload `DebugTools`: available when `OS.is_debug_buil
 | [`sim/sim_debug_snapshot.gd`](../scripts/sim/sim_debug_snapshot.gd) / [`sim/sim_trace.gd`](../scripts/sim/sim_trace.gd) | Debug capture + deterministic replay hashes |
 | [`player.gd`](../scripts/player.gd) | Thin `CharacterBody3D` — input → `PlayerSim.tick` → pose sync |
 | [`motion_vectors.gd`](../scripts/motion_vectors.gd) | Named triad `INPUT` / `MOMENTUM` / `ACTUAL` |
-| [`contact_math.gd`](../scripts/contact_math.gd) / [`facing_cast_math.gd`](../scripts/facing_cast_math.gd) | Legacy level-sample helpers used by `RampLevel` debug/projection (not gameplay authority) |
-| [`physics/level_collision_3d.gd`](../scripts/physics/level_collision_3d.gd) | Shared MeshPart → `StaticBody3D` trimeshes + face meta |
+| [`contact_math.gd`](../scripts/contact_math.gd) / [`facing_cast_math.gd`](../scripts/facing_cast_math.gd) | Legacy level-sample helpers for `RampLevel` debug/projection (not gameplay authority) |
+| [`physics/level_collision_3d.gd`](../scripts/physics/level_collision_3d.gd) | Shared MeshPart → `StaticBody3D` trimeshes + face meta (blocker/hazard reporting) |
 | [`physics/collision_layers.gd`](../scripts/physics/collision_layers.gd) | Player / ride / wall / lava layer bits |
 | [`mesh/mesh_part.gd`](../scripts/mesh/mesh_part.gd) / [`mesh/level_geometry.gd`](../scripts/mesh/level_geometry.gd) | CPU face soup shared by visual + collision + debug |
 

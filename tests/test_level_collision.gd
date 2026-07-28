@@ -1,8 +1,7 @@
 extends RefCounted
-## LevelCollision3D builds metadata StaticBody trimeshes; ray hits face roles.
+## LevelCollision3D builds metadata StaticBody trimeshes; sweep hits face roles.
 
 const _CollisionLayers := preload("res://scripts/physics/collision_layers.gd")
-const _ContactAdapter := preload("res://scripts/physics/contact_adapter.gd")
 const _WorldSpace := preload("res://scripts/world_space.gd")
 
 
@@ -85,18 +84,21 @@ func run() -> bool:
 		main.queue_free()
 		GameSession.pending_level_path = ""
 		return false
-	var meta: Dictionary = _ContactAdapter.hit_from_collision(col_hit)
+	var meta: Dictionary = {}
+	if col.has_method("meta_for_collider"):
+		meta = col.call("meta_for_collider", col_hit.get_collider())
+	if str(meta.get("face_role", "")) == "":
+		# Fallback: collider node meta.
+		var collider = col_hit.get_collider()
+		if collider is Node and (collider as Node).has_meta("mesh_part_meta"):
+			var raw = (collider as Node).get_meta("mesh_part_meta")
+			if typeof(raw) == TYPE_DICTIONARY:
+				meta = raw
 	if str(meta.get("face_role", "")) == "":
 		push_error("collide hit missing face_role meta=%s" % meta)
 		main.queue_free()
 		GameSession.pending_level_path = ""
 		return false
-	# Restore player to spawn for scene teardown cleanliness.
-	if player.has_method("_teleport_body_to_logical"):
-		player.depth.logical_x = level.spec.spawn_x
-		player.depth.logical_z = level.spec.spawn_z
-		player.depth.surface_height = level.spec.spawn_height
-		player.call("_teleport_body_to_logical")
 
 	main.queue_free()
 	GameSession.pending_level_path = ""

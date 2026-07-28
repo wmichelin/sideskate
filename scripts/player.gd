@@ -125,7 +125,8 @@ func _sync_from_sim() -> void:
 	if st.is_grounded() and _sim.model.pipes.has(st.surface_id):
 		var pipe: PipeSurface = _sim.model.pipes[st.surface_id]
 		var th := st.u * (PI * 0.5)
-		tilt = -th if pipe.side == SimKinds.PipeSide.LEFT else th
+		# Match legacy lean: −coping_sign(side) × θ so the skater leans into the wall.
+		tilt = -pipe.outward_sign() * th
 	if depth:
 		depth.logical_x = p.x
 		depth.logical_z = p.y
