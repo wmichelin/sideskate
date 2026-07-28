@@ -60,7 +60,6 @@ func tick(delta: float = SimTolerances.FIXED_DT) -> void:
 	_try_actions()
 	if state.is_grounded():
 		ground.step(state, last_wish, delta, accel, max_speed)
-		# Grounded fly-out via action+stick handled in _try_actions.
 	else:
 		air.step(state, last_wish, delta)
 	_assert_finite()
@@ -70,9 +69,13 @@ func tick(delta: float = SimTolerances.FIXED_DT) -> void:
 
 
 func _try_actions() -> void:
-	if not action_just:
-		return
-	if state.is_grounded() and model.pipes.has(state.surface_id) and state.u >= 0.98:
+	# Fly-out is stick-only at OPEN/SHARED_SPINE coping — no transfer button.
+	if (
+		state.is_grounded()
+		and model.pipes.has(state.surface_id)
+		and state.u >= 0.98
+		and not state.has_maneuver()
+	):
 		var fo := planner.try_fly_out(state, last_wish.x, last_wish.y)
 		if bool(fo.get("ok", false)):
 			var plan: ManeuverPlan = fo.plan
@@ -82,6 +85,9 @@ func _try_actions() -> void:
 			state.last_reject = ""
 			return
 		state.last_reject = str(fo.get("reason", ""))
+	# Transfer button: spine (rising) / acid (descending) only.
+	if not action_just:
+		return
 	if state.is_airborne() and not state.has_maneuver():
 		var rising := state.velocity.z >= -0.5
 		if rising:

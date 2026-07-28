@@ -184,12 +184,50 @@ func _step_pipe(state: SimState, wish: Vector2, delta: float, accel: float, max_
 				)
 				remaining = 0.0
 				break
-		# OPEN / SHARED_SPINE: stay at coping unless fly-out; clip outward along.
+		# OPEN / SHARED_SPINE: launch into air when rising into coping; else hang.
+		if state.tangent_velocity.x > 1.0:
+			_launch_from_coping(state, pipe, new_z)
+			remaining = 0.0
+			break
 		state.tangent_velocity.x = minf(state.tangent_velocity.x, 0.0)
 		remaining = 0.0
 	if crossings >= SimTolerances.MAX_EDGE_CROSSINGS:
 		push_error("GroundSolver: edge crossing bound exceeded on %s" % pipe.id)
-	_update_facing_pipe(state, pipe)
+	# Already perched on OPEN coping with leftover along: launch.
+	if state.is_grounded() and model.pipes.has(state.surface_id) and state.u >= 0.999:
+		_try_coping_air_intent(state, pipe)
+	if state.is_grounded() and model.pipes.has(state.surface_id):
+		_update_facing_pipe(state, pipe)
+
+
+## Rising into OPEN coping → free air with along converted to vertical.
+func _launch_from_coping(state: SimState, pipe: PipeSurface, z: float) -> void:
+	var along := state.tangent_velocity.x
+	var th := PI * 0.5
+	var out := pipe.outward_sign()
+	# World remnant at coping: vx = along·out·cosθ ≈ 0, vh = along·sinθ ≈ along.
+	var world_vx := along * out * cos(th)
+	var world_vh := along * sin(th)
+	var world_vz := state.tangent_velocity.y
+	state.u = 1.0
+	state.position = Vector3(
+		pipe.x_at_theta(z, th),
+		z,
+		pipe.height_at_theta(z, th)
+	)
+	_enter_air(state, Vector3(world_vx, world_vz, world_vh))
+
+
+## Perched at coping (u≈1) with leftover along → launch into air.
+func _try_coping_air_intent(state: SimState, pipe: PipeSurface) -> void:
+	var cope: CopingEdge = model.copings.get(pipe.coping_id)
+	if cope == null:
+		return
+	if cope.coping_class != SimKinds.CopingClass.OPEN \
+			and cope.coping_class != SimKinds.CopingClass.SHARED_SPINE:
+		return
+	if state.tangent_velocity.x > 40.0:
+		_launch_from_coping(state, pipe, state.position.y)
 
 
 ## Exit pipe at the lip onto abutting floor/deck, or free-air if unsupported.

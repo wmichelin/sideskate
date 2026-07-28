@@ -71,7 +71,7 @@ func _deck_seam_mount() -> bool:
 
 
 func _fly_out_open_vs_backed() -> bool:
-	# Open: fly-out should succeed at coping with outward input.
+	# Open: stick-only outward X-dominant fly-out at coping (no transfer button).
 	var open := PlayerSim.new()
 	if not open.setup_from_path("res://tests/levels/sim/sim_open_fly.ssk"):
 		push_error("setup open_fly")
@@ -79,31 +79,40 @@ func _fly_out_open_vs_backed() -> bool:
 	var left_open := _left_pipe(open.model)
 	if left_open == null:
 		return false
-	_place_at_coping(open, left_open, 200.0)
-	open.set_input(Vector2(-1, 0), true, true)
+	_place_at_coping(open, left_open, 80.0)
+	open.set_input(Vector2(-1, 0), false, true)
 	open.tick()
 	if not open.state.is_airborne():
-		push_error("open fly-out should launch air: reject=%s" % open.state.last_reject)
+		push_error("open stick fly-out should launch air: reject=%s" % open.state.last_reject)
 		return false
 
-	# Backed: fly-out must refuse.
+	# Ride into OPEN coping with along only (no stick): still launch to free air.
+	var launch := PlayerSim.new()
+	if not launch.setup_from_path("res://tests/levels/sim/sim_open_fly.ssk"):
+		push_error("setup open_fly launch")
+		return false
+	var left_l := _left_pipe(launch.model)
+	_place_at_coping(launch, left_l, 200.0)
+	launch.set_input(Vector2.ZERO, false, true)
+	launch.tick()
+	if not launch.state.is_airborne():
+		push_error("OPEN coping with along must launch to air")
+		return false
+
+	# Backed: fly-out must refuse (deck seam / wall extension, not OPEN fly corridor).
 	var backed := PlayerSim.new()
 	if not backed.setup_from_path("res://tests/levels/sim/sim_deck_backed.ssk"):
 		push_error("setup backed")
 		return false
 	var left_b := _left_pipe(backed.model)
-	_place_at_coping(backed, left_b, 200.0)
-	backed.set_input(Vector2(-1, 0), true, true)
+	_place_at_coping(backed, left_b, 80.0)
+	backed.set_input(Vector2(-1, 0), false, true)
 	backed.tick()
 	if backed.state.is_airborne() and backed.state.has_maneuver():
 		var plan: ManeuverPlan = backed.state.maneuver
 		if plan.kind == ManeuverPlan.Kind.FLY_OUT:
 			push_error("backed coping must not fly-out")
 			return false
-	# Prefer: still grounded after refused fly-out.
-	if backed.state.is_airborne() and not backed.state.has_maneuver():
-		# Might have rolled to deck — OK if on deck patch.
-		pass
 	return true
 
 
