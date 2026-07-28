@@ -233,7 +233,8 @@ static func is_top_coping(
 
 
 ## Nearest opposite-facing TOP coping near horizontal velocity.
-## Buffer/max_ahead are logical X units. Returns {} if none.
+## `buffer` / `max_ahead` are legacy logical-X windows — gameplay acid uses
+## FacingCastMath + `facing_coping_cells` instead. Kept for unit tests.
 static func find_acid_drop_target(
 	pipes: Array,
 	logical_x: float,

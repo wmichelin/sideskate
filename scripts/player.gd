@@ -34,13 +34,8 @@ const _ContactMath := preload("res://scripts/contact_math.gd")
 @export var logic_per_meter: float = 100.0
 ## Feet must drop at least this far below prior support to ride off into air.
 @export var ride_off_height_eps: float = 0.5
-## How far behind facing a top coping may still be acid-dropped (logical X, not screen px).
-## Legacy acid-drop search; gameplay targeting now uses facing_coping_cells.
-@export var acid_drop_buffer: float = 44.0
-## Max distance ahead (logical X) to a top coping for acid drop — prevents cross-plaza lerps.
-## Legacy acid-drop search; gameplay targeting now uses facing_coping_cells.
-@export var acid_drop_max_ahead: float = 120.0
-## Acid/spine: max deck cells ahead of facing_h to accept a top coping (FacingCastMath).
+## Acid/spine: max cells ahead along travel/facing cast to accept a top coping.
+## Tuned via TUNING "acid cells" — independent of facing-cast debug draw distance.
 @export_range(1, 16, 1) var facing_coping_cells: int = 3
 ## Acid/spine X settle seconds at coping (height-above = 0).
 @export var acid_drop_x_duration: float = 0.18
@@ -299,10 +294,13 @@ func _physics_process(delta: float) -> void:
 		depth.apply()
 		return
 	_update_actual_velocity(delta)
-	# Hold into a ramp: only auto-fire spine while airborne + pressed.
-	# Never after fly-out. A held button is explicit input, including high→low.
-	if Input.is_action_pressed("transfer") and _airborne and not _flew_out_this_aerial:
-		_try_spine_transfer(true)
+	# Hold into a ramp / fall: auto-fire spine while rising, acid when cast sees a
+	# coping while falling (or after fly-out). Press still goes through _try_air_action.
+	if Input.is_action_pressed("transfer") and _airborne:
+		if _flew_out_this_aerial or not _transfer_vert_ok():
+			_try_acid_drop(true)
+		elif not _flew_out_this_aerial:
+			_try_spine_transfer(true)
 	_clear_momentum_if_at_rest()
 	_step_body_tilt(delta)
 	depth.apply()
@@ -1448,7 +1446,7 @@ func _try_air_action() -> void:
 		_try_acid_drop()
 
 
-func _try_acid_drop() -> void:
+func _try_acid_drop(from_hold: bool = false) -> void:
 	if not _airborne or _level == null or not _acid_drop_available:
 		return
 	# Rising/apex → transfer — except after fly-out (apex of the parabola must
@@ -1462,15 +1460,20 @@ func _try_acid_drop() -> void:
 	)
 	if absf(travel_x) < 1.0:
 		return
-	# Mark press immediately — even a miss must not reverse into the exit wall.
-	_acid_pressed_this_aerial = true
-	_acid_travel_x = travel_x
 	var hit := _find_acid_coping_target(travel_x)
 	if hit.is_empty():
-		# No forward coping: unlock exit pin and keep travel velocity. Landing must
-		# not run classic into-bowl drop-in (that felt like "acid reversed me").
+		# Hold buffer: wait until a cast cell shows a coping — don't unlock / abort.
+		if from_hold:
+			return
+		# Press with no forward coping: unlock exit pin and keep travel velocity.
+		_acid_pressed_this_aerial = true
+		_acid_travel_x = travel_x
 		_acid_abort_without_reverse(travel_x)
 		return
+
+	# Mark press once we commit to a lerp.
+	_acid_pressed_this_aerial = true
+	_acid_travel_x = travel_x
 
 	var side: int = int(hit.get("side", QuarterPipe.PipeSide.RIGHT))
 	var lip: float = float(hit.get("lip_x", depth.logical_x))
@@ -1478,9 +1481,13 @@ func _try_acid_drop() -> void:
 	var coping: float = float(hit.get("top_coping", _coping_x_for(side, lip, radius)))
 	# Opposite wall only + strictly ahead — same-side coping lands reverse into-pipe.
 	if side != _AerialMath.acid_drop_want_side(travel_x):
+		if from_hold:
+			return
 		_acid_abort_without_reverse(travel_x)
 		return
 	if not _AerialMath.acid_coping_ahead(depth.logical_x, coping, travel_x):
+		if from_hold:
+			return
 		_acid_abort_without_reverse(travel_x)
 		return
 
@@ -1505,6 +1512,8 @@ func _try_acid_drop() -> void:
 			and absf(_transfer_x_to - _transfer_x_from) > 0.05:
 		_transfer_x_active = false
 		_acid_drop_lock = false
+		if from_hold:
+			return
 		_acid_abort_without_reverse(travel_x)
 		return
 
@@ -1567,8 +1576,9 @@ func _is_exit_pipe_coping(coping: float, side: int, lip: float) -> bool:
 	return false
 
 
-## First opposite-facing top coping strictly ahead along acid travel.
-## Same-side copings are rejected (landing drop-in would reverse travel).
+## First opposite-facing top coping within `facing_coping_cells` along acid travel.
+## Cast-cell window only — no logical-X buffer / max-ahead.
+## Same-side / exit-pipe copings are rejected (landing drop-in would reverse travel).
 func _find_acid_coping_target(travel_x: float) -> Dictionary:
 	if _level == null or _level.spec == null:
 		return {}

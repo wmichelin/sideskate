@@ -11,8 +11,6 @@ extends CanvasLayer
 @export var body_bottom_margin: float = 24.0
 @export var gravity_min: float = -30.0
 @export var gravity_max: float = 0.0
-@export var acid_buffer_min: float = 0.0
-@export var acid_buffer_max: float = 80.0
 @export var fly_out_above_min: float = 0.0
 @export var fly_out_above_max: float = 300.0
 @export var ollie_accel_min: float = 0.0
@@ -41,8 +39,8 @@ extends CanvasLayer
 @export var arc_steps_max: float = 32.0
 @export var cast_cells_min: float = 1.0
 @export var cast_cells_max: float = 16.0
-@export var coping_cells_min: float = 1.0
-@export var coping_cells_max: float = 16.0
+@export var acid_cells_min: float = 1.0
+@export var acid_cells_max: float = 16.0
 @export var cell_x_min: float = 10.0
 @export var cell_x_max: float = 120.0
 @export var cell_z_min: float = 10.0
@@ -104,8 +102,6 @@ extends CanvasLayer
 @onready var _vsync_check: CheckButton = $Panel/VBox/Body/VsyncRow/Check
 @onready var _cast_cells_slider: HSlider = $Panel/VBox/Body/CastCellsRow/Slider
 @onready var _cast_cells_value: Label = $Panel/VBox/Body/CastCellsRow/Value
-@onready var _coping_cells_slider: HSlider = $Panel/VBox/Body/CopingCellsRow/Slider
-@onready var _coping_cells_value: Label = $Panel/VBox/Body/CopingCellsRow/Value
 @onready var _god_check: CheckButton = $Panel/VBox/Body/GodModeRow/Check
 
 var _player: Node2D
@@ -143,7 +139,20 @@ func _ready() -> void:
 	_setup_3d_camera_sliders()
 
 	_bind_float_slider(_gravity_slider, gravity_min, gravity_max, 0.1, _player, "gravity_ms2", -19.0, _on_gravity_changed, _refresh_gravity_label)
-	_bind_float_slider(_acid_slider, acid_buffer_min, acid_buffer_max, 1.0, _player, "acid_drop_buffer", 44.0, _on_acid_buffer_changed, _refresh_acid_label)
+	_bind_float_slider(
+		_acid_slider,
+		acid_cells_min,
+		acid_cells_max,
+		1.0,
+		_player,
+		"facing_coping_cells",
+		3.0,
+		_on_acid_cells_changed,
+		_refresh_acid_cells_label
+	)
+	var acid_cap := _body.get_node_or_null("AcidDropRow/Caption") as Label
+	if acid_cap != null:
+		acid_cap.text = "acid cells"
 	_bind_float_slider(
 		_fly_out_slider,
 		fly_out_above_min,
@@ -244,18 +253,6 @@ func _ready() -> void:
 		_refresh_cast_cells_label
 	)
 
-	_bind_float_slider(
-		_coping_cells_slider,
-		coping_cells_min,
-		coping_cells_max,
-		1.0,
-		_player,
-		"facing_coping_cells",
-		3.0,
-		_on_coping_cells_changed,
-		_refresh_coping_cells_label
-	)
-
 	_god_check.button_pressed = DebugTools.god_mode
 	_god_check.focus_mode = Control.FOCUS_NONE
 	_god_check.toggled.connect(_on_god_mode_toggled)
@@ -268,7 +265,7 @@ func _ready() -> void:
 		_ramp_friction_slider, _friction_slider,
 		_persp_inset_slider, _far_geom_slider, _ref_depth_slider,
 		_draw_band_pad_slider, _arc_steps_slider, _cast_cells_slider,
-		_coping_cells_slider, _cell_x_slider, _cell_z_slider,
+		_cell_x_slider, _cell_z_slider,
 	]:
 		if row != null:
 			row.focus_mode = Control.FOCUS_NONE
@@ -277,6 +274,10 @@ func _ready() -> void:
 
 
 func _apply_3d_panel_visibility() -> void:
+	# CopingCellsRow duplicates acid cells (facing_coping_cells).
+	var coping_row := _body.get_node_or_null("CopingCellsRow") as Control
+	if coping_row != null:
+		coping_row.visible = false
 	if not _is_3d:
 		return
 	for row_name in [
@@ -558,16 +559,6 @@ func _refresh_gravity_label(v: float) -> void:
 	_gravity_value.text = "%.1f m/s²" % v
 
 
-func _on_acid_buffer_changed(v: float) -> void:
-	if _player != null:
-		_player.set("acid_drop_buffer", v)
-	_refresh_acid_label(v)
-
-
-func _refresh_acid_label(v: float) -> void:
-	_acid_value.text = "%.0f u" % v
-
-
 func _on_fly_out_changed(v: float) -> void:
 	if _player != null:
 		_player.set("fly_out_above_coping", v)
@@ -813,14 +804,14 @@ func _refresh_cast_cells_label(v: float) -> void:
 	_cast_cells_value.text = "%d" % int(round(v))
 
 
-func _on_coping_cells_changed(v: float) -> void:
+func _on_acid_cells_changed(v: float) -> void:
 	if _player != null:
 		_player.set("facing_coping_cells", int(round(v)))
-	_refresh_coping_cells_label(v)
+	_refresh_acid_cells_label(v)
 
 
-func _refresh_coping_cells_label(v: float) -> void:
-	_coping_cells_value.text = "%d" % int(round(v))
+func _refresh_acid_cells_label(v: float) -> void:
+	_acid_value.text = "%d" % int(round(v))
 
 
 func _on_god_mode_toggled(on: bool) -> void:
