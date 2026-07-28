@@ -1,5 +1,5 @@
 extends Node2D
-## Surface-only level draw: floors, pipe ribbons, elevated deck tops.
+## Surface + solid-wall level draw: floors, pipe ribbons/walls/endcaps, deck tops/sides.
 ## Far → Player → Near Z-split: nearer park geometry composites above the skater
 ## so the player is occluded when behind a ramp. Draw window follows skater Z
 ## (truck only). X lean uses world-fixed origin_z.
@@ -111,8 +111,10 @@ func paint_pass(ci: CanvasItem, near_pass: bool) -> void:
 	if band.y > band.x + 0.001:
 		_draw_ground_floors(band)
 		for pipe in _pipes_far_to_near():
+			_draw_pipe_walls(pipe, band)
 			_draw_pipe(pipe, band)
 		_draw_elevated_floors(band)
+		_draw_deck_walls(band)
 		_draw_decks(band)
 	if near_pass:
 		if show_depth_grid:
@@ -333,6 +335,38 @@ func _draw_decks(band: Vector2) -> void:
 			if _edge_on_z_plane(a, b, band.x) or _edge_on_z_plane(a, b, band.y):
 				continue
 			_paint.draw_line(pts[i], pts[(i + 1) % n], Color(0.95, 0.55, 0.35, 0.85), 2.5)
+
+
+## Vertical faces under each deck edge (height → base_height).
+func _draw_deck_walls(band: Vector2) -> void:
+	if _level.spec == null:
+		return
+	var wall_col := Color(0.38, 0.32, 0.22, 0.95)
+	for deck in _decks_far_to_near():
+		var clipped := _clip_poly_z_band(deck.poly, band.x, band.y)
+		if clipped.size() < 2:
+			continue
+		var h_top := float(deck.get("height", 0.0))
+		var h_bot := float(deck.get("base_height", 0.0))
+		if h_top <= h_bot + 0.05:
+			continue
+		var n := clipped.size()
+		for i in range(n):
+			var a: Vector2 = clipped[i]
+			var b: Vector2 = clipped[(i + 1) % n]
+			if _edge_on_z_plane(a, b, band.x) or _edge_on_z_plane(a, b, band.y):
+				continue
+			if a.distance_squared_to(b) < 0.01:
+				continue
+			_paint.draw_colored_polygon(
+				PackedVector2Array([
+					_surf_point(a.x, a.y, h_top),
+					_surf_point(b.x, b.y, h_top),
+					_surf_point(b.x, b.y, h_bot),
+					_surf_point(a.x, a.y, h_bot),
+				]),
+				wall_col
+			)
 
 
 ## True when both endpoints lie on the same logical-Z clip plane.
@@ -575,6 +609,54 @@ func _draw_pipe(pipe: QuarterPipe, band: Vector2) -> void:
 		Color(0.95, 0.85, 0.35, 0.85),
 		2.5
 	)
+
+
+## Outer vertical face under coping + solid endcaps at true pipe Z ends.
+func _draw_pipe_walls(pipe: QuarterPipe, band: Vector2) -> void:
+	var z0 := maxf(pipe.z_min, band.x)
+	var z1 := minf(pipe.z_max, band.y)
+	if z1 <= z0 + 0.001:
+		return
+	var is_left := pipe.side == QuarterPipe.PipeSide.LEFT
+	var wall_col := Color(0.28, 0.24, 0.32, 0.96) if is_left else Color(0.24, 0.28, 0.34, 0.96)
+	var end_col := Color(0.34, 0.30, 0.38, 0.96) if is_left else Color(0.30, 0.34, 0.40, 0.96)
+	var coping_x := pipe.x_min() if is_left else pipe.x_max()
+	var h0 := pipe.base_height
+	var h1 := pipe.base_height + pipe.radius
+	# Outer wall — skip Z spans owned by decks (deck side draws that face).
+	var covered := _deck_z_ranges_covering_pipe(pipe)
+	for seg in _z_segments_minus_covered(z0, z1, covered):
+		var sz0: float = float(seg.x)
+		var sz1: float = float(seg.y)
+		if sz1 <= sz0 + 0.001:
+			continue
+		_paint.draw_colored_polygon(
+			PackedVector2Array([
+				_surf_point(coping_x, sz0, h1),
+				_surf_point(coping_x, sz1, h1),
+				_surf_point(coping_x, sz1, h0),
+				_surf_point(coping_x, sz0, h0),
+			]),
+			wall_col
+		)
+	# Endcaps only on the pipe's real near/far edges (not the skater Z-split).
+	if absf(z0 - pipe.z_min) <= 0.05:
+		_draw_pipe_endcap(pipe, z0, end_col)
+	if absf(z1 - pipe.z_max) <= 0.05:
+		_draw_pipe_endcap(pipe, z1, end_col)
+
+
+## Filled quarter-pipe silhouette at constant Z: arc + outer drop + base.
+func _draw_pipe_endcap(pipe: QuarterPipe, logical_z: float, col: Color) -> void:
+	var steps := maxi(arc_steps, 4)
+	var pts := PackedVector2Array()
+	pts.resize(steps + 3)
+	for i in range(steps + 1):
+		pts[i] = _level.pipe_screen_point_for(pipe, logical_z, float(i) / float(steps))
+	var coping_x := pipe.x_min() if pipe.side == QuarterPipe.PipeSide.LEFT else pipe.x_max()
+	pts[steps + 1] = _surf_point(coping_x, logical_z, pipe.base_height)
+	pts[steps + 2] = _level.pipe_screen_point_for(pipe, logical_z, 0.0)
+	_paint.draw_colored_polygon(pts, col)
 
 
 func _draw_pipe_top_stroke(pipe: QuarterPipe, z0: float, z1: float) -> void:
