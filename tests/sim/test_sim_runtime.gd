@@ -8,12 +8,15 @@ func run() -> bool:
 		and _deck_seam_mount()
 		and _fly_out_open_vs_backed()
 		and _hang_x_lock_until_fly_out()
+		and _hang_land_into_bowl()
 		and _spine_plan()
 		and _acid_plan()
 		and _deterministic_replay()
 		and _layered_spawn_respects_story()
 		and _supports_sorted_high_to_low()
 		and _pipe_along_wish_and_lip_exit()
+		and _ollie_faces_direction()
+		and _coast_with_zero_friction()
 	)
 
 
@@ -156,6 +159,47 @@ func _hang_x_lock_until_fly_out() -> bool:
 		return false
 	if sim.state.velocity.x >= -1.0:
 		push_error("fly-out should seed outward (-X) velocity, got %s" % sim.state.velocity)
+		return false
+	return true
+
+
+func _hang_land_into_bowl() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_open_fly.ssk"):
+		push_error("setup hang land")
+		return false
+	var left := _left_pipe(sim.model)
+	_place_at_coping(sim, left, 350.0)
+	sim.set_input(Vector2.ZERO, false, false)
+	sim.tick()
+	if not sim.state.is_hanging():
+		push_error("expected hang after launch")
+		return false
+	var exit_vh := sim.state.velocity.z
+	if exit_vh < 300.0:
+		push_error("hang should keep exit along as vertical (got %.1f)" % exit_vh)
+		return false
+	# Fall back to coping — must drop into bowl, not bounce forever at u=1.
+	var landed := false
+	for _i in range(90):
+		sim.tick()
+		if sim.state.is_grounded() and sim.model.pipes.has(sim.state.surface_id):
+			landed = true
+			if sim.state.tangent_velocity.x >= -1.0:
+				push_error("hang land must seed into-bowl along (-), got %s" % sim.state.tangent_velocity.x)
+				return false
+			var u0 := sim.state.u
+			for _j in range(20):
+				sim.tick()
+				if not sim.state.is_grounded():
+					push_error("hang land re-launched into air (stuck bounce)")
+					return false
+			if sim.state.u >= u0 - 0.01:
+				push_error("hang land should ride down pipe, u %s → %s" % [u0, sim.state.u])
+				return false
+			break
+	if not landed:
+		push_error("never landed from hang")
 		return false
 	return true
 
@@ -340,6 +384,74 @@ func _pipe_along_wish_and_lip_exit() -> bool:
 			break
 	if not left_pipe:
 		push_error("stuck on right pipe at lip u=%s sid=%s" % [sim.state.u, sim.state.surface_id])
+		return false
+	return true
+
+
+func _ollie_faces_direction() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_halfpipe.ssk"):
+		push_error("setup ollie")
+		return false
+	sim.ollie_accel = 650.0
+	sim.max_speed = 880.0
+	# Facing right, no stick: ollie should build +X velocity.
+	sim.state.facing = "r"
+	sim.state.tangent_velocity = Vector2.ZERO
+	var x0 := sim.state.position.x
+	for _i in range(30):
+		sim.set_input(Vector2.ZERO, false, false, true)
+		sim.tick()
+		if not sim.state.is_grounded():
+			break
+	if sim.state.tangent_velocity.x < 200.0:
+		push_error("ollie facing-r should accumulate +X (got %s)" % sim.state.tangent_velocity.x)
+		return false
+	if sim.state.position.x <= x0 + 5.0:
+		push_error("ollie facing-r should move +X noticeably")
+		return false
+	# Facing left, no stick: accelerate −X.
+	sim.state.facing = "l"
+	sim.state.tangent_velocity = Vector2.ZERO
+	for _i in range(30):
+		sim.set_input(Vector2.ZERO, false, false, true)
+		sim.tick()
+		if not sim.state.is_grounded():
+			break
+	if sim.state.tangent_velocity.x >= -10.0:
+		push_error("ollie facing-l should accelerate -X, tv=%s" % sim.state.tangent_velocity)
+		return false
+	return true
+
+
+func _coast_with_zero_friction() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_halfpipe.ssk"):
+		push_error("setup coast")
+		return false
+	sim.friction = 0.0
+	sim.brake = 1250.0
+	sim.accel = 3250.0
+	sim.state.tangent_velocity = Vector2(400.0, 0.0)
+	var vx0 := sim.state.tangent_velocity.x
+	var floor_id := sim.state.surface_id
+	for _i in range(12):
+		sim.set_input(Vector2.ZERO, false, false, false)
+		sim.tick()
+		if sim.state.surface_id != floor_id:
+			break
+	if sim.state.surface_id == floor_id and absf(sim.state.tangent_velocity.x - vx0) > 1.0:
+		push_error("zero friction must coast, vx %s → %s" % [vx0, sim.state.tangent_velocity.x])
+		return false
+	# Stick opposite velocity brakes toward zero.
+	sim.state.tangent_velocity = Vector2(400.0, 0.0)
+	sim.set_input(Vector2(-1, 0), false, false, false)
+	sim.tick()
+	if sim.state.tangent_velocity.x >= 400.0 - 1.0:
+		push_error("opposite stick should brake, got %s" % sim.state.tangent_velocity.x)
+		return false
+	if sim.state.tangent_velocity.x < 0.0:
+		push_error("brake must not reverse in one tick, got %s" % sim.state.tangent_velocity.x)
 		return false
 	return true
 

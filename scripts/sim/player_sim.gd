@@ -11,9 +11,15 @@ var planner: ManeuverPlanner
 var state: SimState
 var accel: float = 3250.0
 var max_speed: float = 880.0
+var max_speed_z: float = 400.0
+var ollie_accel: float = 650.0
+var brake: float = 1250.0
+var friction: float = 0.0
+var ramp_friction: float = 0.0
 var last_wish: Vector2 = Vector2.ZERO
 var action_pressed: bool = false
 var action_just: bool = false
+var ollie_pressed: bool = false
 var debug: SimDebugSnapshot
 var trace: SimTrace
 
@@ -47,10 +53,11 @@ func _finish_setup() -> bool:
 	return true
 
 
-func set_input(wish: Vector2, action_down: bool, action_edge: bool) -> void:
+func set_input(wish: Vector2, action_down: bool, action_edge: bool, ollie_down: bool = false) -> void:
 	last_wish = wish
 	action_pressed = action_down
 	action_just = action_edge
+	ollie_pressed = ollie_down
 
 
 func tick(delta: float = SimTolerances.FIXED_DT) -> void:
@@ -59,7 +66,19 @@ func tick(delta: float = SimTolerances.FIXED_DT) -> void:
 	state.tick += 1
 	_try_actions()
 	if state.is_grounded():
-		ground.step(state, last_wish, delta, accel, max_speed)
+		ground.step(
+			state,
+			last_wish,
+			delta,
+			accel,
+			max_speed,
+			max_speed_z,
+			brake,
+			friction,
+			ramp_friction,
+			ollie_pressed,
+			ollie_accel,
+		)
 	else:
 		air.step(state, last_wish, delta)
 	_assert_finite()

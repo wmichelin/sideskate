@@ -35,7 +35,7 @@ func _step_free(state: SimState, wish: Vector2, delta: float) -> void:
 	if w.length() > 1.0:
 		w = w.normalized()
 	if state.is_hanging():
-		# Pipe hang: X locked to source coping; Z stick only.
+		# Pipe hang: X locked to source coping only; height/Z free.
 		state.velocity.x = 0.0
 		state.velocity.y = move_toward(state.velocity.y, w.y * 200.0, 400.0 * delta)
 	else:
@@ -133,23 +133,31 @@ func _try_land(state: SimState, from_height: float = NAN) -> void:
 	# Require a descending crossing (or already penetrating) of this pad.
 	if not is_nan(from_height) and from_height < sh - SimTolerances.CONTACT_EPS:
 		return
+	var impact := maxf(absf(state.velocity.z), absf(state.velocity.x))
+	var vz := state.velocity.y
 	state.mode = SimState.Mode.GROUNDED
 	state.surface_id = str(top.surface_id)
 	state.position.z = sh
 	if int(top.kind) == SimKinds.SurfaceKind.PIPE:
-		var proj: Dictionary = top.proj
-		state.u = float(proj.u)
-		state.v = float(proj.v)
-		state.position = proj.point
-		# Drop-in along arc from vertical.
-		var into := -1.0
-		if model.pipes.has(state.surface_id):
-			var pipe: PipeSurface = model.pipes[state.surface_id]
-			into = -pipe.outward_sign() ## into bowl from coping
-		state.tangent_velocity = Vector2(
-			into * maxf(absf(state.velocity.z), absf(state.velocity.x)),
-			state.velocity.y
-		)
+		var pipe: PipeSurface = model.pipes.get(state.surface_id)
+		# Returning onto the exit pipe at coping: snap to lip and drop into bowl.
+		if state.is_hanging() and state.surface_id == state.hang_pipe_id and pipe != null:
+			var z := state.position.y
+			state.u = 1.0
+			state.v = clampf((z - pipe.z_min) / maxf(pipe.z_max - pipe.z_min, 0.001), 0.0, 1.0)
+			state.position = Vector3(
+				pipe.x_at_theta(z, PI * 0.5),
+				z,
+				pipe.height_at_theta(z, PI * 0.5)
+			)
+			state.tangent_velocity = Vector2(-maxf(impact, 80.0), vz)
+		else:
+			var proj: Dictionary = top.proj
+			state.u = float(proj.u)
+			state.v = float(proj.v)
+			state.position = proj.point
+			# Drop-in: negative along always rides into the bowl (toward lip).
+			state.tangent_velocity = Vector2(-maxf(impact, 80.0), vz)
 	else:
 		state.tangent_velocity = Vector2(state.velocity.x, state.velocity.y)
 	state.velocity = Vector3.ZERO

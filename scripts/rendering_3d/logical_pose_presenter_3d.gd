@@ -9,6 +9,7 @@ extends Node3D
 @export var body_size: Vector3 = Vector3(0.18, 0.40, 0.14)
 
 var _body: MeshInstance3D
+var _facing_mark: MeshInstance3D
 var _shadow: MeshInstance3D
 var _depth: PseudoDepthBody
 var _player: Node
@@ -32,6 +33,17 @@ func _build_meshes() -> void:
 	_body.material_override = mat
 	add_child(_body)
 
+	# Small triangle on the body +X side; body scale flip maps that to facing.
+	_facing_mark = MeshInstance3D.new()
+	_facing_mark.name = "FacingMark"
+	_facing_mark.mesh = _make_facing_triangle(0.07, 0.09, 0.04)
+	var fmat := StandardMaterial3D.new()
+	fmat.albedo_color = Color(0.98, 0.85, 0.2, 1.0)
+	fmat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	_facing_mark.material_override = fmat
+	_facing_mark.position = Vector3(body_size.x * 0.5 + 0.01, 0.0, 0.0)
+	_body.add_child(_facing_mark)
+
 	_shadow = MeshInstance3D.new()
 	_shadow.name = "AirShadow"
 	var disc := CylinderMesh.new()
@@ -46,6 +58,51 @@ func _build_meshes() -> void:
 	_shadow.material_override = sm
 	_shadow.visible = false
 	add_child(_shadow)
+
+
+## Flat triangle in the XZ plane pointing +X (tip), extruded slightly in Y.
+func _make_facing_triangle(length: float, width: float, thickness: float) -> ArrayMesh:
+	var tip := Vector3(length, 0.0, 0.0)
+	var a := Vector3(0.0, 0.0, -width * 0.5)
+	var b := Vector3(0.0, 0.0, width * 0.5)
+	var y0 := -thickness * 0.5
+	var y1 := thickness * 0.5
+	var verts := PackedVector3Array()
+	var norms := PackedVector3Array()
+	# Top face (up)
+	_tri(verts, norms, tip + Vector3(0, y1, 0), a + Vector3(0, y1, 0), b + Vector3(0, y1, 0), Vector3.UP)
+	# Bottom face
+	_tri(verts, norms, tip + Vector3(0, y0, 0), b + Vector3(0, y0, 0), a + Vector3(0, y0, 0), Vector3.DOWN)
+	# Side faces
+	_tri(verts, norms, tip + Vector3(0, y1, 0), tip + Vector3(0, y0, 0), a + Vector3(0, y0, 0), Vector3(0, 0, -1))
+	_tri(verts, norms, tip + Vector3(0, y1, 0), a + Vector3(0, y0, 0), a + Vector3(0, y1, 0), Vector3(0, 0, -1))
+	_tri(verts, norms, tip + Vector3(0, y1, 0), b + Vector3(0, y1, 0), b + Vector3(0, y0, 0), Vector3(0, 0, 1))
+	_tri(verts, norms, tip + Vector3(0, y1, 0), b + Vector3(0, y0, 0), tip + Vector3(0, y0, 0), Vector3(0, 0, 1))
+	_tri(verts, norms, a + Vector3(0, y1, 0), a + Vector3(0, y0, 0), b + Vector3(0, y0, 0), Vector3(-1, 0, 0))
+	_tri(verts, norms, a + Vector3(0, y1, 0), b + Vector3(0, y0, 0), b + Vector3(0, y1, 0), Vector3(-1, 0, 0))
+	var arrays: Array = []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = verts
+	arrays[Mesh.ARRAY_NORMAL] = norms
+	var mesh := ArrayMesh.new()
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return mesh
+
+
+func _tri(
+	verts: PackedVector3Array,
+	norms: PackedVector3Array,
+	p0: Vector3,
+	p1: Vector3,
+	p2: Vector3,
+	n: Vector3,
+) -> void:
+	verts.append(p0)
+	verts.append(p1)
+	verts.append(p2)
+	norms.append(n)
+	norms.append(n)
+	norms.append(n)
 
 
 func _resolve_refs() -> void:

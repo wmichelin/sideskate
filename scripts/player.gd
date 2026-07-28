@@ -12,6 +12,11 @@ const BODY_CYLINDER_H_M := 0.22
 @export var level_path: NodePath = NodePath("../RampLevel")
 @export var accel: float = 3250.0
 @export var max_speed_x: float = 880.0
+@export var max_speed_z: float = 400.0
+@export var ollie_accel: float = 650.0
+@export var brake: float = 1250.0
+@export var friction: float = 0.0
+@export var ramp_friction: float = 0.0
 
 var depth: PseudoDepthBody
 var facing_h: String = "r"
@@ -61,8 +66,7 @@ func _boot_sim() -> void:
 		depth.z_min = _level.z_min
 		depth.z_max = _level.z_max
 	_sim = PlayerSim.new()
-	_sim.accel = accel
-	_sim.max_speed = max_speed_x
+	_sync_tuning_to_sim()
 	if not _sim.setup_from_spec(_level.spec):
 		push_error("PlayerSim failed to compile level")
 		_sim = null
@@ -103,12 +107,26 @@ func _physics_process(delta: float) -> void:
 	_last_wish = wish
 	var action_down := Input.is_action_pressed("transfer")
 	var action_edge := Input.is_action_just_pressed("transfer")
-	_sim.set_input(wish, action_down, action_edge)
+	var ollie_down := Input.is_action_pressed("ollie")
+	_sync_tuning_to_sim()
+	_sim.set_input(wish, action_down, action_edge, ollie_down)
 	_sim.tick(delta)
 	_sync_from_sim()
 	_capture_pose_snapshots()
 	if not _sim.state.alive:
 		_begin_death()
+
+
+func _sync_tuning_to_sim() -> void:
+	if _sim == null:
+		return
+	_sim.accel = accel
+	_sim.max_speed = max_speed_x
+	_sim.max_speed_z = max_speed_z
+	_sim.ollie_accel = ollie_accel
+	_sim.brake = brake
+	_sim.friction = friction
+	_sim.ramp_friction = ramp_friction
 
 
 func _sync_from_sim() -> void:
@@ -122,17 +140,25 @@ func _sync_from_sim() -> void:
 		"surface_id": st.surface_id,
 	}
 	var tilt := 0.0
-	if st.is_grounded() and _sim.model.pipes.has(st.surface_id):
+	if st.is_hanging() and _sim.model.pipes.has(st.hang_pipe_id):
+		# Stay at coping lean (body perpendicular to flat ground) while X-locked.
+		var hang_pipe: PipeSurface = _sim.model.pipes[st.hang_pipe_id]
+		tilt = -hang_pipe.outward_sign() * (PI * 0.5)
+	elif st.is_grounded() and _sim.model.pipes.has(st.surface_id):
 		var pipe: PipeSurface = _sim.model.pipes[st.surface_id]
 		var th := st.u * (PI * 0.5)
 		# Match legacy lean: −coping_sign(side) × θ so the skater leans into the wall.
 		tilt = -pipe.outward_sign() * th
+	var support_h := p.z
+	if st.is_hanging() and _sim.model.pipes.has(st.hang_pipe_id):
+		var hp: PipeSurface = _sim.model.pipes[st.hang_pipe_id]
+		support_h = hp.height_at_theta(p.y, PI * 0.5)
 	if depth:
 		depth.logical_x = p.x
 		depth.logical_z = p.y
 		depth.surface_height = p.z
 		depth.airborne = _airborne
-		depth.support_height = p.z
+		depth.support_height = support_h
 		depth.surface_tilt = tilt
 		depth.apply()
 	global_position = _WorldSpace.logical_to_world(p.x, p.y, p.z)

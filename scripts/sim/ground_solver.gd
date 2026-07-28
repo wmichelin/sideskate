@@ -54,28 +54,57 @@ func _spawn_support(x: float, z: float, spawn_h: float) -> Dictionary:
 	return all[0]
 
 
-func step(state: SimState, wish: Vector2, delta: float, accel: float, max_speed: float) -> void:
+func step(
+	state: SimState,
+	wish: Vector2,
+	delta: float,
+	accel: float,
+	max_speed: float,
+	max_speed_z: float = 400.0,
+	brake: float = 1250.0,
+	friction: float = 0.0,
+	ramp_friction: float = 0.0,
+	ollie: bool = false,
+	ollie_accel: float = 650.0,
+) -> void:
 	if not state.is_grounded() or not state.alive:
 		return
 	assert(delta > 0.0)
 	if model.pipes.has(state.surface_id):
-		_step_pipe(state, wish, delta, accel, max_speed)
+		_step_pipe(
+			state, wish, delta, accel, max_speed, max_speed_z,
+			brake, friction, ramp_friction, ollie, ollie_accel
+		)
 	elif model.patches.has(state.surface_id):
-		_step_patch(state, wish, delta, accel, max_speed)
+		_step_patch(
+			state, wish, delta, accel, max_speed, max_speed_z,
+			brake, friction, ollie, ollie_accel
+		)
 	else:
 		push_error("GroundSolver: unknown surface %s" % state.surface_id)
 		state.mode = SimState.Mode.AIRBORNE
 
 
-func _step_patch(state: SimState, wish: Vector2, delta: float, accel: float, max_speed: float) -> void:
+func _step_patch(
+	state: SimState,
+	wish: Vector2,
+	delta: float,
+	accel: float,
+	max_speed: float,
+	max_speed_z: float,
+	brake: float,
+	friction: float,
+	ollie: bool,
+	ollie_accel: float,
+) -> void:
 	var patch: SupportPatch = model.patches[state.surface_id]
-	# Wish in XZ.
-	var w := wish
-	if w.length() > 1.0:
-		w = w.normalized()
-	var target := w * max_speed
-	state.tangent_velocity.x = move_toward(state.tangent_velocity.x, target.x, accel * delta)
-	state.tangent_velocity.y = move_toward(state.tangent_velocity.y, target.y, accel * delta)
+	state.tangent_velocity.x = _integrate_axis(
+		state.tangent_velocity.x, wish.x, max_speed, accel, brake, friction, delta
+	)
+	state.tangent_velocity.y = _integrate_axis(
+		state.tangent_velocity.y, wish.y, max_speed_z, accel, brake, friction, delta
+	)
+	_apply_ollie_world_x(state, wish, delta, max_speed, ollie, ollie_accel)
 	var next := state.position + Vector3(
 		state.tangent_velocity.x * delta,
 		state.tangent_velocity.y * delta,
@@ -107,7 +136,19 @@ func _step_patch(state: SimState, wish: Vector2, delta: float, accel: float, max
 	_enter_air(state, Vector3(state.tangent_velocity.x, state.tangent_velocity.y, 0.0))
 
 
-func _step_pipe(state: SimState, wish: Vector2, delta: float, accel: float, max_speed: float) -> void:
+func _step_pipe(
+	state: SimState,
+	wish: Vector2,
+	delta: float,
+	accel: float,
+	max_speed: float,
+	max_speed_z: float,
+	brake: float,
+	friction: float,
+	ramp_friction: float,
+	ollie: bool,
+	ollie_accel: float,
+) -> void:
 	var pipe: PipeSurface = model.pipes[state.surface_id]
 	# Already perched on OPEN coping with leftover along: hang-launch before control/gravity eat it.
 	if state.u >= 0.999 and state.tangent_velocity.x > 1.0:
@@ -124,18 +165,17 @@ func _step_pipe(state: SimState, wish: Vector2, delta: float, accel: float, max_
 		crossings += 1
 		# +along = toward coping. Map world wish X by outward so left/right pipes match.
 		var along_wish := wish.x * pipe.outward_sign()
-		var target_along := clampf(along_wish, -1.0, 1.0) * max_speed
-		var target_z := clampf(wish.y, -1.0, 1.0) * max_speed
 		var th := state.u * PI * 0.5
 		# Gravity pulls toward lip (negative along); GRAVITY is negative.
 		var g_along := SimTolerances.GRAVITY * sin(th)
-		state.tangent_velocity.x = move_toward(
-			state.tangent_velocity.x, target_along, accel * remaining
+		state.tangent_velocity.x = _integrate_axis(
+			state.tangent_velocity.x, along_wish, max_speed, accel, brake, ramp_friction, remaining
 		)
 		state.tangent_velocity.x += g_along * remaining
-		state.tangent_velocity.y = move_toward(
-			state.tangent_velocity.y, target_z, accel * remaining
+		state.tangent_velocity.y = _integrate_axis(
+			state.tangent_velocity.y, wish.y, max_speed_z, accel, brake, friction, remaining
 		)
+		_apply_ollie_pipe(state, pipe, wish, remaining, max_speed, ollie, ollie_accel)
 		var s := pipe.sample_at_z(state.position.y)
 		var radius := float(s.radius)
 		if radius <= 0.001:
@@ -294,3 +334,63 @@ func _update_facing_pipe(state: SimState, pipe: PipeSurface) -> void:
 	var world_vx := state.tangent_velocity.x * pipe.outward_sign()
 	if absf(world_vx) > 1.0:
 		state.facing = "r" if world_vx > 0.0 else "l"
+
+
+## Per-axis grounded control: coast (friction), brake only when stick opposes vel, else accel.
+func _integrate_axis(
+	v: float,
+	wish_n: float,
+	max_spd: float,
+	accel: float,
+	brake: float,
+	friction: float,
+	delta: float,
+) -> float:
+	if absf(wish_n) < 0.15:
+		return move_toward(v, 0.0, maxf(friction, 0.0) * delta)
+	# Stick pointed away from current velocity on this axis → brake to 0 (no reverse yet).
+	if wish_n * v < 0.0:
+		return move_toward(v, 0.0, maxf(brake, 0.0) * delta)
+	return move_toward(v, clampf(wish_n, -1.0, 1.0) * max_spd, maxf(accel, 0.0) * delta)
+
+
+## Mild forward thrust toward max_speed in facing direction (world X on flats).
+func _apply_ollie_world_x(
+	state: SimState,
+	wish: Vector2,
+	delta: float,
+	max_speed: float,
+	ollie: bool,
+	ollie_accel: float,
+) -> void:
+	if not ollie or ollie_accel <= 0.0:
+		return
+	var face := 1.0 if state.facing == "r" else -1.0
+	# Skip while stick brakes opposite facing.
+	if wish.x * face < -0.15:
+		return
+	state.tangent_velocity.x = move_toward(
+		state.tangent_velocity.x, face * max_speed, ollie_accel * delta
+	)
+
+
+## Ollie on pipe: accelerate along-arc so world X matches facing.
+func _apply_ollie_pipe(
+	state: SimState,
+	pipe: PipeSurface,
+	wish: Vector2,
+	delta: float,
+	max_speed: float,
+	ollie: bool,
+	ollie_accel: float,
+) -> void:
+	if not ollie or ollie_accel <= 0.0:
+		return
+	var face := 1.0 if state.facing == "r" else -1.0
+	if wish.x * face < -0.15:
+		return
+	# world_vx = along * outward → along_target = face * outward * max_speed
+	var along_target := face * pipe.outward_sign() * max_speed
+	state.tangent_velocity.x = move_toward(
+		state.tangent_velocity.x, along_target, ollie_accel * delta
+	)

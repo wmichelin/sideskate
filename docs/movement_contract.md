@@ -26,7 +26,7 @@ Exactly one of:
 1. **Grounded** — `{ surface_id, u, v, tangent_velocity (Vector2 in surface UV speed), facing }`
 2. **Airborne** — `{ position (Vector3: x,z,height), velocity (Vector3), maneuver: ManeuverPlan|null, hang_pipe_id: String }`
 
-`hang_pipe_id` empty ⇒ free air (XZ control). Non-empty ⇒ hang air: X is locked to that pipe’s coping X at the current Z; Z stick still applies. Hang clears on fly-out, spine, acid, or land — not a pile of boolean locks.
+`hang_pipe_id` empty ⇒ free air (XZ control). Non-empty ⇒ hang air: **X only** is locked to that pipe’s coping X at the current Z (depth stick still applies; height is free ballistic). Hang clears on fly-out, spine, acid, or land. Landing uses ordinary underfoot support — X-lock is not a land filter.
 
 Crash / death is a terminal grounded→overlay path after lava contact or out-of-bounds fall; it is not a third motion state.
 
@@ -43,6 +43,7 @@ A transition occurs only via:
 | Grounded | Grounded | Continuous `SUPPORT_SEAM` or same surface UV advance |
 | Grounded | Airborne (hang) | Leave `OPEN` / `SHARED_SPINE` coping with rising along (no fly-out) |
 | Grounded | Airborne (free) | Leave unsupported edge / ride-off, or **fly-out** from `OPEN` coping |
+| Airborne (hang) | Grounded | Descend onto exit coping; seed into-bowl along (never re-launch) |
 | Airborne (hang) | Airborne (free) | **Fly-out** (X-dominant outward stick in window) |
 | Airborne (hang) | Airborne+plan | Explicit spine (rising/apex) or acid (descending) |
 | Airborne | Grounded | Ordinary descending landing on a support patch |
@@ -79,7 +80,7 @@ A glyph-aligned outward deck is never both fly-out space and a solid catch wall.
 
 ## Velocity rules
 
-- Grounded: integrate control in surface UV; gravity projects onto surface tangent.
+- Grounded: integrate control in surface UV. Neutral stick coasts (`friction` / `ramp_friction`); stick opposite velocity brakes (`brake`); aligned stick accelerates (`accel`). Cap at max speeds.
 - Seam crossing: transport world tangent speed onto the destination surface; no dead-stop.
 - Hang leave: seed vertical from along at coping; `vx = 0`; lock X to coping until unlock.
 - Fly-out: clear hang and seed free-air velocity from pipe world remnant / outward unlock.
@@ -92,6 +93,7 @@ A glyph-aligned outward deck is never both fly-out space and a solid catch wall.
 | Intent | Condition |
 |--------|-----------|
 | Move | Stick → wish in XZ / along-surface |
+| Ollie | Hold `ollie`: mild accel toward `max_speed` in **facing** direction; skipped while stick brakes opposite |
 | Fly-out | Explicit X-dominant outward stick while rising in fly-out window on `OPEN` |
 | Spine | Explicit action while rising or rising-apex |
 | Acid | Explicit action while descending |
