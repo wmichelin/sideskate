@@ -4,7 +4,6 @@ extends CanvasLayer
 
 @export var player_path: NodePath = NodePath("../Player")
 @export var ramp_level_path: NodePath = NodePath("../RampLevel")
-@export var ramp_visual_path: NodePath = NodePath("../RampLevel/RampVisual")
 @export var start_collapsed: bool = true
 ## Max height of the expanded slider list before vertical scroll (viewport-clamped).
 @export var body_max_height: float = 640.0
@@ -106,10 +105,8 @@ extends CanvasLayer
 
 var _player: Node2D
 var _level: Node2D
-var _visual: Node2D
 var _level_debug_3d: Node3D
 var _camera_rig: Node3D
-var _is_3d := false
 var _syncing_god := false
 var _collapsed: bool = true
 var _scroll: ScrollContainer
@@ -127,10 +124,8 @@ func _ready() -> void:
 
 	_player = get_node_or_null(player_path) as Node2D
 	_level = get_node_or_null(ramp_level_path) as Node2D
-	_visual = get_node_or_null(ramp_visual_path) as Node2D
 	_level_debug_3d = get_node_or_null("../World3D/LevelDebug3D") as Node3D
 	_camera_rig = get_node_or_null("../World3D/CameraRig3D") as Node3D
-	_is_3d = _level_debug_3d != null or get_node_or_null("../World3D") != null
 
 	_wrap_body_in_scroll()
 	get_viewport().size_changed.connect(_refit_panel_layout)
@@ -172,54 +167,19 @@ func _ready() -> void:
 	_bind_float_slider(_ramp_friction_slider, ramp_friction_min, ramp_friction_max, 10.0, _player, "ramp_friction", 0.0, _on_ramp_friction_changed, _refresh_ramp_friction_label)
 	_bind_float_slider(_friction_slider, friction_min, friction_max, 10.0, _player, "friction", 0.0, _on_friction_changed, _refresh_friction_label)
 
-	if not _is_3d:
-		_bind_float_slider(_persp_inset_slider, persp_inset_min, persp_inset_max, 1.0, _level, "perspective_inset", 155.0, _on_persp_inset_changed, _refresh_persp_inset_label)
-		_bind_float_slider(_far_geom_slider, far_geom_min, far_geom_max, 0.01, _level, "far_geometry_scale", 1.0, _on_far_geom_changed, _refresh_far_geom_label)
-		_bind_float_slider(_ref_depth_slider, ref_depth_min, ref_depth_max, 5.0, _level, "reference_depth", 500.0, _on_ref_depth_changed, _refresh_ref_depth_label)
-		_bind_float_slider(
-			_draw_band_pad_slider,
-			draw_band_pad_min,
-			draw_band_pad_max,
-			0.05,
-			_visual,
-			"draw_band_pad",
-			2.0,
-			_on_draw_band_pad_changed,
-			_refresh_draw_band_pad_label
-		)
-		_bind_float_slider(
-			_arc_steps_slider,
-			arc_steps_min,
-			arc_steps_max,
-			1.0,
-			_visual,
-			"arc_steps",
-			6.0,
-			_on_arc_steps_changed,
-			_refresh_arc_steps_label
-		)
 	_bind_float_slider(_cell_x_slider, cell_x_min, cell_x_max, 1.0, _level, "cell_size_x", 47.0, _on_cell_x_changed, _refresh_cell_x_label)
 	_bind_float_slider(_cell_z_slider, cell_z_min, cell_z_max, 1.0, _level, "cell_size_z", 47.0, _on_cell_z_changed, _refresh_cell_z_label)
 
-	if not _is_3d:
-		var depth_on := false
-		if _visual != null and _visual.get("show_depth_grid") != null:
-			depth_on = bool(_visual.get("show_depth_grid"))
-		_depth_grid_check.button_pressed = depth_on
-		_depth_grid_check.focus_mode = Control.FOCUS_NONE
-		_depth_grid_check.toggled.connect(_on_depth_grid_toggled)
-
 	var cell_on := false
-	var cell_src: Object = _level_debug_3d if _is_3d else _visual
-	if cell_src != null and cell_src.get("debug_cell_highlight") != null:
-		cell_on = bool(cell_src.get("debug_cell_highlight"))
+	if _level_debug_3d != null and _level_debug_3d.get("debug_cell_highlight") != null:
+		cell_on = bool(_level_debug_3d.get("debug_cell_highlight"))
 	_cell_check.button_pressed = cell_on
 	_cell_check.focus_mode = Control.FOCUS_NONE
 	_cell_check.toggled.connect(_on_cell_highlight_toggled)
 
 	var facing_on := false
-	if cell_src != null and cell_src.get("debug_facing_cast") != null:
-		facing_on = bool(cell_src.get("debug_facing_cast"))
+	if _level_debug_3d != null and _level_debug_3d.get("debug_facing_cast") != null:
+		facing_on = bool(_level_debug_3d.get("debug_facing_cast"))
 	_facing_cast_check.button_pressed = facing_on
 	_facing_cast_check.focus_mode = Control.FOCUS_NONE
 	_facing_cast_check.toggled.connect(_on_facing_cast_toggled)
@@ -240,13 +200,12 @@ func _ready() -> void:
 	_vsync_check.focus_mode = Control.FOCUS_NONE
 	_vsync_check.toggled.connect(_on_vsync_toggled)
 
-	var cast_target: Object = _level_debug_3d if _is_3d else _visual
 	_bind_float_slider(
 		_cast_cells_slider,
 		cast_cells_min,
 		cast_cells_max,
 		1.0,
-		cast_target,
+		_level_debug_3d,
 		"facing_cast_distance",
 		3.0,
 		_on_cast_cells_changed,
@@ -278,8 +237,7 @@ func _apply_3d_panel_visibility() -> void:
 	var coping_row := _body.get_node_or_null("CopingCellsRow") as Control
 	if coping_row != null:
 		coping_row.visible = false
-	if not _is_3d:
-		return
+	# Canvas2D-only draw tuning — park is rendered via World3D.
 	for row_name in [
 		"PerspInsetRow",
 		"FarGeomScaleRow",
@@ -294,9 +252,9 @@ func _apply_3d_panel_visibility() -> void:
 
 
 func _setup_3d_camera_sliders() -> void:
-	if not _is_3d or _camera_rig == null or _body == null:
+	if _camera_rig == null or _body == null:
 		return
-	# Insert near the top of the tuning list (after friction block / before 2D-only rows).
+	# Insert near the top of the tuning list (after friction block).
 	var insert_at := 0
 	var friction_row := _body.get_node_or_null("FrictionRow")
 	if friction_row != null:
@@ -640,11 +598,9 @@ func _refresh_friction_label(v: float) -> void:
 
 
 func _refresh_level_visual() -> void:
-	if _visual != null:
-		if _visual.has_method("refresh"):
-			_visual.call("refresh")
-		else:
-			_visual.queue_redraw()
+	var vis3d := get_node_or_null("../World3D/LevelVisual3D")
+	if vis3d != null and vis3d.has_method("rebuild"):
+		vis3d.call("rebuild")
 	if _player != null and _player.has_node("PseudoDepthBody"):
 		var depth: Node = _player.get_node("PseudoDepthBody")
 		if depth.has_method("apply"):
@@ -659,7 +615,8 @@ func _on_persp_inset_changed(v: float) -> void:
 
 
 func _refresh_persp_inset_label(v: float) -> void:
-	_persp_inset_value.text = "%.0f" % v
+	if _persp_inset_value != null:
+		_persp_inset_value.text = "%.0f" % v
 
 
 func _on_far_geom_changed(v: float) -> void:
@@ -670,7 +627,8 @@ func _on_far_geom_changed(v: float) -> void:
 
 
 func _refresh_far_geom_label(v: float) -> void:
-	_far_geom_value.text = "%.2f" % v
+	if _far_geom_value != null:
+		_far_geom_value.text = "%.2f" % v
 
 
 func _on_ref_depth_changed(v: float) -> void:
@@ -683,29 +641,26 @@ func _on_ref_depth_changed(v: float) -> void:
 
 
 func _refresh_ref_depth_label(v: float) -> void:
-	_ref_depth_value.text = "%.0f" % v
+	if _ref_depth_value != null:
+		_ref_depth_value.text = "%.0f" % v
 
 
 func _on_draw_band_pad_changed(v: float) -> void:
-	if _visual != null:
-		_visual.set("draw_band_pad", v)
 	_refresh_draw_band_pad_label(v)
-	_refresh_level_visual()
 
 
 func _refresh_draw_band_pad_label(v: float) -> void:
-	_draw_band_pad_value.text = "%.2f" % v
+	if _draw_band_pad_value != null:
+		_draw_band_pad_value.text = "%.2f" % v
 
 
 func _on_arc_steps_changed(v: float) -> void:
-	if _visual != null:
-		_visual.set("arc_steps", int(round(v)))
 	_refresh_arc_steps_label(v)
-	_refresh_level_visual()
 
 
 func _refresh_arc_steps_label(v: float) -> void:
-	_arc_steps_value.text = "%d" % int(round(v))
+	if _arc_steps_value != null:
+		_arc_steps_value.text = "%d" % int(round(v))
 
 
 func _on_cell_x_changed(v: float) -> void:
@@ -742,35 +697,24 @@ func _refresh_cell_z_label(v: float) -> void:
 	_cell_z_value.text = "%.0f" % v
 
 
-func _on_depth_grid_toggled(on: bool) -> void:
-	if _visual != null:
-		_visual.set("show_depth_grid", on)
-		if _visual.has_method("refresh"):
-			_visual.call("refresh")
-		else:
-			_visual.queue_redraw()
+func _on_depth_grid_toggled(_on: bool) -> void:
+	pass
 
 
 func _on_cell_highlight_toggled(on: bool) -> void:
-	var target: Object = _level_debug_3d if _is_3d else _visual
-	if target == null:
+	if _level_debug_3d == null:
 		return
-	target.set("debug_cell_highlight", on)
-	if target.has_method("refresh"):
-		target.call("refresh")
-	elif target is CanvasItem:
-		(target as CanvasItem).queue_redraw()
+	_level_debug_3d.set("debug_cell_highlight", on)
+	if _level_debug_3d.has_method("refresh"):
+		_level_debug_3d.call("refresh")
 
 
 func _on_facing_cast_toggled(on: bool) -> void:
-	var target: Object = _level_debug_3d if _is_3d else _visual
-	if target == null:
+	if _level_debug_3d == null:
 		return
-	target.set("debug_facing_cast", on)
-	if target.has_method("refresh"):
-		target.call("refresh")
-	elif target is CanvasItem:
-		(target as CanvasItem).queue_redraw()
+	_level_debug_3d.set("debug_facing_cast", on)
+	if _level_debug_3d.has_method("refresh"):
+		_level_debug_3d.call("refresh")
 
 
 func _on_motion_vectors_toggled(on: bool) -> void:
@@ -790,13 +734,10 @@ func _on_vsync_toggled(on: bool) -> void:
 
 
 func _on_cast_cells_changed(v: float) -> void:
-	var target: Object = _level_debug_3d if _is_3d else _visual
-	if target != null:
-		target.set("facing_cast_distance", int(round(v)))
-		if target.has_method("refresh"):
-			target.call("refresh")
-		elif target is CanvasItem:
-			(target as CanvasItem).queue_redraw()
+	if _level_debug_3d != null:
+		_level_debug_3d.set("facing_cast_distance", int(round(v)))
+		if _level_debug_3d.has_method("refresh"):
+			_level_debug_3d.call("refresh")
 	_refresh_cast_cells_label(v)
 
 

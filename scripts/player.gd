@@ -55,9 +55,10 @@ const _ContactMath := preload("res://scripts/contact_math.gd")
 @export var fly_out_above_coping: float = 40.0
 
 @onready var depth: PseudoDepthBody = $PseudoDepthBody
-@onready var _head_debug_label: Label = $Body/HeadDebug/Label
-@onready var _head_debug_panel: Control = $Body/HeadDebug
-@onready var _face_nose: Polygon2D = $Body/FaceNose
+## Optional Canvas2D debug widgets (absent in the 3D-only gameplay scene).
+var _head_debug_label: Label = null
+var _head_debug_panel: Control = null
+var _face_nose: Polygon2D = null
 
 var _velocity: Vector2 = Vector2.ZERO
 ## Last physics-tick control acceleration (d(_velocity)/dt from integrate).
@@ -153,7 +154,10 @@ var _death_overlay: Node = null
 
 func _ready() -> void:
 	_level = get_node_or_null(level_path) as RampLevel
-	var head_dbg := get_node_or_null("Body/HeadDebug")
+	_face_nose = get_node_or_null("Body/FaceNose") as Polygon2D
+	_head_debug_label = get_node_or_null("Body/HeadDebug/Label") as Label
+	_head_debug_panel = get_node_or_null("Body/HeadDebug") as Control
+	var head_dbg := _head_debug_panel
 	if head_dbg:
 		head_dbg.add_to_group("debug_tools")
 		if not DebugTools.is_available():

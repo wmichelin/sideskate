@@ -287,9 +287,9 @@ func _fresh_lower_l1_entry_stays_grounded() -> bool:
 		return false
 	ramp.apply_spec(spec)
 	player.depth = player.get_node("PseudoDepthBody")
-	player._head_debug_label = player.get_node("Body/HeadDebug/Label")
-	player._head_debug_panel = player.get_node("Body/HeadDebug")
-	player._face_nose = player.get_node("Body/FaceNose")
+	player._head_debug_label = player.get_node_or_null("Body/HeadDebug/Label")
+	player._head_debug_panel = player.get_node_or_null("Body/HeadDebug")
+	player._face_nose = player.get_node_or_null("Body/FaceNose")
 
 	var lower_left: QuarterPipe = null
 	for pipe in ramp.pipes:
