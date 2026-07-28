@@ -353,10 +353,7 @@ func _draw_deck_walls(band: Vector2) -> void:
 		var clipped := _clip_poly_z_band(deck.poly, band.x, band.y)
 		if clipped.size() < 2:
 			continue
-		var h_top := float(deck.get("height", 0.0))
 		var h_bot := float(deck.get("base_height", 0.0))
-		if h_top <= h_bot + 0.05:
-			continue
 		var deck_z0 := _deck_z_min(deck)
 		var deck_z1 := _deck_z_max(deck)
 		var n := clipped.size()
@@ -376,10 +373,15 @@ func _draw_deck_walls(band: Vector2) -> void:
 				continue
 			if a.distance_squared_to(b) < 0.01:
 				continue
+			# Top follows pipe screen-circles so walls meet the ramp coping.
+			var h_a := _level.deck_visual_height(deck, a.y)
+			var h_b := _level.deck_visual_height(deck, b.y)
+			if h_a <= h_bot + 0.05 and h_b <= h_bot + 0.05:
+				continue
 			_paint.draw_colored_polygon(
 				PackedVector2Array([
-					_surf_point(a.x, a.y, h_top),
-					_surf_point(b.x, b.y, h_top),
+					_surf_point(a.x, a.y, h_a),
+					_surf_point(b.x, b.y, h_b),
 					_surf_point(b.x, b.y, h_bot),
 					_surf_point(a.x, a.y, h_bot),
 				]),

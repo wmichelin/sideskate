@@ -154,7 +154,7 @@ height 0
 	return true
 
 
-## Drawn profile is a true quarter circle in screen space; coping meets deck height.
+## Drawn profile is a true quarter circle from glyph width; deck meets that coping.
 func _pipe_screen_quarter_circle() -> bool:
 	var level := RampLevel.new()
 	level.perspective_origin_x = 640.0
@@ -177,9 +177,8 @@ func _pipe_screen_quarter_circle() -> bool:
 	var lip: Vector2 = level.pipe_screen_point_for(pipe, z, 0.0)
 	var mid: Vector2 = level.pipe_screen_point_for(pipe, z, 0.5)
 	var cope: Vector2 = level.pipe_screen_point_for(pipe, z, 1.0)
-	var deck_p: Dictionary = level.project(pipe.lip_x + pipe.radius, z, pipe.radius)
-	var deck_y := float(deck_p.ground_y) - float(deck_p.surface_screen_h)
-	var r := absf(lip.y - deck_y)
+	var cope_x_p: Dictionary = level.project(pipe.lip_x + pipe.radius, z, 0.0)
+	var r := absf(float(cope_x_p.screen_x) - lip.x)
 	var center := Vector2(lip.x, lip.y - r)
 	var d0 := lip.distance_to(center)
 	var d1 := mid.distance_to(center)
@@ -189,13 +188,35 @@ func _pipe_screen_quarter_circle() -> bool:
 		pipe.free()
 		level.free()
 		return false
-	# Coping Y must match projected deck/coping height.
-	if absf(cope.y - deck_y) > 0.05:
-		push_error("coping Y want deck %s got %s" % [deck_y, cope.y])
+	# Coping X matches projected glyph span; Y is lip.y - r (deck must meet this).
+	if absf(cope.x - float(cope_x_p.screen_x)) > 0.05:
+		push_error("coping X want %s got %s" % [cope_x_p.screen_x, cope.x])
 		pipe.free()
 		level.free()
 		return false
-	# 90°: lip straight down from center, coping horizontal from center.
+	if absf(cope.y - (lip.y - r)) > 0.05:
+		push_error("coping Y want %s got %s" % [lip.y - r, cope.y])
+		pipe.free()
+		level.free()
+		return false
+	# Deck visual height meets pipe coping.
+	var deck := {
+		"height": pipe.radius,
+		"base_height": 0.0,
+		"anchors": [{
+			"lip_x": pipe.lip_x,
+			"coping_x": pipe.lip_x + pipe.radius,
+			"radius": pipe.radius,
+			"side": pipe.side,
+		}],
+	}
+	var deck_p: Dictionary = level.project_deck_point(deck, pipe.lip_x + pipe.radius * 0.5, z)
+	var deck_y := float(deck_p.ground_y) - float(deck_p.surface_screen_h)
+	if absf(deck_y - cope.y) > 0.05:
+		push_error("deck Y should meet pipe coping %s got %s" % [cope.y, deck_y])
+		pipe.free()
+		level.free()
+		return false
 	var lip_off := lip - center
 	var cope_off := cope - center
 	if absf(lip_off.x) > 0.05 or lip_off.y < 0.0:

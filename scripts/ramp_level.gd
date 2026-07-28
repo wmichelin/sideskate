@@ -674,8 +674,34 @@ func project_surface(logical_x: float, logical_z: float, surface_height: float =
 
 
 ## Decks use the same projector as everything else (logical X → perspective lerp).
+## Top height follows adjacent pipe screen-circles so the pad meets the ramp tops.
 func project_deck_point(deck: Dictionary, logical_x: float, logical_z: float) -> Dictionary:
-	return project(logical_x, logical_z, float(deck.height))
+	return project(logical_x, logical_z, deck_visual_height(deck, logical_z))
+
+
+## Logical height for drawing a deck top at `logical_z`: matches the tallest
+## adjacent pipe's screen-space quarter-circle rise (glyph width → circle radius).
+func deck_visual_height(deck: Dictionary, logical_z: float) -> float:
+	var base := float(deck.get("base_height", 0.0))
+	var anchors: Array = deck.get("anchors", [])
+	if anchors.is_empty():
+		return float(deck.get("height", base))
+	var rise := 0.0
+	var any := false
+	for anchor in anchors:
+		var lip := float(anchor.get("lip_x", NAN))
+		var coping := float(anchor.get("coping_x", NAN))
+		if is_nan(lip) or is_nan(coping):
+			continue
+		var lip_p: Dictionary = project(lip, logical_z, base)
+		var cope_p: Dictionary = project(coping, logical_z, base)
+		var r_screen := absf(float(cope_p.screen_x) - float(lip_p.screen_x))
+		var g := maxf(float(lip_p.geometry_scale), 0.0001)
+		rise = maxf(rise, r_screen / g)
+		any = true
+	if not any:
+		return float(deck.get("height", base))
+	return base + rise
 
 
 ## Project logical (x,z,height) to screen.
@@ -702,19 +728,15 @@ func project(logical_x: float, logical_z: float, surface_height: float = 0.0) ->
 
 func pipe_screen_point_for(pipe: QuarterPipe, logical_z: float, u: float) -> Vector2:
 	## Screen-space quarter circle (θ=0 lip → θ=π/2 coping).
-	## Radius follows the projected lip→deck rise so every adjacent pipe meets the
-	## pad top at the same height (glyph run still sets logical radius / physics).
+	## Radius = projected glyph run width so magnitude tracks `<<<` / `<<<<`;
+	## decks lower their draw height to meet this coping (not the reverse).
 	var theta := clampf(u, 0.0, 1.0) * PI * 0.5
 	var is_left := pipe.side == QuarterPipe.PipeSide.LEFT
 	var coping_x := pipe.x_min() if is_left else pipe.x_max()
 	var lip_p: Dictionary = project(pipe.lip_x, logical_z, pipe.base_height)
-	var cope_p: Dictionary = project(
-		coping_x, logical_z, pipe.base_height + pipe.radius
-	)
+	var cope_p: Dictionary = project(coping_x, logical_z, pipe.base_height)
 	var lip := Vector2(float(lip_p.screen_x), float(lip_p.ground_y) - float(lip_p.surface_screen_h))
-	var cope_y := float(cope_p.ground_y) - float(cope_p.surface_screen_h)
-	# Vertical span to the projected coping/deck height — keeps pads flush.
-	var r := absf(lip.y - cope_y)
+	var r := absf(float(cope_p.screen_x) - lip.x)
 	if r <= 0.0001:
 		return lip
 	var center := Vector2(lip.x, lip.y - r)
