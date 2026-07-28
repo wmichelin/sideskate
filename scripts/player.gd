@@ -146,6 +146,10 @@ var _acid_drop_lock: bool = false
 var _spine_transfer_lock: bool = false
 ## Precomputed clearance corridor for the active spine settle (xs/heights/peak).
 var _spine_corridor: Dictionary = {}
+## Authoritative pose snapshots for render-frame interpolation.
+var _pose_prev = null
+var _pose_curr = null
+var _pose_snap_ready: bool = false
 ## Peak |along|/|air_vy|/|vx| this aerial — survives gravity climb for low→high drop-in.
 var _air_carry_speed: float = 0.0
 ## Once per locked aerial: facing flip (or stick override) at vertical apex.
@@ -283,12 +287,28 @@ func _physics_process(delta: float) -> void:
 	if _try_lava_death():
 		_step_body_tilt(0.0)
 		depth.apply()
+		_capture_pose_snapshots()
 		return
 	_update_actual_velocity(delta)
 	_tick_transfer_hold()
 	_clear_momentum_if_at_rest()
 	_step_body_tilt(delta)
 	depth.apply()
+	_capture_pose_snapshots()
+
+
+## Push prev←curr←live after each physics commit for render interpolation.
+func _capture_pose_snapshots() -> void:
+	var facing := 1.0 if facing_h == "r" else -1.0
+	var next := LogicalPose.new()
+	next.copy_from_depth(depth, facing, _air_over_layer if _airborne else 0)
+	if _pose_curr == null:
+		_pose_prev = next
+		_pose_curr = next
+	else:
+		_pose_prev = _pose_curr
+		_pose_curr = next
+	_pose_snap_ready = true
 
 
 func _tick_debug_god_input() -> void:

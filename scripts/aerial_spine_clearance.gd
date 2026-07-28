@@ -8,6 +8,9 @@ const _ContactMath := preload("res://scripts/contact_math.gd")
 
 const CLEARANCE_EPS := 0.5
 const CORRIDOR_SAMPLES := 16
+## Soft-floor may climb toward the corridor, but never teleport more than this
+## in one physics tick (plus upward velocity × delta). Stops bottom→top snaps.
+const DEFAULT_MAX_LIFT_PER_TICK := 12.0
 
 
 ## Solid underfoot height from an air-contact record, or NAN if not solid.
@@ -215,33 +218,68 @@ static func should_apply_clearance(
 	)
 
 
-## Clamp height above floor; kill downward vel only while resting on the floor.
-## Well above the floor, gravity keeps running so spine still reads as an arc.
+## Clamp height above floor; kill downward vel only while resting on the soft floor.
+## Strictly above soft floor (floor_h+eps): never zero vel — keep the aerial arc.
+## Capped climbs that are still below soft floor also keep vel_y (no flat staircase).
+## `max_lift` caps how far one tick may raise height (prevents bottom→top snaps).
 static func apply_clearance(
 	height: float,
 	vel_y: float,
 	floor_h: float,
 	eps: float = CLEARANCE_EPS,
-	max_lift: float = INF,
+	max_lift: float = DEFAULT_MAX_LIFT_PER_TICK,
 ) -> Dictionary:
-	var floor := floor_h + maxf(eps, 0.0)
-	if height < floor - 0.001:
-		var target := floor
+	var soft := floor_h + maxf(eps, 0.0)
+	if height < soft - 0.001:
+		var target := soft
 		if max_lift < INF:
-			target = minf(floor, height + maxf(max_lift, 0.0))
+			target = minf(soft, height + maxf(max_lift, 0.0))
+		var lifted := target - height
+		var resting := target >= soft - 0.001
+		var out_vy := vel_y
+		if resting and vel_y < 0.0:
+			out_vy = 0.0
 		return {
 			"height": target,
-			"vel_y": 0.0 if vel_y < 0.0 else vel_y,
-			"resting": target >= floor - 0.001,
+			"vel_y": out_vy,
+			"resting": resting,
+			"lifted": lifted,
+			"capped": max_lift < INF and target + 0.001 < soft,
 		}
-	# Near the soft-floor: rest. Far above: leave vertical motion alone.
-	if height <= floor + CLEARANCE_EPS:
+	# On soft floor: rest. Above it: leave vertical motion alone.
+	if height <= soft + 0.001:
 		return {
 			"height": height,
 			"vel_y": 0.0 if vel_y < 0.0 else vel_y,
 			"resting": true,
+			"lifted": 0.0,
+			"capped": false,
 		}
-	return {"height": height, "vel_y": vel_y, "resting": false}
+	return {
+		"height": height,
+		"vel_y": vel_y,
+		"resting": false,
+		"lifted": 0.0,
+		"capped": false,
+	}
+
+
+## Per-tick lift budget: small climb + upward motion, optionally spread over settle.
+static func max_lift_for_tick(
+	vel_y: float,
+	delta: float,
+	height_gap: float = 0.0,
+	settle_remain: float = -1.0,
+	base_lift: float = DEFAULT_MAX_LIFT_PER_TICK,
+) -> float:
+	var dt := maxf(delta, 0.0001)
+	var climb := maxf(vel_y, 0.0) * dt
+	var budget := maxf(base_lift, 0.0) + climb
+	if settle_remain > dt and height_gap > 0.0:
+		var paced := height_gap * dt / settle_remain
+		# Slightly ahead of linear pace so we still clear before land, but no snap.
+		budget = minf(budget, maxf(base_lift * 0.5, paced * 1.25))
+	return maxf(budget, 1.0)
 
 
 ## Defer land on the locked target until X settle is done or coping-aligned.

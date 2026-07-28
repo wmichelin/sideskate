@@ -493,7 +493,7 @@ static func apply_locked_air_motion(p, delta: float, speed_mul: float) -> void:
 		# Soft-floor only while X is still settling (or not yet aligned). When
 		# settle finishes on-target, leave gravity alone so drop-in isn't a snap.
 		if on_target_z and (p._settle.x_active or not p._is_aligned_with_air_coping()):
-			_apply_spine_clearance(p)
+			_apply_spine_clearance(p, delta)
 		# else: left Z band, or settle done + aligned — gravity + land/crash below.
 	p._try_apex_facing_flip(prev_air_vy)
 	if p._try_fly_out_from_pipe_lock():
@@ -541,7 +541,8 @@ static func _spine_target_underfoot_active(p) -> bool:
 
 ## Ride over intervening solids during spine settle (no tunnel through deck/pipe).
 ## Holds feet at/above the clearance corridor floor until X is ready to land.
-static func _apply_spine_clearance(p) -> void:
+## Lifts are per-tick capped so a tall corridor cannot snap bottom→top in one frame.
+static func _apply_spine_clearance(p, delta: float = 1.0 / 60.0) -> void:
 	if p._level == null:
 		return
 	var under: Dictionary = p._level.resolve_air_contact(
@@ -570,9 +571,23 @@ static func _apply_spine_clearance(p) -> void:
 	)
 	if is_nan(floor_h):
 		return
-	var patch: Dictionary = _SpineClearance.apply_clearance(
-		p.air_abs_height, p.air_vel_y, floor_h
+	var h_before: float = p.air_abs_height
+	var gap := maxf(floor_h + _SpineClearance.CLEARANCE_EPS - h_before, 0.0)
+	var settle_remain := -1.0
+	if settle_active and p._settle.x_dur > 0.0001:
+		settle_remain = maxf((1.0 - float(p._settle.x_u)) * float(p._settle.x_dur), 0.0)
+	var max_lift: float = _SpineClearance.max_lift_for_tick(
+		p.air_vel_y, delta, gap, settle_remain
 	)
+	var patch: Dictionary = _SpineClearance.apply_clearance(
+		p.air_abs_height, p.air_vel_y, floor_h, _SpineClearance.CLEARANCE_EPS, max_lift
+	)
+	var lifted: float = float(patch.get("lifted", 0.0))
+	if lifted > max_lift + 0.01:
+		push_warning(
+			"spine clearance lift %.1f exceeds cap %.1f (h %.1f → floor %.1f)"
+			% [lifted, max_lift, h_before, floor_h]
+		)
 	p.air_abs_height = float(patch.height)
 	p.air_vel_y = float(patch.vel_y)
 
@@ -645,11 +660,12 @@ static func try_spine_transfer(p, _from_hold_buffer: bool = false) -> bool:
 		hit.get("top_coping", p._PipeMath.coping_x(side, lip, radius))
 	)
 	# Corridor peak gate: refuse while below dest coping / taller pads on path.
+	# Require CLEARANCE_EPS above peak so barely-under cannot lock then soft-floor teleport.
 	var corridor: Dictionary = p._build_spine_corridor(
 		p.depth.logical_x, coping, side, lip, base, radius
 	)
 	var peak := float(corridor.get("peak", base + radius))
-	if not p._AerialSpineClearance.feet_clear_corridor(p._feet_height(), peak):
+	if p._feet_height() + 0.001 < peak + p._AerialSpineClearance.CLEARANCE_EPS:
 		return false
 	if not p._AerialTransfer.spine_feet_clear_dest(p._feet_height(), hit):
 		return false

@@ -133,6 +133,13 @@ func _feet_clear_peak() -> bool:
 	if not _Clearance.feet_clear_corridor(282.0, 282.0):
 		push_error("must clear at peak")
 		return false
+	# Lock gate: feet need CLEARANCE_EPS above corridor peak.
+	if 282.0 + 0.001 >= 282.0 + _Clearance.CLEARANCE_EPS:
+		push_error("feet==peak must fail lock margin")
+		return false
+	if 282.5 + 0.001 < 282.0 + _Clearance.CLEARANCE_EPS:
+		push_error("feet==peak+eps must pass lock margin")
+		return false
 	return true
 
 
@@ -144,13 +151,45 @@ func _apply_clearance() -> bool:
 	if absf(float(clear.vel_y) + 50.0) > 0.01:
 		push_error("well above floor must keep gravity (vel_y)")
 		return false
-	var near := _Clearance.apply_clearance(100.7, -50.0, 100.0, 0.5)
-	if absf(float(near.vel_y)) > 0.01:
-		push_error("near soft-floor must kill downward vel")
+	# On soft floor: kill downward. Slightly above soft floor: keep arc.
+	var on_soft := _Clearance.apply_clearance(100.5, -50.0, 100.0, 0.5)
+	if absf(float(on_soft.vel_y)) > 0.01:
+		push_error("on soft-floor must kill downward vel")
 		return false
-	var rest := _Clearance.apply_clearance(90.0, -40.0, 100.0, 0.5)
+	var above_soft := _Clearance.apply_clearance(100.7, -50.0, 100.0, 0.5)
+	if absf(float(above_soft.vel_y) + 50.0) > 0.01:
+		push_error("above soft-floor must keep gravity (vel_y)")
+		return false
+	# Uncapped lift still reaches floor+eps (legacy / tests).
+	var rest := _Clearance.apply_clearance(90.0, -40.0, 100.0, 0.5, INF)
 	if absf(float(rest.height) - 100.5) > 0.01:
 		push_error("must lift to floor+eps: %s" % rest.height)
+		return false
+	if absf(float(rest.vel_y)) > 0.01:
+		push_error("resting lift must kill downward vel")
+		return false
+	# Default max_lift must not teleport a large gap in one tick.
+	var capped := _Clearance.apply_clearance(90.0, -40.0, 200.0, 0.5)
+	var lifted := float(capped.height) - 90.0
+	if lifted > _Clearance.DEFAULT_MAX_LIFT_PER_TICK + 0.01:
+		push_error("default clearance must cap lift: lifted=%s" % lifted)
+		return false
+	if float(capped.height) >= 200.5 - 0.01:
+		push_error("capped clearance must not reach tall floor in one tick")
+		return false
+	if not bool(capped.get("capped", false)):
+		push_error("expected capped=true on large lift")
+		return false
+	# Capped climb still below soft floor must keep downward vel (no flat staircase).
+	if absf(float(capped.vel_y) + 40.0) > 0.01:
+		push_error("capped-below must keep vel_y: %s" % capped.vel_y)
+		return false
+	var budget := _Clearance.max_lift_for_tick(0.0, 1.0 / 60.0, 80.0, 0.45)
+	if budget > _Clearance.DEFAULT_MAX_LIFT_PER_TICK + 0.01:
+		push_error("paced budget should stay within base lift: %s" % budget)
+		return false
+	if budget < 1.0:
+		push_error("budget too small: %s" % budget)
 		return false
 	return true
 

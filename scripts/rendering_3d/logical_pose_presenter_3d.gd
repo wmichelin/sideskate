@@ -1,6 +1,7 @@
 class_name LogicalPosePresenter3D
 extends Node3D
 ## Drives a 3D skater placeholder + shadow from LogicalPose / PseudoDepthBody.
+## Simulation stays on physics ticks; visible pose interpolates on render frames.
 
 @export var depth_path: NodePath = NodePath("../../RampLevel/../Player/PseudoDepthBody")
 @export var player_path: NodePath = NodePath("../../Player")
@@ -78,11 +79,7 @@ func apply_pose(pose: LogicalPose) -> void:
 			_shadow.visible = false
 
 
-func _physics_process(_delta: float) -> void:
-	if _depth == null:
-		_resolve_refs()
-	if _depth == null:
-		return
+func _build_live_pose() -> LogicalPose:
 	var pose := LogicalPose.new()
 	var facing := 1.0
 	if _player != null:
@@ -91,5 +88,22 @@ func _physics_process(_delta: float) -> void:
 			facing = 1.0 if str(fh) == "r" else -1.0
 		elif typeof(fh) == TYPE_FLOAT or typeof(fh) == TYPE_INT:
 			facing = float(fh)
-	pose.copy_from_depth(_depth, facing, 0)
-	apply_pose(pose)
+	if _depth != null:
+		pose.copy_from_depth(_depth, facing, 0)
+	return pose
+
+
+func _interpolated_pose() -> LogicalPose:
+	if _player != null and bool(_player.get("_pose_snap_ready")):
+		var prev = _player.get("_pose_prev")
+		var curr = _player.get("_pose_curr")
+		if prev != null and curr != null:
+			var frac := Engine.get_physics_interpolation_fraction()
+			return LogicalPose.lerp_poses(prev, curr, frac)
+	return _build_live_pose()
+
+
+func _process(_delta: float) -> void:
+	if _depth == null or _player == null:
+		_resolve_refs()
+	apply_pose(_interpolated_pose())

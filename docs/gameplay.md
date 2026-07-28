@@ -121,9 +121,9 @@ When the transfer path runs and FacingCastMath finds a **top coping** within `fa
 
 - Lerp/lock X to that **top coping** (never the lip); keep `air_abs_height` and `air_vel_y` (continue the rise). Spine settle uses a **distance-scaled** duration (min ~0.45s, gap term, smootherstep) locked at begin — not the short acid height-only clock, which snapped when clearance held height_above≈0.
 - Stash into-pipe **MOMENTUM** from **peak** aerial speed (`_air_carry_speed` / `lock_carry_velocity_x`) — not live `air_vel_y` after a gravity climb — so low→high still drop-ins at exit speed (`merge_drop_in_along` keeps the faster approach). Stick does not brake that carry while locked.
-- Requires feet already at/above the **clearance corridor peak** (dest top coping and any taller deck/flat on the X path; float eps) — refuses “above origin, below dest” when the corridor is taller. Foreign pipes on the path do not raise the peak (high→low still works).
+- Requires feet already at/above the **clearance corridor peak** + clearance eps (dest top coping and any taller deck/flat on the X path) — refuses “above origin, below dest” and barely-under-peak locks that would otherwise soft-floor-teleport. Foreign pipes on the path do not raise the peak (high→low still works).
 - While locked, air contact **force-sticky**s to that coping and does not adopt a different underfoot pipe (shared high→low column would otherwise snap identity back same tick).
-- At spine lock, build a **clearance corridor**: sample solids along `[from_x → to_x]` at the player’s Z (no sticky). Each tick soft-floors feet at `max(dest coping, underfoot solid, corridor floor at X)` until X is settled/aligned — ride deck tops instead of tunneling. Lava is not a soft-floor (crash). Foreign pipes do not raise the floor.
+- At spine lock, build a **clearance corridor**: sample solids along `[from_x → to_x]` at the player’s Z (no sticky). Each tick soft-floors feet at `max(dest coping, underfoot solid, corridor floor at X)` until X is settled/aligned — ride deck tops instead of tunneling. Soft-floor lift is **per-tick capped** (plus upward `vel_y×δt`, optionally paced over settle remain) so a tall corridor cannot snap bottom→top in one frame. Downward `air_vel_y` is killed only while resting on the soft floor; capped climbs and motion strictly above soft floor keep the arc. Lava is not a soft-floor (crash). Foreign pipes do not raise the floor.
 - **Z is free** during spine: playable-footprint clamp does not yank Z mid-gap. If the player drifts off the locked pipe’s Z band, clearance stops and non-pipe land (deck / flat / lava) is allowed — miss the ramp and crash.
 - On land: same drop-in as pipe-exit / acid — falling `air_vel_y` → `_ramp_along` (keep approach if faster into the pipe). Land only on the locked target once X settle is done or coping-aligned while still on-target Z; refuse deck / flat / foreign pipes for land while on that Z band.
 - No fly-out while the spine lock is active.
@@ -150,6 +150,10 @@ If no coping is in range → normal free-air transfer below.
 - X settle duration from live height above coping: `acid_drop_x_duration + acid_drop_x_duration_per_height × h` (defaults 0.18 + 0.002×h, soft-capped at `acid_drop_x_duration_max` 0.9). Smoothstep ease.
 - On land: along-arc keeps acid travel sign. Falling vert → along only when that drop-in continues travel (opposite wall). Never emit along opposite travel.
 - Fly-out seeds outward horizontal speed and marks the aerial; falling back onto the exit wall soft-lands (no into-bowl yank). After fly-out, the transfer button always routes to **acid** (never transfer/spine) — fly-out apex used to count as transfer and slam into-bowl carry.
+
+### Presentation (render frames only)
+
+Authoritative pose snapshots (`_pose_prev` / `_pose_curr`) are captured after each physics tick. `LogicalPosePresenter3D` and `CameraRig3D` interpolate on `_process` using Godot’s physics interpolation fraction — simulation never steps on render frames. Camera follows the interpolated skater without an extra physics-step lag.
 
 ## Level units (.ssk cells)
 

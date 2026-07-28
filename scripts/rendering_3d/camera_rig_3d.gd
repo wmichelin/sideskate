@@ -1,6 +1,6 @@
 class_name CameraRig3D
 extends Node3D
-## Orbit Camera3D following the logical skater pose.
+## Orbit Camera3D following the interpolated logical skater pose (render frames).
 
 @export var target_path: NodePath = NodePath("../PlayerVisual")
 ## Radial distance from focus (zoom).
@@ -12,7 +12,8 @@ extends Node3D
 @export var fov_deg: float = 90.0
 @export var look_ahead: float = 80.0
 @export var screen_y_bias: float = 0.08
-@export var follow_smooth: float = 14.0
+## Direct follow — no extra physics-step lag; presenter already interpolates.
+@export var follow_smooth: float = 0.0
 
 var _cam: Camera3D
 var _target: Node3D
@@ -38,11 +39,14 @@ func clear_manual_origin() -> void:
 	use_manual_origin = false
 
 
-func _physics_process(delta: float) -> void:
+func _process(delta: float) -> void:
 	_cam.fov = fov_deg
 	var focus := _focus_point()
 	var desired := focus + _orbit_offset()
-	global_position = global_position.lerp(desired, clampf(follow_smooth * delta, 0.0, 1.0))
+	if follow_smooth > 0.0:
+		global_position = global_position.lerp(desired, clampf(follow_smooth * delta, 0.0, 1.0))
+	else:
+		global_position = desired
 	var yaw := deg_to_rad(yaw_deg)
 	var forward := Vector3(sin(yaw), 0.0, cos(yaw))
 	var look_at_pt := focus + forward * look_ahead + Vector3(0.0, screen_y_bias * distance, 0.0)
