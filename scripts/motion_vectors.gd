@@ -4,11 +4,11 @@ extends RefCounted
 ##
 ## Causal chain (industry “wish → control → world” pattern):
 ##   INPUT  — raw stick wish on logical X/Z only (no height; player cannot steer Y)
-##   MOMENTUM — integrated control velocity (`Player._velocity` / ramp `_ramp_along`)
-##   ACTUAL — measured world motion from pose deltas (includes height rate)
+##   MOMENTUM — integrated control (`PlayerSim` tangent / air velocity)
+##   ACTUAL — measured world motion from pose (includes height rate)
 ##
 ## Prefer `MotionVectors.Kind` in gameplay/debug code instead of ad-hoc strings.
-## Head arrows and `Player.motion_screen` / `motion_speed` are the display surface;
+## Head arrows and `Player.motion_world` / `motion_speed` are the display surface;
 ## sim gates (e.g. fly-out) should read the same underlying signals.
 
 

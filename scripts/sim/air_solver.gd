@@ -1,0 +1,143 @@
+class_name AirSolver
+extends RefCounted
+## Ballistic free air + maneuver execution.
+
+
+var model: ParkModel
+var query: SurfaceQuery
+var planner: ManeuverPlanner
+var ground: GroundSolver
+
+
+func _init(
+	m: ParkModel = null,
+	q: SurfaceQuery = null,
+	p: ManeuverPlanner = null,
+	g: GroundSolver = null,
+) -> void:
+	model = m
+	query = q if q != null else SurfaceQuery.new(m)
+	planner = p if p != null else ManeuverPlanner.new(m, query)
+	ground = g if g != null else GroundSolver.new(m, query)
+
+
+func step(state: SimState, wish: Vector2, delta: float) -> void:
+	if not state.is_airborne() or not state.alive:
+		return
+	if state.has_maneuver():
+		_step_maneuver(state, delta)
+		return
+	_step_free(state, wish, delta)
+
+
+func _step_free(state: SimState, wish: Vector2, delta: float) -> void:
+	# Light air control on XZ.
+	var w := wish
+	if w.length() > 1.0:
+		w = w.normalized()
+	state.velocity.x = move_toward(state.velocity.x, w.x * 400.0, 800.0 * delta)
+	state.velocity.y = move_toward(state.velocity.y, w.y * 200.0, 400.0 * delta)
+	state.velocity.z += SimTolerances.GRAVITY * delta
+	var from := state.position
+	var to := from + Vector3(state.velocity.x, state.velocity.y, state.velocity.z) * delta
+	var hit := query.sweep_capsule(from, to)
+	if not hit.is_empty():
+		var t := float(hit.get("t", 1.0))
+		state.position = from.lerp(to, maxf(t - 0.01, 0.0))
+		if str(hit.get("kind", "")) == "oob":
+			state.alive = false
+			return
+		# Wall: kill outward velocity.
+		state.velocity.x = 0.0
+		_try_land(state, from.z)
+		return
+	state.position = to
+	_try_land(state, from.z)
+
+
+func _step_maneuver(state: SimState, delta: float) -> void:
+	var plan: ManeuverPlan = state.maneuver
+	if plan.kind == ManeuverPlan.Kind.FLY_OUT:
+		# Instant unlock into free air.
+		state.velocity = plan.start_velocity
+		state.maneuver = null
+		_step_free(state, Vector2.ZERO, delta)
+		return
+	plan.elapsed = minf(plan.elapsed + delta, plan.land_time)
+	var t := plan.elapsed
+	state.position = Vector3(plan.sample_x(t), plan.sample_z(t), plan.sample_height(t))
+	# Approximate velocity for landing merge.
+	var dt := 0.001
+	var t1 := minf(t + dt, plan.land_time)
+	state.velocity = Vector3(
+		(plan.sample_x(t1) - plan.sample_x(t)) / dt,
+		(plan.sample_z(t1) - plan.sample_z(t)) / dt,
+		(plan.sample_height(t1) - plan.sample_height(t)) / dt,
+	)
+	if plan.is_complete():
+		_land_maneuver(state, plan)
+
+
+func _land_maneuver(state: SimState, plan: ManeuverPlan) -> void:
+	var pipe: PipeSurface = model.pipes.get(plan.dest_pipe_id)
+	if pipe == null:
+		state.maneuver = null
+		_try_land(state)
+		return
+	var z := state.position.y
+	var x := pipe.x_at_theta(z, PI * 0.5)
+	var h := pipe.height_at_theta(z, PI * 0.5)
+	state.mode = SimState.Mode.GROUNDED
+	state.surface_id = pipe.id
+	state.u = 1.0
+	state.v = clampf((z - pipe.z_min) / maxf(pipe.z_max - pipe.z_min, 0.001), 0.0, 1.0)
+	state.position = Vector3(x, z, h)
+	# Merge descending impact into along-arc into the bowl (negative u direction).
+	var along := plan.land_along
+	if absf(along) < 1.0:
+		along = -plan.travel_sign * maxf(absf(state.velocity.z), 80.0)
+	state.tangent_velocity = Vector2(along, state.velocity.y)
+	state.velocity = Vector3.ZERO
+	state.maneuver = null
+
+
+func _try_land(state: SimState, from_height: float = NAN) -> void:
+	if state.velocity.z > 0.0:
+		return ## still rising
+	# Search ceiling must be the pre-step height so a tunnel below the pad still
+	# sees the surface we crossed this tick (supports_below ignores pads above feet).
+	var search_h := state.position.z + SimTolerances.CONTACT_EPS
+	if not is_nan(from_height):
+		search_h = maxf(search_h, from_height + SimTolerances.CONTACT_EPS)
+	var top := query.top_support(state.position.x, state.position.y, search_h)
+	if top.is_empty():
+		return
+	var sh := float(top.height)
+	# Still above the pad — not a landing this tick.
+	if state.position.z > sh + SimTolerances.CONTACT_EPS:
+		return
+	# Require a descending crossing (or already penetrating) of this pad.
+	if not is_nan(from_height) and from_height < sh - SimTolerances.CONTACT_EPS:
+		return
+	state.mode = SimState.Mode.GROUNDED
+	state.surface_id = str(top.surface_id)
+	state.position.z = sh
+	if int(top.kind) == SimKinds.SurfaceKind.PIPE:
+		var proj: Dictionary = top.proj
+		state.u = float(proj.u)
+		state.v = float(proj.v)
+		state.position = proj.point
+		# Drop-in along arc from vertical.
+		var into := -1.0
+		if model.pipes.has(state.surface_id):
+			var pipe: PipeSurface = model.pipes[state.surface_id]
+			into = -pipe.outward_sign() ## into bowl from coping
+		state.tangent_velocity = Vector2(
+			into * maxf(absf(state.velocity.z), absf(state.velocity.x)),
+			state.velocity.y
+		)
+	else:
+		state.tangent_velocity = Vector2(state.velocity.x, state.velocity.y)
+	state.velocity = Vector3.ZERO
+	if top.get("lethal", false):
+		state.alive = false

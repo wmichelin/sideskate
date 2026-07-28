@@ -148,3 +148,36 @@ Tile `(col, row)` with `row=0` at top/far:
 
 - `x ∈ [col·cw, (col+1)·cw]`
 - `z ∈ [(H-1-row)·ch, (H-row)·ch]`
+
+## Derived topology (analytical sim)
+
+The glyph language is unchanged. The analytical compiler (`scripts/sim/idl_compiler.gd`)
+derives an immutable park model from the grid:
+
+### Pipe lofts
+
+Same-side contiguous `<` / `>` cells form a pipe component. Per ASCII row, radius =
+run width × `cell_w` (or header `pipe_radius`). Across Z, `lip(z)`, `radius(z)`, and
+`base(z)` are joined with monotone interpolation that does not overshoot. Runtime
+logic never branches on layer index — layers only contribute absolute heights at
+compile time.
+
+### Coping classification
+
+Every pipe coping edge is classified exactly once:
+
+| Class | When | Behavior |
+|-------|------|----------|
+| `OPEN` | No outward solid at coping height | Explicit fly-out allowed |
+| `SUPPORT_SEAM` | Outward deck/floor top matches coping height (within seam eps) | Auto-roll onto pad |
+| `WALL_EXTENSION` | Outward deck top is strictly above coping | Wall continues to deck top; effective coping moves up |
+| `SHARED_SPINE` | Opposite-facing coping within tolerance (`>>>##<<<` or valid `>>><<<`) | Spine target relation |
+
+An outward `#` deck abutting a coping is never simultaneously fly-out space and a
+catch wall. See [`docs/movement_contract.md`](movement_contract.md).
+
+### Validation
+
+Ambiguous geometry is a hard compile error with layer/row/column/glyph context:
+self-intersecting lofts, mismatched shared-spine heights, unclassifiable deck–pipe
+contacts, and duplicate nondeterministic targets.

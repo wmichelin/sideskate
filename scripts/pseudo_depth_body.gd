@@ -2,9 +2,8 @@ class_name PseudoDepthBody
 extends Node
 ## Derived logical pose snapshot for helpers / presenters.
 ##
-## CharacterBody3D (Player) is motion authority. This node stores logical X/Z/height
-## mirrors used by skate policy helpers and LogicalPosePresenter3D. Prefer writing
-## through Player swept commits; treat fields here as a compatibility adapter.
+## PlayerSim is motion authority. This node stores logical X/Z/height mirrors
+## used by LogicalPosePresenter3D. Prefer writing through Player._sync_from_sim.
 ##
 ## Optional Canvas2D Body/Shadow paths remain for legacy 2D debug scenes.
 
@@ -98,10 +97,22 @@ func depth_speed_multiplier() -> float:
 
 
 func clamp_z(z: float) -> float:
+	_sync_lane_from_level()
 	return clampf(z, z_min, z_max)
 
 
+## Keep lane band matched to the loaded level (defaults are only 0..100).
+func _sync_lane_from_level() -> void:
+	if _level == null:
+		_level = get_node_or_null(level_path) as RampLevel
+	if _level == null:
+		return
+	z_min = _level.z_min
+	z_max = _level.z_max
+
+
 func apply() -> void:
+	_sync_lane_from_level()
 	logical_z = clamp_z(logical_z)
 	var t := depth_t()
 	var s := visual_scale()

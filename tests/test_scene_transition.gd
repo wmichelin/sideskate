@@ -33,10 +33,9 @@ func run() -> bool:
 		push_error("Player missing")
 		main.queue_free()
 		return false
-	player.call("_ensure_death_overlay")
-	var bound = player.get("_death_overlay")
-	if bound != death:
-		push_error("Player did not bind baked DeathOverlay (got %s)" % bound)
+	# PlayerSim shell looks up DeathOverlay via group; baked node must stay grouped.
+	if not death.has_method("play"):
+		push_error("DeathOverlay missing play()")
 		main.queue_free()
 		return false
 

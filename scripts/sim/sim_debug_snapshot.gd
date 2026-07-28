@@ -1,0 +1,57 @@
+class_name SimDebugSnapshot
+extends RefCounted
+## Read-only debug capture for HUD / traces.
+
+
+var mode: String = ""
+var surface_id: String = ""
+var coping_class: String = ""
+var position: Vector3 = Vector3.ZERO
+var velocity: Vector3 = Vector3.ZERO
+var u: float = 0.0
+var v: float = 0.0
+var reject: String = ""
+var maneuver: Dictionary = {}
+var candidates: Array = []
+
+
+func capture(state: SimState, model: ParkModel, query: SurfaceQuery) -> void:
+	mode = "grounded" if state.is_grounded() else "airborne"
+	surface_id = state.surface_id
+	position = state.position
+	velocity = state.velocity if state.is_airborne() else Vector3(
+		state.tangent_velocity.x, state.tangent_velocity.y, 0.0
+	)
+	u = state.u
+	v = state.v
+	reject = state.last_reject
+	maneuver = state.maneuver.to_dict() if state.has_maneuver() else {}
+	coping_class = ""
+	if model != null and model.pipes.has(state.surface_id):
+		var pipe: PipeSurface = model.pipes[state.surface_id]
+		var cope: CopingEdge = model.copings.get(pipe.coping_id)
+		if cope:
+			coping_class = cope.class_name_str()
+	candidates.clear()
+	if query != null and state.is_airborne():
+		for c in query.copings_in_direction(position.x, position.y, position.z, 1.0):
+			candidates.append({
+				"id": c.coping_id,
+				"dist": c.distance,
+				"class": SimKinds.coping_class_name(int(c.class)),
+			})
+
+
+func to_dict() -> Dictionary:
+	return {
+		"mode": mode,
+		"surface_id": surface_id,
+		"coping_class": coping_class,
+		"position": position,
+		"velocity": velocity,
+		"u": u,
+		"v": v,
+		"reject": reject,
+		"maneuver": maneuver,
+		"candidates": candidates,
+	}

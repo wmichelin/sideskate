@@ -16,6 +16,8 @@ Screen placement is a **projection** of `(x, z, height)`. The camera sits on the
 
 All gameplay simulation runs on the **fixed physics timestep** (`_physics_process` / physics `delta`) only — never on render frames. Debug/UI may read state in `_process` but must not step the world.
 
+**Authority:** [`scripts/sim/`](../scripts/sim/) (`PlayerSim` + compiled `ParkModel`). Godot collision may report blockers/hazards but must never slide, depenetrate, select a surface, retarget an action, or rewrite gameplay velocity. See [movement_contract.md](movement_contract.md).
+
 See also [AGENTS.md](../AGENTS.md).
 
 ## Surfaces & zones
@@ -184,33 +186,23 @@ Debug tools are gated by autoload `DebugTools`: available when `OS.is_debug_buil
 
 ## Key scripts
 
-**Player** is the orchestrator: fields, level I/O, pose writes, and thin wrappers. Policy and decision trees live in pure helpers (unit-tested).
-
-A **step body** is one physics-tick procedure that advances sim by reading/writing a live Player (`p`) — sample → decide → mutate pose/state — rather than returning a pure data patch. Those live in `player_steps.gd`; `player.gd` only calls them.
+**PlayerSim** is the sole gameplay authority. `player.gd` is a thin shell that ticks the sim and publishes pose snapshots for presenters.
 
 | Script | Role |
 |--------|------|
-| [`player.gd`](../scripts/player.gd) | Orchestrator — `CharacterBody3D` authority, tick pipeline, swept commits |
-| [`player_steps.gd`](../scripts/player_steps.gd) | Step bodies: grounded / air / acid / transfer / land / surface (`PlayerSteps.*(p, …)`) |
-| [`player_air_state.gd`](../scripts/player_air_state.gd) | Air-state patches: clear, begin-air, pipe enter, fly-out, spine launch, lock identity, facing exclude |
-| [`player_surface.gd`](../scripts/player_surface.gd) | Air label decorate + grounded height-follow |
-| [`aerial_landing.gd`](../scripts/aerial_landing.gd) | Resolve land candidate (sweep/hole) + land motion patch |
-| [`aerial_contact.gd`](../scripts/aerial_contact.gd) | Sticky air-contact query + unlocked identity; exit-pipe match |
-| [`aerial_transfer.gd`](../scripts/aerial_transfer.gd) | Free-transfer target build; acid/spine lock resolve; spine height gate |
-| [`aerial_settle.gd`](../scripts/aerial_settle.gd) | Acid/spine X + tilt settle state machine |
-| [`aerial_spine_clearance.gd`](../scripts/aerial_spine_clearance.gd) | Spine corridor sample/peak/floor + soft-floor + defer-land gates |
-| [`aerial_targeting.gd`](../scripts/aerial_targeting.gd) | Facing-cast acid / facing coping pick |
-| [`aerial_math.gd`](../scripts/aerial_math.gd) | Action routing, travel, land-along, fly-out gate, pipe-behind |
-| [`ground_motion.gd`](../scripts/ground_motion.gd) | Sticky / mount / flat-path / coping-cross decisions |
-| [`ground_pipe_math.gd`](../scripts/ground_pipe_math.gd) | Pure quarter-pipe arc step |
-| [`contact_math.gd`](../scripts/contact_math.gd) | Solids, mounts, sticky action, land rejects, air-contact records |
-| [`motion_math.gd`](../scripts/motion_math.gd) | Brake-no-reverse, facing, transfer-vert, control integrate |
+| [`sim/player_sim.gd`](../scripts/sim/player_sim.gd) | Orchestrator — model, state, input, fixed tick, snapshot/trace |
+| [`sim/idl_compiler.gd`](../scripts/sim/idl_compiler.gd) | `.ssk` → immutable `ParkModel` (surfaces, seams, copings) |
+| [`sim/model/park_model.gd`](../scripts/sim/model/park_model.gd) | Compiled park + stable IDs + model hash |
+| [`sim/surface_query.gd`](../scripts/sim/surface_query.gd) | Projection, support, edge-crossing, coping search, capsule sweep |
+| [`sim/ground_solver.gd`](../scripts/sim/ground_solver.gd) | Constrained grounded integration + seam transport |
+| [`sim/air_solver.gd`](../scripts/sim/air_solver.gd) | Ballistic free air + maneuver execution |
+| [`sim/maneuver_planner.gd`](../scripts/sim/maneuver_planner.gd) | Immutable fly-out / spine / acid plans |
+| [`sim/sim_tolerances.gd`](../scripts/sim/sim_tolerances.gd) | Centralized epsilons, gravity, capsule, cast ranges |
+| [`sim/sim_debug_snapshot.gd`](../scripts/sim/sim_debug_snapshot.gd) / [`sim/sim_trace.gd`](../scripts/sim/sim_trace.gd) | Debug capture + deterministic replay hashes |
+| [`player.gd`](../scripts/player.gd) | Thin `CharacterBody3D` — input → `PlayerSim.tick` → pose sync |
 | [`motion_vectors.gd`](../scripts/motion_vectors.gd) | Named triad `INPUT` / `MOMENTUM` / `ACTUAL` |
-| [`facing_cast_math.gd`](../scripts/facing_cast_math.gd) | Facing-cast cells + coping surface resolve |
-| [`pipe_math.gd`](../scripts/pipe_math.gd) | Coping X / sign / zone names |
-| [`player_pipe_hits.gd`](../scripts/player_pipe_hits.gd) / [`player_death.gd`](../scripts/player_death.gd) / [`player_motion_debug.gd`](../scripts/player_motion_debug.gd) | Hit packing, lava predicate, debug arrow math |
+| [`contact_math.gd`](../scripts/contact_math.gd) / [`facing_cast_math.gd`](../scripts/facing_cast_math.gd) | Legacy level-sample helpers used by `RampLevel` debug/projection (not gameplay authority) |
 | [`physics/level_collision_3d.gd`](../scripts/physics/level_collision_3d.gd) | Shared MeshPart → `StaticBody3D` trimeshes + face meta |
-| [`physics/contact_adapter.gd`](../scripts/physics/contact_adapter.gd) | Godot contacts → helper hit dicts |
 | [`physics/collision_layers.gd`](../scripts/physics/collision_layers.gd) | Player / ride / wall / lava layer bits |
 | [`mesh/mesh_part.gd`](../scripts/mesh/mesh_part.gd) / [`mesh/level_geometry.gd`](../scripts/mesh/level_geometry.gd) | CPU face soup shared by visual + collision + debug |
 
@@ -218,10 +210,10 @@ A **step body** is one physics-tick procedure that advances sim by reading/writi
 
 | Script | Role |
 |--------|------|
-| [`ramp_level.gd`](../scripts/ramp_level.gd) | Load `.ssk`, sample / sweep / air-contact, project to screen |
+| [`ramp_level.gd`](../scripts/ramp_level.gd) | Load `.ssk`, sample / project to screen (presentation) |
 | [`level_loader.gd`](../scripts/level_loader.gd) / [`level_spec.gd`](../scripts/level_spec.gd) | Parse IDL → floors, decks, pipes, grid |
-| [`quarter_pipe.gd`](../scripts/quarter_pipe.gd) | Pipe sample (θ, height, zone) |
-| [`pseudo_depth_body.gd`](../scripts/pseudo_depth_body.gd) | Derived logical pose adapter (body is authority) |
+| [`quarter_pipe.gd`](../scripts/quarter_pipe.gd) | Pipe sample (θ, height, zone) for mesh builders |
+| [`pseudo_depth_body.gd`](../scripts/pseudo_depth_body.gd) | Derived logical pose adapter (sim is authority) |
 | [`world_space.gd`](../scripts/world_space.gd) | Logical ↔ meter mapping (`LOGIC_PER_METER = 100`) |
 | [`perspective_math.gd`](../scripts/perspective_math.gd) | Pure pseudo-depth projection |
 | [`rendering_3d/level_visual_3d.gd`](../scripts/rendering_3d/level_visual_3d.gd) | 3D park meshes from shared parts |
@@ -229,19 +221,17 @@ A **step body** is one physics-tick procedure that advances sim by reading/writi
 | [`debug_tools.gd`](../scripts/debug_tools.gd) | Production gate + god mode |
 | [`debug_overlay.gd`](../scripts/debug_overlay.gd) / [`debug_sliders.gd`](../scripts/debug_sliders.gd) | HUD debug |
 
-Runtime Player tests share [`tests/player_runtime_fixture.gd`](../tests/player_runtime_fixture.gd).
+Analytical suites live under [`tests/sim/`](../tests/sim/). Presentation bootstrap: [`tests/player_runtime_fixture.gd`](../tests/player_runtime_fixture.gd).
+
 ## Behavioral invariants (do not regress)
 
-1. Sim only on physics ticks.  
-2. Top coping ≠ lip.  
-3. Pipe exit and acid drop both lock X; both use gravity. Acid drop must not snap height; pipe-exit lock may use coping radius as floor. Pipe fly-out unlocks X when within the fly-out height window above coping with outward INPUT; preserves vertical velocity.  
-4. One transfer + one acid drop per aerial; refill on surface contact. Spine transfer spends both.  
-5. Transfer at rising apex; acid drop must not steal that case. Spine transfer only on the rising path.  
-6. Acid drop / spine: FacingCastMath first top coping within `facing_coping_cells` ahead of `facing_h` (excludes current pipe).  
-7. Free air / acid drop land on **sampled** height — never snap up to coping radius as a fake floor.  
-8. Fly-out: only unlock for pipe-exit X-lock; rising + X-dominant INPUT toward pipe (never MOMENTUM); never from acid/spine; contact changing to hole/flat does not unlock.  
-9. Spine transfer: rising path + facing-cast coping in range; keep height + `air_vel_y`; land uses shared drop-in merge; **corridor gate** (feet ≥ path peak) + mid-settle **corridor soft-floor**; land only on target when X settled/aligned and still on-target Z (off-Z → crash on deck/lava); else normal transfer. No apex facing flip while spine-locked.  
-10. Locked pipe land (pipe-exit / acid / spine): `merge_drop_in_along` — fall vert → along-arc, keep approach if faster into the pipe. Peak `_air_carry_speed` this aerial seeds approach so low→high climbs keep exit speed.  
-11. Acid X settle: live `duration = base + rate × height_above`; progress `+= δt/duration`; smoothstep ease. Spine X settle: distance-scaled duration locked at begin + smootherstep (min floor so clearance-held transfers do not snap).
+1. Sim only on physics ticks.
+2. No gameplay state depends on layer index, collider order, scene-tree order, render FPS, or depenetration.
+3. Continuous support seams auto-roll; open copings permit explicit fly-out; closed/backed never do.
+4. Spine: explicit action while rising/apex; acid: explicit action while descending; plans never retarget.
+5. Fly-out only from `OPEN` effective coping with X-dominant outward input.
+6. Ordinary landing requires descending support crossing; no upward snap / solid tunnel.
+7. Every coping has exactly one classification (`OPEN` / `SUPPORT_SEAM` / `WALL_EXTENSION` / `SHARED_SPINE`).
+8. Presentation mesh + collision consumers stamp/assert the same `ParkModel.model_hash` as `PlayerSim`.
 
-Covered by headless tests under `tests/` (`test_aerial_*`, `test_ground_*`, `test_contact_math`, `test_player_*`, `test_motion_*`, etc.).
+Covered by headless tests under `tests/` and `tests/sim/`.

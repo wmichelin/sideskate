@@ -2,15 +2,15 @@
 
 ## Read first
 
-- [docs/gameplay.md](docs/gameplay.md) — motion vectors, air, transfer / acid-drop, debug, **key scripts map**
-- [docs/level_format.md](docs/level_format.md) — `.ssk` IDL
+- [docs/movement_contract.md](docs/movement_contract.md) — frozen analytical sim contract
+- [docs/gameplay.md](docs/gameplay.md) — presentation, debug, **key scripts map**
+- [docs/level_format.md](docs/level_format.md) — `.ssk` IDL + derived topology
 
-## Player code layout
+## Player / sim layout
 
-- **`scripts/player.gd`** — orchestrator (state + tick + wrappers). Prefer not dumping new policy here.
-- **Pure helpers** (`aerial_*.gd`, `ground_*.gd`, `contact_math.gd`, `motion_*.gd`, …) — decisions / math; unit-test without a scene.
-- **`scripts/player_steps.gd`** — **step bodies**: per-tick procedures that mutate a live Player (`p`) instead of returning pure patches.
-- **`tests/player_runtime_fixture.gd`** — shared main.tscn + level bootstrap for Player runtime tests.
+- **`scripts/sim/`** — sole gameplay authority (`PlayerSim`, `IdlCompiler`, solvers, park model).
+- **`scripts/player.gd`** — thin `CharacterBody3D` shell: reads input, ticks `PlayerSim`, syncs pose snapshots for presenters.
+- Presentation / Godot collision consume compiled park geometry; they must never slide, depenetrate, select surfaces, or rewrite velocity.
 
 See gameplay.md § Key scripts for the full table.
 
@@ -22,7 +22,7 @@ Use `MotionVectors.Kind` (`INPUT` / `MOMENTUM` / `ACTUAL`) when referring to sti
 
 All gameplay simulation must run on the **fixed physics timestep** (`_physics_process` / physics `delta`), never on render/idle frames (`_process`, “once per drawn frame,” timers tied to FPS, etc.).
 
-Applies to: movement, air, gravity, transfer lerps, surface sampling that drives state, zone transitions, and any other game logic that advances world state.
+Applies to: movement, air, gravity, transfer plans, surface sampling that drives state, zone transitions, and any other game logic that advances world state.
 
 Debug / UI readouts may use `_process` to **display** state. They must not step simulation.
 
@@ -46,11 +46,11 @@ godot4 --headless --path . --script res://tests/test_runner.gd
 
 Prefer `LevelLoader.parse_text` over `load_path` in tests (`load_path` aborts the process on bad maps).
 
-Level fixtures for tests live in `tests/levels/` — do not point tests at `res://levels/` (playable maps). Copy a playable `.ssk` into `tests/levels/` when a test needs it.
+Level fixtures for tests live in `tests/levels/` — do not point tests at `res://levels/` (playable maps). Analytical sim fixtures live in `tests/levels/sim/`; suite under `tests/sim/`.
 
 ## Renderer (3D)
 
-- Playable maps live in `res://levels/` and load into `scenes/main.tscn` (Godot 3D park + logical Player sim).
+- Playable maps live in `res://levels/` and load into `scenes/main.tscn` (Godot 3D park + analytical PlayerSim).
 - Escape (`menu_back`) returns to the start menu.
 
 ### Agent iteration loop
