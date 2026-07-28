@@ -9,6 +9,7 @@ const _MotionMath := preload("res://scripts/motion_math.gd")
 const _AerialMath := preload("res://scripts/aerial_math.gd")
 const _AerialSettle := preload("res://scripts/aerial_settle.gd")
 const _AerialTargeting := preload("res://scripts/aerial_targeting.gd")
+const _AerialLanding := preload("res://scripts/aerial_landing.gd")
 const _FacingCastMath := preload("res://scripts/facing_cast_math.gd")
 const _MotionVectors := preload("res://scripts/motion_vectors.gd")
 const _ContactMath := preload("res://scripts/contact_math.gd")
@@ -842,81 +843,49 @@ func _underlying_surface_height() -> float:
 func _try_land_from_air_contact(
 	contact: Dictionary, h_before: float, delta: float, speed_mul: float
 ) -> bool:
-	if air_vel_y > 0.0:
-		return false
 	if _level == null:
 		return false
 	var h1 := air_abs_height
-	var land_hit: Dictionary = {}
-	var floor_h := 0.0
-
-	if _ContactMath.should_land_on_air_contact(contact, h_before, h1):
-		land_hit = contact.get("hit", {})
-		floor_h = float(contact.get("height", 0.0))
-	else:
-		# Hole / still above: optionally catch a lower solid crossed this tick.
-		if _ContactMath.is_air_contact_solid(contact) and h1 > float(contact.get("height", 0.0)) + 0.05:
-			return false
-		var resolved: Dictionary = _level.sample_sweep(
-			depth.logical_x, depth.logical_z, h_before, h1
+	var sweep: Dictionary = {}
+	var hole_lower: Dictionary = {}
+	var resolved: Dictionary = _AerialLanding.resolve_land_hit(
+		contact, h_before, h1, air_vel_y, sweep, hole_lower
+	)
+	if bool(resolved.get("need_sweep", false)):
+		sweep = _level.sample_sweep(depth.logical_x, depth.logical_z, h_before, h1)
+		resolved = _AerialLanding.resolve_land_hit(
+			contact, h_before, h1, air_vel_y, sweep, hole_lower
 		)
-		land_hit = resolved.get("hit", {})
-		if land_hit.is_empty() or (
-			not land_hit.get("active", true) and str(land_hit.get("zone", "")) == "oob"
-		):
-			return false
-		floor_h = float(resolved.get("height", 0.0))
-		# Don't land on a surface above the hole story we're falling through.
-		# Equal height is OK (L0 coping often sits at L1 floor under `.` gaps).
-		if str(contact.get("zone", "")) == "hole":
-			var hole_h := float(contact.get("height", 0.0))
-			if not _ContactMath.hole_fall_allows_floor(floor_h, hole_h):
-				# Re-resolve lower: exclude by picking below hole.
-				var lower: Dictionary = _level.sample(
-					depth.logical_x, depth.logical_z, -1, NAN, hole_h - 2.0
-				)
-				if lower.is_empty() or (
-					not lower.get("active", true) and str(lower.get("zone", "")) == "oob"
-				):
-					return false
-				var lh := float(lower.get("height", 0.0))
-				if not _ContactMath.hole_fall_allows_floor(lh, hole_h):
-					return false
-				if h1 > lh + 0.05:
-					return false
-				if not _ContactMath.height_in_sweep(lh, h_before, h1) and h_before < lh - 0.05:
-					return false
-				land_hit = lower
-				floor_h = lh
-			elif h1 > floor_h + 0.05:
-				return false
-			elif h_before < floor_h - 0.05 and not bool(resolved.get("crossed_solid", false)):
-				if not _ContactMath.height_in_sweep(floor_h, h_before, h1):
-					return false
-		else:
-			if h1 > floor_h + 0.05:
-				return false
-			if h_before < floor_h - 0.05 and not bool(resolved.get("crossed_solid", false)):
-				if not _ContactMath.height_in_sweep(floor_h, h_before, h1):
-					return false
+	if bool(resolved.get("need_hole_lower", false)):
+		var hole_h := float(resolved.get("hole_h", 0.0))
+		hole_lower = _level.sample(
+			depth.logical_x, depth.logical_z, -1, NAN, hole_h - 2.0
+		)
+		resolved = _AerialLanding.resolve_land_hit(
+			contact, h_before, h1, air_vel_y, sweep, hole_lower
+		)
+	if not bool(resolved.get("land", false)):
+		return false
 
+	var land_hit: Dictionary = resolved.get("land_hit", {})
+	var floor_h := float(resolved.get("floor_h", 0.0))
 	if land_hit.is_empty():
 		return false
-
-	# Acid/spine target-only landing (mid-lerp must not clip exit wall / decks).
-	if _ContactMath.acid_should_reject_land(
-		land_hit, _acid_drop_lock, _is_exit_pipe_hit(land_hit), _air_side, _air_lip_x
-	):
-		return false
-	if _ContactMath.spine_should_reject_land(
-		land_hit, _spine_transfer_lock, _air_side, _air_lip_x, _air_base_height
+	if _AerialLanding.should_reject_land(
+		land_hit,
+		_acid_drop_lock,
+		_is_exit_pipe_hit(land_hit),
+		_air_side,
+		_air_lip_x,
+		_spine_transfer_lock,
+		_air_base_height,
 	):
 		return false
 
 	air_abs_height = floor_h
-	var pin_x := depth.logical_x
-	if _air_x_locked and _is_aligned_with_air_coping():
-		pin_x = _air_coping_x
+	var pin_x := _AerialLanding.land_pin_x(
+		depth.logical_x, _air_x_locked, _air_coping_x, _air_radius
+	)
 	var was_locked := _air_x_locked
 	var was_acid := _acid_drop_lock
 	var acid_travel := _acid_travel_x
@@ -926,51 +895,49 @@ func _try_land_from_air_contact(
 	var land_vy := air_vel_y
 	var approach_x := _velocity.x
 	var carry_peak := _air_carry_speed
-	# Acid press / fly-out: never allow into-bowl velocity against travel.
-	var no_reverse := was_acid or acid_pressed or flew_out
-	var hold_sign := _AerialMath.land_hold_sign(acid_travel, no_reverse, exit_travel)
+	var logical_x := depth.logical_x
 	_clear_air()
 
-	if _ContactMath.is_solid(land_hit):
-		depth.surface_height = floor_h
-		depth.logical_x = pin_x
-		_velocity.x = _AerialMath.clamp_against_hold(approach_x, hold_sign)
+	var apply: Dictionary = _AerialLanding.compute_land_apply(
+		land_hit,
+		floor_h,
+		logical_x,
+		pin_x,
+		approach_x,
+		land_vy,
+		was_locked,
+		was_acid,
+		acid_travel,
+		flew_out,
+		acid_pressed,
+		exit_travel,
+		carry_peak,
+	)
+	var kind := str(apply.get("kind", "other"))
+	if kind == "solid":
+		depth.surface_height = float(apply.floor_h)
+		depth.logical_x = float(apply.logical_x)
+		_velocity.x = float(apply.vx)
 		_on_ramp = false
 		return true
-
-	if _ContactMath.is_pipe(land_hit):
-		var land_side := int(land_hit.get("side", QuarterPipe.PipeSide.RIGHT))
-		var land_lip := float(land_hit.get("lip_x", depth.logical_x))
-		var land_base := float(land_hit.get("base_height", 0.0))
-		var side_sign := _coping_sign(land_side)
-		var along := _AerialMath.pipe_land_along(
-			approach_x,
-			land_vy,
-			land_side,
-			was_locked,
-			was_acid,
-			no_reverse,
-			acid_travel,
-			hold_sign,
-			carry_peak,
-		)
-		_ramp_along = along
-		_velocity.x = along
+	if kind == "pipe":
+		_ramp_along = float(apply.ramp_along)
+		_velocity.x = float(apply.vx)
 		_on_ramp = true
-		_ramp_side = land_side
-		_ramp_lip_x = land_lip
-		_ramp_base_height = land_base
-		_ramp_z_min = float(land_hit.get("z_min", NAN))
-		_ramp_z_max = float(land_hit.get("z_max", NAN))
-		depth.surface_height = floor_h
-		if along * side_sign < -1.0 or absf(along) > 1.0:
-			_move_along_pipe(land_hit, along * speed_mul, delta)
+		_ramp_side = int(apply.ramp_side)
+		_ramp_lip_x = float(apply.ramp_lip_x)
+		_ramp_base_height = float(apply.ramp_base_height)
+		_ramp_z_min = float(apply.ramp_z_min)
+		_ramp_z_max = float(apply.ramp_z_max)
+		depth.surface_height = float(apply.floor_h)
+		if bool(apply.move_along):
+			_move_along_pipe(land_hit, float(apply.ramp_along) * speed_mul, delta)
 		else:
-			depth.logical_x = pin_x if was_locked else depth.logical_x
+			depth.logical_x = float(apply.logical_x)
 		return true
 
-	depth.surface_height = floor_h
-	depth.logical_x = pin_x
+	depth.surface_height = float(apply.floor_h)
+	depth.logical_x = float(apply.logical_x)
 	return true
 
 
