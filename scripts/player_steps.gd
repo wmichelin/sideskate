@@ -233,6 +233,7 @@ static func try_land_from_air_contact(p, contact: Dictionary, h_before: float, d
 		p._air_base_height,
 		bool(p._settle.x_active),
 		p._is_aligned_with_air_coping(),
+		_spine_z_on_target(p) if p._spine_transfer_lock else true,
 	):
 		return false
 
@@ -477,6 +478,7 @@ static func apply_locked_air_motion(p, delta: float, speed_mul: float) -> void:
 	if not p._settle.x_active:
 		p.depth.logical_x = p._air_coping_x
 	p._clamp_pose_playable()
+	# Z is free during spine: player can drift off the target and crash.
 	p._commit_xz(p.depth.logical_x, p.depth.logical_z + p._velocity.y * speed_mul * delta)
 	if DebugTools.god_mode:
 		p._resolve_and_apply_air_contact(p.air_abs_height)
@@ -487,7 +489,12 @@ static func apply_locked_air_motion(p, delta: float, speed_mul: float) -> void:
 	var contact: Dictionary = p._resolve_and_apply_air_contact(h_before)
 	p._integrate_air_gravity(delta)
 	if p._spine_transfer_lock:
-		_apply_spine_clearance(p)
+		var on_target_z: bool = _spine_z_on_target(p)
+		# Soft-floor only while X is still settling (or not yet aligned). When
+		# settle finishes on-target, leave gravity alone so drop-in isn't a snap.
+		if on_target_z and (p._settle.x_active or not p._is_aligned_with_air_coping()):
+			_apply_spine_clearance(p)
+		# else: left Z band, or settle done + aligned — gravity + land/crash below.
 	p._try_apex_facing_flip(prev_air_vy)
 	if p._try_fly_out_from_pipe_lock():
 		if not p._settle.x_active:
@@ -499,8 +506,41 @@ static func apply_locked_air_motion(p, delta: float, speed_mul: float) -> void:
 	p._try_land_from_air_contact(contact, h_before, delta, speed_mul)
 
 
+## Locked spine target Z span still contains the player (X may be on flanking deck).
+static func _spine_z_on_target(p) -> bool:
+	if not p._spine_transfer_lock:
+		return false
+	if is_nan(p._air_z_min) or is_nan(p._air_z_max):
+		return true
+	return (
+		p.depth.logical_z >= p._air_z_min - 0.001
+		and p.depth.logical_z <= p._air_z_max + 0.001
+	)
+
+
+## Locked spine target still covers current XZ (Z drift can leave it).
+static func _spine_target_underfoot_active(p) -> bool:
+	if p._level == null or not p._spine_transfer_lock:
+		return false
+	if p._air_side < 0 or is_nan(p._air_lip_x):
+		return false
+	var hit: Dictionary = p._level.sample(
+		p.depth.logical_x,
+		p.depth.logical_z,
+		p._air_side,
+		p._air_lip_x,
+		p.air_abs_height,
+		p._air_base_height,
+		p._air_z_min,
+		p._air_z_max,
+	)
+	return bool(hit.get("active", false)) and _SpineClearance.is_locked_target(
+		hit, p._air_side, p._air_lip_x, p._air_base_height
+	)
+
+
 ## Ride over intervening solids during spine settle (no tunnel through deck/pipe).
-## Holds feet at/above dest coping floor until X is ready to land.
+## Holds feet at/above the clearance corridor floor until X is ready to land.
 static func _apply_spine_clearance(p) -> void:
 	if p._level == null:
 		return
@@ -525,6 +565,8 @@ static func _apply_spine_clearance(p) -> void:
 		p._air_radius,
 		settle_active,
 		aligned,
+		p._spine_corridor,
+		p.depth.logical_x,
 	)
 	if is_nan(floor_h):
 		return
@@ -594,6 +636,20 @@ static func try_spine_transfer(p, _from_hold_buffer: bool = false) -> bool:
 		return false
 	var hit: Dictionary = p._find_facing_coping_target()
 	if hit.is_empty():
+		return false
+	var side: int = int(hit.get("side", QuarterPipe.PipeSide.RIGHT))
+	var lip: float = float(hit.get("lip_x", p.depth.logical_x))
+	var radius: float = float(hit.get("radius", 150.0))
+	var base: float = float(hit.get("base_height", 0.0))
+	var coping: float = float(
+		hit.get("top_coping", p._PipeMath.coping_x(side, lip, radius))
+	)
+	# Corridor peak gate: refuse while below dest coping / taller pads on path.
+	var corridor: Dictionary = p._build_spine_corridor(
+		p.depth.logical_x, coping, side, lip, base, radius
+	)
+	var peak := float(corridor.get("peak", base + radius))
+	if not p._AerialSpineClearance.feet_clear_corridor(p._feet_height(), peak):
 		return false
 	if not p._AerialTransfer.spine_feet_clear_dest(p._feet_height(), hit):
 		return false

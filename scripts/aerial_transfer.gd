@@ -97,14 +97,15 @@ static func resolve_acid_lock(
 	}
 
 
-## Feet must already clear the opposite lip (no early spine into a taller wall).
-static func spine_feet_clear_dest(feet_h: float, hit: Dictionary, eps: float = 0.5) -> bool:
+## Feet must already clear the destination top coping (no early spine into a
+## taller wall). Uses top_coping height when present. `eps` is float-noise only.
+static func spine_feet_clear_dest(feet_h: float, hit: Dictionary, eps: float = 0.05) -> bool:
 	if hit.is_empty():
 		return false
-	var dest_coping_h := (
-		float(hit.get("base_height", 0.0)) + float(hit.get("radius", 150.0))
-	)
-	return feet_h >= dest_coping_h - eps
+	var dest_coping_h := float(hit.get("base_height", 0.0)) + float(hit.get("radius", 150.0))
+	if hit.has("top_coping_height"):
+		dest_coping_h = float(hit.get("top_coping_height"))
+	return feet_h + maxf(eps, 0.0) >= dest_coping_h
 
 
 ## Spine lock identity + into-pipe carry from a facing-cast hit.

@@ -403,6 +403,13 @@ func _acid_spine_land_rejects() -> bool:
 	if ContactMath.spine_should_reject_land(target, true, 1, 500.0, 0.0, true, true):
 		push_error("spine must accept target when aligned")
 		return false
+	var lava := {"zone": "lava", "height": 0.0, "active": true}
+	if ContactMath.spine_should_reject_land(lava, true, 1, 500.0, 0.0, false, true, true):
+		push_error("spine must allow lava crash")
+		return false
+	if ContactMath.spine_should_reject_land(deck, true, 1, 500.0, 0.0, false, true, false):
+		push_error("spine must allow deck crash when off target Z")
+		return false
 	return true
 
 

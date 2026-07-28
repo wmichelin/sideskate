@@ -86,6 +86,7 @@ static func _resolve_hole_lower(
 
 ## Acid/spine target-only landing rejects (exit-pipe identity supplied by Player).
 ## Spine also defers target land while X settle is active and not coping-aligned.
+## `on_target_z` false → allow non-pipe crash (Z left the ramp span).
 static func should_reject_land(
 	land_hit: Dictionary,
 	acid_drop_lock: bool,
@@ -96,6 +97,7 @@ static func should_reject_land(
 	air_base_height: float,
 	settle_active: bool = false,
 	aligned: bool = true,
+	on_target_z: bool = true,
 ) -> bool:
 	if _ContactMath.acid_should_reject_land(
 		land_hit, acid_drop_lock, is_exit_pipe, air_side, air_lip_x
@@ -109,6 +111,7 @@ static func should_reject_land(
 		air_base_height,
 		settle_active,
 		aligned,
+		on_target_z,
 	)
 
 

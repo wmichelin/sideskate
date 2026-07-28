@@ -10,6 +10,10 @@ var x_to: float = 0.0
 var x_u: float = 0.0
 var x_dur: float = 0.15
 var x_ease: bool = false
+## When true, duration is fixed at begin (no live height retune).
+var x_duration_locked: bool = false
+## When true with x_ease, use quintic smootherstep instead of cubic smoothstep.
+var x_smoother: bool = false
 
 var tilt_active: bool = false
 var tilt_from: float = 0.0
@@ -17,6 +21,8 @@ var tilt_to: float = 0.0
 var tilt_u: float = 0.0
 var tilt_dur: float = 0.15
 var tilt_ease: bool = false
+var tilt_duration_locked: bool = false
+var tilt_smoother: bool = false
 
 
 func reset() -> void:
@@ -26,15 +32,20 @@ func reset() -> void:
 	x_u = 0.0
 	x_dur = 0.15
 	x_ease = false
+	x_duration_locked = false
+	x_smoother = false
 	tilt_active = false
 	tilt_from = 0.0
 	tilt_to = 0.0
 	tilt_u = 0.0
 	tilt_dur = 0.15
 	tilt_ease = false
+	tilt_duration_locked = false
+	tilt_smoother = false
 
 
 ## Begin horizontal settle. Returns whether X lerp is active (false if already there).
+## `duration_override` >= 0 replaces the height-scaled duration formula.
 func begin_x(
 	from_x: float,
 	to_x: float,
@@ -44,12 +55,19 @@ func begin_x(
 	duration_base: float,
 	duration_per_height: float,
 	duration_max: float,
+	duration_override: float = -1.0,
+	lock_duration: bool = false,
+	use_smootherstep: bool = false,
 ) -> bool:
 	x_from = from_x
 	x_to = to_x
 	x_u = 0.0
 	x_ease = height_scaled
-	if height_scaled:
+	x_duration_locked = lock_duration
+	x_smoother = use_smootherstep
+	if duration_override >= 0.0:
+		x_dur = maxf(duration_override, 0.0001)
+	elif height_scaled:
 		x_dur = maxf(
 			AerialMath.lock_x_duration_for_height(
 				height_above, duration_base, duration_per_height, duration_max
@@ -71,13 +89,20 @@ func begin_tilt(
 	duration_base: float,
 	duration_per_height: float,
 	duration_max: float,
+	duration_override: float = -1.0,
+	lock_duration: bool = false,
+	use_smootherstep: bool = false,
 ) -> bool:
 	tilt_from = from_tilt
 	tilt_to = to_tilt
 	tilt_u = 0.0
 	tilt_ease = height_scaled
+	tilt_duration_locked = lock_duration
+	tilt_smoother = use_smootherstep
 	tilt_dur = fixed_duration
-	if height_scaled:
+	if duration_override >= 0.0:
+		tilt_dur = maxf(duration_override, 0.0001)
+	elif height_scaled:
 		tilt_dur = maxf(
 			AerialMath.lock_x_duration_for_height(
 				height_above, duration_base, duration_per_height, duration_max
@@ -89,6 +114,14 @@ func begin_tilt(
 		return false
 	tilt_active = true
 	return true
+
+
+func _ease_weight(u: float, ease: bool, smoother: bool) -> float:
+	if not ease:
+		return u
+	if smoother:
+		return AerialMath.smootherstep01(u)
+	return AerialMath.smoothstep01(u)
 
 
 ## Advance X settle. Returns next logical X (caller assigns). Finished → x_active false.
@@ -105,7 +138,7 @@ func step_x(
 	if not x_active:
 		return current_x
 	var duration := maxf(x_dur, 0.0001)
-	if x_ease:
+	if x_ease and not x_duration_locked:
 		var target := maxf(
 			AerialMath.lock_x_duration_for_height(
 				height_above, duration_base, duration_per_height, duration_max
@@ -120,7 +153,7 @@ func step_x(
 			x_dur = lerpf(x_dur, target, k)
 		duration = maxf(x_dur, 0.0001)
 	x_u = clampf(x_u + delta / duration, 0.0, 1.0)
-	var w := AerialMath.smoothstep01(x_u) if x_ease else x_u
+	var w := _ease_weight(x_u, x_ease, x_smoother)
 	var next_x := lerpf(x_from, x_to, w)
 	if acid_lock and absf(acid_travel_x) >= 1.0:
 		next_x = AerialMath.acid_clamp_x_step(current_x, next_x, x_to, acid_travel_x)
@@ -145,7 +178,7 @@ func step_tilt(
 	if not tilt_active:
 		return current_tilt
 	var duration := maxf(tilt_dur, 0.0001)
-	if tilt_ease:
+	if tilt_ease and not tilt_duration_locked:
 		var target := maxf(
 			AerialMath.lock_x_duration_for_height(
 				height_above, duration_base, duration_per_height, duration_max
@@ -159,7 +192,7 @@ func step_tilt(
 			tilt_dur = lerpf(tilt_dur, target, k)
 		duration = maxf(tilt_dur, 0.0001)
 	tilt_u = clampf(tilt_u + delta / duration, 0.0, 1.0)
-	var w := AerialMath.smoothstep01(tilt_u) if tilt_ease else tilt_u
+	var w := _ease_weight(tilt_u, tilt_ease, tilt_smoother)
 	var next := lerpf(tilt_from, tilt_to, w)
 	if tilt_u >= 1.0:
 		tilt_active = false

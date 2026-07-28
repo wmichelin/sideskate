@@ -119,11 +119,13 @@ Routing uses measured vertical rate (`_vert_vel`) and the last non-zero vertical
 
 When the transfer path runs and FacingCastMath finds a **top coping** within `facing_coping_cells` deck cells ahead of `facing_h` (default **3**, debug **coping cells** slider; excludes the pipe you’re on), fire spine transfer instead of free-air transfer. Works while **airborne and rising**, or **grounded on a pipe riding up** toward coping (T/P leaves the wall into the spine lock):
 
-- Lerp/lock X to that **top coping** (never the lip); keep `air_abs_height` and `air_vel_y` (continue the rise). Same live height-scaled X settle + smoothstep as acid drop.
+- Lerp/lock X to that **top coping** (never the lip); keep `air_abs_height` and `air_vel_y` (continue the rise). Spine settle uses a **distance-scaled** duration (min ~0.45s, gap term, smootherstep) locked at begin — not the short acid height-only clock, which snapped when clearance held height_above≈0.
 - Stash into-pipe **MOMENTUM** from **peak** aerial speed (`_air_carry_speed` / `lock_carry_velocity_x`) — not live `air_vel_y` after a gravity climb — so low→high still drop-ins at exit speed (`merge_drop_in_along` keeps the faster approach). Stick does not brake that carry while locked.
+- Requires feet already at/above the **clearance corridor peak** (dest top coping and any taller deck/flat on the X path; float eps) — refuses “above origin, below dest” when the corridor is taller. Foreign pipes on the path do not raise the peak (high→low still works).
 - While locked, air contact **force-sticky**s to that coping and does not adopt a different underfoot pipe (shared high→low column would otherwise snap identity back same tick).
-- Mid-settle **clearance**: soft-floor at the **dest top coping** (and any taller intervening deck/flat/lava) until X is settled/aligned — ride the gap instead of falling through holes or tunneling pads. Foreign pipes do not raise the floor (high→low can fall past an upper story at a shared column).
-- On land: same drop-in as pipe-exit / acid — falling `air_vel_y` → `_ramp_along` (keep approach if faster into the pipe). Land only on the locked target once X settle is done or coping-aligned; refuse deck / flat / foreign pipes for land.
+- At spine lock, build a **clearance corridor**: sample solids along `[from_x → to_x]` at the player’s Z (no sticky). Each tick soft-floors feet at `max(dest coping, underfoot solid, corridor floor at X)` until X is settled/aligned — ride deck tops instead of tunneling. Lava is not a soft-floor (crash). Foreign pipes do not raise the floor.
+- **Z is free** during spine: playable-footprint clamp does not yank Z mid-gap. If the player drifts off the locked pipe’s Z band, clearance stops and non-pipe land (deck / flat / lava) is allowed — miss the ramp and crash.
+- On land: same drop-in as pipe-exit / acid — falling `air_vel_y` → `_ramp_along` (keep approach if faster into the pipe). Land only on the locked target once X settle is done or coping-aligned while still on-target Z; refuse deck / flat / foreign pipes for land while on that Z band.
 - No fly-out while the spine lock is active.
 - No apex facing flip while the spine lock is active (keep approach facing through the transfer).
 - Holes are transparent in the cast — a lower-story coping under `.` still counts (high→low).
@@ -188,7 +190,7 @@ A **step body** is one physics-tick procedure that advances sim by reading/writi
 | [`aerial_contact.gd`](../scripts/aerial_contact.gd) | Sticky air-contact query + unlocked identity; exit-pipe match |
 | [`aerial_transfer.gd`](../scripts/aerial_transfer.gd) | Free-transfer target build; acid/spine lock resolve; spine height gate |
 | [`aerial_settle.gd`](../scripts/aerial_settle.gd) | Acid/spine X + tilt settle state machine |
-| [`aerial_spine_clearance.gd`](../scripts/aerial_spine_clearance.gd) | Spine mid-settle soft-floor + defer-land gates |
+| [`aerial_spine_clearance.gd`](../scripts/aerial_spine_clearance.gd) | Spine corridor sample/peak/floor + soft-floor + defer-land gates |
 | [`aerial_targeting.gd`](../scripts/aerial_targeting.gd) | Facing-cast acid / facing coping pick |
 | [`aerial_math.gd`](../scripts/aerial_math.gd) | Action routing, travel, land-along, fly-out gate, pipe-behind |
 | [`ground_motion.gd`](../scripts/ground_motion.gd) | Sticky / mount / flat-path / coping-cross decisions |
@@ -225,8 +227,8 @@ Runtime Player tests share [`tests/player_runtime_fixture.gd`](../tests/player_r
 6. Acid drop / spine: FacingCastMath first top coping within `facing_coping_cells` ahead of `facing_h` (excludes current pipe).  
 7. Free air / acid drop land on **sampled** height — never snap up to coping radius as a fake floor.  
 8. Fly-out: only unlock for pipe-exit X-lock; rising + X-dominant INPUT toward pipe (never MOMENTUM); never from acid/spine; contact changing to hole/flat does not unlock.  
-9. Spine transfer: rising path + facing-cast coping in range; keep height + `air_vel_y`; land uses shared drop-in merge; mid-settle **soft-floor at dest coping** (and taller intervening pads); land only on target when X settled/aligned; else normal transfer. No apex facing flip while spine-locked.  
+9. Spine transfer: rising path + facing-cast coping in range; keep height + `air_vel_y`; land uses shared drop-in merge; **corridor gate** (feet ≥ path peak) + mid-settle **corridor soft-floor**; land only on target when X settled/aligned and still on-target Z (off-Z → crash on deck/lava); else normal transfer. No apex facing flip while spine-locked.  
 10. Locked pipe land (pipe-exit / acid / spine): `merge_drop_in_along` — fall vert → along-arc, keep approach if faster into the pipe. Peak `_air_carry_speed` this aerial seeds approach so low→high climbs keep exit speed.  
-11. Acid/spine X settle: live `duration = base + rate × height_above` (`lock_x_duration_for_height`); progress `+= δt/duration`; smoothstep ease.
+11. Acid X settle: live `duration = base + rate × height_above`; progress `+= δt/duration`; smoothstep ease. Spine X settle: distance-scaled duration locked at begin + smootherstep (min floor so clearance-held transfers do not snap).
 
 Covered by headless tests under `tests/` (`test_aerial_*`, `test_ground_*`, `test_contact_math`, `test_player_*`, `test_motion_*`, etc.).

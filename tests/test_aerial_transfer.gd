@@ -107,6 +107,9 @@ func _spine_gate_and_lock() -> bool:
 	if _AerialTransfer.spine_feet_clear_dest(dest_h - 2.0, hit):
 		push_error("spine must refuse below dest coping")
 		return false
+	if _AerialTransfer.spine_feet_clear_dest(dest_h - 0.2, hit):
+		push_error("spine must refuse slightly below dest coping")
+		return false
 	if not _AerialTransfer.spine_feet_clear_dest(dest_h, hit):
 		push_error("spine must clear at dest coping")
 		return false

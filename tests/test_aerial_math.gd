@@ -261,6 +261,14 @@ func _lock_x_duration() -> bool:
 	if absf(uncapped - 2.18) > 0.001:
 		push_error("max=0 uncapped, got %s" % uncapped)
 		return false
+	var spine0 := AerialMath.spine_lock_x_duration(0.0, 0.0, 0.18, 0.002, 0.0009, 0.45, 1.35)
+	if absf(spine0 - 0.45) > 0.001:
+		push_error("spine duration floors at min, got %s" % spine0)
+		return false
+	var spine_gap := AerialMath.spine_lock_x_duration(800.0, 0.0, 0.18, 0.002, 0.0009, 0.45, 1.35)
+	if absf(spine_gap - 0.9) > 0.001:
+		push_error("spine duration scales with gap, got %s" % spine_gap)
+		return false
 	if absf(AerialMath.smoothstep01(0.0)) > 0.001:
 		push_error("smoothstep(0) → 0")
 		return false

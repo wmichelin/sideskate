@@ -331,8 +331,9 @@ static func acid_should_reject_land(
 
 ## Spine mid-lerp: only land on the locked target pipe (and matching story).
 ## While X settle is still active and not coping-aligned, defer target land too
-## (early mid-wall drop-in). Intervening deck/flat stay rejected for land —
-## clearance soft-floor rides over them instead of tunneling.
+## (early mid-wall drop-in). Intervening deck/flat stay rejected for land while
+## the target footprint is still underfoot — clearance soft-floor rides over them.
+## If the player drifts off the target Z band or hits lava, allow crash land.
 static func spine_should_reject_land(
 	land_hit: Dictionary,
 	spine_transfer_lock: bool,
@@ -341,10 +342,16 @@ static func spine_should_reject_land(
 	air_base_height: float,
 	settle_active: bool = false,
 	aligned: bool = true,
+	on_target_z: bool = true,
 ) -> bool:
 	if not spine_transfer_lock:
 		return false
 	if not is_pipe(land_hit):
+		# Lava is always a crash. Off-target Z → crash into ground/pads.
+		if str(land_hit.get("zone", "")) == "lava":
+			return false
+		if not on_target_z:
+			return false
 		return true
 	var spine_side := int(land_hit.get("side", -1))
 	var spine_lip := float(land_hit.get("lip_x", NAN))

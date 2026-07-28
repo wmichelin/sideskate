@@ -46,6 +46,8 @@ func load_level(level_path: String) -> bool:
 		push_error("PlayerRuntimeFixture parse: %s" % LevelLoader.last_error)
 		return false
 	ramp.apply_spec(spec)
+	# apply_spec does not emit rebuilt; notify Player so depth Z bounds / spawn sync.
+	ramp.rebuilt.emit()
 	return true
 
 

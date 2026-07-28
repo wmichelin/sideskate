@@ -12,6 +12,7 @@ const _AerialTargeting := preload("res://scripts/aerial_targeting.gd")
 const _AerialLanding := preload("res://scripts/aerial_landing.gd")
 const _AerialContact := preload("res://scripts/aerial_contact.gd")
 const _AerialTransfer := preload("res://scripts/aerial_transfer.gd")
+const _AerialSpineClearance := preload("res://scripts/aerial_spine_clearance.gd")
 const _FacingCastMath := preload("res://scripts/facing_cast_math.gd")
 const _MotionVectors := preload("res://scripts/motion_vectors.gd")
 const _ContactMath := preload("res://scripts/contact_math.gd")
@@ -57,6 +58,12 @@ const _PlayerSteps := preload("res://scripts/player_steps.gd")
 @export var acid_drop_x_duration_per_height: float = 0.002
 ## Soft cap on acid/spine settle (0 = uncapped).
 @export var acid_drop_x_duration_max: float = 0.9
+## Spine settle: extra seconds per logical unit of |Δx| (keeps long gaps from snapping).
+@export var spine_x_duration_per_x: float = 0.0009
+## Spine settle: minimum seconds (clearance-held height_above≈0 must not snap).
+@export var spine_x_duration_min: float = 0.45
+## Spine settle soft cap (0 = use acid_drop_x_duration_max).
+@export var spine_x_duration_max: float = 1.35
 ## God-mode vertical speed (logical units/s) for j/k. Debug only.
 @export var god_vert_speed: float = 320.0
 ## Along-arc speed drain while on a pipe (logical u/s²). Debug slider writes this.
@@ -137,6 +144,8 @@ var _acid_drop_available: bool = true
 var _acid_drop_lock: bool = false
 ## Spine transfer: X-lock to opposite coping; land converts vert → along-arc (drop-in).
 var _spine_transfer_lock: bool = false
+## Precomputed clearance corridor for the active spine settle (xs/heights/peak).
+var _spine_corridor: Dictionary = {}
 ## Peak |along|/|air_vy|/|vx| this aerial — survives gravity climb for low→high drop-in.
 var _air_carry_speed: float = 0.0
 ## Once per locked aerial: facing flip (or stick override) at vertical apex.
@@ -258,6 +267,11 @@ func _physics_process(delta: float) -> void:
 		return
 	if _level == null:
 		_level = get_node_or_null(level_path) as RampLevel
+	# Sync lane bounds before motion — otherwise clamp_z uses stale 0..100 defaults
+	# until end-of-frame (spine Z gets crushed to 100 on large maps).
+	if _level:
+		depth.z_min = _level.z_min
+		depth.z_max = _level.z_max
 
 	_tick_debug_god_input()
 	_tick_transfer_press()
@@ -418,7 +432,9 @@ func _air_coping_floor() -> float:
 func _commit_xz(next_x: float, next_z: float) -> bool:
 	var z := depth.clamp_z(next_z)
 	var x := next_x
-	if _level and _level.spec:
+	# Spine corridor flies over non-playable gap cells; playable clamp would yank Z
+	# onto a distant pad and abort the transfer. Z stays free for intentional drift.
+	if _level and _level.spec and not _spine_transfer_lock:
 		var clamped: Vector2 = _level.spec.clamp_to_playable(x, z)
 		x = clamped.x
 		z = depth.clamp_z(clamped.y)
@@ -430,6 +446,8 @@ func _commit_xz(next_x: float, next_z: float) -> bool:
 ## Snap current pose into playable bounds (coping pin / transfer / pipe move).
 func _clamp_pose_playable() -> void:
 	if _level == null or _level.spec == null:
+		return
+	if _spine_transfer_lock:
 		return
 	var clamped: Vector2 = _level.spec.clamp_to_playable(depth.logical_x, depth.logical_z)
 	depth.logical_x = clamped.x
@@ -827,6 +845,7 @@ func _apply_air_patch(p: Dictionary) -> void:
 			"reset_settle":
 				if bool(v):
 					_settle.reset()
+					_spine_corridor = {}
 			"logical_x":
 				depth.logical_x = float(v)
 			"vx":
@@ -1052,7 +1071,79 @@ func _apply_spine_lock(hit: Dictionary, carry_speed: float = -1.0) -> void:
 			lock, false, true, _layer_index_for_base(float(lock.base_height))
 		)
 	)
-	_begin_transfer_x_lerp(float(lock.coping_x), true, float(lock.radius))
+	_spine_corridor = _build_spine_corridor(
+		depth.logical_x,
+		float(lock.coping_x),
+		int(lock.side),
+		float(lock.lip_x),
+		float(lock.base_height),
+		float(lock.radius),
+	)
+	_begin_spine_x_lerp(float(lock.coping_x))
+
+
+## Sample solids along [from_x→to_x] for spine clearance (no sticky).
+func _build_spine_corridor(
+	from_x: float,
+	to_x: float,
+	side: int,
+	lip_x: float,
+	base_height: float,
+	radius: float,
+) -> Dictionary:
+	if _level == null:
+		return {}
+	return _AerialSpineClearance.build_corridor(
+		from_x,
+		to_x,
+		side,
+		lip_x,
+		base_height,
+		radius,
+		Callable(self, "_spine_corridor_sample_at"),
+	)
+
+
+func _spine_corridor_sample_at(x: float) -> Dictionary:
+	if _level == null:
+		return {}
+	return _level.resolve_air_contact(
+		x, depth.logical_z, _feet_height(), -1, NAN, NAN, false, NAN, NAN
+	)
+
+
+## Spine X/tilt settle: distance-scaled duration, locked (no live shorten), smootherstep.
+func _begin_spine_x_lerp(to_x: float) -> void:
+	var above := maxf(air_abs_height - _air_coping_floor(), 0.0)
+	var gap := absf(to_x - depth.logical_x)
+	var cap := spine_x_duration_max
+	if cap <= 0.0:
+		cap = acid_drop_x_duration_max
+	var dur := _AerialMath.spine_lock_x_duration(
+		gap,
+		above,
+		acid_drop_x_duration,
+		acid_drop_x_duration_per_height,
+		spine_x_duration_per_x,
+		spine_x_duration_min,
+		cap,
+	)
+	var active := _settle.begin_x(
+		depth.logical_x,
+		to_x,
+		true,
+		above,
+		transfer_x_duration,
+		acid_drop_x_duration,
+		acid_drop_x_duration_per_height,
+		acid_drop_x_duration_max,
+		dur,
+		true,
+		true,
+	)
+	if not active:
+		depth.logical_x = to_x
+	_begin_tilt_lerp(_body_tilt_target_radians(), true, dur, true, true)
 
 
 ## Pipe side we're leaving for spine exclude (want = other coping ahead).
@@ -1240,7 +1331,13 @@ func _step_body_tilt(delta: float) -> void:
 	depth.surface_tilt = _body_tilt
 
 
-func _begin_tilt_lerp(to_tilt: float, height_scaled: bool) -> void:
+func _begin_tilt_lerp(
+	to_tilt: float,
+	height_scaled: bool,
+	duration_override: float = -1.0,
+	lock_duration: bool = false,
+	use_smootherstep: bool = false,
+) -> void:
 	var above := 0.0
 	if _air_x_locked and not is_nan(_air_radius):
 		above = maxf(air_abs_height - (_air_base_height + _air_radius), 0.0)
@@ -1253,6 +1350,9 @@ func _begin_tilt_lerp(to_tilt: float, height_scaled: bool) -> void:
 		acid_drop_x_duration,
 		acid_drop_x_duration_per_height,
 		acid_drop_x_duration_max,
+		duration_override,
+		lock_duration,
+		use_smootherstep,
 	):
 		_body_tilt = to_tilt
 

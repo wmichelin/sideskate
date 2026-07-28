@@ -8,6 +8,7 @@ func run() -> bool:
 	return (
 		_x_reaches_endpoint()
 		and _duration_shrinks_on_fall()
+		and _spine_duration_locked()
 		and _acid_travel_never_reverses()
 		and _tilt_completes()
 	)
@@ -46,6 +47,20 @@ func _duration_shrinks_on_fall() -> bool:
 		return false
 	if s.x_u <= mid:
 		push_error("progress must advance, mid=%s after=%s" % [mid, s.x_u])
+		return false
+	return true
+
+
+func _spine_duration_locked() -> bool:
+	var s = _AerialSettle.new()
+	s.begin_x(0.0, 400.0, true, 0.0, 0.15, 0.18, 0.002, 0.9, 0.6, true, true)
+	var dur0 = s.x_dur
+	s.step_x(1.0 / 60.0, 0.0, 0.0, 0.18, 0.002, 0.9, false, 0.0)
+	if absf(s.x_dur - dur0) > 0.0001:
+		push_error("locked spine duration must not retune: %s → %s" % [dur0, s.x_dur])
+		return false
+	if not s.x_smoother:
+		push_error("spine settle should use smootherstep")
 		return false
 	return true
 

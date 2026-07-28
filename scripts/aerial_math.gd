@@ -218,6 +218,28 @@ static func lock_x_duration_for_height(
 	return d
 
 
+## Spine X settle: height term plus gap distance, floored so near-coping
+## clearance holds (height_above≈0) never collapse to a snap across the plaza.
+static func spine_lock_x_duration(
+	gap_x: float,
+	height_above_coping: float,
+	duration_base: float,
+	duration_per_height: float,
+	duration_per_x: float,
+	duration_min: float,
+	duration_max: float = 0.0,
+) -> float:
+	var d := (
+		maxf(duration_base, 0.0)
+		+ maxf(duration_per_height, 0.0) * maxf(height_above_coping, 0.0)
+		+ maxf(duration_per_x, 0.0) * absf(gap_x)
+	)
+	d = maxf(d, maxf(duration_min, 0.0))
+	if duration_max > 0.0:
+		d = minf(d, duration_max)
+	return d
+
+
 ## Cubic smoothstep on 0…1 (ease in/out for X settle).
 static func smoothstep01(u: float) -> float:
 	var t := clampf(u, 0.0, 1.0)
