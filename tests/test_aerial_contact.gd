@@ -14,6 +14,7 @@ func run() -> bool:
 		and _unlocked_pipe_identity()
 		and _unlocked_pad_and_hole()
 		and _pipe_identity_from_hit()
+		and _exit_pipe_identity()
 	)
 
 
@@ -109,5 +110,37 @@ func _pipe_identity_from_hit() -> bool:
 	var want_cope = PipeMath.coping_x(0, 300.0, 100.0)
 	if absf(float(id.air_coping_x) - want_cope) > 0.01:
 		push_error("coping mismatch")
+		return false
+	return true
+
+
+func _exit_pipe_identity() -> bool:
+	var exit_cope = PipeMath.coping_x(1, 400.0, 100.0)
+	if not _AerialContact.is_exit_pipe_coping(
+		exit_cope, 1, 400.0, 1, 400.0, exit_cope
+	):
+		push_error("same lip must match exit")
+		return false
+	# Stacked twin: different lip, same coping column.
+	if not _AerialContact.is_exit_pipe_coping(
+		exit_cope, 0, 200.0, 1, 400.0, exit_cope
+	):
+		push_error("shared coping column must match")
+		return false
+	var hit := {
+		"side": 1,
+		"lip_x": 400.0,
+		"radius": 100.0,
+		"z_min": 10.0,
+		"z_max": 90.0,
+	}
+	if not _AerialContact.is_exit_pipe_hit(hit, 1, 400.0, exit_cope, 10.0, 90.0):
+		push_error("exit hit must match")
+		return false
+	if _AerialContact.is_exit_pipe_hit(hit, 1, 400.0, exit_cope, 0.0, 50.0):
+		push_error("z band mismatch must reject")
+		return false
+	if _AerialContact.is_exit_pipe_hit({}, 1, 400.0, exit_cope, NAN, NAN):
+		push_error("empty hit must reject")
 		return false
 	return true

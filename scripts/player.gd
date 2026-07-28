@@ -11,6 +11,7 @@ const _AerialSettle := preload("res://scripts/aerial_settle.gd")
 const _AerialTargeting := preload("res://scripts/aerial_targeting.gd")
 const _AerialLanding := preload("res://scripts/aerial_landing.gd")
 const _AerialContact := preload("res://scripts/aerial_contact.gd")
+const _AerialTransfer := preload("res://scripts/aerial_transfer.gd")
 const _FacingCastMath := preload("res://scripts/facing_cast_math.gd")
 const _MotionVectors := preload("res://scripts/motion_vectors.gd")
 const _ContactMath := preload("res://scripts/contact_math.gd")
@@ -1388,33 +1389,33 @@ func _try_acid_drop(from_hold: bool = false) -> void:
 	_acid_pressed_this_aerial = true
 	_acid_travel_x = travel_x
 
-	var side: int = int(hit.get("side", QuarterPipe.PipeSide.RIGHT))
-	var lip: float = float(hit.get("lip_x", depth.logical_x))
-	var radius: float = float(hit.get("radius", 150.0))
-	var coping: float = float(hit.get("top_coping", _coping_x_for(side, lip, radius)))
-	# Opposite wall only + strictly ahead — same-side coping lands reverse into-pipe.
-	if side != _AerialMath.acid_drop_want_side(travel_x):
-		if from_hold:
-			return
-		_acid_abort_without_reverse(travel_x)
-		return
-	if not _AerialMath.acid_coping_ahead(depth.logical_x, coping, travel_x):
+	var lock: Dictionary = _AerialTransfer.resolve_acid_lock(
+		hit, depth.logical_x, travel_x, depth.logical_x
+	)
+	if not bool(lock.get("ok", false)):
 		if from_hold:
 			return
 		_acid_abort_without_reverse(travel_x)
 		return
 
+	var side: int = int(lock.side)
+	var lip: float = float(lock.lip_x)
+	var radius: float = float(lock.radius)
+	var coping: float = float(lock.coping_x)
 	_air_x_locked = true
 	_acid_drop_lock = true
 	_air_side = side
 	_air_lip_x = lip
 	_air_radius = radius
-	_air_base_height = float(hit.get("base_height", 0.0))
-	_air_z_min = float(hit.get("z_min", NAN))
-	_air_z_max = float(hit.get("z_max", NAN))
+	_air_base_height = float(lock.base_height)
+	_air_z_min = float(lock.z_min)
+	_air_z_max = float(lock.z_max)
 	_air_coping_x = coping
 	air_over = _pipe_zone_name(side)
-	_air_over_layer = int(hit.get("layer", _layer_index_for_base(_air_base_height)))
+	if int(lock.layer) >= 0:
+		_air_over_layer = int(lock.layer)
+	else:
+		_air_over_layer = _layer_index_for_base(_air_base_height)
 	_transfer_behind_sign = _coping_sign(side)
 	# Clear into-bowl stash; never rewrite to into-pipe carry.
 	_note_air_carry()
@@ -1460,33 +1461,20 @@ func _preserve_acid_travel_velocity() -> void:
 
 ## True when hit is the pipe (or coping column) left this aerial.
 func _is_exit_pipe_hit(hit: Dictionary) -> bool:
-	if hit.is_empty() or _exit_pipe_side < 0:
-		return false
-	var side := int(hit.get("side", -1))
-	var lip := float(hit.get("lip_x", NAN))
-	var coping := float(hit.get("top_coping", NAN))
-	if is_nan(coping) and not is_nan(lip):
-		coping = _coping_x_for(side, lip, float(hit.get("radius", 150.0)))
-	if not is_nan(_exit_pipe_z_min) and hit.has("z_min") \
-			and absf(float(hit.z_min) - _exit_pipe_z_min) > 0.05:
-		return false
-	if not is_nan(_exit_pipe_z_max) and hit.has("z_max") \
-			and absf(float(hit.z_max) - _exit_pipe_z_max) > 0.05:
-		return false
-	return _is_exit_pipe_coping(coping, side, lip)
+	return _AerialContact.is_exit_pipe_hit(
+		hit,
+		_exit_pipe_side,
+		_exit_pipe_lip,
+		_exit_pipe_coping,
+		_exit_pipe_z_min,
+		_exit_pipe_z_max,
+	)
 
 
 func _is_exit_pipe_coping(coping: float, side: int, lip: float) -> bool:
-	if _exit_pipe_side < 0:
-		return false
-	if side == _exit_pipe_side and not is_nan(_exit_pipe_lip) and not is_nan(lip) \
-			and absf(lip - _exit_pipe_lip) < 0.05:
-		return true
-	# Same coping column (stacked layers / twin lips share top X).
-	if not is_nan(_exit_pipe_coping) and not is_nan(coping) \
-			and absf(coping - _exit_pipe_coping) < 1.0:
-		return true
-	return false
+	return _AerialContact.is_exit_pipe_coping(
+		coping, side, lip, _exit_pipe_side, _exit_pipe_lip, _exit_pipe_coping
+	)
 
 
 ## First opposite-facing top coping within `facing_coping_cells` along acid travel.
@@ -1530,11 +1518,8 @@ func _try_spine_transfer(_from_hold_buffer: bool = false) -> bool:
 	var hit: Dictionary = _find_facing_coping_target()
 	if hit.is_empty():
 		return false
-	var dest_coping_h := (
-		float(hit.get("base_height", 0.0)) + float(hit.get("radius", 150.0))
-	)
 	# Must already clear the opposite lip — no early spine into a taller back wall.
-	if _feet_height() < dest_coping_h - 0.5:
+	if not _AerialTransfer.spine_feet_clear_dest(_feet_height(), hit):
 		return false
 	# Peak aerial carry (exit speed), not live air_vel_y after a gravity climb.
 	_note_air_carry()
@@ -1597,25 +1582,6 @@ func _launch_air_for_spine_from_ramp() -> void:
 
 
 func _apply_spine_lock(hit: Dictionary, carry_speed: float = -1.0) -> void:
-	var side: int = int(hit.get("side", QuarterPipe.PipeSide.RIGHT))
-	var lip: float = float(hit.get("lip_x", depth.logical_x))
-	var radius: float = float(hit.get("radius", 150.0))
-	var coping: float = float(hit.get("top_coping", _coping_x_for(side, lip, radius)))
-
-	_air_x_locked = true
-	_acid_drop_lock = false
-	_spine_transfer_lock = true
-	_air_side = side
-	_air_lip_x = lip
-	_air_radius = radius
-	_air_base_height = float(hit.get("base_height", 0.0))
-	_air_z_min = float(hit.get("z_min", NAN))
-	_air_z_max = float(hit.get("z_max", NAN))
-	_air_coping_x = coping
-	air_over = _pipe_zone_name(side)
-	_air_over_layer = int(hit.get("layer", _layer_index_for_base(_air_base_height)))
-	_transfer_behind_sign = _coping_sign(side)
-
 	var carry := carry_speed
 	if carry < 0.0:
 		_note_air_carry()
@@ -1623,7 +1589,30 @@ func _apply_spine_lock(hit: Dictionary, carry_speed: float = -1.0) -> void:
 	else:
 		_note_air_carry(carry)
 		carry = _air_carry_speed
-	_velocity.x = _AerialMath.lock_carry_velocity_x(carry, side)
+	var lock: Dictionary = _AerialTransfer.resolve_spine_lock(hit, depth.logical_x, carry)
+	if not bool(lock.get("ok", false)):
+		return
+	var side: int = int(lock.side)
+	var radius: float = float(lock.radius)
+	var coping: float = float(lock.coping_x)
+
+	_air_x_locked = true
+	_acid_drop_lock = false
+	_spine_transfer_lock = true
+	_air_side = side
+	_air_lip_x = float(lock.lip_x)
+	_air_radius = radius
+	_air_base_height = float(lock.base_height)
+	_air_z_min = float(lock.z_min)
+	_air_z_max = float(lock.z_max)
+	_air_coping_x = coping
+	air_over = str(lock.air_over)
+	if int(lock.layer) >= 0:
+		_air_over_layer = int(lock.layer)
+	else:
+		_air_over_layer = _layer_index_for_base(_air_base_height)
+	_transfer_behind_sign = float(lock.transfer_behind_sign)
+	_velocity.x = float(lock.vx)
 
 	_begin_transfer_x_lerp(coping, true, radius)
 
@@ -1759,48 +1748,15 @@ func _try_transfer() -> bool:
 	# Pipe-exit lock: only commit to a real destination (deck / foreign pipe).
 	# Flat/hole/oob probes used to call _begin_air_over and zero air_vel_y — felt
 	# like a dead-stop drop when spine/fly-out were both unavailable (level edge).
-	if was_locked and not _transfer_hit_is_meaningful(hit):
+	if was_locked and not _AerialTransfer.hit_is_meaningful(hit):
 		return false
-	var zone := str(hit.get("zone", "flat"))
-	var keep_h := air_abs_height
-	var anchor_x := probe_x
-	var target := {"zone": zone, "lock_x": false, "anchor_x": probe_x}
-
+	var pipe_r := 0.0
 	if _ContactMath.is_pipe(hit):
-		var side: int = int(hit.get("side", QuarterPipe.PipeSide.RIGHT))
-		var lip: float = float(hit.get("lip_x", probe_x))
-		var radius: float = _pipe_radius_for_hit(hit)
-		var coping := _coping_x_for(side, lip, radius)
-		# Transfer is not a pipe-coping exit — stay unlocked so gravity applies.
-		target = {
-			"zone": _pipe_zone_name(side),
-			"side": side,
-			"lip_x": lip,
-			"radius": radius,
-			"base_height": float(hit.get("base_height", 0.0)),
-			"z_min": float(hit.get("z_min", NAN)),
-			"z_max": float(hit.get("z_max", NAN)),
-			"layer": int(hit.get("layer", -1)),
-			"lock_x": false,
-			"anchor_x": coping,
-		}
-		anchor_x = coping
-	elif zone == "deck":
-		target = {
-			"zone": "deck",
-			"lock_x": false,
-			"anchor_x": probe_x,
-			"layer": int(hit.get("layer", -1)),
-			"base_height": float(hit.get("base_height", 0.0)),
-		}
-	else:
-		target = {
-			"zone": "flat",
-			"lock_x": false,
-			"anchor_x": probe_x,
-			"layer": int(hit.get("layer", -1)),
-			"base_height": float(hit.get("height", 0.0)),
-		}
+		pipe_r = _pipe_radius_for_hit(hit)
+	var built: Dictionary = _AerialTransfer.build_begin_air_target(hit, probe_x, pipe_r)
+	var target: Dictionary = built.get("target", {})
+	var anchor_x: float = float(built.get("anchor_x", probe_x))
+	var keep_h := air_abs_height
 
 	_begin_air_over(target, keep_h, false)
 	_transfer_available = false
@@ -1819,11 +1775,7 @@ func _try_transfer() -> bool:
 
 ## Deck or foreign pipe — not flat/hole fillers from sample_transfer.
 func _transfer_hit_is_meaningful(hit: Dictionary) -> bool:
-	if hit.is_empty():
-		return false
-	if _ContactMath.is_pipe(hit):
-		return true
-	return str(hit.get("zone", "")) == "deck"
+	return _AerialTransfer.hit_is_meaningful(hit)
 
 
 ## Nearest other pipe whose coping lies behind us (spine / back-to-back).

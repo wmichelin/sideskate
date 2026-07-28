@@ -110,3 +110,49 @@ static func pipe_identity_from_hit(
 		"transfer_behind_sign": _PipeMath.coping_sign(side),
 		"air_over_layer": out_layer,
 	}
+
+
+## Same lip identity or shared coping column as the pipe left this aerial.
+static func is_exit_pipe_coping(
+	coping: float,
+	side: int,
+	lip: float,
+	exit_side: int,
+	exit_lip: float,
+	exit_coping: float,
+) -> bool:
+	if exit_side < 0:
+		return false
+	if side == exit_side and not is_nan(exit_lip) and not is_nan(lip) \
+			and absf(lip - exit_lip) < 0.05:
+		return true
+	# Same coping column (stacked layers / twin lips share top X).
+	if not is_nan(exit_coping) and not is_nan(coping) \
+			and absf(coping - exit_coping) < 1.0:
+		return true
+	return false
+
+
+## True when hit is the pipe (or coping column) left this aerial.
+static func is_exit_pipe_hit(
+	hit: Dictionary,
+	exit_side: int,
+	exit_lip: float,
+	exit_coping: float,
+	exit_z_min: float,
+	exit_z_max: float,
+) -> bool:
+	if hit.is_empty() or exit_side < 0:
+		return false
+	var side := int(hit.get("side", -1))
+	var lip := float(hit.get("lip_x", NAN))
+	var coping := float(hit.get("top_coping", NAN))
+	if is_nan(coping) and not is_nan(lip):
+		coping = _PipeMath.coping_x(side, lip, float(hit.get("radius", 150.0)))
+	if not is_nan(exit_z_min) and hit.has("z_min") \
+			and absf(float(hit.z_min) - exit_z_min) > 0.05:
+		return false
+	if not is_nan(exit_z_max) and hit.has("z_max") \
+			and absf(float(hit.z_max) - exit_z_max) > 0.05:
+		return false
+	return is_exit_pipe_coping(coping, side, lip, exit_side, exit_lip, exit_coping)
