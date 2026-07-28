@@ -21,7 +21,11 @@ const _PerspectiveMath := preload("res://scripts/perspective_math.gd")
 ## Skip redraw when camera / lean origin / split move less than this (canvas px / logical).
 @export var redraw_epsilon: float = 2.0
 ## Arc samples along the quarter-pipe profile (fill + ribs share this).
-@export_range(4, 32, 1) var arc_steps: int = 8
+@export_range(4, 32, 1) var arc_steps: int = 6
+## Draw orange deck top outlines (extra stroke cost on wide maps).
+@export var show_deck_edges: bool = false
+## Draw yellow lip / coping strokes on pipes.
+@export var show_pipe_strokes: bool = true
 ## Faint white depth bands across the plaza. Off by default (debug clutter).
 @export var show_depth_grid: bool = false
 ## Highlight the .ssk ASCII cell under the player (logical unit 1:1). Debug only.
@@ -50,6 +54,10 @@ var _far: Node2D
 var _near: Node2D
 ## CanvasItem currently receiving draw_* during paint_pass.
 var _paint: CanvasItem
+## Triangle-batch scratch for one color flush (floors / pipe ribbons).
+var _batch_pts: PackedVector2Array = PackedVector2Array()
+var _batch_idx: PackedInt32Array = PackedInt32Array()
+var _batch_col: Color = Color.WHITE
 ## Logical X window visible through the camera (inclusive), padded.
 var _cull_x: Vector2 = Vector2(-INF, INF)
 var _force_redraw: bool = true
@@ -163,6 +171,39 @@ func _x_range_visible(x0: float, x1: float) -> bool:
 	return x1 >= _cull_x.x and x0 <= _cull_x.y
 
 
+func _batch_begin(color: Color) -> void:
+	_batch_pts = PackedVector2Array()
+	_batch_idx = PackedInt32Array()
+	_batch_col = color
+
+
+func _batch_quad(a: Vector2, b: Vector2, c: Vector2, d: Vector2) -> void:
+	var base := _batch_pts.size()
+	_batch_pts.append(a)
+	_batch_pts.append(b)
+	_batch_pts.append(c)
+	_batch_pts.append(d)
+	_batch_idx.append(base)
+	_batch_idx.append(base + 1)
+	_batch_idx.append(base + 2)
+	_batch_idx.append(base)
+	_batch_idx.append(base + 2)
+	_batch_idx.append(base + 3)
+
+
+func _batch_flush() -> void:
+	if _paint == null or _batch_pts.is_empty():
+		return
+	var colors := PackedColorArray()
+	colors.resize(_batch_pts.size())
+	colors.fill(_batch_col)
+	RenderingServer.canvas_item_add_triangle_array(
+		_paint.get_canvas_item(), _batch_idx, _batch_pts, colors
+	)
+	_batch_pts = PackedVector2Array()
+	_batch_idx = PackedInt32Array()
+
+
 func _deck_x_range(deck: Dictionary) -> Vector2:
 	var lo := INF
 	var hi := -INF
@@ -216,10 +257,7 @@ func paint_pass(ci: CanvasItem, near_pass: bool) -> void:
 		_draw_ground_floors(band)
 		# Outer flats behind deck walls; endcaps/ribbons after so only the curved
 		# pipe sidewall composites over an adjacent pad face (not the back wall).
-		for pipe in _pipes_far_to_near():
-			if not _x_range_visible(pipe.x_min(), pipe.x_max()):
-				continue
-			_draw_pipe_outer_walls(pipe, band)
+		_draw_all_pipe_outer_walls(band)
 		_draw_deck_walls(band)
 		for pipe in _pipes_far_to_near():
 			if not _x_range_visible(pipe.x_min(), pipe.x_max()):
@@ -407,6 +445,9 @@ func _draw_story_floor_cells(
 	var c_hi := clampi(int(ceil(_cull_x.y / cw)) + 1, 0, W)
 	if c_hi <= c_lo:
 		return
+	_batch_begin(fill)
+	var lava_pts := PackedVector2Array()
+	var lava_idx := PackedInt32Array()
 	for r in range(r_min, r_max + 1):
 		var z0 := maxf(float(H - 1 - r) * ch, band.x)
 		var z1 := minf(float(H - r) * ch, band.y)
@@ -426,17 +467,33 @@ func _draw_story_floor_cells(
 			if not _x_range_visible(x0, x1):
 				c = c1
 				continue
-			var cell_fill := lava_fill if kind == 2 else fill
-			_paint.draw_colored_polygon(
-				PackedVector2Array([
-					_surf_point(x0, z0, height),
-					_surf_point(x1, z0, height),
-					_surf_point(x1, z1, height),
-					_surf_point(x0, z1, height),
-				]),
-				cell_fill
-			)
+			var a := _surf_point(x0, z0, height)
+			var b := _surf_point(x1, z0, height)
+			var d := _surf_point(x1, z1, height)
+			var e := _surf_point(x0, z1, height)
+			if kind == 2:
+				var base := lava_pts.size()
+				lava_pts.append(a)
+				lava_pts.append(b)
+				lava_pts.append(d)
+				lava_pts.append(e)
+				lava_idx.append(base)
+				lava_idx.append(base + 1)
+				lava_idx.append(base + 2)
+				lava_idx.append(base)
+				lava_idx.append(base + 2)
+				lava_idx.append(base + 3)
+			else:
+				_batch_quad(a, b, d, e)
 			c = c1
+	_batch_flush()
+	if not lava_pts.is_empty():
+		var colors := PackedColorArray()
+		colors.resize(lava_pts.size())
+		colors.fill(lava_fill)
+		RenderingServer.canvas_item_add_triangle_array(
+			_paint.get_canvas_item(), lava_idx, lava_pts, colors
+		)
 
 
 func _draw_decks(band: Vector2) -> void:
@@ -453,6 +510,8 @@ func _draw_decks(band: Vector2) -> void:
 		if pts.size() < 3:
 			continue
 		_paint.draw_colored_polygon(pts, Color(0.55, 0.48, 0.32, 0.92))
+		if not show_deck_edges:
+			continue
 		# Skip Far/Near clip seams and coping edges (pipe owns that face).
 		var n := clipped.size()
 		for i in range(n):
@@ -472,6 +531,7 @@ func _draw_deck_walls(band: Vector2) -> void:
 	if _level.spec == null:
 		return
 	var wall_col := Color(0.38, 0.32, 0.22, 1.0)
+	_batch_begin(wall_col)
 	for deck in _decks_far_to_near():
 		var xr := _deck_x_range(deck)
 		if not _x_range_visible(xr.x, xr.y):
@@ -504,15 +564,13 @@ func _draw_deck_walls(band: Vector2) -> void:
 			var h_b := _level.deck_visual_height(deck, b.y)
 			if h_a <= h_bot + 0.05 and h_b <= h_bot + 0.05:
 				continue
-			_paint.draw_colored_polygon(
-				PackedVector2Array([
-					_surf_point(a.x, a.y, h_a),
-					_surf_point(b.x, b.y, h_b),
-					_surf_point(b.x, b.y, h_bot),
-					_surf_point(a.x, a.y, h_bot),
-				]),
-				wall_col
+			_batch_quad(
+				_surf_point(a.x, a.y, h_a),
+				_surf_point(b.x, b.y, h_b),
+				_surf_point(b.x, b.y, h_bot),
+				_surf_point(a.x, a.y, h_bot)
 			)
+	_batch_flush()
 
 
 ## True when both endpoints lie on a neighboring pipe's coping X.
@@ -733,21 +791,19 @@ func _draw_pipe(pipe: QuarterPipe, band: Vector2) -> void:
 	var z1 := minf(pipe.z_max, band.y)
 	if z1 <= z0 + 0.001:
 		return
-	var steps := maxi(arc_steps, 4)
 	var near_frame: Dictionary = _level.pipe_arc_frame(pipe, z0)
 	var far_frame: Dictionary = _level.pipe_arc_frame(pipe, z1)
+	var steps := _pipe_arc_steps_lod(float(near_frame.r))
 	var near_arc := _arc_points_from_frame(near_frame, steps)
 	var far_arc := _arc_points_from_frame(far_frame, steps)
 	var is_left := pipe.side == QuarterPipe.PipeSide.LEFT
 	var fill_col := Color(0.42, 0.38, 0.48, 0.92) if is_left else Color(0.38, 0.44, 0.52, 0.92)
-	var quad := PackedVector2Array()
-	quad.resize(4)
+	_batch_begin(fill_col)
 	for i in range(steps):
-		quad[0] = near_arc[i]
-		quad[1] = near_arc[i + 1]
-		quad[2] = far_arc[i + 1]
-		quad[3] = far_arc[i]
-		_paint.draw_colored_polygon(quad, fill_col)
+		_batch_quad(near_arc[i], near_arc[i + 1], far_arc[i + 1], far_arc[i])
+	_batch_flush()
+	if not show_pipe_strokes:
+		return
 	var ribs := maxi(arc_ribs, 1)
 	for r in range(1, ribs):
 		var u := float(r) / float(ribs)
@@ -771,7 +827,51 @@ func _draw_pipe(pipe: QuarterPipe, band: Vector2) -> void:
 	)
 
 
+func _pipe_arc_steps_lod(screen_radius: float) -> int:
+	var steps := maxi(arc_steps, 4)
+	if screen_radius < 28.0:
+		return 4
+	if screen_radius < 56.0:
+		return mini(steps, 5)
+	return steps
+
+
 ## Back flat under coping (drawn before deck walls so pad faces occlude it).
+func _draw_all_pipe_outer_walls(band: Vector2) -> void:
+	var left_col := Color(0.28, 0.24, 0.32, 0.96)
+	var right_col := Color(0.24, 0.28, 0.34, 0.96)
+	_batch_begin(left_col)
+	for pipe in _pipes_far_to_near():
+		if pipe.side != QuarterPipe.PipeSide.LEFT:
+			continue
+		if not _x_range_visible(pipe.x_min(), pipe.x_max()):
+			continue
+		_batch_pipe_outer_wall(pipe, band)
+	_batch_flush()
+	_batch_begin(right_col)
+	for pipe in _pipes_far_to_near():
+		if pipe.side != QuarterPipe.PipeSide.RIGHT:
+			continue
+		if not _x_range_visible(pipe.x_min(), pipe.x_max()):
+			continue
+		_batch_pipe_outer_wall(pipe, band)
+	_batch_flush()
+
+
+func _batch_pipe_outer_wall(pipe: QuarterPipe, band: Vector2) -> void:
+	var z0 := maxf(pipe.z_min, band.x)
+	var z1 := minf(pipe.z_max, band.y)
+	if z1 <= z0 + 0.001:
+		return
+	var top0: Vector2 = _level.pipe_arc_point(_level.pipe_arc_frame(pipe, z0), 1.0)
+	var top1: Vector2 = _level.pipe_arc_point(_level.pipe_arc_frame(pipe, z1), 1.0)
+	var cope_x := pipe.x_min() if pipe.side == QuarterPipe.PipeSide.LEFT else pipe.x_max()
+	var bot0 := _level.project_screen(cope_x, z0, pipe.base_height)
+	var bot1 := _level.project_screen(cope_x, z1, pipe.base_height)
+	_batch_quad(top0, top1, Vector2(top1.x, bot1.y), Vector2(top0.x, bot0.y))
+
+
+## Back flat under coping (single pipe — kept for callers / clarity).
 func _draw_pipe_outer_walls(pipe: QuarterPipe, band: Vector2) -> void:
 	var z0 := maxf(pipe.z_min, band.x)
 	var z1 := minf(pipe.z_max, band.y)

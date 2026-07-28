@@ -164,7 +164,7 @@ func _ready() -> void:
 		1.0,
 		_visual,
 		"arc_steps",
-		8.0,
+		6.0,
 		_on_arc_steps_changed,
 		_refresh_arc_steps_label
 	)

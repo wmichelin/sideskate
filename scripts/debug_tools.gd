@@ -12,7 +12,7 @@ var show_motion_vectors: bool = false
 var show_head_debug: bool = false
 ## Bottom-left FPS counter. On by default while debugging.
 var show_fps: bool = true
-## DisplayServer VSync. On by default to avoid tearing.
+## DisplayServer VSync. Mailbox when on (high-refresh friendly); off = uncapped.
 var vsync_enabled: bool = true
 
 signal god_mode_changed(enabled: bool)
@@ -91,8 +91,9 @@ func set_vsync_enabled(on: bool) -> void:
 
 
 func _apply_vsync(on: bool) -> void:
+	# Mailbox presents the latest frame — better for 120Hz than classic vsync.
 	var mode := (
-		DisplayServer.VSYNC_ENABLED if on else DisplayServer.VSYNC_DISABLED
+		DisplayServer.VSYNC_MAILBOX if on else DisplayServer.VSYNC_DISABLED
 	)
 	DisplayServer.window_set_vsync_mode(mode)
 
