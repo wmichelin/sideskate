@@ -2,8 +2,17 @@
 
 ## Read first
 
-- [docs/gameplay.md](docs/gameplay.md) — motion vectors, air, transfer / acid-drop, debug
+- [docs/gameplay.md](docs/gameplay.md) — motion vectors, air, transfer / acid-drop, debug, **key scripts map**
 - [docs/level_format.md](docs/level_format.md) — `.ssk` IDL
+
+## Player code layout
+
+- **`scripts/player.gd`** — orchestrator (state + tick + wrappers). Prefer not dumping new policy here.
+- **Pure helpers** (`aerial_*.gd`, `ground_*.gd`, `contact_math.gd`, `motion_*.gd`, …) — decisions / math; unit-test without a scene.
+- **`scripts/player_steps.gd`** — **step bodies**: per-tick procedures that mutate a live Player (`p`) instead of returning pure patches.
+- **`tests/player_runtime_fixture.gd`** — shared main.tscn + level bootstrap for Player runtime tests.
+
+See gameplay.md § Key scripts for the full table.
 
 ## Motion vectors
 

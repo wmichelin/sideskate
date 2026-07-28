@@ -173,24 +173,46 @@ Debug tools are gated by autoload `DebugTools`: available when `OS.is_debug_buil
 
 ## Key scripts
 
+**Player** is the orchestrator: fields, level I/O, pose writes, and thin wrappers. Policy and decision trees live in pure helpers (unit-tested).
+
+A **step body** is one physics-tick procedure that advances sim by reading/writing a live Player (`p`) — sample → decide → mutate pose/state — rather than returning a pure data patch. Those live in `player_steps.gd`; `player.gd` only calls them.
+
 | Script | Role |
 |--------|------|
-| [`scripts/player.gd`](../scripts/player.gd) | Motion, air, transfer, acid drop, ride-off; `motion_screen` / `motion_speed` |
-| [`scripts/ramp_level.gd`](../scripts/ramp_level.gd) | Load `.ssk`, sample surfaces, project to screen |
-| [`scripts/rendering_3d/level_visual_3d.gd`](../scripts/rendering_3d/level_visual_3d.gd) | 3D park meshes from LevelSpec + pipes |
-| [`scripts/rendering_3d/logical_pose_presenter_3d.gd`](../scripts/rendering_3d/logical_pose_presenter_3d.gd) | Logical pose → 3D player visual |
-| [`scripts/level_loader.gd`](../scripts/level_loader.gd) / [`level_spec.gd`](../scripts/level_spec.gd) | Parse IDL → floors, decks, pipes, grid metrics |
-| [`scripts/perspective_math.gd`](../scripts/perspective_math.gd) | Pure pseudo-depth projection helpers |
-| [`scripts/pipe_math.gd`](../scripts/pipe_math.gd) | Pure coping / opposite-pipe helpers |
-| [`scripts/motion_math.gd`](../scripts/motion_math.gd) | Pure brake-no-reverse + facing / transfer-vert helpers |
-| [`scripts/motion_vectors.gd`](../scripts/motion_vectors.gd) | Named triad `INPUT` / `MOMENTUM` / `ACTUAL` |
-| [`scripts/aerial_math.gd`](../scripts/aerial_math.gd) | Pure transfer / spine / acid routing + `merge_drop_in_along` / `lock_carry_velocity_x` |
-| [`scripts/facing_cast_math.gd`](../scripts/facing_cast_math.gd) | Pure facing-cast cells + story/pipe/coping surface resolve |
-| [`scripts/pseudo_depth_body.gd`](../scripts/pseudo_depth_body.gd) | Logical pose fields + optional CanvasItem apply |
-| [`scripts/quarter_pipe.gd`](../scripts/quarter_pipe.gd) | Pipe sample (θ, height, zone) |
-| [`scripts/debug_tools.gd`](../scripts/debug_tools.gd) | Production gate + god mode state |
-| [`scripts/debug_overlay.gd`](../scripts/debug_overlay.gd) / [`debug_sliders.gd`](../scripts/debug_sliders.gd) | HUD debug |
+| [`player.gd`](../scripts/player.gd) | Orchestrator — tick pipeline, state, wrappers; `motion_screen` / `motion_speed` |
+| [`player_steps.gd`](../scripts/player_steps.gd) | Step bodies: grounded / air / acid / transfer / land / surface (`PlayerSteps.*(p, …)`) |
+| [`player_air_state.gd`](../scripts/player_air_state.gd) | Air-state patches: clear, begin-air, pipe enter, fly-out, spine launch, lock identity, facing exclude |
+| [`player_surface.gd`](../scripts/player_surface.gd) | Air label decorate + grounded height-follow |
+| [`aerial_landing.gd`](../scripts/aerial_landing.gd) | Resolve land candidate (sweep/hole) + land motion patch |
+| [`aerial_contact.gd`](../scripts/aerial_contact.gd) | Sticky air-contact query + unlocked identity; exit-pipe match |
+| [`aerial_transfer.gd`](../scripts/aerial_transfer.gd) | Free-transfer target build; acid/spine lock resolve; spine height gate |
+| [`aerial_settle.gd`](../scripts/aerial_settle.gd) | Acid/spine X + tilt settle state machine |
+| [`aerial_targeting.gd`](../scripts/aerial_targeting.gd) | Facing-cast acid / facing coping pick |
+| [`aerial_math.gd`](../scripts/aerial_math.gd) | Action routing, travel, land-along, fly-out gate, pipe-behind |
+| [`ground_motion.gd`](../scripts/ground_motion.gd) | Sticky / mount / flat-path / coping-cross decisions |
+| [`ground_pipe_math.gd`](../scripts/ground_pipe_math.gd) | Pure quarter-pipe arc step |
+| [`contact_math.gd`](../scripts/contact_math.gd) | Solids, mounts, sticky action, land rejects, air-contact records |
+| [`motion_math.gd`](../scripts/motion_math.gd) | Brake-no-reverse, facing, transfer-vert, control integrate |
+| [`motion_vectors.gd`](../scripts/motion_vectors.gd) | Named triad `INPUT` / `MOMENTUM` / `ACTUAL` |
+| [`facing_cast_math.gd`](../scripts/facing_cast_math.gd) | Facing-cast cells + coping surface resolve |
+| [`pipe_math.gd`](../scripts/pipe_math.gd) | Coping X / sign / zone names |
+| [`player_pipe_hits.gd`](../scripts/player_pipe_hits.gd) / [`player_death.gd`](../scripts/player_death.gd) / [`player_motion_debug.gd`](../scripts/player_motion_debug.gd) | Hit packing, lava predicate, debug arrow math |
 
+**World / level / render**
+
+| Script | Role |
+|--------|------|
+| [`ramp_level.gd`](../scripts/ramp_level.gd) | Load `.ssk`, sample / sweep / air-contact, project to screen |
+| [`level_loader.gd`](../scripts/level_loader.gd) / [`level_spec.gd`](../scripts/level_spec.gd) | Parse IDL → floors, decks, pipes, grid |
+| [`quarter_pipe.gd`](../scripts/quarter_pipe.gd) | Pipe sample (θ, height, zone) |
+| [`pseudo_depth_body.gd`](../scripts/pseudo_depth_body.gd) | Logical pose; perspective refresh (Canvas2D parent optional) |
+| [`perspective_math.gd`](../scripts/perspective_math.gd) | Pure pseudo-depth projection |
+| [`rendering_3d/level_visual_3d.gd`](../scripts/rendering_3d/level_visual_3d.gd) | 3D park meshes |
+| [`rendering_3d/logical_pose_presenter_3d.gd`](../scripts/rendering_3d/logical_pose_presenter_3d.gd) | Logical pose → 3D skater |
+| [`debug_tools.gd`](../scripts/debug_tools.gd) | Production gate + god mode |
+| [`debug_overlay.gd`](../scripts/debug_overlay.gd) / [`debug_sliders.gd`](../scripts/debug_sliders.gd) | HUD debug |
+
+Runtime Player tests share [`tests/player_runtime_fixture.gd`](../tests/player_runtime_fixture.gd).
 ## Behavioral invariants (do not regress)
 
 1. Sim only on physics ticks.  
@@ -205,4 +227,4 @@ Debug tools are gated by autoload `DebugTools`: available when `OS.is_debug_buil
 10. Locked pipe land (pipe-exit / acid / spine): `merge_drop_in_along` — fall vert → along-arc, keep approach if faster into the pipe. Peak `_air_carry_speed` this aerial seeds approach so low→high climbs keep exit speed.  
 11. Acid/spine X settle: live `duration = base + rate × height_above` (`lock_x_duration_for_height`); progress `+= δt/duration`; smoothstep ease.
 
-Covered by headless tests in `tests/test_aerial_math.gd` / `tests/test_motion_math.gd` / `tests/test_cell_at_for_pose.gd` (routing, acid selection, landing floor, spine gaps, lock carry vs weak land_vy, coping-lock cell targeting).
+Covered by headless tests under `tests/` (`test_aerial_*`, `test_ground_*`, `test_contact_math`, `test_player_*`, `test_motion_*`, etc.).
