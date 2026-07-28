@@ -18,8 +18,9 @@ func run() -> bool:
 	var level := main.get_node_or_null("RampLevel") as RampLevel
 	var vis := main.get_node_or_null("World3D/LevelVisual3D")
 	var cam := main.get_node_or_null("World3D/CameraRig3D")
+	var col := main.get_node_or_null("World3D/LevelCollision3D")
 	var pvis := main.get_node_or_null("World3D/PlayerVisual")
-	if level == null or vis == null or cam == null or pvis == null:
+	if level == null or vis == null or cam == null or pvis == null or col == null:
 		push_error("missing 3D nodes")
 		main.queue_free()
 		GameSession.pending_level_path = ""
@@ -35,8 +36,21 @@ func run() -> bool:
 			return false
 		level.apply_spec(spec)
 	vis.call("rebuild")
+	col.call("rebuild")
 	if int(vis.get("mesh_count")) <= 0:
 		push_error("mesh_count == 0 after rebuild")
+		main.queue_free()
+		GameSession.pending_level_path = ""
+		return false
+	if int(col.get("part_count")) <= 0:
+		push_error("collision part_count == 0 after rebuild")
+		main.queue_free()
+		GameSession.pending_level_path = ""
+		return false
+
+	var player = main.get_node_or_null("Player")
+	if player == null or not (player is CharacterBody3D):
+		push_error("Player missing or not CharacterBody3D")
 		main.queue_free()
 		GameSession.pending_level_path = ""
 		return false

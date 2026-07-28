@@ -13,6 +13,11 @@
 [ext_resource type="Script" path="res://scripts/rendering_3d/camera_rig_3d.gd" id="15_cam3d"]
 [ext_resource type="Script" path="res://scripts/rendering_3d/level_debug_3d.gd" id="16_dbg3d"]
 [ext_resource type="Script" path="res://scripts/rendering_3d/player_debug_3d.gd" id="17_pdbg3d"]
+[ext_resource type="Script" path="res://scripts/physics/level_collision_3d.gd" id="18_col3d"]
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_player"]
+radius = 0.09
+height = 0.22
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_panel"]
 content_margin_left = 12.0
@@ -45,6 +50,10 @@ light_energy = 0.35
 script = ExtResource("13_vis3d")
 level_path = NodePath("../../RampLevel")
 
+[node name="LevelCollision3D" type="Node3D" parent="World3D"]
+script = ExtResource("18_col3d")
+level_path = NodePath("../../RampLevel")
+
 [node name="PlayerVisual" type="Node3D" parent="World3D"]
 script = ExtResource("14_pose3d")
 depth_path = NodePath("../../Player/PseudoDepthBody")
@@ -53,24 +62,40 @@ player_path = NodePath("../../Player")
 [node name="CameraRig3D" type="Node3D" parent="World3D"]
 script = ExtResource("15_cam3d")
 target_path = NodePath("../PlayerVisual")
+distance = 3.1
+look_ahead = 0.8
 
 [node name="LevelDebug3D" type="Node3D" parent="World3D"]
 script = ExtResource("16_dbg3d")
 player_path = NodePath("../../Player")
 level_path = NodePath("../../RampLevel")
+edge_lift = 0.0035
 
 [node name="PlayerDebug3D" type="Node3D" parent="World3D"]
 script = ExtResource("17_pdbg3d")
 player_path = NodePath("../../Player")
+units_per_speed = 0.0008
+min_length = 0.18
+max_length = 0.9
+head_offset = Vector3(0, 0.52, 0)
 
 [node name="RampLevel" type="Node2D" parent="." unique_id=1434297277]
 script = ExtResource("1_level")
 
-[node name="Player" type="Node" parent="." unique_id=1706349078]
+[node name="Player" type="CharacterBody3D" parent="." unique_id=1706349078]
+collision_layer = 1
+collision_mask = 30
+motion_mode = 1
+floor_snap_length = 0.08
 script = ExtResource("4_player")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Player"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.2, 0)
+shape = SubResource("CapsuleShape3D_player")
 
 [node name="PseudoDepthBody" type="Node" parent="Player" unique_id=1532835232]
 script = ExtResource("5_depth")
+level_path = NodePath("../../RampLevel")
 
 [node name="DebugOverlay" type="CanvasLayer" parent="." unique_id=1788673540]
 script = ExtResource("6_debug")

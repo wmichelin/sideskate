@@ -1,8 +1,8 @@
-extends Node
+extends CharacterBody3D
 ## 8-way mover on logical X/Z. Samples RampLevel; spawns from .ssk @ marker.
 ## Air over any zone. Coping exit locks X (gravity applies); acid drop locks X only.
 ## Ride-off a higher surface → free air (keep height + gravity). All sim on physics ticks.
-## Plain Node: Canvas2D pose lived on Node2D; 3D reads PseudoDepthBody logicals.
+## CharacterBody3D transform is motion authority; PseudoDepthBody is a derived snapshot.
 
 const _PipeMath := preload("res://scripts/pipe_math.gd")
 const _MotionMath := preload("res://scripts/motion_math.gd")
@@ -24,6 +24,14 @@ const _PlayerMotionDebug := preload("res://scripts/player_motion_debug.gd")
 const _PlayerAirState := preload("res://scripts/player_air_state.gd")
 const _PlayerSurface := preload("res://scripts/player_surface.gd")
 const _PlayerSteps := preload("res://scripts/player_steps.gd")
+const _ContactAdapter := preload("res://scripts/physics/contact_adapter.gd")
+const _CollisionLayers := preload("res://scripts/physics/collision_layers.gd")
+const _WorldSpace := preload("res://scripts/world_space.gd")
+
+## Capsule in meters (matches LogicalPosePresenter3D body height).
+const BODY_RADIUS_M := 0.09
+const BODY_CYLINDER_H_M := 0.22
+const BODY_FEET_TO_CENTER_M := BODY_RADIUS_M + BODY_CYLINDER_H_M * 0.5
 
 @export var max_speed_x: float = 880.0
 
@@ -45,7 +53,7 @@ const _PlayerSteps := preload("res://scripts/player_steps.gd")
 @export var transfer_release_min: float = 260.0
 ## Gravity while in unlocked air (m/s²). Debug slider writes this.
 @export var gravity_ms2: float = -19.0
-## Convert m/s² into logical units/s².
+## Convert m/s² into logical units/s² (must match WorldSpace.LOGIC_PER_METER).
 @export var logic_per_meter: float = 100.0
 ## Feet must drop at least this far below prior support to ride off into air.
 @export var ride_off_height_eps: float = 0.5
@@ -175,9 +183,13 @@ var _safe_z: float = 40.0
 var _safe_h: float = 0.0
 var _safe_facing: String = "r"
 var _death_overlay: Node = null
+## Last Godot contacts from swept motion (debug + face-role filters).
+var _last_physics_hits: Array = []
+var _excluded_ride_bodies: Array = []
 
 
 func _ready() -> void:
+	_configure_physics_body()
 	_level = get_node_or_null(level_path) as RampLevel
 	_face_nose = get_node_or_null("Body/FaceNose") as Polygon2D
 	_head_debug_label = get_node_or_null("Body/HeadDebug/Label") as Label
@@ -195,6 +207,28 @@ func _ready() -> void:
 				DebugTools.show_head_debug_changed.connect(_apply_head_debug_visible)
 	_ensure_death_overlay()
 	call_deferred("_spawn_from_level")
+
+
+func _configure_physics_body() -> void:
+	collision_layer = _CollisionLayers.bit(_CollisionLayers.PLAYER)
+	collision_mask = _CollisionLayers.player_mask()
+	motion_mode = MOTION_MODE_FLOATING
+	up_direction = Vector3.UP
+	floor_snap_length = _WorldSpace.logic_to_meters(8.0)
+	safe_margin = 0.002
+	# Never scale the physics body — size is authored in meters.
+	scale = Vector3.ONE
+	var cs := get_node_or_null("CollisionShape3D") as CollisionShape3D
+	if cs == null:
+		cs = CollisionShape3D.new()
+		cs.name = "CollisionShape3D"
+		add_child(cs)
+	if cs.shape == null or not (cs.shape is CapsuleShape3D):
+		var cap := CapsuleShape3D.new()
+		cap.radius = BODY_RADIUS_M
+		cap.height = BODY_CYLINDER_H_M
+		cs.shape = cap
+	cs.position = Vector3(0.0, BODY_FEET_TO_CENTER_M, 0.0)
 
 
 func _ensure_death_overlay() -> void:
@@ -264,6 +298,7 @@ func _apply_spawn_from_level() -> void:
 	_update_face_nose()
 	_step_body_tilt(0.0)
 	depth.apply()
+	_teleport_body_to_logical()
 
 
 func _physics_process(delta: float) -> void:
@@ -277,12 +312,16 @@ func _physics_process(delta: float) -> void:
 		depth.z_min = _level.z_min
 		depth.z_max = _level.z_max
 
+	# Depth may be written by helpers/tests without a body write; start each tick aligned.
+	_teleport_body_to_logical()
+	_refresh_action_collision_filters()
 	_tick_debug_god_input()
 	_tick_transfer_press()
 	_tick_integrate_input(delta)
 	_tick_apply_world_motion(delta)
 	_tick_clamp_playable_bounds()
 	_apply_surface()
+	_teleport_body_to_logical()
 	_note_safe_pad_from_surface()
 	if _try_lava_death():
 		_step_body_tilt(0.0)
@@ -293,6 +332,7 @@ func _physics_process(delta: float) -> void:
 	_tick_transfer_hold()
 	_clear_momentum_if_at_rest()
 	_step_body_tilt(delta)
+	_derive_depth_presentation()
 	depth.apply()
 	_capture_pose_snapshots()
 
@@ -351,6 +391,7 @@ func _tick_clamp_playable_bounds() -> void:
 		depth.z_max = _level.z_max
 	else:
 		depth.logical_x = clampf(depth.logical_x, 80.0, 1200.0)
+	_sweep_to_logical(depth.logical_x, depth.logical_z, _feet_height())
 
 
 func _tick_transfer_hold() -> void:
@@ -436,6 +477,7 @@ func _respawn_at_safe_pad() -> void:
 	_update_face_nose()
 	_step_body_tilt(0.0)
 	depth.apply()
+	_teleport_body_to_logical()
 
 
 func _feet_height() -> float:
@@ -448,7 +490,7 @@ func _air_coping_floor() -> float:
 	return _air_base_height + _air_radius
 
 
-## Keep moves inside layer-0 playable footprint (hard boundary). Always commits.
+## Keep moves inside layer-0 playable footprint (hard boundary). Swept body wins.
 func _commit_xz(next_x: float, next_z: float) -> bool:
 	var z := depth.clamp_z(next_z)
 	var x := next_x
@@ -458,8 +500,7 @@ func _commit_xz(next_x: float, next_z: float) -> bool:
 		var clamped: Vector2 = _level.spec.clamp_to_playable(x, z)
 		x = clamped.x
 		z = depth.clamp_z(clamped.y)
-	depth.logical_x = x
-	depth.logical_z = z
+	_sweep_to_logical(x, z, _feet_height())
 	return true
 
 
@@ -470,8 +511,132 @@ func _clamp_pose_playable() -> void:
 	if _spine_transfer_lock:
 		return
 	var clamped: Vector2 = _level.spec.clamp_to_playable(depth.logical_x, depth.logical_z)
-	depth.logical_x = clamped.x
-	depth.logical_z = depth.clamp_z(clamped.y)
+	_sweep_to_logical(clamped.x, depth.clamp_z(clamped.y), _feet_height())
+
+
+## Teleport body + depth together (spawn / respawn / hard land snaps).
+func _teleport_body_to_logical() -> void:
+	var h := _feet_height()
+	global_position = _WorldSpace.logical_to_world(depth.logical_x, depth.logical_z, h)
+	velocity = Vector3.ZERO
+	_derive_depth_presentation()
+
+
+## Swept move toward a logical pose; body transform is the authority afterward.
+func _sweep_to_logical(next_x: float, next_z: float, next_h: float) -> void:
+	_refresh_action_collision_filters()
+	var z := depth.clamp_z(next_z)
+	var target := _WorldSpace.logical_to_world(next_x, z, next_h)
+	var motion := target - global_position
+	_last_physics_hits.clear()
+	if motion.length_squared() <= 1e-16:
+		_sync_logical_from_body()
+		return
+	var remaining := motion
+	for _i in range(4):
+		var col := move_and_collide(remaining)
+		if col == null:
+			break
+		_last_physics_hits.append(_ContactAdapter.hit_from_collision(col))
+		remaining = remaining.slide(col.get_normal())
+		if remaining.length_squared() <= 1e-16:
+			break
+	_sync_logical_from_body()
+
+
+func _sync_logical_from_body() -> void:
+	var L: Dictionary = _WorldSpace.world_to_logical(global_position)
+	depth.logical_x = float(L.x)
+	depth.logical_z = depth.clamp_z(float(L.z))
+	var h := float(L.height)
+	if _airborne:
+		air_abs_height = h
+		depth.surface_height = h
+		depth.airborne = true
+	else:
+		depth.surface_height = h
+		depth.airborne = false
+
+
+## PseudoDepthBody is presentation / helper scratch; keep tilt + support derived.
+func _derive_depth_presentation() -> void:
+	depth.airborne = _airborne
+	if _airborne:
+		depth.surface_height = air_abs_height
+		depth.support_height = _underlying_surface_height()
+	else:
+		depth.support_height = depth.surface_height
+	depth.height_offset = 0.0
+
+
+## Acid/spine/sticky: suppress ride faces the capsule would otherwise embed in.
+## Walls/backs/endcaps stay solid off-ramp. Sticky ride uses analytical arc.
+func _refresh_action_collision_filters() -> void:
+	_clear_ride_exceptions()
+	if _on_ramp:
+		# Concave ride/back will embed a capsule and block coping launch; policy owns the arc.
+		collision_mask = 0
+		return
+	collision_mask = _CollisionLayers.player_mask()
+	if not _airborne:
+		return
+	if not (_acid_drop_lock or _spine_transfer_lock or _settle.x_active or _flew_out_this_aerial):
+		return
+	if _exit_pipe_side >= 0:
+		_exclude_pipe_faces(_exit_pipe_side, _exit_pipe_lip, ["ride"])
+
+
+func _exclude_pipe_faces(side: int, lip_x: float, roles: Array) -> void:
+	var root := get_tree().get_first_node_in_group("level_collision_3d")
+	if root == null:
+		var main := get_parent()
+		if main != null:
+			root = main.get_node_or_null("World3D/LevelCollision3D")
+	if root == null:
+		return
+	var bodies_node := root.get_node_or_null("Bodies")
+	if bodies_node == null:
+		return
+	for child in bodies_node.get_children():
+		if not (child is CollisionObject3D):
+			continue
+		var body := child as CollisionObject3D
+		var role := str(body.get_meta("face_role", ""))
+		if not roles.has(role):
+			continue
+		if not _pipe_meta_matches(body, side, lip_x):
+			continue
+		add_collision_exception_with(body)
+		_excluded_ride_bodies.append(body)
+
+
+func _exclude_pipe_ride(side: int, lip_x: float) -> void:
+	_exclude_pipe_faces(side, lip_x, ["ride"])
+
+
+func _pipe_meta_matches(body: CollisionObject3D, side: int, lip_x: float) -> bool:
+	if side < 0 or not body.has_meta("mesh_part_meta"):
+		return false
+	var meta = body.get_meta("mesh_part_meta")
+	if typeof(meta) != TYPE_DICTIONARY:
+		return false
+	var m: Dictionary = meta
+	if int(m.get("side", -2)) != side:
+		return false
+	if absf(float(m.get("lip_x", NAN)) - lip_x) > 0.5:
+		return false
+	return true
+
+
+func _is_exit_pipe_meta(body: CollisionObject3D) -> bool:
+	return _pipe_meta_matches(body, _exit_pipe_side, _exit_pipe_lip)
+
+
+func _clear_ride_exceptions() -> void:
+	for body in _excluded_ride_bodies:
+		if is_instance_valid(body):
+			remove_collision_exception_with(body)
+	_excluded_ride_bodies.clear()
 
 
 func _update_actual_velocity(delta: float) -> void:
@@ -561,7 +726,7 @@ func _begin_transfer_x_lerp(to_x: float, height_scaled: bool, _coping_radius: fl
 		acid_drop_x_duration_max,
 	)
 	if not active:
-		depth.logical_x = to_x
+		_sweep_to_logical(to_x, depth.logical_z, _feet_height())
 	if height_scaled:
 		_begin_tilt_lerp(_body_tilt_target_radians(), true)
 
@@ -619,7 +784,8 @@ func _integrate_air_gravity(delta: float) -> void:
 		air_vel_y = 0.0
 		return
 	air_vel_y += gravity_ms2 * logic_per_meter * delta
-	air_abs_height += air_vel_y * delta
+	var next_h := air_abs_height + air_vel_y * delta
+	_sweep_to_logical(depth.logical_x, depth.logical_z, next_h)
 	_note_air_carry()
 
 
@@ -684,6 +850,7 @@ func _commit_land_apply(
 		depth.logical_x = float(apply.logical_x)
 		_velocity.x = float(apply.vx)
 		_on_ramp = false
+		_teleport_body_to_logical()
 		return true
 	if kind == "pipe":
 		_ramp_along = float(apply.ramp_along)
@@ -698,8 +865,10 @@ func _commit_land_apply(
 			_move_along_pipe(land_hit, float(apply.ramp_along) * speed_mul, delta)
 		else:
 			depth.logical_x = float(apply.logical_x)
+			_teleport_body_to_logical()
 		return true
 	depth.logical_x = float(apply.logical_x)
+	_teleport_body_to_logical()
 	return true
 
 
@@ -823,11 +992,18 @@ func _move_along_pipe(hit: Dictionary, arc_speed: float, delta: float) -> void:
 				"base_height": float(hit.get("base_height", _ramp_base_height)),
 			}, float(step.get("up_speed", 0.0)))
 		"flat":
-			depth.logical_x = float(step.get("logical_x", depth.logical_x))
-			_clamp_pose_playable()
+			_sweep_to_logical(
+				float(step.get("logical_x", depth.logical_x)),
+				depth.logical_z,
+				_feet_height()
+			)
 			_leave_ramp_to_flat()
 		"arc":
-			depth.logical_x = float(step.get("logical_x", depth.logical_x))
+			_sweep_to_logical(
+				float(step.get("logical_x", depth.logical_x)),
+				depth.logical_z,
+				_feet_height()
+			)
 			_clamp_pose_playable()
 
 

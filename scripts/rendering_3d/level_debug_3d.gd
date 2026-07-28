@@ -2,18 +2,22 @@ class_name LevelDebug3D
 extends Node3D
 ## Cell highlight + facing-cast pads + green edge / orange surface lattices.
 
+const LevelGeometryScript := preload("res://scripts/mesh/level_geometry.gd")
+const MeshPartDebugScript := preload("res://scripts/mesh/mesh_part_debug.gd")
+
 @export var debug_cell_highlight: bool = false
 @export var debug_facing_cast: bool = false
 ## Green edge wire + orange surface lattice on collidable solids (default on).
 @export var debug_edge_lines: bool = true
 @export_range(1, 16, 1) var facing_cast_distance: int = 3
 @export var highlight_lift: float = 0.08
-@export var edge_lift: float = 0.35
-## Spacing for the orange surface lattice (logical units).
+## World-space lift (meters) so debug wires sit above collision faces.
+@export var edge_lift: float = 0.0035
+## Spacing for the orange surface lattice (logical units; legacy deck scans).
 @export var lattice_spacing: float = 28.0
 @export_range(2, 24, 1) var pipe_lattice_arc_steps: int = 8
 @export_range(2, 24, 1) var pipe_lattice_z_steps: int = 6
-@export var player_path: NodePath = NodePath("../../Player")
+@export var player_path: NodePath = NodePath("../Player")
 @export var level_path: NodePath = NodePath("../../RampLevel")
 
 var _player: Node
@@ -194,14 +198,29 @@ func _edge_rebuild_key() -> String:
 
 func _rebuild_edge_lines() -> void:
 	_clear_children(_edge_root)
-	var lift := edge_lift
+	var parts: Array = LevelGeometryScript.build_parts(_level.spec, _level.pipes)
+	# Lift along world +Y so wires sit just above the shared collision faces.
+	var lift := Vector3(0.0, edge_lift, 0.0)
 	_add_line_mesh("Edges", _edge_mat, func(st: SurfaceTool) -> void:
-		_append_deck_wireframe(st, lift)
-		_append_pipe_wireframe(st, lift)
+		for part in parts:
+			if part == null:
+				continue
+			# Green: boundary edges of walls/backs/endcaps/tops (skip dense ride lattice).
+			var role := str(part.meta.get("face_role", ""))
+			if role == "ride":
+				# Coping / silhouette still useful — boundary only.
+				MeshPartDebugScript.append_boundary_edges(st, part, lift)
+			else:
+				MeshPartDebugScript.append_boundary_edges(st, part, lift)
 	)
 	_add_line_mesh("Lattice", _lattice_mat, func(st: SurfaceTool) -> void:
-		_append_deck_lattice(st, lift)
-		_append_pipe_lattice(st, lift)
+		for part in parts:
+			if part == null:
+				continue
+			var role := str(part.meta.get("face_role", ""))
+			# Orange lattice visualizes the same triangles used for collision.
+			if role in ["ride", "top", "wall", "back", "lava"]:
+				MeshPartDebugScript.append_all_edges(st, part, lift)
 	)
 
 

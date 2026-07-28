@@ -188,7 +188,7 @@ A **step body** is one physics-tick procedure that advances sim by reading/writi
 
 | Script | Role |
 |--------|------|
-| [`player.gd`](../scripts/player.gd) | Orchestrator — tick pipeline, state, wrappers; `motion_screen` / `motion_speed` |
+| [`player.gd`](../scripts/player.gd) | Orchestrator — `CharacterBody3D` authority, tick pipeline, swept commits |
 | [`player_steps.gd`](../scripts/player_steps.gd) | Step bodies: grounded / air / acid / transfer / land / surface (`PlayerSteps.*(p, …)`) |
 | [`player_air_state.gd`](../scripts/player_air_state.gd) | Air-state patches: clear, begin-air, pipe enter, fly-out, spine launch, lock identity, facing exclude |
 | [`player_surface.gd`](../scripts/player_surface.gd) | Air label decorate + grounded height-follow |
@@ -207,6 +207,10 @@ A **step body** is one physics-tick procedure that advances sim by reading/writi
 | [`facing_cast_math.gd`](../scripts/facing_cast_math.gd) | Facing-cast cells + coping surface resolve |
 | [`pipe_math.gd`](../scripts/pipe_math.gd) | Coping X / sign / zone names |
 | [`player_pipe_hits.gd`](../scripts/player_pipe_hits.gd) / [`player_death.gd`](../scripts/player_death.gd) / [`player_motion_debug.gd`](../scripts/player_motion_debug.gd) | Hit packing, lava predicate, debug arrow math |
+| [`physics/level_collision_3d.gd`](../scripts/physics/level_collision_3d.gd) | Shared MeshPart → `StaticBody3D` trimeshes + face meta |
+| [`physics/contact_adapter.gd`](../scripts/physics/contact_adapter.gd) | Godot contacts → helper hit dicts |
+| [`physics/collision_layers.gd`](../scripts/physics/collision_layers.gd) | Player / ride / wall / lava layer bits |
+| [`mesh/mesh_part.gd`](../scripts/mesh/mesh_part.gd) / [`mesh/level_geometry.gd`](../scripts/mesh/level_geometry.gd) | CPU face soup shared by visual + collision + debug |
 
 **World / level / render**
 
@@ -215,9 +219,10 @@ A **step body** is one physics-tick procedure that advances sim by reading/writi
 | [`ramp_level.gd`](../scripts/ramp_level.gd) | Load `.ssk`, sample / sweep / air-contact, project to screen |
 | [`level_loader.gd`](../scripts/level_loader.gd) / [`level_spec.gd`](../scripts/level_spec.gd) | Parse IDL → floors, decks, pipes, grid |
 | [`quarter_pipe.gd`](../scripts/quarter_pipe.gd) | Pipe sample (θ, height, zone) |
-| [`pseudo_depth_body.gd`](../scripts/pseudo_depth_body.gd) | Logical pose; perspective refresh (Canvas2D parent optional) |
+| [`pseudo_depth_body.gd`](../scripts/pseudo_depth_body.gd) | Derived logical pose adapter (body is authority) |
+| [`world_space.gd`](../scripts/world_space.gd) | Logical ↔ meter mapping (`LOGIC_PER_METER = 100`) |
 | [`perspective_math.gd`](../scripts/perspective_math.gd) | Pure pseudo-depth projection |
-| [`rendering_3d/level_visual_3d.gd`](../scripts/rendering_3d/level_visual_3d.gd) | 3D park meshes |
+| [`rendering_3d/level_visual_3d.gd`](../scripts/rendering_3d/level_visual_3d.gd) | 3D park meshes from shared parts |
 | [`rendering_3d/logical_pose_presenter_3d.gd`](../scripts/rendering_3d/logical_pose_presenter_3d.gd) | Logical pose → 3D skater |
 | [`debug_tools.gd`](../scripts/debug_tools.gd) | Production gate + god mode |
 | [`debug_overlay.gd`](../scripts/debug_overlay.gd) / [`debug_sliders.gd`](../scripts/debug_sliders.gd) | HUD debug |

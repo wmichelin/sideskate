@@ -48,6 +48,14 @@ func load_level(level_path: String) -> bool:
 	ramp.apply_spec(spec)
 	# apply_spec does not emit rebuilt; notify Player so depth Z bounds / spawn sync.
 	ramp.rebuilt.emit()
+	var col = main.get_node_or_null("World3D/LevelCollision3D") if main != null else null
+	if col != null and col.has_method("rebuild"):
+		col.call("rebuild")
+	var vis = main.get_node_or_null("World3D/LevelVisual3D") if main != null else null
+	if vis != null and vis.has_method("rebuild"):
+		vis.call("rebuild")
+	if player != null and player.has_method("_teleport_body_to_logical"):
+		player.call("_teleport_body_to_logical")
 	return true
 
 
@@ -125,16 +133,34 @@ func seed_pipe_exit_air(pipe: QuarterPipe, height_above_coping: float = 40.0) ->
 	player._velocity = Vector2(PipeMath.coping_sign(int(pipe.side)) * 180.0, 0.0)
 	player._actual_vel_x = player._velocity.x
 	player.facing_h = "r" if player._velocity.x > 0.0 else "l"
+	if player.has_method("_teleport_body_to_logical"):
+		player.call("_teleport_body_to_logical")
 
 
 func _wire_player_onready() -> void:
-	player.depth = player.get_node("PseudoDepthBody")
+	# Player script may still be compiling; resolve typed fields via get/set.
+	var depth_node = player.get_node_or_null("PseudoDepthBody")
+	if depth_node != null and "depth" in player:
+		player.depth = depth_node
+	elif depth_node != null:
+		player.set("depth", depth_node)
+	if player.has_method("_configure_physics_body"):
+		player.call("_configure_physics_body")
 	var head_label = player.get_node_or_null("Body/HeadDebug/Label")
 	var head_panel = player.get_node_or_null("Body/HeadDebug")
 	var face = player.get_node_or_null("Body/FaceNose")
 	if head_label != null:
-		player._head_debug_label = head_label
+		player.set("_head_debug_label", head_label)
 	if head_panel != null:
-		player._head_debug_panel = head_panel
+		player.set("_head_debug_panel", head_panel)
 	if face != null:
-		player._face_nose = face
+		player.set("_face_nose", face)
+	# Ensure collision meshes exist for the loaded level before ticks.
+	var col = main.get_node_or_null("World3D/LevelCollision3D")
+	if col != null and col.has_method("rebuild"):
+		col.call("rebuild")
+	var vis = main.get_node_or_null("World3D/LevelVisual3D")
+	if vis != null and vis.has_method("rebuild"):
+		vis.call("rebuild")
+	if player.has_method("_teleport_body_to_logical"):
+		player.call("_teleport_body_to_logical")

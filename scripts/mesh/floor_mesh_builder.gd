@@ -2,9 +2,12 @@ class_name FloorMeshBuilder
 extends RefCounted
 ## Merged horizontal floor/lava quads from LevelSpec story masks.
 
+const _MeshPart := preload("res://scripts/mesh/mesh_part.gd")
+const _WorldSpace := preload("res://scripts/world_space.gd")
 
-static func build(spec: LevelSpec) -> Array:
-	## Returns Array of {mesh: ArrayMesh, material_key: String, layer: int}.
+
+static func build_parts(spec: LevelSpec) -> Array:
+	## Returns Array of MeshPart (CPU faces + meta).
 	var out: Array = []
 	if spec == null or spec.grid_w <= 0 or spec.grid_h <= 0:
 		return out
@@ -18,12 +21,16 @@ static func build(spec: LevelSpec) -> Array:
 		var mask: PackedByteArray = story.get("mask", PackedByteArray())
 		if mask.size() < W * H:
 			continue
-		var floor_st := SurfaceTool.new()
-		floor_st.begin(Mesh.PRIMITIVE_TRIANGLES)
-		var lava_st := SurfaceTool.new()
-		lava_st.begin(Mesh.PRIMITIVE_TRIANGLES)
-		var has_floor := false
-		var has_lava := false
+		var floor_part = _MeshPart.make(
+			"floor",
+			layer,
+			{"zone": "flat", "layer": layer, "face_role": "top", "height": height},
+		)
+		var lava_part = _MeshPart.make(
+			"lava",
+			layer,
+			{"zone": "lava", "layer": layer, "face_role": "lava", "height": height},
+		)
 		for r in range(H):
 			var z0 := float(H - 1 - r) * ch
 			var z1 := float(H - r) * ch
@@ -39,30 +46,43 @@ static func build(spec: LevelSpec) -> Array:
 				var x0 := float(c) * cw
 				var x1 := float(c1) * cw
 				if kind == 2:
-					_quad(lava_st, x0, z0, x1, z1, height)
-					has_lava = true
+					_quad(lava_part, x0, z0, x1, z1, height)
 				else:
-					_quad(floor_st, x0, z0, x1, z1, height)
-					has_floor = true
+					_quad(floor_part, x0, z0, x1, z1, height)
 				c = c1
-		if has_floor:
-			floor_st.generate_normals()
-			out.append({"mesh": floor_st.commit(), "material_key": "floor", "layer": layer})
-		if has_lava:
-			lava_st.generate_normals()
-			out.append({"mesh": lava_st.commit(), "material_key": "lava", "layer": layer})
+		if not floor_part.is_empty():
+			out.append(floor_part)
+		if not lava_part.is_empty():
+			out.append(lava_part)
 	return out
 
 
-static func _quad(st: SurfaceTool, x0: float, z0: float, x1: float, z1: float, y: float) -> void:
-	var a := WorldSpace.logical_to_world(x0, z0, y)
-	var b := WorldSpace.logical_to_world(x1, z0, y)
-	var c := WorldSpace.logical_to_world(x1, z1, y)
-	var d := WorldSpace.logical_to_world(x0, z1, y)
-	# Winding flipped vs logical order: WorldSpace mirrors X.
-	st.add_vertex(a)
-	st.add_vertex(c)
-	st.add_vertex(b)
-	st.add_vertex(a)
-	st.add_vertex(d)
-	st.add_vertex(c)
+static func build(spec: LevelSpec) -> Array:
+	## Legacy wrapper: Array of {mesh, material_key, layer, meta, part}.
+	return _parts_to_legacy(build_parts(spec))
+
+
+static func _parts_to_legacy(parts: Array) -> Array:
+	var out: Array = []
+	for part in parts:
+		var mesh: ArrayMesh = part.to_array_mesh()
+		if mesh == null:
+			continue
+		out.append({
+			"mesh": mesh,
+			"material_key": part.material_key,
+			"layer": part.layer,
+			"meta": part.meta,
+			"part": part,
+		})
+	return out
+
+
+static func _quad(part, x0: float, z0: float, x1: float, z1: float, y: float) -> void:
+	var a: Vector3 = _WorldSpace.logical_to_world(x0, z0, y)
+	var b: Vector3 = _WorldSpace.logical_to_world(x1, z0, y)
+	var c: Vector3 = _WorldSpace.logical_to_world(x1, z1, y)
+	var d: Vector3 = _WorldSpace.logical_to_world(x0, z1, y)
+	# Upward normals after WorldSpace X-mirror (opposite of MeshPart.append_quad default).
+	part.append_tri(a, b, c)
+	part.append_tri(a, c, d)

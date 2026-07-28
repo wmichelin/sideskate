@@ -7,6 +7,9 @@ func _ready() -> void:
 	var vis3d := get_node_or_null("World3D/LevelVisual3D")
 	if vis3d != null and vis3d.has_method("rebuild"):
 		vis3d.call_deferred("rebuild")
+	var col3d := get_node_or_null("World3D/LevelCollision3D")
+	if col3d != null and col3d.has_method("rebuild"):
+		col3d.call_deferred("rebuild")
 
 
 func _setup_environment() -> void:

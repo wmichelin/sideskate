@@ -2,15 +2,23 @@ class_name PipeMeshBuilder
 extends RefCounted
 ## Quarter-cylinder ride surface + outer wall + Z endcaps from QuarterPipe math.
 
+const _MeshPart := preload("res://scripts/mesh/mesh_part.gd")
+const _WorldSpace := preload("res://scripts/world_space.gd")
+const _FloorMeshBuilder := preload("res://scripts/mesh/floor_mesh_builder.gd")
+const _PipeMath := preload("res://scripts/pipe_math.gd")
 
 const ARC_STEPS := 12
 
 
 static func build_from_pipes(pipes: Array) -> Array:
+	return _FloorMeshBuilder._parts_to_legacy(build_parts_from_pipes(pipes))
+
+
+static func build_parts_from_pipes(pipes: Array) -> Array:
 	var out: Array = []
 	for pipe in pipes:
 		if pipe is QuarterPipe:
-			out.append_array(build_one(pipe as QuarterPipe))
+			out.append_array(build_one_parts(pipe as QuarterPipe))
 		elif pipe is Dictionary:
 			var qp := QuarterPipe.new()
 			qp.side = int(pipe.side)
@@ -20,27 +28,45 @@ static func build_from_pipes(pipes: Array) -> Array:
 			qp.layer = int(pipe.get("layer", 0))
 			qp.z_min = float(pipe.z_min)
 			qp.z_max = float(pipe.z_max)
-			out.append_array(build_one(qp))
+			out.append_array(build_one_parts(qp))
 	return out
 
 
 static func build_one(pipe: QuarterPipe) -> Array:
+	return _FloorMeshBuilder._parts_to_legacy(build_one_parts(pipe))
+
+
+static func build_one_parts(pipe: QuarterPipe) -> Array:
 	var out: Array = []
-	var ride := _build_ride(pipe)
-	if ride != null:
-		out.append({"mesh": ride, "material_key": "pipe_ride", "layer": pipe.layer})
-	var wall := _build_outer_wall(pipe)
-	if wall != null:
-		out.append({"mesh": wall, "material_key": "pipe_wall", "layer": pipe.layer})
-	var caps := _build_endcaps(pipe)
-	if caps != null:
-		out.append({"mesh": caps, "material_key": "pipe_wall", "layer": pipe.layer})
+	var ride = _build_ride_part(pipe)
+	if ride != null and not ride.is_empty():
+		out.append(ride)
+	var wall = _build_outer_wall_part(pipe)
+	if wall != null and not wall.is_empty():
+		out.append(wall)
+	var caps = _build_endcaps_part(pipe)
+	if caps != null and not caps.is_empty():
+		out.append(caps)
 	return out
 
 
-static func _build_ride(pipe: QuarterPipe) -> ArrayMesh:
-	var st := SurfaceTool.new()
-	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+static func _pipe_meta(pipe: QuarterPipe, face_role: String) -> Dictionary:
+	return {
+		"zone": _PipeMath.zone_name(pipe.side),
+		"layer": pipe.layer,
+		"face_role": face_role,
+		"side": pipe.side,
+		"lip_x": pipe.lip_x,
+		"radius": pipe.radius,
+		"base_height": pipe.base_height,
+		"z_min": pipe.z_min,
+		"z_max": pipe.z_max,
+		"top_coping": _PipeMath.coping_x(pipe.side, pipe.lip_x, pipe.radius),
+	}
+
+
+static func _build_ride_part(pipe: QuarterPipe):
+	var part = _MeshPart.make("pipe_ride", pipe.layer, _pipe_meta(pipe, "ride"))
 	var z0 := pipe.z_min
 	var z1 := pipe.z_max
 	var is_left := pipe.side == QuarterPipe.PipeSide.LEFT
@@ -49,78 +75,69 @@ static func _build_ride(pipe: QuarterPipe) -> ArrayMesh:
 		var t1 := float(i + 1) / float(ARC_STEPS)
 		var theta0 := t0 * PI * 0.5
 		var theta1 := t1 * PI * 0.5
-		var p0 := _profile_point(pipe, theta0, is_left)
-		var p1 := _profile_point(pipe, theta1, is_left)
-		var a := WorldSpace.logical_to_world(p0.x, z0, p0.y)
-		var b := WorldSpace.logical_to_world(p1.x, z0, p1.y)
-		var c := WorldSpace.logical_to_world(p1.x, z1, p1.y)
-		var d := WorldSpace.logical_to_world(p0.x, z1, p0.y)
+		var p0 := profile_point(pipe, theta0, is_left)
+		var p1 := profile_point(pipe, theta1, is_left)
+		var a: Vector3 = _WorldSpace.logical_to_world(p0.x, z0, p0.y)
+		var b: Vector3 = _WorldSpace.logical_to_world(p1.x, z0, p1.y)
+		var c: Vector3 = _WorldSpace.logical_to_world(p1.x, z1, p1.y)
+		var d: Vector3 = _WorldSpace.logical_to_world(p0.x, z1, p0.y)
 		# Outward-facing; WorldSpace X-mirror reverses winding vs logical layout.
 		if is_left:
-			_tri(st, a, c, d)
-			_tri(st, a, b, c)
+			part.append_tri(a, c, d)
+			part.append_tri(a, b, c)
 		else:
-			_tri(st, a, c, b)
-			_tri(st, a, d, c)
-	st.generate_normals()
-	return st.commit()
+			part.append_tri(a, c, b)
+			part.append_tri(a, d, c)
+	return part
 
 
-static func _build_outer_wall(pipe: QuarterPipe) -> ArrayMesh:
-	var st := SurfaceTool.new()
-	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var cope_x := PipeMath.coping_x(pipe.side, pipe.lip_x, pipe.radius)
+static func _build_outer_wall_part(pipe: QuarterPipe):
+	var part = _MeshPart.make("pipe_wall", pipe.layer, _pipe_meta(pipe, "back"))
+	var cope_x := _PipeMath.coping_x(pipe.side, pipe.lip_x, pipe.radius)
 	var top_h := pipe.base_height + pipe.radius
 	var bot := pipe.base_height
 	var z0 := pipe.z_min
 	var z1 := pipe.z_max
-	var a := WorldSpace.logical_to_world(cope_x, z0, top_h)
-	var b := WorldSpace.logical_to_world(cope_x, z1, top_h)
-	var c := WorldSpace.logical_to_world(cope_x, z1, bot)
-	var d := WorldSpace.logical_to_world(cope_x, z0, bot)
+	var a: Vector3 = _WorldSpace.logical_to_world(cope_x, z0, top_h)
+	var b: Vector3 = _WorldSpace.logical_to_world(cope_x, z1, top_h)
+	var c: Vector3 = _WorldSpace.logical_to_world(cope_x, z1, bot)
+	var d: Vector3 = _WorldSpace.logical_to_world(cope_x, z0, bot)
 	var is_left := pipe.side == QuarterPipe.PipeSide.LEFT
 	if is_left:
-		_tri(st, a, c, b)
-		_tri(st, a, d, c)
+		part.append_tri(a, c, b)
+		part.append_tri(a, d, c)
 	else:
-		_tri(st, a, c, d)
-		_tri(st, a, b, c)
-	st.generate_normals()
-	return st.commit()
+		part.append_tri(a, c, d)
+		part.append_tri(a, b, c)
+	return part
 
 
-static func _build_endcaps(pipe: QuarterPipe) -> ArrayMesh:
-	var st := SurfaceTool.new()
-	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	_endcap_at(st, pipe, pipe.z_min, true)
-	_endcap_at(st, pipe, pipe.z_max, false)
-	st.generate_normals()
-	return st.commit()
+static func _build_endcaps_part(pipe: QuarterPipe):
+	var part = _MeshPart.make("pipe_wall", pipe.layer, _pipe_meta(pipe, "endcap"))
+	_endcap_at(part, pipe, pipe.z_min, true)
+	_endcap_at(part, pipe, pipe.z_max, false)
+	return part
 
 
-static func _endcap_at(st: SurfaceTool, pipe: QuarterPipe, logical_z: float, near_face: bool) -> void:
+static func _endcap_at(part, pipe: QuarterPipe, logical_z: float, near_face: bool) -> void:
 	var is_left := pipe.side == QuarterPipe.PipeSide.LEFT
-	# Solid under the ride arc: fan from the outer base corner (cope_x, base)
-	# through arc samples — same silhouette as RampVisual._draw_pipe_endcap
-	# (arc → outer drop → base), not a hard chord triangle.
-	var cope_profile := _profile_point(pipe, PI * 0.5, is_left)
-	var cope_bot := WorldSpace.logical_to_world(cope_profile.x, logical_z, pipe.base_height)
+	var cope_profile := profile_point(pipe, PI * 0.5, is_left)
+	var cope_bot: Vector3 = _WorldSpace.logical_to_world(cope_profile.x, logical_z, pipe.base_height)
 	for i in range(ARC_STEPS):
 		var t0 := float(i) / float(ARC_STEPS)
 		var t1 := float(i + 1) / float(ARC_STEPS)
-		var p0 := _profile_point(pipe, t0 * PI * 0.5, is_left)
-		var p1 := _profile_point(pipe, t1 * PI * 0.5, is_left)
-		var a := WorldSpace.logical_to_world(p0.x, logical_z, p0.y)
-		var b := WorldSpace.logical_to_world(p1.x, logical_z, p1.y)
-		# WorldSpace X-mirror reverses near/far winding.
+		var p0 := profile_point(pipe, t0 * PI * 0.5, is_left)
+		var p1 := profile_point(pipe, t1 * PI * 0.5, is_left)
+		var a: Vector3 = _WorldSpace.logical_to_world(p0.x, logical_z, p0.y)
+		var b: Vector3 = _WorldSpace.logical_to_world(p1.x, logical_z, p1.y)
 		if near_face:
-			_tri(st, cope_bot, a, b)
+			part.append_tri(cope_bot, a, b)
 		else:
-			_tri(st, cope_bot, b, a)
+			part.append_tri(cope_bot, b, a)
 
 
 ## Profile point: Vector2(x, height) at angle theta from lip (0) to coping (π/2).
-static func _profile_point(pipe: QuarterPipe, theta: float, is_left: bool) -> Vector2:
+static func profile_point(pipe: QuarterPipe, theta: float, is_left: bool) -> Vector2:
 	var h := pipe.base_height + pipe.radius * (1.0 - cos(theta))
 	var x: float
 	if is_left:
@@ -130,7 +147,6 @@ static func _profile_point(pipe: QuarterPipe, theta: float, is_left: bool) -> Ve
 	return Vector2(x, h)
 
 
-static func _tri(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3) -> void:
-	st.add_vertex(a)
-	st.add_vertex(b)
-	st.add_vertex(c)
+## Backward-compatible alias used by tests.
+static func _profile_point(pipe: QuarterPipe, theta: float, is_left: bool) -> Vector2:
+	return profile_point(pipe, theta, is_left)

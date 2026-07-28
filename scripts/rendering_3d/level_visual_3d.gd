@@ -1,12 +1,10 @@
 class_name LevelVisual3D
 extends Node3D
-## Builds opaque ArrayMeshes from LevelSpec + QuarterPipe nodes on `rebuilt`.
+## Builds opaque ArrayMeshes from shared MeshPart geometry on `rebuilt`.
 
-const FloorMeshBuilderScript := preload("res://scripts/mesh/floor_mesh_builder.gd")
-const PipeMeshBuilderScript := preload("res://scripts/mesh/pipe_mesh_builder.gd")
-const DeckMeshBuilderScript := preload("res://scripts/mesh/deck_mesh_builder.gd")
+const LevelGeometryScript := preload("res://scripts/mesh/level_geometry.gd")
 
-@export var level_path: NodePath = NodePath("../RampLevel")
+@export var level_path: NodePath = NodePath("../../RampLevel")
 
 var _level: RampLevel
 var _mesh_root: Node3D
@@ -38,20 +36,19 @@ func rebuild() -> void:
 	_clear_meshes()
 	mesh_count = 0
 	last_aabb = AABB()
-	var parts: Array = []
-	parts.append_array(FloorMeshBuilderScript.build(_level.spec))
-	parts.append_array(PipeMeshBuilderScript.build_from_pipes(_level.pipes))
-	parts.append_array(DeckMeshBuilderScript.build(_level.spec))
+	var parts: Array = LevelGeometryScript.build_parts(_level.spec, _level.pipes)
 	for part in parts:
-		var mesh: ArrayMesh = part.get("mesh")
+		if part == null or not part.has_method("is_empty") or part.is_empty():
+			continue
+		var mesh: ArrayMesh = part.to_array_mesh()
 		if mesh == null:
 			continue
 		var mi := MeshInstance3D.new()
 		mi.mesh = mesh
-		mi.material_override = _material_for(str(part.get("material_key", "floor")))
+		mi.material_override = _material_for(str(part.material_key))
 		_mesh_root.add_child(mi)
 		mesh_count += 1
-		var ab := mesh.get_aabb()
+		var ab: AABB = mesh.get_aabb()
 		if last_aabb.size == Vector3.ZERO:
 			last_aabb = ab
 		else:

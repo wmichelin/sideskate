@@ -4,13 +4,13 @@ extends Node3D
 
 @export var target_path: NodePath = NodePath("../PlayerVisual")
 ## Radial distance from focus (zoom).
-@export var distance: float = 310.0
+@export var distance: float = 3.1
 ## Elevation angle in degrees. 0 = horizon behind; positive = above looking down.
 @export var pitch_deg: float = 48.5
 ## Orbit yaw in degrees around the focus (0 = behind, looking +Z into the park).
 @export var yaw_deg: float = 0.0
 @export var fov_deg: float = 90.0
-@export var look_ahead: float = 80.0
+@export var look_ahead: float = 0.8
 @export var screen_y_bias: float = 0.08
 ## Direct follow — no extra physics-step lag; presenter already interpolates.
 @export var follow_smooth: float = 0.0

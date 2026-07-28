@@ -3,10 +3,10 @@ extends Node3D
 ## Drives a 3D skater placeholder + shadow from LogicalPose / PseudoDepthBody.
 ## Simulation stays on physics ticks; visible pose interpolates on render frames.
 
-@export var depth_path: NodePath = NodePath("../../RampLevel/../Player/PseudoDepthBody")
-@export var player_path: NodePath = NodePath("../../Player")
-## Placeholder skater size. Root origin is the feet / ground contact.
-@export var body_size: Vector3 = Vector3(18, 40, 14)
+@export var depth_path: NodePath = NodePath("../Player/PseudoDepthBody")
+@export var player_path: NodePath = NodePath("../Player")
+## Placeholder skater size in meters. Root origin is the feet / ground contact.
+@export var body_size: Vector3 = Vector3(0.18, 0.40, 0.14)
 
 var _body: MeshInstance3D
 var _shadow: MeshInstance3D
@@ -35,9 +35,9 @@ func _build_meshes() -> void:
 	_shadow = MeshInstance3D.new()
 	_shadow.name = "AirShadow"
 	var disc := CylinderMesh.new()
-	disc.top_radius = 14.0
-	disc.bottom_radius = 14.0
-	disc.height = 1.0
+	disc.top_radius = 0.14
+	disc.bottom_radius = 0.14
+	disc.height = 0.01
 	disc.radial_segments = 16
 	_shadow.mesh = disc
 	var sm := StandardMaterial3D.new()
@@ -71,8 +71,8 @@ func apply_pose(pose: LogicalPose) -> void:
 		if pose.airborne:
 			_shadow.visible = true
 			_shadow.global_position = WorldSpace.logical_to_world(
-				pose.logical_x, pose.logical_z, pose.support_height + 0.5
-			)
+				pose.logical_x, pose.logical_z, pose.support_height
+			) + Vector3(0.0, 0.005, 0.0)
 			_shadow.rotation = Vector3.ZERO
 			_shadow.scale = Vector3.ONE
 		else:

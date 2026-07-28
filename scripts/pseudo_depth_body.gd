@@ -1,12 +1,12 @@
 class_name PseudoDepthBody
 extends Node
-## Converts logical (X, Z) beat-em-up coordinates into screen placement.
+## Derived logical pose snapshot for helpers / presenters.
 ##
-## When a RampLevel projector is set, screen X/Y, surface height, and sprite
-## scale use the same perspective math as level geometry (`geometry_scale_at`).
-## Airborne: body rises with feet height; circular shadow shows only in air,
-## pinned to underfoot support and shrinking with height above that surface.
-## Air shadow uses absolute z above RampVisual Near so coplanar deck tops do not hide it.
+## CharacterBody3D (Player) is motion authority. This node stores logical X/Z/height
+## mirrors used by skate policy helpers and LogicalPosePresenter3D. Prefer writing
+## through Player swept commits; treat fields here as a compatibility adapter.
+##
+## Optional Canvas2D Body/Shadow paths remain for legacy 2D debug scenes.
 
 const _PerspectiveMath := preload("res://scripts/perspective_math.gd")
 

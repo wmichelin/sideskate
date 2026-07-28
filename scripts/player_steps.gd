@@ -590,6 +590,8 @@ static func _apply_spine_clearance(p, delta: float = 1.0 / 60.0) -> void:
 		)
 	p.air_abs_height = float(patch.height)
 	p.air_vel_y = float(patch.vel_y)
+	# Swept body authority — no second analytical teleport past solids.
+	p._sweep_to_logical(p.depth.logical_x, p.depth.logical_z, p.air_abs_height)
 
 
 static func apply_free_air_motion(p, delta: float, speed_mul: float) -> void:

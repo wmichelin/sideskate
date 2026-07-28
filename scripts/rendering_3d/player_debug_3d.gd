@@ -2,12 +2,12 @@ class_name PlayerDebug3D
 extends Node3D
 ## 3D motion-vector arrows + head zone label (Body CanvasItem debug is hidden in 3D).
 
-@export var player_path: NodePath = NodePath("../../Player")
+@export var player_path: NodePath = NodePath("../Player")
 @export var min_speed: float = 8.0
-@export var units_per_speed: float = 0.08
-@export var min_length: float = 18.0
-@export var max_length: float = 90.0
-@export var head_offset: Vector3 = Vector3(0.0, 52.0, 0.0)
+@export var units_per_speed: float = 0.0008
+@export var min_length: float = 0.18
+@export var max_length: float = 0.90
+@export var head_offset: Vector3 = Vector3(0.0, 0.52, 0.0)
 
 var _player: Node
 var _head: Label3D
