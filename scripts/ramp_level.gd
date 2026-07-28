@@ -45,6 +45,12 @@ var perspective_origin_z: float = 0.0
 ## Skater Z for draw-band culling (kept in sync with perspective_origin_z).
 var view_origin_z: float = 0.0
 var _loaded_path: String = ""
+## Cached focal / far scale for project_screen (avoids recomputing per vertex).
+var _proj_focal: float = 1.0
+var _proj_far_scale: float = 1.0
+var _proj_cache_ref: float = NAN
+var _proj_cache_inset: float = NAN
+var _proj_cache_width: float = NAN
 
 @onready var _visual: Node2D = $RampVisual
 
@@ -694,23 +700,22 @@ func project_deck_point(deck: Dictionary, logical_x: float, logical_z: float) ->
 
 ## Logical height for drawing a deck top at `logical_z`: matches the tallest
 ## adjacent pipe's screen-space quarter-circle rise (glyph width → circle radius).
-func deck_visual_height(deck: Dictionary, logical_z: float) -> float:
+## Under homogeneous projection, screen radius / gscale = |lip−coping| / far_g
+## (depth scale cancels), so this is Z-independent — no per-vertex project.
+func deck_visual_height(deck: Dictionary, _logical_z: float = 0.0) -> float:
 	var base := float(deck.get("base_height", 0.0))
 	var anchors: Array = deck.get("anchors", [])
 	if anchors.is_empty():
 		return float(deck.get("height", base))
 	var rise := 0.0
 	var any := false
+	var g := maxf(far_geometry_scale, 0.01)
 	for anchor in anchors:
 		var lip := float(anchor.get("lip_x", NAN))
 		var coping := float(anchor.get("coping_x", NAN))
 		if is_nan(lip) or is_nan(coping):
 			continue
-		var lip_p: Dictionary = project(lip, logical_z, base)
-		var cope_p: Dictionary = project(coping, logical_z, base)
-		var r_screen := absf(float(cope_p.screen_x) - float(lip_p.screen_x))
-		var g := maxf(float(lip_p.geometry_scale), 0.0001)
-		rise = maxf(rise, r_screen / g)
+		rise = maxf(rise, absf(coping - lip) / g)
 		any = true
 	if not any:
 		return float(deck.get("height", base))
@@ -738,19 +743,73 @@ func project(logical_x: float, logical_z: float, surface_height: float = 0.0) ->
 	)
 
 
+## Fast screen position (no Dictionary). Prefer this in draw hot paths.
+func project_screen(logical_x: float, logical_z: float, surface_height: float = 0.0) -> Vector2:
+	_ensure_proj_cache()
+	return _PerspectiveMath.project_screen(
+		logical_x,
+		logical_z,
+		surface_height,
+		perspective_origin_x,
+		perspective_origin_z,
+		near_screen_y,
+		far_screen_y,
+		_proj_focal,
+		_proj_far_scale,
+		far_geometry_scale
+	)
+
+
+## Screen-space quarter circle (θ=0 lip → θ=π/2 coping).
+## Radius = projected glyph run width so magnitude tracks `<<<` / `<<<<`;
+## decks lower their draw height to meet this coping (not the reverse).
 func pipe_screen_point_for(pipe: QuarterPipe, logical_z: float, u: float) -> Vector2:
-	## Screen-space quarter circle (θ=0 lip → θ=π/2 coping).
-	## Radius = projected glyph run width so magnitude tracks `<<<` / `<<<<`;
-	## decks lower their draw height to meet this coping (not the reverse).
-	var theta := clampf(u, 0.0, 1.0) * PI * 0.5
+	var frame := pipe_arc_frame(pipe, logical_z)
+	return pipe_arc_point(frame, u)
+
+
+## Lip / radius / center for one pipe cross-section (two projects, reused for all u).
+func pipe_arc_frame(pipe: QuarterPipe, logical_z: float) -> Dictionary:
 	var is_left := pipe.side == QuarterPipe.PipeSide.LEFT
 	var coping_x := pipe.x_min() if is_left else pipe.x_max()
-	var lip_p: Dictionary = project(pipe.lip_x, logical_z, pipe.base_height)
-	var cope_p: Dictionary = project(coping_x, logical_z, pipe.base_height)
-	var lip := Vector2(float(lip_p.screen_x), float(lip_p.ground_y) - float(lip_p.surface_screen_h))
-	var r := absf(float(cope_p.screen_x) - lip.x)
+	var lip := project_screen(pipe.lip_x, logical_z, pipe.base_height)
+	var cope := project_screen(coping_x, logical_z, pipe.base_height)
+	var r := absf(cope.x - lip.x)
+	return {
+		"lip": lip,
+		"r": r,
+		"center": Vector2(lip.x, lip.y - r),
+		"sgn": -1.0 if is_left else 1.0,
+	}
+
+
+func pipe_arc_point(frame: Dictionary, u: float) -> Vector2:
+	var r: float = float(frame.r)
+	var lip: Vector2 = frame.lip
 	if r <= 0.0001:
 		return lip
-	var center := Vector2(lip.x, lip.y - r)
-	var sgn := -1.0 if is_left else 1.0
+	var theta := clampf(u, 0.0, 1.0) * PI * 0.5
+	var center: Vector2 = frame.center
+	var sgn: float = float(frame.sgn)
 	return Vector2(center.x + sgn * r * sin(theta), center.y + r * cos(theta))
+
+
+## Cached focal / far scale (only depends on inset / ref depth / width).
+func _ensure_proj_cache() -> void:
+	if (
+		_proj_cache_ref == reference_depth
+		and _proj_cache_inset == perspective_inset
+		and _proj_cache_width == reference_width
+	):
+		return
+	_proj_far_scale = _PerspectiveMath.far_x_scale(perspective_inset, reference_width)
+	_proj_focal = _proj_far_scale * (maxf(reference_depth, 0.0001) * 0.5) / maxf(
+		1.0 - _proj_far_scale, 0.01
+	)
+	_proj_cache_ref = reference_depth
+	_proj_cache_inset = perspective_inset
+	_proj_cache_width = reference_width
+
+
+func invalidate_proj_cache() -> void:
+	_proj_cache_ref = NAN

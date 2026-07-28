@@ -6,16 +6,22 @@ extends Node2D
 ## Far → Player → Near Z-split: nearer park geometry composites above the skater
 ## so the player is occluded when behind a ramp. Draw window and X lean both
 ## follow skater Z (perspective locked to the camera / player).
+## Culls by Z band + logical X vs the camera viewport (wide maps like spine_demo).
 
 const _PassScript := preload("res://scripts/ramp_visual_pass.gd")
+const _PerspectiveMath := preload("res://scripts/perspective_math.gd")
 
 @export var grid_steps: int = 5
 ## How many iso-u depth strokes to split the pipe face into (not cross-section arcs).
-@export var arc_ribs: int = 4
+@export var arc_ribs: int = 1
 ## Extra Z past the lean band on near and far sides, as a fraction of reference_depth.
 @export_range(0.0, 4.0, 0.05) var draw_band_pad: float = 2.0
+## Extra screen-px margin around the viewport for X culling (perspective / walls).
+@export var view_cull_pad_px: float = 160.0
+## Skip redraw when camera / lean origin / split move less than this (canvas px / logical).
+@export var redraw_epsilon: float = 2.0
 ## Arc samples along the quarter-pipe profile (fill + ribs share this).
-@export_range(4, 32, 1) var arc_steps: int = 16
+@export_range(4, 32, 1) var arc_steps: int = 8
 ## Faint white depth bands across the plaza. Off by default (debug clutter).
 @export var show_depth_grid: bool = false
 ## Highlight the .ssk ASCII cell under the player (logical unit 1:1). Debug only.
@@ -39,10 +45,20 @@ var _level: RampLevel
 var _player: Node2D
 ## Cached far→near pipe order; invalidated on refresh / pipe rebuild.
 var _pipes_draw_order: Array = []
+var _decks_draw_order: Array = []
 var _far: Node2D
 var _near: Node2D
 ## CanvasItem currently receiving draw_* during paint_pass.
 var _paint: CanvasItem
+## Logical X window visible through the camera (inclusive), padded.
+var _cull_x: Vector2 = Vector2(-INF, INF)
+var _force_redraw: bool = true
+var _last_origin_x: float = NAN
+var _last_origin_z: float = NAN
+var _last_split_z: float = NAN
+var _last_cam_x: float = NAN
+var _last_cam_y: float = NAN
+var _last_vp_w: float = NAN
 
 
 func _ready() -> void:
@@ -58,7 +74,9 @@ func _ready() -> void:
 
 func _process(_delta: float) -> void:
 	_ensure_passes()
-	# Split moves with the skater — redraw both passes every frame.
+	if not _needs_redraw():
+		return
+	_snapshot_draw_state()
 	if _far:
 		_far.queue_redraw()
 	if _near:
@@ -67,11 +85,93 @@ func _process(_delta: float) -> void:
 
 func refresh() -> void:
 	_pipes_draw_order.clear()
+	_decks_draw_order.clear()
+	_force_redraw = true
 	_ensure_passes()
 	if _far:
 		_far.queue_redraw()
 	if _near:
 		_near.queue_redraw()
+
+
+func _needs_redraw() -> bool:
+	if _force_redraw:
+		return true
+	# Debug overlays animate with the skater — keep Near live.
+	if show_depth_grid or debug_cell_highlight or debug_facing_cast:
+		return true
+	if _level == null:
+		return false
+	var eps := maxf(redraw_epsilon, 0.5)
+	if (
+		is_nan(_last_origin_x)
+		or absf(_level.perspective_origin_x - _last_origin_x) >= eps
+		or absf(_level.perspective_origin_z - _last_origin_z) >= eps
+		or absf(_player_split_z() - _last_split_z) >= eps
+	):
+		return true
+	var cam := get_viewport().get_camera_2d()
+	if cam != null:
+		var c: Vector2 = cam.get_screen_center_position()
+		if absf(c.x - _last_cam_x) >= eps or absf(c.y - _last_cam_y) >= eps:
+			return true
+	var vp_w := get_viewport().get_visible_rect().size.x
+	if is_nan(_last_vp_w) or absf(vp_w - _last_vp_w) >= 1.0:
+		return true
+	return false
+
+
+func _snapshot_draw_state() -> void:
+	_force_redraw = false
+	if _level != null:
+		_last_origin_x = _level.perspective_origin_x
+		_last_origin_z = _level.perspective_origin_z
+	_last_split_z = _player_split_z()
+	var cam := get_viewport().get_camera_2d()
+	if cam != null:
+		var c: Vector2 = cam.get_screen_center_position()
+		_last_cam_x = c.x
+		_last_cam_y = c.y
+	_last_vp_w = get_viewport().get_visible_rect().size.x
+
+
+## Logical X range that can project into the camera viewport (conservative).
+func _update_view_cull_x() -> void:
+	if _level == null:
+		_cull_x = Vector2(-INF, INF)
+		return
+	var cam := get_viewport().get_camera_2d()
+	var vp := get_viewport().get_visible_rect().size
+	if cam == null or vp.x <= 1.0:
+		_cull_x = Vector2(_level.x_min(), _level.x_max())
+		return
+	var half_w := vp.x * 0.5 / maxf(cam.zoom.x, 0.001)
+	var cx := cam.get_screen_center_position().x
+	var pad := maxf(view_cull_pad_px, 0.0)
+	# Widest logical span is at the smallest depth scale (far band).
+	var s_far := _PerspectiveMath.far_x_scale(
+		_level.perspective_inset, _level.reference_width
+	)
+	var s_lo := maxf(s_far * 0.8, 0.08)
+	var half_logical := (half_w + pad) / s_lo
+	half_logical += maxf(_level.cell_size_x, 47.0) * 3.0
+	var ox := _level.perspective_origin_x
+	_cull_x = Vector2(ox - half_logical, ox + half_logical)
+
+
+func _x_range_visible(x0: float, x1: float) -> bool:
+	return x1 >= _cull_x.x and x0 <= _cull_x.y
+
+
+func _deck_x_range(deck: Dictionary) -> Vector2:
+	var lo := INF
+	var hi := -INF
+	for v in deck.get("poly", []):
+		lo = minf(lo, v.x)
+		hi = maxf(hi, v.x)
+	if lo > hi:
+		return Vector2(0.0, 0.0)
+	return Vector2(lo, hi)
 
 
 func _ensure_passes() -> void:
@@ -105,6 +205,7 @@ func paint_pass(ci: CanvasItem, near_pass: bool) -> void:
 	if _level == null or ci == null:
 		return
 	_paint = ci
+	_update_view_cull_x()
 	var view := _view_z_band()
 	var split_z := _player_split_z()
 	# Backdrop always on Far so an empty far band (skater at back) still clears.
@@ -116,9 +217,13 @@ func paint_pass(ci: CanvasItem, near_pass: bool) -> void:
 		# Outer flats behind deck walls; endcaps/ribbons after so only the curved
 		# pipe sidewall composites over an adjacent pad face (not the back wall).
 		for pipe in _pipes_far_to_near():
+			if not _x_range_visible(pipe.x_min(), pipe.x_max()):
+				continue
 			_draw_pipe_outer_walls(pipe, band)
 		_draw_deck_walls(band)
 		for pipe in _pipes_far_to_near():
+			if not _x_range_visible(pipe.x_min(), pipe.x_max()):
+				continue
 			_draw_pipe_endcaps(pipe, band)
 			_draw_pipe(pipe, band)
 		_draw_elevated_floors(band)
@@ -174,9 +279,15 @@ func _pipes_far_to_near() -> Array:
 func _decks_far_to_near() -> Array:
 	if _level.spec == null:
 		return []
-	var decks: Array = _level.spec.decks.duplicate()
-	decks.sort_custom(func(a, b): return _deck_z_max(a) > _deck_z_max(b))
-	return decks
+	var decks: Array = _level.spec.decks
+	if (
+		not _decks_draw_order.is_empty()
+		and _decks_draw_order.size() == decks.size()
+	):
+		return _decks_draw_order
+	_decks_draw_order = decks.duplicate()
+	_decks_draw_order.sort_custom(func(a, b): return _deck_z_max(a) > _deck_z_max(b))
+	return _decks_draw_order
 
 
 func _deck_z_max(deck: Dictionary) -> float:
@@ -215,18 +326,17 @@ func _project_poly(poly: PackedVector2Array, height: float) -> PackedVector2Arra
 	out.resize(poly.size())
 	for i in range(poly.size()):
 		var v: Vector2 = poly[i]
-		var p: Dictionary = _level.project(v.x, v.y, height)
-		out[i] = Vector2(p.screen_x, p.ground_y - p.surface_screen_h)
+		out[i] = _level.project_screen(v.x, v.y, height)
 	return out
 
 
 func _project_deck_poly(deck: Dictionary, poly: PackedVector2Array) -> PackedVector2Array:
 	var out := PackedVector2Array()
 	out.resize(poly.size())
+	var h := _level.deck_visual_height(deck)
 	for i in range(poly.size()):
 		var v: Vector2 = poly[i]
-		var p: Dictionary = _level.project_deck_point(deck, v.x, v.y)
-		out[i] = Vector2(p.screen_x, p.ground_y - p.surface_screen_h)
+		out[i] = _level.project_screen(v.x, v.y, h)
 	return out
 
 
@@ -293,22 +403,29 @@ func _draw_story_floor_cells(
 		return
 	var fill := Color(0.32, 0.38, 0.42, 0.88)
 	var lava_fill := Color(0.72, 0.12, 0.05, 0.92)
+	var c_lo := clampi(int(floor(_cull_x.x / cw)) - 1, 0, W)
+	var c_hi := clampi(int(ceil(_cull_x.y / cw)) + 1, 0, W)
+	if c_hi <= c_lo:
+		return
 	for r in range(r_min, r_max + 1):
 		var z0 := maxf(float(H - 1 - r) * ch, band.x)
 		var z1 := minf(float(H - r) * ch, band.y)
 		if z1 <= z0 + 0.001:
 			continue
-		var c := 0
-		while c < W:
+		var c := c_lo
+		while c < c_hi:
 			var kind: int = int(mask[r * W + c])
 			if kind == 0:
 				c += 1
 				continue
 			var c1 := c + 1
-			while c1 < W and int(mask[r * W + c1]) == kind:
+			while c1 < c_hi and int(mask[r * W + c1]) == kind:
 				c1 += 1
 			var x0 := float(c) * cw
 			var x1 := float(c1) * cw
+			if not _x_range_visible(x0, x1):
+				c = c1
+				continue
 			var cell_fill := lava_fill if kind == 2 else fill
 			_paint.draw_colored_polygon(
 				PackedVector2Array([
@@ -326,6 +443,9 @@ func _draw_decks(band: Vector2) -> void:
 	if _level.spec == null:
 		return
 	for deck in _decks_far_to_near():
+		var xr := _deck_x_range(deck)
+		if not _x_range_visible(xr.x, xr.y):
+			continue
 		var clipped := _clip_poly_z_band(deck.poly, band.x, band.y)
 		if clipped.size() < 3:
 			continue
@@ -353,6 +473,9 @@ func _draw_deck_walls(band: Vector2) -> void:
 		return
 	var wall_col := Color(0.38, 0.32, 0.22, 1.0)
 	for deck in _decks_far_to_near():
+		var xr := _deck_x_range(deck)
+		if not _x_range_visible(xr.x, xr.y):
+			continue
 		var clipped := _clip_poly_z_band(deck.poly, band.x, band.y)
 		if clipped.size() < 2:
 			continue
@@ -601,8 +724,7 @@ func _surface_height_at(
 
 
 func _surf_point(logical_x: float, logical_z: float, height: float) -> Vector2:
-	var p: Dictionary = _level.project(logical_x, logical_z, height)
-	return Vector2(p.screen_x, p.ground_y - p.surface_screen_h)
+	return _level.project_screen(logical_x, logical_z, height)
 
 
 ## One near→far ribbon clipped to `band` (pass Z window).
@@ -612,31 +734,38 @@ func _draw_pipe(pipe: QuarterPipe, band: Vector2) -> void:
 	if z1 <= z0 + 0.001:
 		return
 	var steps := maxi(arc_steps, 4)
-	var near_arc := _arc_points(pipe, z0, steps)
-	var far_arc := _arc_points(pipe, z1, steps)
+	var near_frame: Dictionary = _level.pipe_arc_frame(pipe, z0)
+	var far_frame: Dictionary = _level.pipe_arc_frame(pipe, z1)
+	var near_arc := _arc_points_from_frame(near_frame, steps)
+	var far_arc := _arc_points_from_frame(far_frame, steps)
 	var is_left := pipe.side == QuarterPipe.PipeSide.LEFT
 	var fill_col := Color(0.42, 0.38, 0.48, 0.92) if is_left else Color(0.38, 0.44, 0.52, 0.92)
+	var quad := PackedVector2Array()
+	quad.resize(4)
 	for i in range(steps):
-		_paint.draw_colored_polygon(
-			PackedVector2Array([
-				near_arc[i],
-				near_arc[i + 1],
-				far_arc[i + 1],
-				far_arc[i],
-			]),
-			fill_col
-		)
+		quad[0] = near_arc[i]
+		quad[1] = near_arc[i + 1]
+		quad[2] = far_arc[i + 1]
+		quad[3] = far_arc[i]
+		_paint.draw_colored_polygon(quad, fill_col)
 	var ribs := maxi(arc_ribs, 1)
 	for r in range(1, ribs):
 		var u := float(r) / float(ribs)
-		var a: Vector2 = _level.pipe_screen_point_for(pipe, z0, u)
-		var b: Vector2 = _level.pipe_screen_point_for(pipe, z1, u)
-		_paint.draw_line(a, b, Color(1, 1, 1, 0.14), 1.25)
-
-	_draw_pipe_top_stroke(pipe, z0, z1)
+		_paint.draw_line(
+			_level.pipe_arc_point(near_frame, u),
+			_level.pipe_arc_point(far_frame, u),
+			Color(1, 1, 1, 0.14),
+			1.25
+		)
 	_paint.draw_line(
-		_level.pipe_screen_point_for(pipe, z0, 0.0),
-		_level.pipe_screen_point_for(pipe, z1, 0.0),
+		_level.pipe_arc_point(near_frame, 1.0),
+		_level.pipe_arc_point(far_frame, 1.0),
+		Color(0.95, 0.55, 0.35, 0.9),
+		3.0
+	)
+	_paint.draw_line(
+		_level.pipe_arc_point(near_frame, 0.0),
+		_level.pipe_arc_point(far_frame, 0.0),
 		Color(0.95, 0.85, 0.35, 0.85),
 		2.5
 	)
@@ -671,24 +800,17 @@ func _draw_pipe_endcaps(pipe: QuarterPipe, band: Vector2) -> void:
 func _draw_pipe_outer_wall_span(
 	pipe: QuarterPipe, z0: float, z1: float, col: Color
 ) -> void:
-	var top0: Vector2 = _level.pipe_screen_point_for(pipe, z0, 1.0)
-	var top1: Vector2 = _level.pipe_screen_point_for(pipe, z1, 1.0)
-	var bot_y0 := _surf_point(
-		pipe.x_min() if pipe.side == QuarterPipe.PipeSide.LEFT else pipe.x_max(),
-		z0,
-		pipe.base_height
-	).y
-	var bot_y1 := _surf_point(
-		pipe.x_min() if pipe.side == QuarterPipe.PipeSide.LEFT else pipe.x_max(),
-		z1,
-		pipe.base_height
-	).y
+	var top0: Vector2 = _level.pipe_arc_point(_level.pipe_arc_frame(pipe, z0), 1.0)
+	var top1: Vector2 = _level.pipe_arc_point(_level.pipe_arc_frame(pipe, z1), 1.0)
+	var cope_x := pipe.x_min() if pipe.side == QuarterPipe.PipeSide.LEFT else pipe.x_max()
+	var bot0 := _level.project_screen(cope_x, z0, pipe.base_height)
+	var bot1 := _level.project_screen(cope_x, z1, pipe.base_height)
 	_paint.draw_colored_polygon(
 		PackedVector2Array([
 			top0,
 			top1,
-			Vector2(top1.x, bot_y1),
-			Vector2(top0.x, bot_y0),
+			Vector2(top1.x, bot1.y),
+			Vector2(top0.x, bot0.y),
 		]),
 		col
 	)
@@ -697,38 +819,28 @@ func _draw_pipe_outer_wall_span(
 ## Filled quarter-pipe silhouette at constant Z: arc + outer drop + base.
 func _draw_pipe_endcap(pipe: QuarterPipe, logical_z: float, col: Color) -> void:
 	var steps := maxi(arc_steps, 4)
-	var pts := PackedVector2Array()
+	var frame: Dictionary = _level.pipe_arc_frame(pipe, logical_z)
+	var pts := _arc_points_from_frame(frame, steps)
 	pts.resize(steps + 3)
-	for i in range(steps + 1):
-		pts[i] = _level.pipe_screen_point_for(pipe, logical_z, float(i) / float(steps))
 	var cope: Vector2 = pts[steps]
 	var lip: Vector2 = pts[0]
-	var bot_y := _surf_point(
-		pipe.x_min() if pipe.side == QuarterPipe.PipeSide.LEFT else pipe.x_max(),
-		logical_z,
-		pipe.base_height
-	).y
-	pts[steps + 1] = Vector2(cope.x, bot_y)
+	var cope_x := pipe.x_min() if pipe.side == QuarterPipe.PipeSide.LEFT else pipe.x_max()
+	var bot := _level.project_screen(cope_x, logical_z, pipe.base_height)
+	pts[steps + 1] = Vector2(cope.x, bot.y)
 	pts[steps + 2] = lip
 	_paint.draw_colored_polygon(pts, col)
 
 
-func _draw_pipe_top_stroke(pipe: QuarterPipe, z0: float, z1: float) -> void:
-	_paint.draw_line(
-		_level.pipe_screen_point_for(pipe, z0, 1.0),
-		_level.pipe_screen_point_for(pipe, z1, 1.0),
-		Color(0.95, 0.55, 0.35, 0.9),
-		3.0
-	)
-
-
-func _arc_points(pipe: QuarterPipe, logical_z: float, steps: int) -> PackedVector2Array:
+func _arc_points_from_frame(frame: Dictionary, steps: int) -> PackedVector2Array:
 	var pts := PackedVector2Array()
 	pts.resize(steps + 1)
 	for i in range(steps + 1):
-		pts[i] = _level.pipe_screen_point_for(pipe, logical_z, float(i) / float(steps))
+		pts[i] = _level.pipe_arc_point(frame, float(i) / float(steps))
 	return pts
 
+
+func _arc_points(pipe: QuarterPipe, logical_z: float, steps: int) -> PackedVector2Array:
+	return _arc_points_from_frame(_level.pipe_arc_frame(pipe, logical_z), steps)
 
 ## Sutherland–Hodgman clip of XZ polygon to z ∈ [z0, z1].
 func _clip_poly_z_band(poly: PackedVector2Array, z0: float, z1: float) -> PackedVector2Array:

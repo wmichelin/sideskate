@@ -31,8 +31,13 @@ static func depth_scale(
 	reference_width: float,
 ) -> float:
 	var focal := focal_length(reference_depth, perspective_inset, reference_width)
+	return depth_scale_with_focal(logical_z, origin_z, focal)
+
+
+static func depth_scale_with_focal(
+	logical_z: float, origin_z: float, focal: float
+) -> float:
 	var z_eye := focal + (logical_z - origin_z)
-	# Soft-limit behind / through the camera so X never inverts hard.
 	var s := focal / maxf(z_eye, focal * 0.08)
 	return clampf(s, 0.08, 2.5)
 
@@ -86,6 +91,19 @@ static func glyph_matched_reference_depth(
 	return maxf(span * maxf(cell_size_z, 0.0001) / cell_x, 0.0001)
 
 
+## Ground Y from a precomputed depth scale `s` (focus plane → mid-screen).
+static func ground_y_from_scale(
+	s: float,
+	near_screen_y: float,
+	far_screen_y: float,
+	far_x_scale_value: float,
+) -> float:
+	var focus_y := (near_screen_y + far_screen_y) * 0.5
+	var far := clampf(far_x_scale_value, 0.15, 0.99)
+	var fy := (near_screen_y - far_screen_y) / (2.0 * maxf(1.0 - far, 0.01))
+	return focus_y - fy * (1.0 - s)
+
+
 ## Ground Y from the same homogeneous `s` as X (focus plane → mid-screen).
 static func ground_screen_y(
 	logical_z: float,
@@ -99,11 +117,31 @@ static func ground_screen_y(
 	var s := depth_scale(
 		logical_z, origin_z, reference_depth, perspective_inset, reference_width
 	)
-	var focus_y := (near_screen_y + far_screen_y) * 0.5
-	var far := far_x_scale(perspective_inset, reference_width)
-	# At +ref/2, s=far and ground_y lands on far_screen_y.
-	var fy := (near_screen_y - far_screen_y) / (2.0 * maxf(1.0 - far, 0.01))
-	return focus_y - fy * (1.0 - s)
+	return ground_y_from_scale(
+		s, near_screen_y, far_screen_y, far_x_scale(perspective_inset, reference_width)
+	)
+
+
+## Fast path: feet/surface screen position (no Dictionary alloc).
+static func project_screen(
+	logical_x: float,
+	logical_z: float,
+	surface_height: float,
+	origin_x: float,
+	origin_z: float,
+	near_screen_y: float,
+	far_screen_y: float,
+	focal: float,
+	far_x_scale_value: float,
+	far_geometry_scale: float,
+) -> Vector2:
+	var s := depth_scale_with_focal(logical_z, origin_z, focal)
+	var gscale := s * maxf(far_geometry_scale, 0.01)
+	var ground_y := ground_y_from_scale(
+		s, near_screen_y, far_screen_y, far_x_scale_value
+	)
+	var screen_x := origin_x + (logical_x - origin_x) * s
+	return Vector2(screen_x, ground_y - surface_height * gscale)
 
 
 ## Project logical (x, z, height) → screen fields (camera at origin_x / origin_z).
@@ -121,21 +159,12 @@ static func project(
 	far_geometry_scale: float
 ) -> Dictionary:
 	var t := perspective_t(logical_z, origin_z, reference_depth)
-	var s := depth_scale(
-		logical_z, origin_z, reference_depth, perspective_inset, reference_width
-	)
+	var far := far_x_scale(perspective_inset, reference_width)
+	var focal := far * (maxf(reference_depth, 0.0001) * 0.5) / maxf(1.0 - far, 0.01)
+	var s := depth_scale_with_focal(logical_z, origin_z, focal)
 	var inset := inset_at(t, perspective_inset)
-	# Heights share projective `s` (far_geometry_scale is an overall art multiply).
 	var gscale := s * maxf(far_geometry_scale, 0.01)
-	var ground_y := ground_screen_y(
-		logical_z,
-		origin_z,
-		near_screen_y,
-		far_screen_y,
-		reference_depth,
-		perspective_inset,
-		reference_width
-	)
+	var ground_y := ground_y_from_scale(s, near_screen_y, far_screen_y, far)
 	var screen_x := origin_x + (logical_x - origin_x) * s
 	return {
 		"t": t,
