@@ -90,6 +90,48 @@ static func acid_clamp_x_step(
 	return clampf(next_x, minf(from_x, to_x), from_x)
 
 
+## Sign that forbids reverse after acid / fly-out (0 = no hold).
+static func land_hold_sign(acid_travel: float, no_reverse: bool, exit_travel: float) -> float:
+	if absf(acid_travel) >= 1.0:
+		return signf(acid_travel)
+	if no_reverse and absf(exit_travel) >= 1.0:
+		return signf(exit_travel)
+	return 0.0
+
+
+## Zero velocity that fights hold_sign (into-bowl after acid / fly-out).
+static func clamp_against_hold(vx: float, hold_sign: float) -> float:
+	if absf(hold_sign) >= 1.0 and vx * hold_sign < 0.0:
+		return 0.0
+	return vx
+
+
+## Along-arc velocity when landing on a pipe from air (classic / acid / soft).
+static func pipe_land_along(
+	approach_x: float,
+	land_vy: float,
+	land_side: int,
+	was_locked: bool,
+	was_acid: bool,
+	no_reverse: bool,
+	acid_travel: float,
+	hold_sign: float,
+	carry_peak: float,
+) -> float:
+	var ax := approach_x
+	if was_locked and not no_reverse:
+		var carry := maxf(absf(ax), carry_peak)
+		ax = lock_carry_velocity_x(carry, land_side)
+	var along := ax
+	if was_acid:
+		along = acid_land_along(ax, land_vy, land_side, acid_travel)
+	elif no_reverse:
+		along = clamp_against_hold(along, hold_sign)
+	elif was_locked or land_vy < -1.0:
+		along = merge_drop_in_along(ax, land_vy, land_side)
+	return clamp_against_hold(along, hold_sign)
+
+
 ## Acid land along-arc: keep travel sign. Absorb fall into-pipe only when that
 ## drop-in continues travel (opposite wall). Never emit along opposite travel.
 static func acid_land_along(

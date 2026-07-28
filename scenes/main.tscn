@@ -66,7 +66,7 @@ player_path = NodePath("../../Player")
 [node name="RampLevel" type="Node2D" parent="." unique_id=1434297277]
 script = ExtResource("1_level")
 
-[node name="Player" type="Node2D" parent="." unique_id=1706349078]
+[node name="Player" type="Node" parent="." unique_id=1706349078]
 script = ExtResource("4_player")
 
 [node name="PseudoDepthBody" type="Node" parent="Player" unique_id=1532835232]

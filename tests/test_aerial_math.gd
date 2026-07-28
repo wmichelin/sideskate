@@ -8,6 +8,7 @@ func run() -> bool:
 	ok = _horiz_resolve() and ok
 	ok = _acid_travel_resolve() and ok
 	ok = _acid_land_along() and ok
+	ok = _pipe_land_along() and ok
 	ok = _landing_height() and ok
 	ok = _drop_in_along() and ok
 	ok = _lock_x_duration() and ok
@@ -110,6 +111,46 @@ func _acid_land_along() -> bool:
 	var flipped := AerialMath.acid_land_along(-120.0, -10.0, 1, 1.0)
 	if flipped < 0.0:
 		push_error("acid land must flip opposing approach, got %s" % flipped)
+		return false
+	return true
+
+
+func _pipe_land_along() -> bool:
+	if absf(AerialMath.land_hold_sign(80.0, true, -1.0) - 1.0) > 0.01:
+		push_error("acid travel wins hold_sign")
+		return false
+	if absf(AerialMath.land_hold_sign(0.0, true, -40.0) - (-1.0)) > 0.01:
+		push_error("exit travel hold when no acid travel")
+		return false
+	if absf(AerialMath.land_hold_sign(0.0, false, -40.0)) > 0.01:
+		push_error("no hold without no_reverse")
+		return false
+	if absf(AerialMath.clamp_against_hold(-50.0, 1.0)) > 0.01:
+		push_error("clamp kills reverse")
+		return false
+	if absf(AerialMath.clamp_against_hold(50.0, 1.0) - 50.0) > 0.01:
+		push_error("clamp keeps travel")
+		return false
+	# Classic locked land: carry into right pipe.
+	var classic := AerialMath.pipe_land_along(
+		40.0, -60.0, 1, true, false, false, 0.0, 0.0, 180.0
+	)
+	if absf(classic - (-180.0)) > 0.01:
+		push_error("classic locked land want carry -180, got %s" % classic)
+		return false
+	# Soft no-reverse: never merge into-bowl against hold.
+	var soft := AerialMath.pipe_land_along(
+		-90.0, -80.0, 1, false, false, true, 0.0, 1.0, 0.0
+	)
+	if absf(soft) > 0.01:
+		push_error("soft no_reverse must zero reverse, got %s" % soft)
+		return false
+	# Acid land path.
+	var acid := AerialMath.pipe_land_along(
+		20.0, -80.0, 0, true, true, true, 1.0, 1.0, 100.0
+	)
+	if acid < 1.0:
+		push_error("acid pipe_land_along must keep +travel, got %s" % acid)
 		return false
 	return true
 

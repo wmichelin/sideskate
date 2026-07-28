@@ -103,10 +103,6 @@ func clamp_z(z: float) -> float:
 
 func apply() -> void:
 	logical_z = clamp_z(logical_z)
-	var parent := get_parent() as Node2D
-	if parent == null:
-		return
-
 	var t := depth_t()
 	var s := visual_scale()
 	var z_i := draw_z_index()
@@ -115,6 +111,8 @@ func apply() -> void:
 	var ground_y := ground_screen_y()
 	var surface_screen_h := surface_height * s
 
+	# Always refresh perspective / projection — sim parents may be plain Node
+	# (3D presenter reads logical pose; Canvas2D Body/Shadow are optional).
 	if _level:
 		_level.set_perspective_origin(logical_x, logical_z)
 		var p: Dictionary = _level.project_surface(logical_x, logical_z, surface_height)
@@ -122,8 +120,10 @@ func apply() -> void:
 		ground_y = float(p.ground_y)
 		surface_screen_h = float(p.surface_screen_h)
 
-	parent.position = Vector2(screen_x, ground_y)
-	parent.z_index = z_i
+	var parent := get_parent() as Node2D
+	if parent != null:
+		parent.position = Vector2(screen_x, ground_y)
+		parent.z_index = z_i
 
 	if _visual:
 		_visual.position = Vector2(0.0, -(surface_screen_h + height_offset * s))

@@ -1,7 +1,8 @@
-extends Node2D
+extends Node
 ## 8-way mover on logical X/Z. Samples RampLevel; spawns from .ssk @ marker.
 ## Air over any zone. Coping exit locks X (gravity applies); acid drop locks X only.
 ## Ride-off a higher surface → free air (keep height + gravity). All sim on physics ticks.
+## Plain Node: Canvas2D pose lived on Node2D; 3D reads PseudoDepthBody logicals.
 
 const _PipeMath := preload("res://scripts/pipe_math.gd")
 const _MotionMath := preload("res://scripts/motion_math.gd")
@@ -927,19 +928,13 @@ func _try_land_from_air_contact(
 	var carry_peak := _air_carry_speed
 	# Acid press / fly-out: never allow into-bowl velocity against travel.
 	var no_reverse := was_acid or acid_pressed or flew_out
-	var hold_sign := 0.0
-	if absf(acid_travel) >= 1.0:
-		hold_sign = signf(acid_travel)
-	elif no_reverse and absf(exit_travel) >= 1.0:
-		hold_sign = signf(exit_travel)
+	var hold_sign := _AerialMath.land_hold_sign(acid_travel, no_reverse, exit_travel)
 	_clear_air()
 
 	if _ContactMath.is_solid(land_hit):
 		depth.surface_height = floor_h
 		depth.logical_x = pin_x
-		if absf(hold_sign) >= 1.0 and approach_x * hold_sign < 0.0:
-			approach_x = 0.0
-		_velocity.x = approach_x
+		_velocity.x = _AerialMath.clamp_against_hold(approach_x, hold_sign)
 		_on_ramp = false
 		return true
 
@@ -948,22 +943,17 @@ func _try_land_from_air_contact(
 		var land_lip := float(land_hit.get("lip_x", depth.logical_x))
 		var land_base := float(land_hit.get("base_height", 0.0))
 		var side_sign := _coping_sign(land_side)
-		# Classic pipe-exit drop-in only — never after acid press / fly-out.
-		if was_locked and not no_reverse:
-			var carry := maxf(absf(approach_x), carry_peak)
-			approach_x = _AerialMath.lock_carry_velocity_x(carry, land_side)
-		var along := approach_x
-		if was_acid:
-			along = _AerialMath.acid_land_along(approach_x, land_vy, land_side, acid_travel)
-		elif no_reverse:
-			# Soft: keep travel or zero — never merge into-bowl.
-			if absf(hold_sign) >= 1.0 and along * hold_sign < 0.0:
-				along = 0.0
-		elif was_locked or land_vy < -1.0:
-			along = _AerialMath.merge_drop_in_along(approach_x, land_vy, land_side)
-		# Final invariant.
-		if absf(hold_sign) >= 1.0 and along * hold_sign < 0.0:
-			along = 0.0
+		var along := _AerialMath.pipe_land_along(
+			approach_x,
+			land_vy,
+			land_side,
+			was_locked,
+			was_acid,
+			no_reverse,
+			acid_travel,
+			hold_sign,
+			carry_peak,
+		)
 		_ramp_along = along
 		_velocity.x = along
 		_on_ramp = true

@@ -2,6 +2,8 @@ extends RefCounted
 ## Regression: L1 sticky ride must never adopt stacked L0 at shared coping.
 ## layered_demo: L1 left coping X == L0 right coping X.
 
+const _Fixture := preload("res://tests/player_runtime_fixture.gd")
+
 
 func run() -> bool:
 	if not _sticky_ramp_action_unit():
@@ -274,22 +276,11 @@ func _dual_l1_bands_have_distinct_identities() -> bool:
 
 
 func _fresh_lower_l1_entry_stays_grounded() -> bool:
-	var tree := Engine.get_main_loop() as SceneTree
-	var main: Node = load("res://scenes/main.tscn").instantiate()
-	tree.root.add_child(main)
-	var player = main.get_node("Player")
-	var ramp := main.get_node("RampLevel") as RampLevel
-	var spec := LevelLoader.parse_text(
-		FileAccess.get_file_as_string("res://tests/levels/layered_demo.ssk"), "layered_demo"
-	)
-	if player == null or ramp == null or spec == null:
-		main.queue_free()
+	var fx = _Fixture.new()
+	if not fx.setup("res://tests/levels/layered_demo.ssk"):
 		return false
-	ramp.apply_spec(spec)
-	player.depth = player.get_node("PseudoDepthBody")
-	player._head_debug_label = player.get_node_or_null("Body/HeadDebug/Label")
-	player._head_debug_panel = player.get_node_or_null("Body/HeadDebug")
-	player._face_nose = player.get_node_or_null("Body/FaceNose")
+	var player = fx.player
+	var ramp = fx.ramp
 
 	var lower_left: QuarterPipe = null
 	for pipe in ramp.pipes:
@@ -299,7 +290,7 @@ func _fresh_lower_l1_entry_stays_grounded() -> bool:
 			break
 	if lower_left == null:
 		push_error("missing lower L1 left pipe at z=169")
-		main.queue_free()
+		fx.teardown()
 		return false
 	var coping := PipeMath.coping_x(
 		int(lower_left.side), lower_left.lip_x, lower_left.radius
@@ -314,7 +305,7 @@ func _fresh_lower_l1_entry_stays_grounded() -> bool:
 	player.depth.logical_x = entry_x
 	player.depth.logical_z = 169.0
 	player.depth.surface_height = 141.0
-	player._physics_process(1.0 / 60.0)
+	fx.tick(1)
 
 	var ok: bool = (
 		not bool(player._airborne)
@@ -347,7 +338,7 @@ func _fresh_lower_l1_entry_stays_grounded() -> bool:
 			player.depth.logical_z = 169.0
 			player.depth.surface_height = 141.0
 			for _tick in range(12):
-				player._physics_process(1.0 / 60.0)
+				fx.tick(1)
 				if bool(player._airborne) or not bool(player._on_ramp) \
 						or absf(float(player._ramp_z_min) - pipe.z_min) > 0.05 \
 						or absf(float(player._ramp_z_max) - pipe.z_max) > 0.05:
@@ -359,7 +350,7 @@ func _fresh_lower_l1_entry_stays_grounded() -> bool:
 					break
 			if not ok:
 				break
-	main.queue_free()
+	fx.teardown()
 	return ok
 
 

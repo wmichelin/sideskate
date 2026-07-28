@@ -2,65 +2,28 @@ extends RefCounted
 ## Regression: higher-story air landing on a lower pipe must convert falling
 ## speed into along-ramp motion — no dead-stop on the near/bottom L1 route.
 
+const _Fixture := preload("res://tests/player_runtime_fixture.gd")
+
 
 func run() -> bool:
-	# Load the real scene so Player/@onready + physics tick code paths run.
-	var tree := Engine.get_main_loop() as SceneTree
-	var main: Node = load("res://scenes/main.tscn").instantiate()
-	tree.root.add_child(main)
-
-	var player = main.get_node("Player")
-	var level = main.get_node("RampLevel")
-	if player == null or level == null:
-		main.queue_free()
+	var fx = _Fixture.new()
+	if not fx.setup("res://tests/levels/layered_demo.ssk"):
 		return false
 
-	# Ensure Player/@onready refs are usable even if _ready hasn't run yet.
-	player.depth = player.get_node("PseudoDepthBody")
-	player._head_debug_label = player.get_node_or_null("Body/HeadDebug/Label")
-	player._head_debug_panel = player.get_node_or_null("Body/HeadDebug")
-	player._face_nose = player.get_node_or_null("Body/FaceNose")
-
-	var l1l: QuarterPipe = null
-	var l0r: QuarterPipe = null
-	# Rebuild pipes onto the scene's RampLevel so the test is deterministic.
-	var ramp := level as RampLevel
-	var text := FileAccess.get_file_as_string("res://tests/levels/layered_demo.ssk")
-	var spec := LevelLoader.parse_text(text, "layered_demo")
-	if spec == null:
-		push_error("parse: %s" % LevelLoader.last_error)
-		main.queue_free()
-		return false
-	ramp.spec = spec
-	ramp.cell_size_x = spec.cell_w
-	ramp.cell_size_z = spec.cell_h
-	ramp.pipes.clear()
-	for pd in spec.pipes:
-		var qp := QuarterPipe.new()
-		qp.side = int(pd.side)
-		qp.lip_x = float(pd.lip_x)
-		qp.radius = float(pd.radius)
-		qp.base_height = float(pd.get("base_height", 0.0))
-		qp.layer = int(pd.get("layer", 0))
-		qp.z_min = float(pd.z_min)
-		qp.z_max = float(pd.z_max)
-		ramp.pipes.append(qp)
-		if int(qp.side) == 0 and int(qp.layer) == 1 and l1l == null:
-			l1l = qp
-		if int(qp.side) == 1 and int(qp.layer) == 0 and l0r == null:
-			l0r = qp
+	var l1l = fx.find_pipe(QuarterPipe.PipeSide.LEFT, 1)
+	var l0r = fx.find_pipe(QuarterPipe.PipeSide.RIGHT, 0)
 	if l1l == null or l0r == null:
 		push_error("missing pipes")
-		main.queue_free()
+		fx.teardown()
 		return false
 
-	# This test assumes Player has the scripted private fields used elsewhere.
 	var z: float = (float(l1l.z_min) + float(l1l.z_max)) * 0.5
 	var cope_l1: float = PipeMath.coping_x(0, float(l1l.lip_x), float(l1l.radius))
 	var approach_vx: float = -120.0
+	var player = fx.player
 
-	# No-input fall: we are unlocked air falling from L1 towards the shared
-	# coping column; landing on L0 must retain a meaningful along-ramp speed.
+	# No-input fall: unlocked air falling from L1 towards the shared coping
+	# column; landing on L0 must retain a meaningful along-ramp speed.
 	player.call("_clear_air")
 	player._on_ramp = false
 	player._airborne = true
@@ -95,7 +58,7 @@ func run() -> bool:
 	var landed_along := 0.0
 	var landed_side := -1
 	for i in range(240):
-		player._physics_process(1.0 / 60.0)
+		fx.tick(1)
 		if not player._airborne and player._on_ramp:
 			landed = true
 			landed_base = float(player._ramp_base_height)
@@ -118,7 +81,7 @@ func run() -> bool:
 		)
 	var spine_ok := _held_high_to_low_spine_transfers(player, l1l, l0r, z)
 	var deck_ok := _spine_refuses_deck_land(player, l0r, z)
-	main.queue_free()
+	fx.teardown()
 	return land_ok and spine_ok and deck_ok
 
 
@@ -238,4 +201,3 @@ func _held_high_to_low_spine_transfers(
 			% [player._air_base_height, player._air_z_min, player._air_z_max]
 		)
 	return target_ok
-
