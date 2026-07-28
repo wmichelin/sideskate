@@ -17,6 +17,7 @@ func run() -> bool:
 		and _pipe_along_wish_and_lip_exit()
 		and _ollie_faces_direction()
 		and _coast_with_zero_friction()
+		and _wall_extension_climbs()
 	)
 
 
@@ -454,6 +455,75 @@ func _coast_with_zero_friction() -> bool:
 		push_error("brake must not reverse in one tick, got %s" % sim.state.tangent_velocity.x)
 		return false
 	return true
+
+
+func _wall_extension_climbs() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
+		push_error("setup layered wall")
+		return false
+	# Find a WALL_EXTENSION pipe (L0 → L1 deck).
+	var wall_pipe: PipeSurface = null
+	for id in sim.model.pipes.keys():
+		var p: PipeSurface = sim.model.pipes[id]
+		var c: CopingEdge = sim.model.copings.get(p.coping_id)
+		if c != null and c.coping_class == SimKinds.CopingClass.WALL_EXTENSION:
+			wall_pipe = p
+			break
+	if wall_pipe == null:
+		push_error("no WALL_EXTENSION pipe in layered_demo")
+		return false
+	var cope: CopingEdge = sim.model.copings[wall_pipe.coping_id]
+	var z := (wall_pipe.z_min + wall_pipe.z_max) * 0.5
+	var h_geom := wall_pipe.height_at_theta(z, PI * 0.5)
+	var h_eff := float(cope.sample_at_z(z).height)
+	if h_eff <= h_geom + 10.0:
+		push_error("expected tall wall extension")
+		return false
+	# Start just below geometric coping with strong along.
+	sim.state.mode = SimState.Mode.GROUNDED
+	sim.state.surface_id = wall_pipe.id
+	sim.state.u = 0.92
+	sim.state.v = 0.5
+	sim.state.tangent_velocity = Vector2(600.0, 0.0)
+	sim.state.position = Vector3(
+		wall_pipe.x_at_theta(z, 0.92 * PI * 0.5),
+		z,
+		wall_pipe.height_at_theta(z, 0.92 * PI * 0.5)
+	)
+	var saw_wall := false
+	var heights: Array = []
+	for _i in range(90):
+		sim.set_input(Vector2(wall_pipe.outward_sign(), 0), false, false)
+		sim.tick()
+		if not sim.state.is_grounded():
+			push_error("left ground mid wall-climb")
+			return false
+		if sim.model.pipes.has(sim.state.surface_id) and sim.state.u > 1.05 and sim.state.u < 1.95:
+			saw_wall = true
+			heights.append(sim.state.position.z)
+			# Must not teleport to deck top in one step from geometric.
+			if sim.state.position.z >= h_eff - 1.0 and heights.size() < 3:
+				push_error("teleported to deck top instead of climbing wall")
+				return false
+		if sim.model.patches.has(sim.state.surface_id):
+			# Mounted deck after climb.
+			if not saw_wall:
+				push_error("mounted deck without climbing wall u-range")
+				return false
+			if absf(sim.state.position.z - h_eff) > SimTolerances.SEAM_EPS * 2.0:
+				push_error("deck mount height %.1f want ~%.1f" % [sim.state.position.z, h_eff])
+				return false
+			# Climbing heights should increase monotonically while on wall.
+			for hi in range(heights.size() - 1):
+				if float(heights[hi + 1]) + 0.5 < float(heights[hi]):
+					push_error("wall height went down while climbing")
+					return false
+			return true
+	push_error("never mounted deck after wall climb (saw_wall=%s u=%s h=%.1f)" % [
+		saw_wall, sim.state.u, sim.state.position.z
+	])
+	return false
 
 
 func _place_at_coping(sim: PlayerSim, pipe: PipeSurface, along: float) -> void:

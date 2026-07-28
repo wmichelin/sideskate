@@ -146,7 +146,10 @@ func _sync_from_sim() -> void:
 		tilt = -hang_pipe.outward_sign() * (PI * 0.5)
 	elif st.is_grounded() and _sim.model.pipes.has(st.surface_id):
 		var pipe: PipeSurface = _sim.model.pipes[st.surface_id]
-		var th := st.u * (PI * 0.5)
+		# Wall climb (u>1) stays at full coping lean; arc uses θ = u·π/2 clamped.
+		var th := minf(st.u, 1.0) * (PI * 0.5)
+		if st.u > 1.0:
+			th = PI * 0.5
 		# Match legacy lean: −coping_sign(side) × θ so the skater leans into the wall.
 		tilt = -pipe.outward_sign() * th
 	var support_h := p.z

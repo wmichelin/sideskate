@@ -40,7 +40,7 @@ A transition occurs only via:
 
 | From | To | Gate |
 |------|----|------|
-| Grounded | Grounded | Continuous `SUPPORT_SEAM` or same surface UV advance |
+| Grounded | Grounded | Continuous `SUPPORT_SEAM`, `WALL_EXTENSION` climb, or same surface UV advance |
 | Grounded | Airborne (hang) | Leave `OPEN` / `SHARED_SPINE` coping with rising along (no fly-out) |
 | Grounded | Airborne (free) | Leave unsupported edge / ride-off, or **fly-out** from `OPEN` coping |
 | Airborne (hang) | Grounded | Descend onto exit coping; seed into-bowl along (never re-launch) |
@@ -73,7 +73,7 @@ Every compiled `CopingEdge` has exactly one class:
 |-------|----------|
 | `OPEN` | Explicit fly-out allowed; otherwise hang at coping (X-locked) until land / fly-out / spine / acid |
 | `SUPPORT_SEAM` | Auto-roll onto abutting deck/floor at matching height |
-| `WALL_EXTENSION` | Analytical wall continues to deck top; effective coping moves there |
+| `WALL_EXTENSION` | Vertical wall continues from geometric coping to deck top (`u` 1→2); mount deck at effective coping |
 | `SHARED_SPINE` | Opposite-facing pair; spine target relation |
 
 A glyph-aligned outward deck is never both fly-out space and a solid catch wall.

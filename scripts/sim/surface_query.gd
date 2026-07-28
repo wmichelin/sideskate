@@ -80,7 +80,8 @@ func project_to_surface(surface_id: String, x: float, z: float, h: float) -> Dic
 	return {"ok": false}
 
 
-## First topological edge crossed when advancing pipe u (0..1) toward coping.
+## First topological edge crossed when advancing pipe u toward its gate.
+## WALL_EXTENSION uses u_gate=2 (wall top); others typically gate at 1 (geometric coping).
 func crossed_edge(surface_id: String, old_u: float, new_u: float) -> Dictionary:
 	if model == null:
 		return {}

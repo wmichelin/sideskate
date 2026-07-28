@@ -325,12 +325,19 @@ static func _build_topology_edges(model: ParkModel) -> void:
 		edge.coping_id = cope.id
 		edge.u_gate = 1.0
 		match cope.coping_class:
-			SimKinds.CopingClass.SUPPORT_SEAM, SimKinds.CopingClass.WALL_EXTENSION:
+			SimKinds.CopingClass.SUPPORT_SEAM:
 				edge.kind = SimKinds.EdgeKind.SEAM
 				edge.to_surface_id = cope.support_patch_id
+				edge.u_gate = 1.0
+			SimKinds.CopingClass.WALL_EXTENSION:
+				# u∈[0,1] quarter-pipe; u∈(1,2] vertical wall to deck top.
+				edge.kind = SimKinds.EdgeKind.WALL_TOP
+				edge.to_surface_id = cope.support_patch_id
+				edge.u_gate = 2.0
 			SimKinds.CopingClass.OPEN, SimKinds.CopingClass.SHARED_SPINE:
 				edge.kind = SimKinds.EdgeKind.OPEN_COPING
 				edge.to_surface_id = ""
+				edge.u_gate = 1.0
 		model.edges[edge.id] = edge
 
 
