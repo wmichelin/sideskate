@@ -24,9 +24,9 @@ Godot 3D transforms are presentation / blocker reporting only. Gameplay pose is 
 Exactly one of:
 
 1. **Grounded** — `{ surface_id, u, v, tangent_velocity (Vector2 in surface UV speed), facing }`
-2. **Airborne** — `{ position (Vector3: x,z,height), velocity (Vector3), maneuver: ManeuverPlan|null }`
+2. **Airborne** — `{ position (Vector3: x,z,height), velocity (Vector3), maneuver: ManeuverPlan|null, hang_pipe_id: String }`
 
-No overlapping boolean locks (`air_x_locked`, `spine_transfer_lock`, …). Maneuver presence is the only aerial special case.
+`hang_pipe_id` empty ⇒ free air (XZ control). Non-empty ⇒ hang air: X is locked to that pipe’s coping X at the current Z; Z stick still applies. Hang clears on fly-out, spine, acid, or land — not a pile of boolean locks.
 
 Crash / death is a terminal grounded→overlay path after lava contact or out-of-bounds fall; it is not a third motion state.
 
@@ -41,8 +41,10 @@ A transition occurs only via:
 | From | To | Gate |
 |------|----|------|
 | Grounded | Grounded | Continuous `SUPPORT_SEAM` or same surface UV advance |
-| Grounded | Airborne (free) | Leave unsupported edge, or **fly-out** from `OPEN` coping |
-| Grounded | Airborne (free) | Ride-off: support height drops beyond `CONTACT_EPS` |
+| Grounded | Airborne (hang) | Leave `OPEN` / `SHARED_SPINE` coping with rising along (no fly-out) |
+| Grounded | Airborne (free) | Leave unsupported edge / ride-off, or **fly-out** from `OPEN` coping |
+| Airborne (hang) | Airborne (free) | **Fly-out** (X-dominant outward stick in window) |
+| Airborne (hang) | Airborne+plan | Explicit spine (rising/apex) or acid (descending) |
 | Airborne | Grounded | Ordinary descending landing on a support patch |
 | Airborne | Airborne+plan | Explicit spine (rising/apex) or acid (descending) |
 | Airborne+plan | Grounded | Plan landing time reached on destination coping/pipe |
@@ -68,7 +70,7 @@ Every compiled `CopingEdge` has exactly one class:
 
 | Class | Behavior |
 |-------|----------|
-| `OPEN` | Explicit fly-out allowed; otherwise hang at coping → free air on leave |
+| `OPEN` | Explicit fly-out allowed; otherwise hang at coping (X-locked) until land / fly-out / spine / acid |
 | `SUPPORT_SEAM` | Auto-roll onto abutting deck/floor at matching height |
 | `WALL_EXTENSION` | Analytical wall continues to deck top; effective coping moves there |
 | `SHARED_SPINE` | Opposite-facing pair; spine target relation |
@@ -79,7 +81,8 @@ A glyph-aligned outward deck is never both fly-out space and a solid catch wall.
 
 - Grounded: integrate control in surface UV; gravity projects onto surface tangent.
 - Seam crossing: transport world tangent speed onto the destination surface; no dead-stop.
-- Fly-out: seed free-air velocity from pipe world tangent at leave.
+- Hang leave: seed vertical from along at coping; `vx = 0`; lock X to coping until unlock.
+- Fly-out: clear hang and seed free-air velocity from pipe world remnant / outward unlock.
 - Ordinary land: require downward surface-normal velocity; convert impact into surface tangent.
 - Spine/acid land: convert descending vertical into destination pipe along-arc with travel sign preserved; never reverse travel.
 - Maneuver plans once accepted never retarget.

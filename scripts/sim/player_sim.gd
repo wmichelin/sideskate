@@ -69,18 +69,18 @@ func tick(delta: float = SimTolerances.FIXED_DT) -> void:
 
 
 func _try_actions() -> void:
-	# Fly-out is stick-only at OPEN/SHARED_SPINE coping — no transfer button.
-	if (
-		state.is_grounded()
-		and model.pipes.has(state.surface_id)
-		and state.u >= 0.98
-		and not state.has_maneuver()
-	):
+	# Fly-out: stick-only at OPEN coping while grounded OR hang-airing above it.
+	var fly_eligible := not state.has_maneuver() and (
+		(state.is_grounded() and model.pipes.has(state.surface_id) and state.u >= 0.98)
+		or state.is_hanging()
+	)
+	if fly_eligible:
 		var fo := planner.try_fly_out(state, last_wish.x, last_wish.y)
 		if bool(fo.get("ok", false)):
 			var plan: ManeuverPlan = fo.plan
 			state.mode = SimState.Mode.AIRBORNE
 			state.surface_id = ""
+			state.clear_hang()
 			state.maneuver = plan
 			state.last_reject = ""
 			return
@@ -96,6 +96,7 @@ func _try_actions() -> void:
 				dir = 1.0 if state.facing == "r" else -1.0
 			var sp := planner.try_spine(state, dir)
 			if bool(sp.get("ok", false)):
+				state.clear_hang()
 				state.maneuver = sp.plan
 				state.last_reject = ""
 				return
@@ -106,6 +107,7 @@ func _try_actions() -> void:
 				travel = last_wish.x
 			var ac := planner.try_acid(state, travel)
 			if bool(ac.get("ok", false)):
+				state.clear_hang()
 				state.maneuver = ac.plan
 				state.last_reject = ""
 				return
@@ -126,6 +128,7 @@ func respawn() -> void:
 	state = ground.spawn_state()
 	state.alive = true
 	state.maneuver = null
+	state.clear_hang()
 	state.last_reject = ""
 	if debug != null:
 		debug.capture(state, model, query)

@@ -31,15 +31,27 @@ func step(state: SimState, wish: Vector2, delta: float) -> void:
 
 
 func _step_free(state: SimState, wish: Vector2, delta: float) -> void:
-	# Light air control on XZ.
 	var w := wish
 	if w.length() > 1.0:
 		w = w.normalized()
-	state.velocity.x = move_toward(state.velocity.x, w.x * 400.0, 800.0 * delta)
-	state.velocity.y = move_toward(state.velocity.y, w.y * 200.0, 400.0 * delta)
+	if state.is_hanging():
+		# Pipe hang: X locked to source coping; Z stick only.
+		state.velocity.x = 0.0
+		state.velocity.y = move_toward(state.velocity.y, w.y * 200.0, 400.0 * delta)
+	else:
+		# Free air: light XZ control.
+		state.velocity.x = move_toward(state.velocity.x, w.x * 400.0, 800.0 * delta)
+		state.velocity.y = move_toward(state.velocity.y, w.y * 200.0, 400.0 * delta)
 	state.velocity.z += SimTolerances.GRAVITY * delta
 	var from := state.position
+	if state.is_hanging() and model.pipes.has(state.hang_pipe_id):
+		var hang_pipe: PipeSurface = model.pipes[state.hang_pipe_id]
+		from.x = hang_pipe.coping_x_at(from.y)
+		state.position.x = from.x
 	var to := from + Vector3(state.velocity.x, state.velocity.y, state.velocity.z) * delta
+	if state.is_hanging() and model.pipes.has(state.hang_pipe_id):
+		var hang_pipe2: PipeSurface = model.pipes[state.hang_pipe_id]
+		to.x = hang_pipe2.coping_x_at(to.y)
 	var hit := query.sweep_capsule(from, to)
 	if not hit.is_empty():
 		var t := float(hit.get("t", 1.0))
@@ -61,6 +73,7 @@ func _step_maneuver(state: SimState, delta: float) -> void:
 		# Instant unlock into free air.
 		state.velocity = plan.start_velocity
 		state.maneuver = null
+		state.clear_hang()
 		_step_free(state, Vector2.ZERO, delta)
 		return
 	plan.elapsed = minf(plan.elapsed + delta, plan.land_time)
@@ -99,6 +112,7 @@ func _land_maneuver(state: SimState, plan: ManeuverPlan) -> void:
 	state.tangent_velocity = Vector2(along, state.velocity.y)
 	state.velocity = Vector3.ZERO
 	state.maneuver = null
+	state.clear_hang()
 
 
 func _try_land(state: SimState, from_height: float = NAN) -> void:
@@ -139,5 +153,6 @@ func _try_land(state: SimState, from_height: float = NAN) -> void:
 	else:
 		state.tangent_velocity = Vector2(state.velocity.x, state.velocity.y)
 	state.velocity = Vector3.ZERO
+	state.clear_hang()
 	if top.get("lethal", false):
 		state.alive = false

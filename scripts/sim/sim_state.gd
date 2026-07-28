@@ -20,6 +20,8 @@ var position: Vector3 = Vector3.ZERO
 var velocity: Vector3 = Vector3.ZERO
 var facing: String = "r"
 var maneuver = null ## ManeuverPlan or null
+## Non-empty while hang-airing above a pipe coping (X locked until fly-out/spine/acid/land).
+var hang_pipe_id: String = ""
 var alive: bool = true
 var tick: int = 0
 ## Debug: last rejection reasons.
@@ -34,8 +36,16 @@ func is_airborne() -> bool:
 	return mode == Mode.AIRBORNE
 
 
+func is_hanging() -> bool:
+	return is_airborne() and not hang_pipe_id.is_empty() and maneuver == null
+
+
 func has_maneuver() -> bool:
 	return maneuver != null
+
+
+func clear_hang() -> void:
+	hang_pipe_id = ""
 
 
 func to_dict() -> Dictionary:
@@ -51,6 +61,7 @@ func to_dict() -> Dictionary:
 		"alive": alive,
 		"tick": tick,
 		"has_maneuver": has_maneuver(),
+		"hang_pipe_id": hang_pipe_id,
 		"last_reject": last_reject,
 	}
 
@@ -58,11 +69,11 @@ func to_dict() -> Dictionary:
 func state_hash() -> String:
 	var ctx := HashingContext.new()
 	ctx.start(HashingContext.HASH_MD5)
-	var s := "%d|%s|%.4f|%.4f|%.4f|%.4f|%.4f|%.4f|%.4f|%.4f|%s|%d" % [
+	var s := "%d|%s|%.4f|%.4f|%.4f|%.4f|%.4f|%.4f|%.4f|%.4f|%s|%s|%d" % [
 		mode, surface_id, u, v,
 		position.x, position.y, position.z,
 		velocity.x, velocity.y, velocity.z,
-		facing, tick,
+		facing, hang_pipe_id, tick,
 	]
 	ctx.update(s.to_utf8_buffer())
 	return ctx.finish().hex_encode()

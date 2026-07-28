@@ -109,6 +109,15 @@ func _step_patch(state: SimState, wish: Vector2, delta: float, accel: float, max
 
 func _step_pipe(state: SimState, wish: Vector2, delta: float, accel: float, max_speed: float) -> void:
 	var pipe: PipeSurface = model.pipes[state.surface_id]
+	# Already perched on OPEN coping with leftover along: hang-launch before control/gravity eat it.
+	if state.u >= 0.999 and state.tangent_velocity.x > 1.0:
+		var perch: CopingEdge = model.copings.get(pipe.coping_id)
+		if perch != null and (
+			perch.coping_class == SimKinds.CopingClass.OPEN
+			or perch.coping_class == SimKinds.CopingClass.SHARED_SPINE
+		):
+			_launch_from_coping(state, pipe, state.position.y)
+			return
 	var crossings := 0
 	var remaining := delta
 	while remaining > 1e-6 and crossings < SimTolerances.MAX_EDGE_CROSSINGS:
@@ -193,20 +202,15 @@ func _step_pipe(state: SimState, wish: Vector2, delta: float, accel: float, max_
 		remaining = 0.0
 	if crossings >= SimTolerances.MAX_EDGE_CROSSINGS:
 		push_error("GroundSolver: edge crossing bound exceeded on %s" % pipe.id)
-	# Already perched on OPEN coping with leftover along: launch.
-	if state.is_grounded() and model.pipes.has(state.surface_id) and state.u >= 0.999:
-		_try_coping_air_intent(state, pipe)
 	if state.is_grounded() and model.pipes.has(state.surface_id):
 		_update_facing_pipe(state, pipe)
 
 
-## Rising into OPEN coping → free air with along converted to vertical.
+## Rising into OPEN coping → hang air (X locked to coping) with along → vertical.
 func _launch_from_coping(state: SimState, pipe: PipeSurface, z: float) -> void:
 	var along := state.tangent_velocity.x
 	var th := PI * 0.5
-	var out := pipe.outward_sign()
-	# World remnant at coping: vx = along·out·cosθ ≈ 0, vh = along·sinθ ≈ along.
-	var world_vx := along * out * cos(th)
+	# Hang remnant: no world X; vh = along·sinθ ≈ along at coping.
 	var world_vh := along * sin(th)
 	var world_vz := state.tangent_velocity.y
 	state.u = 1.0
@@ -215,19 +219,7 @@ func _launch_from_coping(state: SimState, pipe: PipeSurface, z: float) -> void:
 		z,
 		pipe.height_at_theta(z, th)
 	)
-	_enter_air(state, Vector3(world_vx, world_vz, world_vh))
-
-
-## Perched at coping (u≈1) with leftover along → launch into air.
-func _try_coping_air_intent(state: SimState, pipe: PipeSurface) -> void:
-	var cope: CopingEdge = model.copings.get(pipe.coping_id)
-	if cope == null:
-		return
-	if cope.coping_class != SimKinds.CopingClass.OPEN \
-			and cope.coping_class != SimKinds.CopingClass.SHARED_SPINE:
-		return
-	if state.tangent_velocity.x > 40.0:
-		_launch_from_coping(state, pipe, state.position.y)
+	_enter_air(state, Vector3(0.0, world_vz, world_vh), pipe.id)
 
 
 ## Exit pipe at the lip onto abutting floor/deck, or free-air if unsupported.
@@ -283,12 +275,13 @@ func try_mount_surface(state: SimState, x: float, z: float, h: float) -> bool:
 	return true
 
 
-func _enter_air(state: SimState, world_vel: Vector3) -> void:
+func _enter_air(state: SimState, world_vel: Vector3, hang_pipe_id: String = "") -> void:
 	state.mode = SimState.Mode.AIRBORNE
 	state.surface_id = ""
 	state.velocity = world_vel
 	state.maneuver = null
 	state.tangent_velocity = Vector2.ZERO
+	state.hang_pipe_id = hang_pipe_id
 
 
 func _update_facing(state: SimState) -> void:

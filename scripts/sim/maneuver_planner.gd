@@ -15,7 +15,7 @@ func _init(m: ParkModel = null, q: SurfaceQuery = null) -> void:
 func try_fly_out(state: SimState, input_x: float, input_z: float) -> Dictionary:
 	if not state.is_grounded() and not state.is_airborne():
 		return _reject("bad state")
-	# Fly-out from grounded pipe near open coping OR airborne without plan rising at open coping.
+	# Fly-out from grounded pipe near open coping OR hang air over that pipe.
 	var pipe: PipeSurface = null
 	var cope: CopingEdge = null
 	var pos := state.position
@@ -26,8 +26,12 @@ func try_fly_out(state: SimState, input_x: float, input_z: float) -> Dictionary:
 		if state.u < 0.98:
 			return _reject("not at coping")
 		vel_h = state.tangent_velocity.x ## along-arc
+	elif state.is_hanging() and model.pipes.has(state.hang_pipe_id):
+		pipe = model.pipes[state.hang_pipe_id]
+		cope = model.copings.get(pipe.coping_id)
+		vel_h = state.velocity.z
 	elif state.is_airborne() and not state.has_maneuver():
-		# Find nearest pipe coping under feet.
+		# Find nearest pipe coping under feet (non-hang free air — rare).
 		var top := query.top_support(pos.x, pos.y, pos.z + SimTolerances.CONTACT_EPS)
 		if top.is_empty() or int(top.kind) != SimKinds.SurfaceKind.PIPE:
 			return _reject("no pipe under air")
@@ -71,7 +75,7 @@ func try_fly_out(state: SimState, input_x: float, input_z: float) -> Dictionary:
 	plan.source_coping_id = cope.id
 	plan.start_position = pos
 	var speed := maxf(absf(state.tangent_velocity.x), absf(state.velocity.length()))
-	plan.start_velocity = Vector3(out * maxf(speed, 120.0), state.tangent_velocity.y, maxf(vel_h, state.velocity.z))
+	plan.start_velocity = Vector3(out * maxf(speed, 120.0), state.velocity.y if state.is_airborne() else state.tangent_velocity.y, maxf(vel_h, state.velocity.z))
 	plan.land_time = 0.0 ## immediate free-air unlock
 	plan.travel_sign = out
 	return {"ok": true, "plan": plan}

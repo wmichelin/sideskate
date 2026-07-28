@@ -7,6 +7,7 @@ func run() -> bool:
 		_ride_halfpipe()
 		and _deck_seam_mount()
 		and _fly_out_open_vs_backed()
+		and _hang_x_lock_until_fly_out()
 		and _spine_plan()
 		and _acid_plan()
 		and _deterministic_replay()
@@ -86,7 +87,7 @@ func _fly_out_open_vs_backed() -> bool:
 		push_error("open stick fly-out should launch air: reject=%s" % open.state.last_reject)
 		return false
 
-	# Ride into OPEN coping with along only (no stick): still launch to free air.
+	# Ride into OPEN coping with along only (no stick): hang air, X-locked.
 	var launch := PlayerSim.new()
 	if not launch.setup_from_path("res://tests/levels/sim/sim_open_fly.ssk"):
 		push_error("setup open_fly launch")
@@ -95,8 +96,8 @@ func _fly_out_open_vs_backed() -> bool:
 	_place_at_coping(launch, left_l, 200.0)
 	launch.set_input(Vector2.ZERO, false, true)
 	launch.tick()
-	if not launch.state.is_airborne():
-		push_error("OPEN coping with along must launch to air")
+	if not launch.state.is_airborne() or not launch.state.is_hanging():
+		push_error("OPEN coping with along must hang-air")
 		return false
 
 	# Backed: fly-out must refuse (deck seam / wall extension, not OPEN fly corridor).
@@ -113,6 +114,49 @@ func _fly_out_open_vs_backed() -> bool:
 		if plan.kind == ManeuverPlan.Kind.FLY_OUT:
 			push_error("backed coping must not fly-out")
 			return false
+	return true
+
+
+func _hang_x_lock_until_fly_out() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_open_fly.ssk"):
+		push_error("setup hang lock")
+		return false
+	var left := _left_pipe(sim.model)
+	_place_at_coping(sim, left, 200.0)
+	sim.set_input(Vector2.ZERO, false, false)
+	sim.tick()
+	if not sim.state.is_hanging():
+		push_error("expected hang after coping leave")
+		return false
+	var lock_x := left.coping_x_at(sim.state.position.y)
+	# Z-dominant stick: stay hang-locked (not X-dominant fly-out).
+	sim.set_input(Vector2(-0.2, 0.9), false, false)
+	for _i in range(2):
+		sim.tick()
+		if not sim.state.is_hanging():
+			push_error("hang cleared without fly-out/spine reject=%s" % sim.state.last_reject)
+			return false
+		if absf(sim.state.position.x - lock_x) > SimTolerances.CONTACT_EPS:
+			push_error("hang drifted X: got %.2f want %.2f" % [sim.state.position.x, lock_x])
+			return false
+		if absf(sim.state.velocity.x) > 0.01:
+			push_error("hang must keep vx=0")
+			return false
+	# Explicit X-dominant outward fly-out unlocks free air (no transfer edge).
+	sim.set_input(Vector2(-1, 0), false, false)
+	sim.tick()
+	if sim.state.is_hanging():
+		push_error("fly-out should clear hang: reject=%s h=%.1f vh=%.1f" % [
+			sim.state.last_reject, sim.state.position.z, sim.state.velocity.z
+		])
+		return false
+	if not sim.state.is_airborne():
+		push_error("fly-out should leave airborne free")
+		return false
+	if sim.state.velocity.x >= -1.0:
+		push_error("fly-out should seed outward (-X) velocity, got %s" % sim.state.velocity)
+		return false
 	return true
 
 
