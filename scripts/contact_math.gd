@@ -312,6 +312,46 @@ static func hole_fall_allows_floor(
 	return floor_h <= hole_h + eps
 
 
+## Acid mid-lerp: refuse exit-wall land and non-target pipe land.
+static func acid_should_reject_land(
+	land_hit: Dictionary,
+	acid_drop_lock: bool,
+	is_exit_pipe: bool,
+	air_side: int,
+	air_lip_x: float,
+) -> bool:
+	if not acid_drop_lock or not is_pipe(land_hit):
+		return false
+	if is_exit_pipe:
+		return true
+	var hit_side := int(land_hit.get("side", -1))
+	var hit_lip := float(land_hit.get("lip_x", NAN))
+	return hit_side != air_side or is_nan(hit_lip) or absf(hit_lip - air_lip_x) > 0.05
+
+
+## Spine mid-lerp: only land on the locked target pipe (and matching story).
+static func spine_should_reject_land(
+	land_hit: Dictionary,
+	spine_transfer_lock: bool,
+	air_side: int,
+	air_lip_x: float,
+	air_base_height: float,
+) -> bool:
+	if not spine_transfer_lock:
+		return false
+	if not is_pipe(land_hit):
+		return true
+	var spine_side := int(land_hit.get("side", -1))
+	var spine_lip := float(land_hit.get("lip_x", NAN))
+	if spine_side != air_side or is_nan(spine_lip) or absf(spine_lip - air_lip_x) > 0.05:
+		return true
+	var spine_base := float(land_hit.get("base_height", NAN))
+	if not is_nan(spine_base) and not is_nan(air_base_height) \
+			and absf(spine_base - air_base_height) > 0.5:
+		return true
+	return false
+
+
 ## Glyph on a story: hole / floor / lava / deck / pipe / empty.
 static func zone_from_glyph(glyph: String) -> String:
 	match glyph:

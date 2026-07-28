@@ -880,30 +880,15 @@ func _try_land_from_air_contact(
 	if land_hit.is_empty():
 		return false
 
-	# Acid: never land on the exit wall mid-lerp (underfoot is still that pipe until
-	# X reaches the target). Keep falling / settling — that land was the reverse snap.
-	if _acid_drop_lock and _ContactMath.is_pipe(land_hit) and _is_exit_pipe_hit(land_hit):
+	# Acid/spine target-only landing (mid-lerp must not clip exit wall / decks).
+	if _ContactMath.acid_should_reject_land(
+		land_hit, _acid_drop_lock, _is_exit_pipe_hit(land_hit), _air_side, _air_lip_x
+	):
 		return false
-	# Acid: only pipe-land on the locked target wall (side+lip), not a random underfoot pipe.
-	if _acid_drop_lock and _ContactMath.is_pipe(land_hit):
-		var hit_side := int(land_hit.get("side", -1))
-		var hit_lip := float(land_hit.get("lip_x", NAN))
-		if hit_side != _air_side or is_nan(hit_lip) or absf(hit_lip - _air_lip_x) > 0.05:
-			return false
-	# Spine: same target-only rule. Mid-lerp often crosses an L1 deck / flat pad between
-	# misaligned copings — landing there clips the transfer instead of finishing on L0.
-	if _spine_transfer_lock:
-		if not _ContactMath.is_pipe(land_hit):
-			return false
-		var spine_side := int(land_hit.get("side", -1))
-		var spine_lip := float(land_hit.get("lip_x", NAN))
-		if spine_side != _air_side or is_nan(spine_lip) or absf(spine_lip - _air_lip_x) > 0.05:
-			return false
-		# Prefer matching story when stacked pipes share a lip column.
-		var spine_base := float(land_hit.get("base_height", NAN))
-		if not is_nan(spine_base) and not is_nan(_air_base_height) \
-				and absf(spine_base - _air_base_height) > 0.5:
-			return false
+	if _ContactMath.spine_should_reject_land(
+		land_hit, _spine_transfer_lock, _air_side, _air_lip_x, _air_base_height
+	):
+		return false
 
 	air_abs_height = floor_h
 	var pin_x := depth.logical_x

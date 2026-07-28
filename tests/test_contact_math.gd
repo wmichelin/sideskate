@@ -14,6 +14,7 @@ func run() -> bool:
 	ok = _sample_sweep_integration() and ok
 	ok = _air_contact_land_rules() and ok
 	ok = _resolve_air_contact_integration() and ok
+	ok = _acid_spine_land_rejects() and ok
 	return ok
 
 
@@ -370,6 +371,32 @@ func _force_sticky_shared_coping() -> bool:
 		return false
 
 	_free(level)
+	return true
+
+
+func _acid_spine_land_rejects() -> bool:
+	var exit_pipe := _pipe(150.0, 0.0, 0, 100.0)
+	var target := _pipe(150.0, 0.0, 1, 500.0)
+	var deck := {"active": true, "zone": "deck", "height": 141.0}
+	if not ContactMath.acid_should_reject_land(exit_pipe, true, true, 1, 500.0):
+		push_error("acid must reject exit wall")
+		return false
+	if ContactMath.acid_should_reject_land(target, true, false, 1, 500.0):
+		push_error("acid must accept locked target")
+		return false
+	if not ContactMath.acid_should_reject_land(exit_pipe, true, false, 1, 500.0):
+		push_error("acid must reject foreign pipe")
+		return false
+	if not ContactMath.spine_should_reject_land(deck, true, 1, 500.0, 0.0):
+		push_error("spine must reject deck")
+		return false
+	if ContactMath.spine_should_reject_land(target, true, 1, 500.0, 0.0):
+		push_error("spine must accept target pipe")
+		return false
+	var wrong_story := _pipe(338.0, 188.0, 1, 500.0)
+	if not ContactMath.spine_should_reject_land(wrong_story, true, 1, 500.0, 0.0):
+		push_error("spine must reject mismatched story")
+		return false
 	return true
 
 
