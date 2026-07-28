@@ -19,6 +19,38 @@ Coordinate signs match [`docs/level_format.md`](level_format.md): X left→right
 
 Godot 3D transforms are presentation / blocker reporting only. Gameplay pose is always logical.
 
+## Aerial vocabulary
+
+Logical axes in this document: **X** left/right, **Z** near/far, **height** up. (Presentation may map height→Y.)
+
+| Term | Alias | Meaning |
+|------|-------|---------|
+| **Air-out** | hang | Leave coping with **X locked** to that pipe’s coping X. Motion is height (+ optionally Z) only. Stick does **not** unlock X. |
+| **Fly-out** | deck-out | Exit X-lock and travel **away** from the pipe: left on a left pipe, right on a right pipe (world outward). Free-air XZ control after unlock. |
+| **Spine** | — | Explicit transfer onto an **opposite-facing** pipe. Never an automatic ordinary land. |
+
+### Fly-out / deck-out activation
+
+While air-out (hang) or perched on an `OPEN` / `SHARED_SPINE` coping, and height above coping is within `FLY_OUT_ABOVE`:
+
+- Stick must be **X-dominant** and **outward** (into the lip / toward leaving the pipe): −X on left pipes, +X on right pipes.
+- Accepting fly-out clears hang, seeds outward free-air velocity, and ends X-lock.
+
+Same-height outward `#` decks are fly/air corridor — they do **not** auto-mount from the pipe.
+
+### Air-out landing
+
+While air-out (X-locked):
+
+- Z travel may leave the source pipe’s Z span.
+- Ordinary land may enter **any** pipe that faces the **same** direction and whose coping X aligns with the lock (`ALIGN_EPS`), regardless of layer / absolute height.
+- Ordinary land must **never** accept an opposite-facing pipe (that requires spine).
+- Floors / decks under the locked X remain valid ordinary lands.
+
+### Spine landing
+
+Spine is an accepted `ManeuverPlan` only (transfer button while rising/apex). Destination is the opposite-facing pipe approached from its **outward** side: travel +X onto a left pipe (from left of it), or travel −X onto a right pipe (from right of it).
+
 ## High-level states
 
 Exactly one of:
@@ -26,7 +58,7 @@ Exactly one of:
 1. **Grounded** — `{ surface_id, u, v, tangent_velocity (Vector2 in surface UV speed), facing }`
 2. **Airborne** — `{ position (Vector3: x,z,height), velocity (Vector3), maneuver: ManeuverPlan|null, hang_pipe_id: String }`
 
-`hang_pipe_id` empty ⇒ free air (XZ control). Non-empty ⇒ hang air: **X only** is locked to that pipe’s coping X at the current Z (depth stick still applies; height is free ballistic). Hang clears on fly-out, spine, acid, or land. Landing uses ordinary underfoot support — X-lock is not a land filter.
+`hang_pipe_id` empty ⇒ free air (XZ control). Non-empty ⇒ **air-out**: **X only** locked to that pipe’s coping X at current Z (depth stick still applies; height ballistic). Hang clears on fly-out, spine, acid, or land.
 
 Crash / death is a terminal grounded→overlay path after lava contact or out-of-bounds fall; it is not a third motion state.
 
@@ -41,12 +73,12 @@ A transition occurs only via:
 | From | To | Gate |
 |------|----|------|
 | Grounded | Grounded | Continuous `SUPPORT_SEAM`, `WALL_EXTENSION` climb, or same surface UV advance |
-| Grounded | Airborne (hang) | Leave `OPEN` / `SHARED_SPINE` coping with rising along (no fly-out) |
-| Grounded | Airborne (free) | Leave unsupported edge / ride-off, or **fly-out** from `OPEN` coping |
-| Airborne (hang) | Grounded | Descend onto exit coping; seed into-bowl along (never re-launch) |
-| Airborne (hang) | Airborne (free) | **Fly-out** (X-dominant outward stick in window) |
-| Airborne (hang) | Airborne+plan | Explicit spine (rising/apex) or acid (descending) |
-| Airborne | Grounded | Ordinary descending landing on a support patch |
+| Grounded | Airborne (air-out) | Leave `OPEN` / `SHARED_SPINE` coping with rising along (no fly-out) |
+| Grounded | Airborne (free) | Leave unsupported edge / ride-off, or **fly-out** from `OPEN` / `SHARED_SPINE` |
+| Airborne (air-out) | Grounded | Ordinary land: same-facing X-aligned pipe (any height), or floor/deck under lock |
+| Airborne (air-out) | Airborne (free) | **Fly-out** (X-dominant outward stick in `FLY_OUT_ABOVE` window) |
+| Airborne (air-out) | Airborne+plan | Explicit spine (rising/apex) or acid (descending) |
+| Airborne (free) | Grounded | Ordinary descending land; pipes only if same-facing as travel (never opposite) |
 | Airborne | Airborne+plan | Explicit spine (rising/apex) or acid (descending) |
 | Airborne+plan | Grounded | Plan landing time reached on destination coping/pipe |
 | Any aerial | Crash | Blocker / lava / invalidated plan corridor |
@@ -71,20 +103,20 @@ Every compiled `CopingEdge` has exactly one class:
 
 | Class | Behavior |
 |-------|----------|
-| `OPEN` | Explicit fly-out allowed; otherwise hang at coping (X-locked) until land / fly-out / spine / acid |
-| `SUPPORT_SEAM` | Auto-roll onto abutting deck/floor at matching height |
-| `WALL_EXTENSION` | Vertical wall continues from geometric coping to deck top (`u` 1→2); mount deck at effective coping |
-| `SHARED_SPINE` | Opposite-facing pair; spine target relation |
+| `OPEN` | Air-out on rise; fly-out when stick-outward in window |
+| `SUPPORT_SEAM` | Auto-roll onto abutting **floor** at matching height only |
+| `WALL_EXTENSION` | Outward pad strictly above coping: climb `u` 1→2 then mount |
+| `SHARED_SPINE` | Opposite-facing pair; spine relation; air-out / fly-out like `OPEN` |
 
-A glyph-aligned outward deck is never both fly-out space and a solid catch wall.
+Outward `#` deck at ≈ coping height ⇒ `OPEN` (air/fly corridor). Matching-height `=` floor ⇒ `SUPPORT_SEAM`. Strictly taller outward solid ⇒ `WALL_EXTENSION`.
 
 ## Velocity rules
 
 - Grounded: integrate control in surface UV. Neutral stick coasts (`friction` / `ramp_friction`); stick opposite velocity brakes (`brake`); aligned stick accelerates (`accel`). Cap at max speeds.
 - Seam crossing: transport world tangent speed onto the destination surface; no dead-stop.
-- Hang leave: seed vertical from along at coping; `vx = 0`; lock X to coping until unlock.
-- Fly-out: clear hang and seed free-air velocity from pipe world remnant / outward unlock.
-- Ordinary land: require downward surface-normal velocity; convert impact into surface tangent.
+- Air-out leave: seed vertical from along at coping; `vx = 0`; lock X to coping until fly-out / spine / acid / land.
+- Fly-out / deck-out: clear hang; seed free-air velocity with outward X.
+- Ordinary land: require descending support crossing; pipes only same-facing (air-out: also coping-X aligned, any height); never opposite-facing.
 - Spine/acid land: convert descending vertical into destination pipe along-arc with travel sign preserved; never reverse travel.
 - Maneuver plans once accepted never retarget.
 
@@ -94,8 +126,8 @@ A glyph-aligned outward deck is never both fly-out space and a solid catch wall.
 |--------|-----------|
 | Move | Stick → wish in XZ / along-surface |
 | Ollie | Hold `ollie`: mild accel toward `max_speed` in **facing** direction; skipped while stick brakes opposite |
-| Fly-out | Explicit X-dominant outward stick while rising in fly-out window on `OPEN` |
-| Spine | Explicit action while rising or rising-apex |
+| Fly-out / deck-out | X-dominant outward stick (−X left pipe / +X right pipe) while rising in `FLY_OUT_ABOVE` on `OPEN` / `SHARED_SPINE` or while air-out |
+| Spine | Explicit action while rising/apex; dest opposite-facing; traveler outward of dest coping |
 | Acid | Explicit action while descending |
 | Post fly-out | Same action may acid when descending; never spine at apex |
 

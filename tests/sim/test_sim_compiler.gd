@@ -5,7 +5,7 @@ extends RefCounted
 func run() -> bool:
 	return (
 		_halfpipe_compiles()
-		and _deck_backed_is_seam()
+		and _deck_backed_is_open()
 		and _spine_shared()
 		and _open_coping()
 		and _playable_levels_compile()
@@ -26,23 +26,23 @@ func _halfpipe_compiles() -> bool:
 	return true
 
 
-func _deck_backed_is_seam() -> bool:
+func _deck_backed_is_open() -> bool:
 	var m: ParkModel = IdlCompiler.compile_path("res://tests/levels/sim/sim_deck_backed.ssk")
 	if not m.is_valid():
 		push_error("deck_backed compile fail")
 		return false
-	var found_seam := false
+	var found_open := false
 	for cid in m.copings.keys():
 		var c: CopingEdge = m.copings[cid]
 		if c.side == SimKinds.PipeSide.LEFT:
-			if c.coping_class == SimKinds.CopingClass.SUPPORT_SEAM \
-					or c.coping_class == SimKinds.CopingClass.WALL_EXTENSION:
-				found_seam = true
+			# Same-height outward # is air/fly corridor, not auto-mount seam.
+			if c.coping_class == SimKinds.CopingClass.OPEN:
+				found_open = true
 			else:
-				push_error("left coping should be seam/extension, got %s" % c.class_name_str())
+				push_error("left deck-backed coping should be OPEN, got %s" % c.class_name_str())
 				return false
-	if not found_seam:
-		push_error("no left seam coping")
+	if not found_open:
+		push_error("no left OPEN coping on deck_backed")
 		return false
 	return true
 

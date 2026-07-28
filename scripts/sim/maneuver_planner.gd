@@ -101,12 +101,15 @@ func try_spine(state: SimState, facing_dir: float) -> Dictionary:
 		var cope: CopingEdge = c.coping
 		if cope.id == source_id:
 			continue
-		var ok_target := cope.coping_class == SimKinds.CopingClass.SHARED_SPINE
-		# Facing cast direction: +X seeks right-side destinations (and shared partners).
-		var want_side := SimKinds.PipeSide.RIGHT if dir > 0.0 else SimKinds.PipeSide.LEFT
-		if int(c.side) == want_side:
-			ok_target = true
-		if not ok_target:
+		# Approach from outward: travel +X lands a left pipe (from its left);
+		# travel −X lands a right pipe (from its right).
+		var want_side := SimKinds.PipeSide.LEFT if dir > 0.0 else SimKinds.PipeSide.RIGHT
+		if int(c.side) != want_side:
+			continue
+		# Traveler must be outward of dest: left of left / right of right.
+		var dest_cx := float(c.coping_x)
+		var out := float(cope.outward_sign)
+		if (pos.x - dest_cx) * out < -SimTolerances.ALIGN_EPS:
 			continue
 		var plan := _build_transfer_plan(
 			ManeuverPlan.Kind.SPINE, state, cope, dir, source_id

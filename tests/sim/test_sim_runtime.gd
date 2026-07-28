@@ -5,7 +5,6 @@ extends RefCounted
 func run() -> bool:
 	return (
 		_ride_halfpipe()
-		and _deck_seam_mount()
 		and _fly_out_open_vs_backed()
 		and _hang_x_lock_until_fly_out()
 		and _hang_land_into_bowl()
@@ -40,41 +39,6 @@ func _ride_halfpipe() -> bool:
 	return true
 
 
-func _deck_seam_mount() -> bool:
-	var sim := PlayerSim.new()
-	if not sim.setup_from_path("res://tests/levels/sim/sim_deck_backed.ssk"):
-		push_error("setup deck_backed")
-		return false
-	# Place on left pipe near lip and ride up.
-	var pipe_id := ""
-	for id in sim.model.pipes.keys():
-		var p: PipeSurface = sim.model.pipes[id]
-		if p.side == SimKinds.PipeSide.LEFT:
-			pipe_id = id
-			break
-	if pipe_id.is_empty():
-		push_error("no left pipe")
-		return false
-	var pipe: PipeSurface = sim.model.pipes[pipe_id]
-	var z := (pipe.z_min + pipe.z_max) * 0.5
-	sim.state.mode = SimState.Mode.GROUNDED
-	sim.state.surface_id = pipe_id
-	sim.state.u = 0.2
-	sim.state.v = 0.5
-	sim.state.tangent_velocity = Vector2(400.0, 0.0)
-	sim.state.position = Vector3(pipe.x_at_theta(z, 0.2 * PI * 0.5), z, pipe.height_at_theta(z, 0.2 * PI * 0.5))
-	# Outward stick on left pipe (−X) climbs toward coping / deck seam.
-	for _i in range(120):
-		sim.set_input(Vector2(-1, 0), false, false)
-		sim.tick()
-		if sim.state.is_grounded() and sim.model.patches.has(sim.state.surface_id):
-			var patch: SupportPatch = sim.model.patches[sim.state.surface_id]
-			if patch.kind == SimKinds.SurfaceKind.DECK:
-				return true
-	push_error("never mounted deck from pipe seam")
-	return false
-
-
 func _fly_out_open_vs_backed() -> bool:
 	# Open: stick-only outward X-dominant fly-out at coping (no transfer button).
 	var open := PlayerSim.new()
@@ -104,7 +68,7 @@ func _fly_out_open_vs_backed() -> bool:
 		push_error("OPEN coping with along must hang-air")
 		return false
 
-	# Backed: fly-out must refuse (deck seam / wall extension, not OPEN fly corridor).
+	# Backed same-height #: OPEN air/fly corridor — outward stick fly-out / deck-out.
 	var backed := PlayerSim.new()
 	if not backed.setup_from_path("res://tests/levels/sim/sim_deck_backed.ssk"):
 		push_error("setup backed")
@@ -113,11 +77,24 @@ func _fly_out_open_vs_backed() -> bool:
 	_place_at_coping(backed, left_b, 80.0)
 	backed.set_input(Vector2(-1, 0), false, true)
 	backed.tick()
-	if backed.state.is_airborne() and backed.state.has_maneuver():
-		var plan: ManeuverPlan = backed.state.maneuver
-		if plan.kind == ManeuverPlan.Kind.FLY_OUT:
-			push_error("backed coping must not fly-out")
-			return false
+	if not backed.state.is_airborne():
+		push_error("deck-backed stick fly-out should launch: reject=%s" % backed.state.last_reject)
+		return false
+	if backed.state.is_hanging():
+		push_error("deck-backed fly-out should unlock X (not remain air-out)")
+		return false
+	# No stick: rise into coping → air-out hang, not deck seam mount.
+	var air := PlayerSim.new()
+	if not air.setup_from_path("res://tests/levels/sim/sim_deck_backed.ssk"):
+		push_error("setup backed air-out")
+		return false
+	var left_a := _left_pipe(air.model)
+	_place_at_coping(air, left_a, 200.0)
+	air.set_input(Vector2.ZERO, false, true)
+	air.tick()
+	if not air.state.is_airborne() or not air.state.is_hanging():
+		push_error("deck-backed along must air-out hang, not mount deck")
+		return false
 	return true
 
 

@@ -26,10 +26,12 @@ See also [AGENTS.md](../AGENTS.md) and [movement_contract.md](movement_contract.
 
 | Coping class | Behavior |
 |--------------|----------|
-| `OPEN` | Stick fly-out allowed; otherwise hang (X locked to coping) |
-| `SUPPORT_SEAM` | Auto-roll onto abutting deck/floor at matching height |
-| `WALL_EXTENSION` | Continuous vertical climb from geometric coping → deck top (`u` 1→2), then mount |
-| `SHARED_SPINE` | Opposite-facing pair; spine transfer target |
+| `OPEN` | Air-out on rise; stick fly-out / deck-out in window |
+| `SUPPORT_SEAM` | Auto-roll onto abutting **floor** at matching height |
+| `WALL_EXTENSION` | Continuous vertical climb from geometric coping → pad top (`u` 1→2), then mount |
+| `SHARED_SPINE` | Opposite-facing pair; spine target; air/fly like `OPEN` |
+
+Same-height outward `#` is an air/fly corridor (`OPEN`), not an auto-mount.
 
 Glyphs: `=` / `#` / `x` solid; `.` hole; space OOB. Lava (`x`): airborne OK; grounded contact kills and respawns.
 
@@ -51,19 +53,19 @@ Stick → wish. Per axis:
 
 | Mode | Enter | X | Height |
 |------|-------|---|--------|
-| **Hang** | Leave `OPEN`/`SHARED_SPINE` coping with along | Locked to exit coping X | Ballistic gravity |
-| **Free** | Fly-out, ride-off, unsupported edge | Light stick control | Ballistic gravity |
+| **Air-out** | Leave `OPEN`/`SHARED_SPINE` with along | Locked to exit coping X | Ballistic |
+| **Free** (fly-out / deck-out) | Outward X-dominant stick in `FLY_OUT_ABOVE`, or ride-off | Unlocked | Ballistic |
 | **Maneuver** | Accepted spine / acid / fly-out plan | Plan owns pose | Plan owns pose |
 
-Hang clears on fly-out, spine, acid, or land. Landing uses ordinary underfoot support — X-lock is not a land filter. Hang return onto the exit pipe seeds into-bowl along (never re-launches at the lip).
+**Fly-out / deck-out:** unlock X and travel away from the pipe (left on left / right on right). Stick into the lip (outward), X-dominant, within the height window.
 
-**Fly-out:** X-dominant outward stick while rising in the fly-out height window on `OPEN` (or hang over that coping). No transfer button.
+**Air-out land:** same-facing pipe whose coping X matches the lock (any layer/height), or floor/deck under the lock. Never auto-land opposite-facing.
 
-**Spine:** transfer button while rising/apex → immutable plan to a facing coping.
+**Spine:** transfer button while rising/apex → opposite-facing pipe from its outward side (left of left / right of right).
 
-**Acid:** transfer button while descending → immutable plan along travel to an opposite-facing coping.
+**Acid:** transfer button while descending → along travel to an opposite wall.
 
-Plans never retarget mid-flight.
+Hang clears on fly-out, spine, acid, or land. Return onto the exit pipe seeds into-bowl along. Plans never retarget mid-flight.
 
 ## Motion vectors
 

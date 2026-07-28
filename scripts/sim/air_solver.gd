@@ -123,7 +123,8 @@ func _try_land(state: SimState, from_height: float = NAN) -> void:
 	var search_h := state.position.z + SimTolerances.CONTACT_EPS
 	if not is_nan(from_height):
 		search_h = maxf(search_h, from_height + SimTolerances.CONTACT_EPS)
-	var top := query.top_support(state.position.x, state.position.y, search_h)
+	var candidates := query.supports_below(state.position.x, state.position.y, search_h)
+	var top := _pick_ordinary_land(state, candidates)
 	if top.is_empty():
 		return
 	var sh := float(top.height)
@@ -140,8 +141,8 @@ func _try_land(state: SimState, from_height: float = NAN) -> void:
 	state.position.z = sh
 	if int(top.kind) == SimKinds.SurfaceKind.PIPE:
 		var pipe: PipeSurface = model.pipes.get(state.surface_id)
-		# Returning onto the exit pipe at coping: snap to lip and drop into bowl.
-		if state.is_hanging() and state.surface_id == state.hang_pipe_id and pipe != null:
+		# Air-out onto same-facing pipe (exit or X-aligned other): snap lip, into bowl.
+		if state.is_hanging() and pipe != null:
 			var z := state.position.y
 			state.u = 1.0
 			state.v = clampf((z - pipe.z_min) / maxf(pipe.z_max - pipe.z_min, 0.001), 0.0, 1.0)
@@ -164,3 +165,45 @@ func _try_land(state: SimState, from_height: float = NAN) -> void:
 	state.clear_hang()
 	if top.get("lethal", false):
 		state.alive = false
+
+
+## Ordinary aerial land filter: never opposite-facing pipes (spine only).
+## Air-out may land same-facing pipes with coping X on the lock (any height).
+func _pick_ordinary_land(state: SimState, candidates: Array) -> Dictionary:
+	var hang_side := -1
+	var lock_x := state.position.x
+	if state.is_hanging() and model.pipes.has(state.hang_pipe_id):
+		var hp: PipeSurface = model.pipes[state.hang_pipe_id]
+		hang_side = hp.side
+		lock_x = hp.coping_x_at(state.position.y)
+	# Air-out: prefer same-facing X-aligned pipe over abutting deck at the lip.
+	if hang_side >= 0:
+		for c in candidates:
+			if int(c.kind) != SimKinds.SurfaceKind.PIPE:
+				continue
+			var pipe: PipeSurface = c.get("pipe")
+			if pipe == null or pipe.side != hang_side:
+				continue
+			var cx := pipe.coping_x_at(state.position.y)
+			if is_nan(cx) or absf(cx - lock_x) > SimTolerances.ALIGN_EPS:
+				continue
+			return c
+		for c in candidates:
+			if int(c.kind) != SimKinds.SurfaceKind.PIPE:
+				return c
+		return {}
+	for c in candidates:
+		if int(c.kind) != SimKinds.SurfaceKind.PIPE:
+			return c
+		var pipe2: PipeSurface = c.get("pipe")
+		if pipe2 == null:
+			continue
+		# Free air: pipe land only if travel matches pipe outward (same-facing as travel).
+		var vx := state.velocity.x
+		if absf(vx) < 1.0:
+			continue ## no clear travel — skip pipes, prefer flats below
+		var want := SimKinds.PipeSide.LEFT if vx < 0.0 else SimKinds.PipeSide.RIGHT
+		if pipe2.side != want:
+			continue
+		return c
+	return {}
