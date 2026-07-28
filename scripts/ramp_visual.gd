@@ -341,12 +341,13 @@ func _draw_decks(band: Vector2) -> void:
 
 
 ## Vertical faces under each deck edge (height → base_height).
-## Coping edges are omitted — the pipe outer wall already fills that plane, and
-## drawing both after the ribbon made decks appear to cut through the pipe.
+## Coping edges are omitted here — under a deck that plane is filled earlier as a
+## deck-colored pipe outer wall (before the ribbon), so the ride surface is not cut.
 func _draw_deck_walls(band: Vector2) -> void:
 	if _level.spec == null:
 		return
-	var wall_col := Color(0.38, 0.32, 0.22, 0.95)
+	# Opaque so pipe ribbons drawn earlier cannot bleed through the face.
+	var wall_col := Color(0.38, 0.32, 0.22, 1.0)
 	for deck in _decks_far_to_near():
 		var clipped := _clip_poly_z_band(deck.poly, band.x, band.y)
 		if clipped.size() < 2:
@@ -595,13 +596,11 @@ func _draw_pipe(pipe: QuarterPipe, band: Vector2) -> void:
 	var z1 := minf(pipe.z_max, band.y)
 	if z1 <= z0 + 0.001:
 		return
-
 	var steps := maxi(arc_steps, 4)
 	var near_arc := _arc_points(pipe, z0, steps)
 	var far_arc := _arc_points(pipe, z1, steps)
 	var is_left := pipe.side == QuarterPipe.PipeSide.LEFT
 	var fill_col := Color(0.42, 0.38, 0.48, 0.92) if is_left else Color(0.38, 0.44, 0.52, 0.92)
-
 	for i in range(steps):
 		_paint.draw_colored_polygon(
 			PackedVector2Array([
@@ -612,7 +611,6 @@ func _draw_pipe(pipe: QuarterPipe, band: Vector2) -> void:
 			]),
 			fill_col
 		)
-
 	var ribs := maxi(arc_ribs, 1)
 	for r in range(1, ribs):
 		var u := float(r) / float(ribs)
@@ -630,6 +628,8 @@ func _draw_pipe(pipe: QuarterPipe, band: Vector2) -> void:
 
 
 ## Outer vertical face under coping + solid endcaps at true pipe Z ends.
+## Under a deck, the coping plane is deck-colored (seals the cavity) and endcaps
+## are skipped so the near/far deck face is what you see — not pipe interior.
 func _draw_pipe_walls(pipe: QuarterPipe, band: Vector2) -> void:
 	var z0 := maxf(pipe.z_min, band.x)
 	var z1 := minf(pipe.z_max, band.y)
@@ -637,25 +637,45 @@ func _draw_pipe_walls(pipe: QuarterPipe, band: Vector2) -> void:
 		return
 	var is_left := pipe.side == QuarterPipe.PipeSide.LEFT
 	var wall_col := Color(0.28, 0.24, 0.32, 0.96) if is_left else Color(0.24, 0.28, 0.34, 0.96)
+	var deck_wall_col := Color(0.38, 0.32, 0.22, 1.0)
 	var end_col := Color(0.34, 0.30, 0.38, 0.96) if is_left else Color(0.30, 0.34, 0.40, 0.96)
 	var coping_x := pipe.x_min() if is_left else pipe.x_max()
 	var h0 := pipe.base_height
 	var h1 := pipe.base_height + pipe.radius
-	# Full outer wall including under decks — decks omit their coping edge so this
-	# plane is owned by the pipe (avoids deck walls slicing the ride ribbon).
-	_paint.draw_colored_polygon(
-		PackedVector2Array([
-			_surf_point(coping_x, z0, h1),
-			_surf_point(coping_x, z1, h1),
-			_surf_point(coping_x, z1, h0),
-			_surf_point(coping_x, z0, h0),
-		]),
-		wall_col
-	)
-	# Endcaps only on the pipe's real near/far edges (not the skater Z-split).
-	if absf(z0 - pipe.z_min) <= 0.05:
+	var covered := _deck_z_ranges_covering_pipe(pipe)
+	for seg in _z_segments_minus_covered(z0, z1, covered):
+		var sz0 := float(seg.x)
+		var sz1 := float(seg.y)
+		if sz1 <= sz0 + 0.001:
+			continue
+		_paint.draw_colored_polygon(
+			PackedVector2Array([
+				_surf_point(coping_x, sz0, h1),
+				_surf_point(coping_x, sz1, h1),
+				_surf_point(coping_x, sz1, h0),
+				_surf_point(coping_x, sz0, h0),
+			]),
+			wall_col
+		)
+	# Deck-owned coping spans: brown, before ribbon (ribbon still wins at the lip).
+	for c in covered:
+		var cz0 := maxf(float(c.x), z0)
+		var cz1 := minf(float(c.y), z1)
+		if cz1 <= cz0 + 0.001:
+			continue
+		_paint.draw_colored_polygon(
+			PackedVector2Array([
+				_surf_point(coping_x, cz0, h1),
+				_surf_point(coping_x, cz1, h1),
+				_surf_point(coping_x, cz1, h0),
+				_surf_point(coping_x, cz0, h0),
+			]),
+			deck_wall_col
+		)
+	# Endcaps only on real pipe ends, and never under a deck (deck face owns that view).
+	if absf(z0 - pipe.z_min) <= 0.05 and not _deck_covers_pipe_at_z(pipe, z0):
 		_draw_pipe_endcap(pipe, z0, end_col)
-	if absf(z1 - pipe.z_max) <= 0.05:
+	if absf(z1 - pipe.z_max) <= 0.05 and not _deck_covers_pipe_at_z(pipe, z1):
 		_draw_pipe_endcap(pipe, z1, end_col)
 
 
@@ -673,15 +693,19 @@ func _draw_pipe_endcap(pipe: QuarterPipe, logical_z: float, col: Color) -> void:
 
 
 func _draw_pipe_top_stroke(pipe: QuarterPipe, z0: float, z1: float) -> void:
-	var covered := _deck_z_ranges_covering_pipe(pipe)
-	var segments := _z_segments_minus_covered(z0, z1, covered)
-	for seg in segments:
-		_paint.draw_line(
-			_level.pipe_screen_point_for(pipe, float(seg.x), 1.0),
-			_level.pipe_screen_point_for(pipe, float(seg.y), 1.0),
-			Color(0.95, 0.55, 0.35, 0.9),
-			3.0
-		)
+	_paint.draw_line(
+		_level.pipe_screen_point_for(pipe, z0, 1.0),
+		_level.pipe_screen_point_for(pipe, z1, 1.0),
+		Color(0.95, 0.55, 0.35, 0.9),
+		3.0
+	)
+
+
+func _deck_covers_pipe_at_z(pipe: QuarterPipe, logical_z: float) -> bool:
+	for r in _deck_z_ranges_covering_pipe(pipe):
+		if logical_z >= float(r.x) - 0.05 and logical_z <= float(r.y) + 0.05:
+			return true
+	return false
 
 
 func _deck_z_ranges_covering_pipe(pipe: QuarterPipe) -> Array:
