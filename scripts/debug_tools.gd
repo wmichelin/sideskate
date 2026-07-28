@@ -1,11 +1,9 @@
 extends Node
-## Central gate for debug HUD, cell highlight, and god mode.
+## Central gate for debug HUD and cell highlight.
 ## Off in release exports unless custom feature `debug_tools` is set.
 
 ## True in editor/debug builds, or exports with feature tag `debug_tools`.
 var available: bool = false
-## Flight assist: no gravity; j/k adjust height. Only when available.
-var god_mode: bool = false
 ## Head arrows for INPUT / MOMENTUM / ACTUAL. Off by default.
 var show_motion_vectors: bool = false
 ## Zone / facing box over the skater's head. Off by default.
@@ -15,7 +13,6 @@ var show_fps: bool = true
 ## DisplayServer VSync. Mailbox when on (high-refresh friendly); off = uncapped.
 var vsync_enabled: bool = true
 
-signal god_mode_changed(enabled: bool)
 signal show_motion_vectors_changed(enabled: bool)
 signal show_head_debug_changed(enabled: bool)
 signal show_fps_changed(enabled: bool)
@@ -26,7 +23,6 @@ func _ready() -> void:
 	available = (OS.is_debug_build() or OS.has_feature("debug_tools")) and not _cmdline_disables_debug()
 	_apply_vsync(vsync_enabled)
 	if not available:
-		god_mode = false
 		call_deferred("_strip_debug_nodes")
 
 
@@ -40,19 +36,6 @@ func _cmdline_disables_debug() -> bool:
 
 func is_available() -> bool:
 	return available
-
-
-func set_god_mode(on: bool) -> void:
-	if not available:
-		on = false
-	if god_mode == on:
-		return
-	god_mode = on
-	god_mode_changed.emit(god_mode)
-
-
-func toggle_god_mode() -> void:
-	set_god_mode(not god_mode)
 
 
 func set_show_motion_vectors(on: bool) -> void:

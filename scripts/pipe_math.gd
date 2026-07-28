@@ -14,17 +14,6 @@ static func coping_sign(side: int) -> float:
 	return -1.0 if side == 0 else 1.0
 
 
-## Logical X for half-open cell indexing while X-locked on top coping.
-## Coping sits on the pipe's outer edge (`x_min` left / `x_max` right). Right
-## coping is an exclusive cell boundary, so raw `floor(x/cw)` maps one cell
-## outward; nudge toward the lip (into the pipe) so targeting / highlight stay
-## on the pipe glyph. Used by LevelSpec.cell_at_for_pose.
-static func pose_x_for_cell_query(
-	logical_x: float, side: int, eps: float = 0.001
-) -> float:
-	return logical_x - coping_sign(side) * eps
-
-
 static func zone_name(side: int) -> String:
 	return "left_pipe" if side == 0 else "right_pipe"
 

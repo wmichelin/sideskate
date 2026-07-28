@@ -131,14 +131,9 @@ See `levels/layered_demo.ssk`: ground halfpipe plus an upper floor with a hole. 
 
 ## Sampling
 
-`RampLevel.sample(x, z, prefer_side, prefer_lip, prefer_h, prefer_base_h)`:
+`RampLevel.sample(...)` is a **presentation / debug** helper for cell highlight and mesh projection. It is **not** gameplay contact authority — the analytical sim uses `SurfaceQuery` over the compiled `ParkModel`.
 
-1. Collect all surfaces at `(x, z)` (pipes with `base_height`, decks, `=` floors).  
-2. With `prefer_h` (feet / air height), pick the **topmost** surface at or below that height.  
-3. Sticky ride matches side + lip + **base_height** so a lower-story pipe cannot steal the ride.  
-4. Holes contribute no floor → fall-through. Space / empty → `oob`.
-
-Contact rules (player): only stand within `ride_off_height_eps` of feet; never snap `surface_height` down onto a far-below story.
+Optional sticky preferences exist only so debug underfoot labels can stay on a pipe footprint while inspecting; they do not drive `PlayerSim`.
 
 ## Scaling
 
@@ -170,7 +165,7 @@ Every pipe coping edge is classified exactly once:
 |-------|------|----------|
 | `OPEN` | No outward solid at coping height | Explicit fly-out allowed |
 | `SUPPORT_SEAM` | Outward deck/floor top matches coping height (within seam eps) | Auto-roll onto pad |
-| `WALL_EXTENSION` | Outward deck top is strictly above coping | Wall continues to deck top; effective coping moves up |
+| `WALL_EXTENSION` | Outward deck top is strictly above coping | Continuous vertical climb to deck top; then mount |
 | `SHARED_SPINE` | Opposite-facing coping within tolerance (`>>>##<<<` or valid `>>><<<`) | Spine target relation |
 
 An outward `#` deck abutting a coping is never simultaneously fly-out space and a

@@ -32,7 +32,7 @@ Autoload `DebugTools` (`scripts/debug_tools.gd`):
 
 - **Available** only if `OS.is_debug_build()` or custom export feature `debug_tools`.
 - Force off locally with user arg: `godot --path . -- --no-debug-tools` (strips HUD/arrows like a release).
-- When unavailable: nodes in group `debug_tools` are freed; god mode and debug HUD do not run.
+- When unavailable: nodes in group `debug_tools` are freed; debug HUD does not run.
 - Release exports should omit `debug_tools` so all debug affordances stay off.
 
 ## Testing

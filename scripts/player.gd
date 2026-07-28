@@ -17,6 +17,10 @@ const BODY_CYLINDER_H_M := 0.22
 @export var brake: float = 1250.0
 @export var friction: float = 0.0
 @export var ramp_friction: float = 0.0
+@export var gravity_ms2: float = -19.0
+@export var fly_out_above_coping: float = 40.0
+@export var facing_coping_cells: int = 3
+@export var acid_coping_cells: int = 16
 
 var depth: PseudoDepthBody
 var facing_h: String = "r"
@@ -127,6 +131,10 @@ func _sync_tuning_to_sim() -> void:
 	_sim.brake = brake
 	_sim.friction = friction
 	_sim.ramp_friction = ramp_friction
+	SimTolerances.GRAVITY = gravity_ms2 * SimTolerances.LOGIC_PER_METER
+	SimTolerances.FLY_OUT_ABOVE = fly_out_above_coping
+	SimTolerances.FACING_COPING_CELLS = facing_coping_cells
+	SimTolerances.ACID_COPING_CELLS = acid_coping_cells
 
 
 func _sync_from_sim() -> void:

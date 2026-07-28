@@ -17,7 +17,6 @@ var brake: float = 1250.0
 var friction: float = 0.0
 var ramp_friction: float = 0.0
 var last_wish: Vector2 = Vector2.ZERO
-var action_pressed: bool = false
 var action_just: bool = false
 var ollie_pressed: bool = false
 var debug: SimDebugSnapshot
@@ -53,9 +52,8 @@ func _finish_setup() -> bool:
 	return true
 
 
-func set_input(wish: Vector2, action_down: bool, action_edge: bool, ollie_down: bool = false) -> void:
+func set_input(wish: Vector2, _action_down: bool, action_edge: bool, ollie_down: bool = false) -> void:
 	last_wish = wish
-	action_pressed = action_down
 	action_just = action_edge
 	ollie_pressed = ollie_down
 

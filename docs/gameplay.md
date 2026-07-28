@@ -1,237 +1,124 @@
 # SideSkate — gameplay & systems
 
-Intent brief for humans and agents. For the ASCII level IDL, see [level_format.md](level_format.md).
+Intent brief for humans and agents. Motion law lives in [`movement_contract.md`](movement_contract.md) — if this file disagrees, the contract wins. ASCII IDL: [`level_format.md`](level_format.md).
 
 ## Product shape
 
 Godot 4 **pseudo-3D** skate prototype. Simulation lives in **logical** space:
 
 - **X** — left/right across the plaza
-- **Z** — near/far depth (stick “up” = farther). Screen Y uses a fixed px/Z rate (not “fit whole level in frame”), so deep levels scroll off-screen; the camera pans with the player in X and Y.
+- **Z** — near/far depth (stick “up” = farther)
 - **Height** — feet elevation above flat (pipe arc, deck, air)
 
-Screen placement is a **projection** of `(x, z, height)`. The camera sits on the skater (`perspective_origin_x/z`). Depth uses a **homogeneous** scale `s = focal / (focal + Δz)` (focal chosen so the far band edge matches `perspective_inset`) for **screen X, ground Y, and height together** — so skating in Z dollies the park projectively instead of sliding an X-only lean over a world-fixed Y map (that shears and elongates). Screen Y rests the focus plane at mid `(near_y+far_y)/2`. Deep levels still extend past the draw band; the follow camera tracks the skater. World size is `columns × cell_x` / `rows × cell_z` (defaults both **47**). Visuals draw floors, pipe ride ribbons, pipe outer walls/endcaps, and deck tops with side walls. Park draw uses a **Far → Player → Near** Z-split at the skater’s `logical_z` so nearer geometry composites above the player (occlusion when behind a ramp).
+Screen placement is a **projection** of `(x, z, height)`. The camera sits on the skater. Depth uses a homogeneous scale so skating in Z dollies the park projectively. World size is `columns × cell_x` / `rows × cell_z` (defaults both **47**). Visuals draw floors, pipe ride ribbons, outer walls/endcaps, and deck tops. Park draw uses a **Far → Player → Near** Z-split at the skater’s `logical_z`.
 
 ## Simulation law
 
 All gameplay simulation runs on the **fixed physics timestep** (`_physics_process` / physics `delta`) only — never on render frames. Debug/UI may read state in `_process` but must not step the world.
 
-**Authority:** [`scripts/sim/`](../scripts/sim/) (`PlayerSim` + compiled `ParkModel`). Godot collision may report blockers/hazards but must never slide, depenetrate, select a surface, retarget an action, or rewrite gameplay velocity. See [movement_contract.md](movement_contract.md).
+**Authority:** [`scripts/sim/`](../scripts/sim/) (`PlayerSim` + compiled `ParkModel`). Godot collision is presentation / optional blocker reporting only — it must never slide, depenetrate, select a surface, retarget an action, or rewrite gameplay velocity.
 
-See also [AGENTS.md](../AGENTS.md).
+See also [AGENTS.md](../AGENTS.md) and [movement_contract.md](movement_contract.md).
 
-## Surfaces & zones
+## Park model (compiled)
 
-**Air contact (label = collision):** each airborne physics tick, after XZ is committed, `RampLevel.resolve_air_contact` builds one underfoot record `{zone, layer, height, solid, hit}`. The **zone matches cell highlight** (`sample(x,z,prefer_h)`). Sticky pipe identity only overrides when you have already dipped below that pipe’s surface while still in its footprint (no tunnel). Glyph `.` → `hole` on that story. Grounded debug zones also show `L#` (e.g. `flat L1`).
+`.ssk` → `IdlCompiler` → immutable `ParkModel`: support patches, pipe surfaces, coping edges, topology edges.
 
-**Vertical sweep (air):** when contact is a hole (or still above a solid), a sweep over `[h_before → h_after]` may still catch a **lower** solid crossed this tick. Holes contribute no floor on their story. Landing through a hole may use a surface at **equal** height to the hole story (e.g. L0 coping floor matching L1 `height` under `.`) — only surfaces *above* the hole plane are rejected.
+| Coping class | Behavior |
+|--------------|----------|
+| `OPEN` | Stick fly-out allowed; otherwise hang (X locked to coping) |
+| `SUPPORT_SEAM` | Auto-roll onto abutting deck/floor at matching height |
+| `WALL_EXTENSION` | Continuous vertical climb from geometric coping → deck top (`u` 1→2), then mount |
+| `SHARED_SPINE` | Opposite-facing pair; spine transfer target |
 
-**Solids vs holes:** `=` / `#` / `x` are solid. `.` is a hole (fall-through on that story). Space is hard OOB — the skater is **clamped** into the layer-0 playable footprint (`LevelSpec.clamp_to_playable`). Grounded/`sample` never reports `oob` on a playable cell (deck `#` cells stay `deck` even on outline-poly edges); outside the footprint resolves as a hole so ride-off works until clamp corrects pose.
-
-**Lava (`x`):** zone `lava`. Flying over lava is fine. Landing / standing with `aerial = false` and zone lava freezes the skater, flashes the screen red with “you're dead”, then respawns at the last grounded **floor** or **deck** pad with all MOMENTUM / ACTUAL / air velocity cleared. Spawn `@` seeds the first safe pad.
-
-**Contact vs fall:** fresh pipe mounts require the surface within `ride_off_height_eps` of the feet; solid pads at the same height block remounting the pipe underneath. Coping-exit launch only fires when underfoot is that same pipe identity (side + lip + base). While already on a pipe, height follows the arc. Leaving support into a hole rides off into free air at the prior feet height.
-
-Player-facing zone labels include `flat L#`, `left_pipe L#`, `right_pipe L#`, `deck L#`, and `air (over … L#)` / `air (over hole L#)` while airborne.
-
-**Pipe geometry (logical):**
-
-- **Lip** — where the quarter-pipe meets flat (`lip_x`)
-- **Top coping** — `lip ± radius` at θ = π/2 (never treat the lip as coping for air locks / acid drop)
+Glyphs: `=` / `#` / `x` solid; `.` hole; space OOB. Lava (`x`): airborne OK; grounded contact kills and respawns.
 
 ## Grounded motion
 
-Stick integrates into **momentum** (`_velocity` on X/Z). See [Motion vectors](#motion-vectors).
+Stick → wish. Per axis:
 
-- **Horizontal X**: opposite stick **brakes hard** toward zero via **`brake`** (default 1250) — no reverse until `|vx|` reaches 0. Coasting uses **friction** only (default 0). **MOMENTUM** X / `_ramp_along` are hard-capped to **`±max_speed_x`** (drop-ins, transfers, and live slider changes included).
-- **Depth Z**: immediate — stick maps straight to `±max_speed_z` (default 400; debug slider).
-- **Rest reset**: when measured **ACTUAL** speed is ≈0, integrated **MOMENTUM** (`_velocity` / `_ramp_along`) is cleared so reverse isn’t fighting leftover control speed (e.g. jammed on a bound). Skipped while air **gravity** applies (horizontal remnant must survive apex / free fall).
-- **Acceleration** (default 3250) / **brake** / **max speed x** (default 880) / **max speed z**: tunable via debug sliders.
-- **Horizontal facing** `facing_h` (`l` / `r`): follows measured **ACTUAL** X only when `|vx|` is above a small eps and **X-dominant** (`|vx| > |vz|`). Never MOMENTUM (so ollie thrust / leftover `_velocity.x` cannot flip facing). Spawn from level header `spawn_facing` (default `r`). Head debug shows `hd l` / `hd r`.
-- **Ollie** (hold Space): mild forward accel (`ollie_accel`, default 650) toward `max_speed_x` in facing direction. Skipped while stick is braking opposite. Tunable via debug slider.
-- On flat/deck: move in X/Z; leaving a **higher** support into a lower one **rides off** into free air (keep prior height, apply gravity).
-- On a pipe: along-arc speed (`_ramp_along`) follows the arc (θ). Horiz remnant is `along * cosθ`; vertical is `along * sinθ`. At the top coping (θ = π/2) **all** remaining along-speed converts into `air_vel_y` (horiz → 0). **`ramp_friction`** (default 0, debug slider) drains along-speed while on the pipe.
+- Neutral → **coast** (`friction` / `ramp_friction`; default 0)
+- Opposite velocity → **brake** (default 1250), no reverse until stopped
+- Aligned → **accel** toward max speed (default accel 3250, max X 880, max Z 400)
+
+**Facing** `l`/`r`: follows world X speed when X-dominant. Spawn from `spawn_facing`.
+
+**Ollie** (hold Space): mild accel toward max speed in facing direction; skipped while stick brakes opposite.
+
+**Pipe:** UV along-arc (+along = toward coping). Gravity projects onto the tangent. `WALL_EXTENSION` continues as a vertical face after θ=π/2.
+
+## Air
+
+| Mode | Enter | X | Height |
+|------|-------|---|--------|
+| **Hang** | Leave `OPEN`/`SHARED_SPINE` coping with along | Locked to exit coping X | Ballistic gravity |
+| **Free** | Fly-out, ride-off, unsupported edge | Light stick control | Ballistic gravity |
+| **Maneuver** | Accepted spine / acid / fly-out plan | Plan owns pose | Plan owns pose |
+
+Hang clears on fly-out, spine, acid, or land. Landing uses ordinary underfoot support — X-lock is not a land filter. Hang return onto the exit pipe seeds into-bowl along (never re-launches at the lip).
+
+**Fly-out:** X-dominant outward stick while rising in the fly-out height window on `OPEN` (or hang over that coping). No transfer button.
+
+**Spine:** transfer button while rising/apex → immutable plan to a facing coping.
+
+**Acid:** transfer button while descending → immutable plan along travel to an opposite-facing coping.
+
+Plans never retarget mid-flight.
 
 ## Motion vectors
 
-Canonical triad for control vs world motion — `MotionVectors.Kind` in [`scripts/motion_vectors.gd`](../scripts/motion_vectors.gd). Same vocabulary for sim gates and head debug arrows. Pattern matches common “wish → control → world” controllers (e.g. Quake wishvel / velocity).
+`MotionVectors.Kind` for debug arrows / wish display:
 
-| Kind | Code | Signal | Axes | Head arrow |
-|------|------|--------|------|------------|
-| **INPUT** | `MotionVectors.Kind.INPUT` | Raw stick wish (`_last_input` × max speeds) | **X + Z only** (planar; no height) | Cyan |
-| **MOMENTUM** | `MotionVectors.Kind.MOMENTUM` | Integrated control (`_velocity` / `_ramp_along`) | X/Z; on ramp also shows converted vertical | Orange |
-| **ACTUAL** | `MotionVectors.Kind.ACTUAL` | Measured pose rates (`_actual_vel_*`, `_vert_vel`) | X, Z, **height** | Green |
+| Kind | Signal |
+|------|--------|
+| **INPUT** | Stick wish × max speeds (planar) |
+| **MOMENTUM** | Integrated control (`tangent_velocity` / air `velocity`) |
+| **ACTUAL** | Same as momentum for the analytical sim (measured rates) |
 
-**API:** `Player.motion_screen(kind)` / `Player.motion_speed(kind)` — prefer these over ad-hoc strings. Fly-out gates on **INPUT** only (`|input_x| > |input_z|` and X toward the pipe side); never MOMENTUM.
+Fly-out gates on **INPUT** only.
 
-```gdscript
-# Example: branch on the named kind
-match kind:
-	MotionVectors.Kind.INPUT:
-		pass  # planar wish only
-	MotionVectors.Kind.MOMENTUM:
-		pass  # integrated control
-	MotionVectors.Kind.ACTUAL:
-		pass  # world measurement
-```
+## Presentation
 
-## Air model
-
-Feet height while airborne: `air_abs_height`. Vertical rate for gravity: `air_vel_y` (when gravity applies).
-
-| Mode | How you get there | X | Height |
-|------|-------------------|---|--------|
-| **Pipe coping lock** | Exit pipe at top coping | Locked to **top** coping | Gravity; land on coping height (`radius`). At vertical **apex**, facing flips unless stick holds L/R. |
-| **Free air** | Ride-off, transfer, fly-out, etc. | Free (unless lerping) | Gravity; land on **sampled** underfoot height |
-| **Acid-drop lock** | Acid drop action | Locked to opposite-facing **top** coping | Gravity only — action must not snap/alter height; land converts vert → along-arc (keep approach if faster) |
-| **Spine transfer lock** | Spine transfer (rising, facing-cast coping) | Locked to facing **top** coping | Gravity; land same drop-in merge as acid / pipe-exit. No apex facing flip. |
-
-### Pipe fly-out
-
-While in **pipe coping lock** (not acid-drop / spine), X stays locked even if underfoot becomes hole / flat / another zone — only **fly-out** clears it. Fly-out requires still **rising** (`air_vel_y > 0`), feet within `fly_out_above_coping` **above** the lip (`coping_floor`…`coping_floor + fly_out_above_coping`; debug slider **fly out**, default 40 — a *max* window, not a minimum; apex is outside a small window), planar **INPUT** that is **X-dominant** (`|input_x| > |input_z|`) toward that pipe’s side (right pipe → right; left → left), **and** a playable cell outward via facing cast (edge of level / nowhere ahead → stay locked). MOMENTUM is never consulted. Keep `air_abs_height` / `air_vel_y` on unlock for a **parabolic** arc. Falling or Z-dominant / vertical-only stick → stay locked and land as usual. While locked, air contact **force-sticky**s to that coping — rising past a higher opposite pipe does **not** auto spine; press transfer for spine low→high.
-
-**Aligned deck extension:** when a same-layer `#` deck abuts the pipe coping (glyph-aligned, deck anchors on that coping), the deck is a **wall extension** of the pipe — not outward free space. Leaving the pipe at the lip **mounts the deck top** (effective coping) instead of entering air hang. Fly-out is refused if somehow locked there; the pipe back collider thickens through the deck footprint so you cannot ghost through the wall.
-
-Pipe coping lock treats the top coping height (`base_height + radius`, or aligned deck top when higher) as the floor. Acid-drop lock and free air **must not** use that shortcut (it would snap feet upward); they sample the real surface under `(x, z)`.
-
-### Ride-off
-
-When grounded motion would place you on a surface lower than prior support (beyond a small epsilon), enter free air at the **previous** support height and start gravity. Works for deck → pipe/flat and similar drops. Spawn is assumed to start on floor.
-
-### Air shadow
-
-While airborne, a **circular** ground shadow sits on the underfoot support surface (same idea as cell highlight height, at the skater’s X/Z — not the cell footprint). Width matches body scale at support and shrinks toward a floor as feet rise (`PerspectiveMath.air_shadow_width_scale`; tunable on `PseudoDepthBody`: `air_shadow_ref_height`, `air_shadow_min_scale`). Hidden while grounded.
-
-### Gravity
-
-Applied while unlocked air, or while acid-drop X-locked. Default `-19.0` m/s², converted with `logic_per_meter` (default 100). Tunable via top-right debug slider.
-
-## Aerial actions (same button: `transfer` / P or T)
-
-One **transfer** and one **acid drop** per aerial. Both refill on any surface contact (`_clear_air`). Spine transfer spends **both**.
-
-**Hold buffer:** keep `transfer` held while entering a ramp; once airborne, each physics tick retries **spine transfer only** while the button stays pressed and a facing coping is valid, including high→low (e.g. L1 → L0 shared coping). Free-air transfer and acid drop still require a tap (`just_pressed`).
-
-Routing uses measured vertical rate (`_vert_vel`) and the last non-zero vertical rate (so a rising **apex** still counts as transfer, not acid drop):
-
-| Vertical condition | Action |
-|--------------------|--------|
-| Rising, or `vert ≈ 0` after a positive (up) non-zero | **Transfer** path (spine transfer if eligible, else normal transfer) |
-| Falling (or rest after down) | **Acid drop** |
-
-### Spine transfer
-
-When the transfer path runs and FacingCastMath finds a **top coping** within `facing_coping_cells` deck cells ahead of `facing_h` (default **3**, debug **coping cells** slider; excludes the pipe you’re on), fire spine transfer instead of free-air transfer. Works while **airborne and rising**, or **grounded on a pipe riding up** toward coping (T/P leaves the wall into the spine lock):
-
-- Lerp/lock X to that **top coping** (never the lip); keep `air_abs_height` and `air_vel_y` (continue the rise). Spine settle uses a **distance-scaled** duration (min ~0.45s, gap term, smootherstep) locked at begin — not the short acid height-only clock, which snapped when clearance held height_above≈0.
-- Stash into-pipe **MOMENTUM** from **peak** aerial speed (`_air_carry_speed` / `lock_carry_velocity_x`) — not live `air_vel_y` after a gravity climb — so low→high still drop-ins at exit speed (`merge_drop_in_along` keeps the faster approach). Stick does not brake that carry while locked.
-- Requires feet already at/above the **clearance corridor peak** + clearance eps (dest top coping and any taller deck/flat on the X path) — refuses “above origin, below dest” and barely-under-peak locks that would otherwise soft-floor-teleport. Foreign pipes on the path do not raise the peak (high→low still works).
-- While locked, air contact **force-sticky**s to that coping and does not adopt a different underfoot pipe (shared high→low column would otherwise snap identity back same tick).
-- At spine lock, build a **clearance corridor**: sample solids along `[from_x → to_x]` at the player’s Z (no sticky). Each tick soft-floors feet at `max(dest coping, underfoot solid, corridor floor at X)` until X is settled/aligned — ride deck tops instead of tunneling. Soft-floor lift is **per-tick capped** (plus upward `vel_y×δt`, optionally paced over settle remain) so a tall corridor cannot snap bottom→top in one frame. Downward `air_vel_y` is killed only while resting on the soft floor; capped climbs and motion strictly above soft floor keep the arc. Lava is not a soft-floor (crash). Foreign pipes do not raise the floor.
-- **Z is free** during spine: playable-footprint clamp does not yank Z mid-gap. If the player drifts off the locked pipe’s Z band, clearance stops and non-pipe land (deck / flat / lava) is allowed — miss the ramp and crash.
-- On land: same drop-in as pipe-exit / acid — falling `air_vel_y` → `_ramp_along` (keep approach if faster into the pipe). Land only on the locked target once X settle is done or coping-aligned while still on-target Z; refuse deck / flat / foreign pipes for land while on that Z band.
-- No fly-out while the spine lock is active.
-- No apex facing flip while the spine lock is active (keep approach facing through the transfer).
-- Holes are transparent in the cast — a lower-story coping under `.` still counts (high→low).
-- Spend **both** transfer and acid-drop charges.
-
-If no coping is in range → normal free-air transfer below.
-
-### Transfer
-
-- Probe “behind” the current pipe / last behind-sign for deck, other pipe, or flat.
-- Enter free air over the target at **same** height; gravity applies.
-- Leaving **locked** coping air: only when the probe finds a **deck** or **foreign pipe**. Flat/hole/oob probes are ignored (no unlock, no `air_vel_y` kill) — edge cases with no spine / fly-out used to dead-stop the aerial. On a valid leave, seed horizontal `_velocity.x` in the behind direction (`max(|momentum|, transfer_release_min)`) and **skip** the slow X position lerp so motion doesn’t restart from near-zero.
-- Unlocked→unlocked transfers may still short-lerp X when needed; don’t double-apply X while a lerp owns position.
-
-### Acid drop
-
-- Falling only (same button as transfer).
-- Travel = measured **ACTUAL** X if nonzero, else pipe-exit outward travel, else **MOMENTUM** X. Stick-MOMENTUM never beats exit travel (that used to cast back into the exit wall after fly-out). No travel signal → no acid. Facing is ignored.
-- Target is the first **opposite-facing** top coping within `facing_coping_cells` strictly ahead along that travel (right → left pipe; left → right pipe). Never the exit wall / coping column, never a same-side coping (same-side land drop-in reverses travel).
-- If acid is pressed with no valid forward coping: unlock the exit X-pin, keep/seed travel velocity, and mark the aerial so landing **cannot** run classic into-bowl `lock_carry` / merge (that was the “acid reversed me” snap when the cast missed).
-- Animate/lerp X onto that coping; settle is hard-clamped so X never moves opposite travel. Keep `air_abs_height` / `air_vel_y`; gravity continues. Opposing MOMENTUM is cleared (not flipped into-pipe). Land only when falling onto sampled surface (no upward height snap). While acid is active, **refuse to land on the exit pipe** (and any non-target pipe) so mid-lerp underfoot contact cannot slam you back into the bowl.
-- X settle duration from live height above coping: `acid_drop_x_duration + acid_drop_x_duration_per_height × h` (defaults 0.18 + 0.002×h, soft-capped at `acid_drop_x_duration_max` 0.9). Smoothstep ease.
-- On land: along-arc keeps acid travel sign. Falling vert → along only when that drop-in continues travel (opposite wall). Never emit along opposite travel.
-- Fly-out seeds outward horizontal speed and marks the aerial; falling back onto the exit wall soft-lands (no into-bowl yank). After fly-out, the transfer button always routes to **acid** (never transfer/spine) — fly-out apex used to count as transfer and slam into-bowl carry.
-
-### Presentation (render frames only)
-
-Authoritative pose snapshots (`_pose_prev` / `_pose_curr`) are captured after each physics tick. `LogicalPosePresenter3D` and `CameraRig3D` interpolate on `_process` using Godot’s physics interpolation fraction — simulation never steps on render frames. Camera follows the interpolated skater without an extra physics-step lag.
-
-## Level units (.ssk cells)
-
-Each ASCII map glyph is one logical cell:
-
-- `cw = width / W`, `ch = depth / H`
-- Row 0 = far (top of file); bottom row = near
-- Stored on `LevelSpec` (`grid_w`, `grid_h`, `cell_w`, `cell_h`); helpers `cell_at`, `cell_at_for_pose`, `cell_bounds`
-
-Debug **cell highlight** (default off) draws the cell under the player in yellow (air or grounded), using underfoot surface height (floor = 0 at spawn). Cell indexing for targeting / highlight uses `LevelSpec.cell_at_for_pose` (via `Player.cell_under_feet` / `cell_sample_xz`): while X-locked on pipe coping, sample X is nudged into the pipe so half-open `cell_at` does not assign **right**-pipe coping to the next cell outward.
-
-Debug **facing cast** (default off) draws **N** green logical cells ahead of `facing_h` along X only. Cast length is the **cast cells** slider (default 3, max 16). Gameplay acid/spine use **`facing_coping_cells`** (**coping cells** slider, default 3) via the same FacingCastMath cast. Each tile is a flat constant-height pad; holes fall through; coping cells draw amber (`is_coping`).
-
-Debug **edge lattice** (default on) draws a green edge wireframe (deck tops/walls; pipe coping / back / endcap sides) plus an **orange surface lattice** on collidable faces (deck tops & walls, pipe ride + back). Lines use normal depth test (`LevelDebug3D.debug_edge_lines`).
+Physics ticks publish `_pose_prev` / `_pose_curr`. `LogicalPosePresenter3D` and `CameraRig3D` interpolate on `_process`. Airborne: circular ground shadow on support height under feet. Hang keeps coping lean (body perpendicular to flat).
 
 ## Debug overlays
 
-Debug tools are gated by autoload `DebugTools`: available when `OS.is_debug_build()` **or** export feature `debug_tools`. Release exports strip HUD/arrows/cell highlight (group `debug_tools`) and ignore god mode.
+Gated by autoload `DebugTools` (`OS.is_debug_build()` or export feature `debug_tools`). Force off: `godot --path . -- --no-debug-tools`.
 
 | Piece | Role |
 |-------|------|
-| Head arrows | [Motion vectors](#motion-vectors): green **ACTUAL**, orange **MOMENTUM**, cyan **INPUT** |
-| Top-left overlay | Depth/zone/surface + **airborne** + cell + **next coping** |
-| Top-right sliders | Gravity, acid buffer, **fly out**, cell-highlight / facing-cast / **edge lattice**, cast cells / **coping cells**, **god mode** |
-| **God mode** (default off; `G` or checkbox) | No gravity; **k** rise / **j** lower (`god_vert_speed`) |
+| Head arrows | INPUT / MOMENTUM / ACTUAL |
+| Overlay | Zone / surface / next coping candidate |
+| TUNING sliders | Gravity, fly-out window, spine/acid cast cells, ollie, speeds, accel, brake, friction, cell size, camera |
+| Cell / facing cast / edge lattice | Presentation-only highlight |
+
+Tunable sim values sync into `SimTolerances` / `PlayerSim` each physics tick. Cast-cell highlight distance is debug draw only (not a separate gameplay path).
 
 ## Key scripts
 
-**PlayerSim** is the sole gameplay authority. `player.gd` is a thin shell that ticks the sim and publishes pose snapshots for presenters.
+**PlayerSim** is the sole gameplay authority. `player.gd` is a thin shell.
 
 | Script | Role |
 |--------|------|
-| [`sim/player_sim.gd`](../scripts/sim/player_sim.gd) | Orchestrator — model, state, input, fixed tick, snapshot/trace |
-| [`sim/idl_compiler.gd`](../scripts/sim/idl_compiler.gd) | `.ssk` → immutable `ParkModel` (surfaces, seams, copings) |
-| [`sim/model/park_model.gd`](../scripts/sim/model/park_model.gd) | Compiled park + stable IDs + model hash |
-| [`sim/surface_query.gd`](../scripts/sim/surface_query.gd) | Projection, support, edge-crossing, coping search, capsule sweep |
-| [`sim/ground_solver.gd`](../scripts/sim/ground_solver.gd) | Constrained grounded integration + seam transport |
-| [`sim/air_solver.gd`](../scripts/sim/air_solver.gd) | Ballistic free air + maneuver execution |
-| [`sim/maneuver_planner.gd`](../scripts/sim/maneuver_planner.gd) | Immutable fly-out / spine / acid plans |
-| [`sim/sim_tolerances.gd`](../scripts/sim/sim_tolerances.gd) | Centralized epsilons, gravity, capsule, cast ranges |
-| [`sim/sim_debug_snapshot.gd`](../scripts/sim/sim_debug_snapshot.gd) / [`sim/sim_trace.gd`](../scripts/sim/sim_trace.gd) | Debug capture + deterministic replay hashes |
-| [`player.gd`](../scripts/player.gd) | Thin `CharacterBody3D` — input → `PlayerSim.tick` → pose sync |
-| [`motion_vectors.gd`](../scripts/motion_vectors.gd) | Named triad `INPUT` / `MOMENTUM` / `ACTUAL` |
-| [`contact_math.gd`](../scripts/contact_math.gd) / [`facing_cast_math.gd`](../scripts/facing_cast_math.gd) | Legacy level-sample helpers for `RampLevel` debug/projection (not gameplay authority) |
-| [`physics/level_collision_3d.gd`](../scripts/physics/level_collision_3d.gd) | Shared MeshPart → `StaticBody3D` trimeshes + face meta (blocker/hazard reporting) |
-| [`physics/collision_layers.gd`](../scripts/physics/collision_layers.gd) | Player / ride / wall / lava layer bits |
-| [`mesh/mesh_part.gd`](../scripts/mesh/mesh_part.gd) / [`mesh/level_geometry.gd`](../scripts/mesh/level_geometry.gd) | CPU face soup shared by visual + collision + debug |
+| [`sim/player_sim.gd`](../scripts/sim/player_sim.gd) | Orchestrator |
+| [`sim/idl_compiler.gd`](../scripts/sim/idl_compiler.gd) | `.ssk` → `ParkModel` |
+| [`sim/surface_query.gd`](../scripts/sim/surface_query.gd) | Support, edges, coping search, capsule sweep |
+| [`sim/ground_solver.gd`](../scripts/sim/ground_solver.gd) | Grounded + wall climb + seams |
+| [`sim/air_solver.gd`](../scripts/sim/air_solver.gd) | Free air + maneuvers |
+| [`sim/maneuver_planner.gd`](../scripts/sim/maneuver_planner.gd) | Fly-out / spine / acid plans |
+| [`sim/sim_tolerances.gd`](../scripts/sim/sim_tolerances.gd) | Epsilons, gravity, cast ranges |
+| [`player.gd`](../scripts/player.gd) | Input → tick → pose sync |
+| [`ramp_level.gd`](../scripts/ramp_level.gd) | Load `.ssk`, projection helpers, debug sample |
+| [`physics/level_collision_3d.gd`](../scripts/physics/level_collision_3d.gd) | Visual/blocker trimeshes (not gameplay authority) |
+| [`rendering_3d/*`](../scripts/rendering_3d/) | Park mesh + pose presenter + camera |
 
-**World / level / render**
+Analytical suites: [`tests/sim/`](../tests/sim/).
 
-| Script | Role |
-|--------|------|
-| [`ramp_level.gd`](../scripts/ramp_level.gd) | Load `.ssk`, sample / project to screen (presentation) |
-| [`level_loader.gd`](../scripts/level_loader.gd) / [`level_spec.gd`](../scripts/level_spec.gd) | Parse IDL → floors, decks, pipes, grid |
-| [`quarter_pipe.gd`](../scripts/quarter_pipe.gd) | Pipe sample (θ, height, zone) for mesh builders |
-| [`pseudo_depth_body.gd`](../scripts/pseudo_depth_body.gd) | Derived logical pose adapter (sim is authority) |
-| [`world_space.gd`](../scripts/world_space.gd) | Logical ↔ meter mapping (`LOGIC_PER_METER = 100`) |
-| [`perspective_math.gd`](../scripts/perspective_math.gd) | Pure pseudo-depth projection |
-| [`rendering_3d/level_visual_3d.gd`](../scripts/rendering_3d/level_visual_3d.gd) | 3D park meshes from shared parts |
-| [`rendering_3d/logical_pose_presenter_3d.gd`](../scripts/rendering_3d/logical_pose_presenter_3d.gd) | Logical pose → 3D skater |
-| [`debug_tools.gd`](../scripts/debug_tools.gd) | Production gate + god mode |
-| [`debug_overlay.gd`](../scripts/debug_overlay.gd) / [`debug_sliders.gd`](../scripts/debug_sliders.gd) | HUD debug |
-
-Analytical suites live under [`tests/sim/`](../tests/sim/). Presentation bootstrap: [`tests/player_runtime_fixture.gd`](../tests/player_runtime_fixture.gd).
-
-## Behavioral invariants (do not regress)
+## Behavioral invariants
 
 1. Sim only on physics ticks.
 2. No gameplay state depends on layer index, collider order, scene-tree order, render FPS, or depenetration.
-3. Continuous support seams auto-roll; open copings permit explicit fly-out; closed/backed never do.
-4. Spine: explicit action while rising/apex; acid: explicit action while descending; plans never retarget.
-5. Fly-out only from `OPEN` effective coping with X-dominant outward input.
-6. Ordinary landing requires descending support crossing; no upward snap / solid tunnel.
-7. Every coping has exactly one classification (`OPEN` / `SUPPORT_SEAM` / `WALL_EXTENSION` / `SHARED_SPINE`).
-8. Presentation mesh + collision consumers stamp/assert the same `ParkModel.model_hash` as `PlayerSim`.
-
-Covered by headless tests under `tests/` and `tests/sim/`.
+3. Continuous seams auto-roll; `WALL_EXTENSION` climbs; `OPEN` permits stick fly-out.
+4. Spine while rising/apex; acid while descending; plans never retarget.
+5. Ordinary landing requires descending support crossing.
+6. Presentation + collision stamp the same `ParkModel.model_hash` as `PlayerSim`.

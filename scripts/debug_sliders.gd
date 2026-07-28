@@ -102,13 +102,13 @@ extends CanvasLayer
 @onready var _vsync_check: CheckButton = $Panel/VBox/Body/VsyncRow/Check
 @onready var _cast_cells_slider: HSlider = $Panel/VBox/Body/CastCellsRow/Slider
 @onready var _cast_cells_value: Label = $Panel/VBox/Body/CastCellsRow/Value
-@onready var _god_check: CheckButton = $Panel/VBox/Body/GodModeRow/Check
+@onready var _coping_cells_slider: HSlider = $Panel/VBox/Body/CopingCellsRow/Slider
+@onready var _coping_cells_value: Label = $Panel/VBox/Body/CopingCellsRow/Value
 
 var _player: Node
 var _level: Node
 var _level_debug_3d: Node3D
 var _camera_rig: Node3D
-var _syncing_god := false
 var _collapsed: bool = true
 var _scroll: ScrollContainer
 var _cam_dist_value: Label
@@ -141,8 +141,8 @@ func _ready() -> void:
 		acid_cells_max,
 		1.0,
 		_player,
-		"facing_coping_cells",
-		6.0,
+		"acid_coping_cells",
+		16.0,
 		_on_acid_cells_changed,
 		_refresh_acid_cells_label
 	)
@@ -163,7 +163,7 @@ func _ready() -> void:
 	_bind_float_slider(_ollie_slider, ollie_accel_min, ollie_accel_max, 10.0, _player, "ollie_accel", 650.0, _on_ollie_accel_changed, _refresh_ollie_label)
 	_bind_float_slider(_max_speed_x_slider, max_speed_x_min, max_speed_x_max, 10.0, _player, "max_speed_x", 880.0, _on_max_speed_x_changed, _refresh_max_speed_x_label)
 	_bind_float_slider(_max_speed_z_slider, max_speed_z_min, max_speed_z_max, 5.0, _player, "max_speed_z", 400.0, _on_max_speed_z_changed, _refresh_max_speed_z_label)
-	_bind_float_slider(_accel_slider, acceleration_min, acceleration_max, 50.0, _player, "acceleration", 3250.0, _on_accel_changed, _refresh_accel_label)
+	_bind_float_slider(_accel_slider, acceleration_min, acceleration_max, 50.0, _player, "accel", 3250.0, _on_accel_changed, _refresh_accel_label)
 	_bind_float_slider(_brake_slider, brake_min, brake_max, 50.0, _player, "brake", 1250.0, _on_brake_changed, _refresh_brake_label)
 	_bind_float_slider(_ramp_friction_slider, ramp_friction_min, ramp_friction_max, 10.0, _player, "ramp_friction", 0.0, _on_ramp_friction_changed, _refresh_ramp_friction_label)
 	_bind_float_slider(_friction_slider, friction_min, friction_max, 10.0, _player, "friction", 0.0, _on_friction_changed, _refresh_friction_label)
@@ -219,11 +219,20 @@ func _ready() -> void:
 		_on_cast_cells_changed,
 		_refresh_cast_cells_label
 	)
-
-	_god_check.button_pressed = DebugTools.god_mode
-	_god_check.focus_mode = Control.FOCUS_NONE
-	_god_check.toggled.connect(_on_god_mode_toggled)
-	DebugTools.god_mode_changed.connect(_on_god_mode_changed)
+	_bind_float_slider(
+		_coping_cells_slider,
+		cast_cells_min,
+		cast_cells_max,
+		1.0,
+		_player,
+		"facing_coping_cells",
+		3.0,
+		_on_coping_cells_changed,
+		_refresh_coping_cells_label
+	)
+	var coping_cap := _body.get_node_or_null("CopingCellsRow/Caption") as Label
+	if coping_cap != null:
+		coping_cap.text = "spine cells"
 
 	# Sliders: mouse only — Space is ollie and must not steal focus.
 	for row in [
@@ -232,7 +241,7 @@ func _ready() -> void:
 		_ramp_friction_slider, _friction_slider,
 		_persp_inset_slider, _far_geom_slider, _ref_depth_slider,
 		_draw_band_pad_slider, _arc_steps_slider, _cast_cells_slider,
-		_cell_x_slider, _cell_z_slider,
+		_coping_cells_slider, _cell_x_slider, _cell_z_slider,
 	]:
 		if row != null:
 			row.focus_mode = Control.FOCUS_NONE
@@ -241,10 +250,6 @@ func _ready() -> void:
 
 
 func _apply_3d_panel_visibility() -> void:
-	# CopingCellsRow duplicates acid cells (facing_coping_cells).
-	var coping_row := _body.get_node_or_null("CopingCellsRow") as Control
-	if coping_row != null:
-		coping_row.visible = false
 	# Canvas2D-only draw tuning — park is rendered via World3D.
 	for row_name in [
 		"PerspInsetRow",
@@ -567,7 +572,7 @@ func _refresh_max_speed_z_label(v: float) -> void:
 
 func _on_accel_changed(v: float) -> void:
 	if _player != null:
-		_player.set("acceleration", v)
+		_player.set("accel", v)
 	_refresh_accel_label(v)
 
 
@@ -761,7 +766,7 @@ func _refresh_cast_cells_label(v: float) -> void:
 
 func _on_acid_cells_changed(v: float) -> void:
 	if _player != null:
-		_player.set("facing_coping_cells", int(round(v)))
+		_player.set("acid_coping_cells", int(round(v)))
 	_refresh_acid_cells_label(v)
 
 
@@ -769,13 +774,12 @@ func _refresh_acid_cells_label(v: float) -> void:
 	_acid_value.text = "%d" % int(round(v))
 
 
-func _on_god_mode_toggled(on: bool) -> void:
-	if _syncing_god:
-		return
-	DebugTools.set_god_mode(on)
+func _on_coping_cells_changed(v: float) -> void:
+	if _player != null:
+		_player.set("facing_coping_cells", int(round(v)))
+	_refresh_coping_cells_label(v)
 
 
-func _on_god_mode_changed(on: bool) -> void:
-	_syncing_god = true
-	_god_check.button_pressed = on
-	_syncing_god = false
+func _refresh_coping_cells_label(v: float) -> void:
+	if _coping_cells_value != null:
+		_coping_cells_value.text = "%d" % int(round(v))
