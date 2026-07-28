@@ -50,8 +50,11 @@ func _resolve_refs() -> void:
 
 func apply_pose(pose: LogicalPose) -> void:
 	global_position = WorldSpace.logical_to_world(pose.logical_x, pose.logical_z, pose.feet_height)
-	rotation = Vector3(0.0, 0.0, pose.surface_tilt)
-	scale = Vector3(signf(pose.facing_h) if pose.facing_h != 0.0 else 1.0, 1.0, 1.0)
+	# 2D tilt is Y-down clockwise-positive; 3D Z-roll is Y-up — negate to match pipe lean.
+	rotation = Vector3(0.0, 0.0, -pose.surface_tilt)
+	# Facing +logical X is screen-right after WorldSpace X mirror; keep mesh facing that way.
+	var face := signf(pose.facing_h) if pose.facing_h != 0.0 else 1.0
+	scale = Vector3(-face, 1.0, 1.0)
 	if _shadow:
 		if pose.airborne:
 			_shadow.visible = true
@@ -59,6 +62,7 @@ func apply_pose(pose: LogicalPose) -> void:
 				pose.logical_x, pose.logical_z, pose.support_height + 0.5
 			)
 			_shadow.rotation = Vector3.ZERO
+			_shadow.scale = Vector3.ONE
 		else:
 			_shadow.visible = false
 

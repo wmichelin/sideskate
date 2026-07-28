@@ -55,13 +55,13 @@ static func _build_ride(pipe: QuarterPipe) -> ArrayMesh:
 		var b := WorldSpace.logical_to_world(p1.x, z0, p1.y)
 		var c := WorldSpace.logical_to_world(p1.x, z1, p1.y)
 		var d := WorldSpace.logical_to_world(p0.x, z1, p0.y)
-		# Outward-facing for left/right so normals point into plaza.
+		# Outward-facing; WorldSpace X-mirror reverses winding vs logical layout.
 		if is_left:
-			_tri(st, a, d, c)
-			_tri(st, a, c, b)
-		else:
-			_tri(st, a, b, c)
 			_tri(st, a, c, d)
+			_tri(st, a, b, c)
+		else:
+			_tri(st, a, c, b)
+			_tri(st, a, d, c)
 	st.generate_normals()
 	return st.commit()
 
@@ -80,11 +80,11 @@ static func _build_outer_wall(pipe: QuarterPipe) -> ArrayMesh:
 	var d := WorldSpace.logical_to_world(cope_x, z0, bot)
 	var is_left := pipe.side == QuarterPipe.PipeSide.LEFT
 	if is_left:
-		_tri(st, a, b, c)
-		_tri(st, a, c, d)
-	else:
-		_tri(st, a, d, c)
 		_tri(st, a, c, b)
+		_tri(st, a, d, c)
+	else:
+		_tri(st, a, c, d)
+		_tri(st, a, b, c)
 	st.generate_normals()
 	return st.commit()
 
@@ -109,20 +109,20 @@ static func _endcap_at(st: SurfaceTool, pipe: QuarterPipe, logical_z: float, nea
 		var p1 := _profile_point(pipe, t1 * PI * 0.5, is_left)
 		var a := WorldSpace.logical_to_world(p0.x, logical_z, p0.y)
 		var b := WorldSpace.logical_to_world(p1.x, logical_z, p1.y)
-		# Fan from lip; winding flips for far vs near Z face.
+		# Fan from lip; WorldSpace X-mirror reverses near/far winding.
 		if near_face:
-			_tri(st, origin, a, b)
-		else:
 			_tri(st, origin, b, a)
+		else:
+			_tri(st, origin, a, b)
 	# Outer drop triangle under coping.
 	var cope := _profile_point(pipe, PI * 0.5, is_left)
 	var cope_top := WorldSpace.logical_to_world(cope.x, logical_z, cope.y)
 	var cope_bot := WorldSpace.logical_to_world(cope.x, logical_z, pipe.base_height)
 	var lip_w := WorldSpace.logical_to_world(lip.x, logical_z, pipe.base_height)
 	if near_face:
-		_tri(st, cope_top, lip_w, cope_bot)
-	else:
 		_tri(st, cope_top, cope_bot, lip_w)
+	else:
+		_tri(st, cope_top, lip_w, cope_bot)
 
 
 ## Profile point: Vector2(x, height) at angle theta from lip (0) to coping (π/2).

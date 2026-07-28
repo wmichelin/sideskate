@@ -39,8 +39,8 @@ static func _build_top(poly: PackedVector2Array, height: float) -> ArrayMesh:
 		var a := WorldSpace.logical_to_world(poly[i].x, poly[i].y, height)
 		var b := WorldSpace.logical_to_world(poly[i + 1].x, poly[i + 1].y, height)
 		st.add_vertex(origin)
-		st.add_vertex(a)
 		st.add_vertex(b)
+		st.add_vertex(a)
 	st.generate_normals()
 	return st.commit()
 
@@ -66,11 +66,11 @@ static func _build_walls(
 		var b0 := WorldSpace.logical_to_world(a.x, a.y, base_h)
 		var b1 := WorldSpace.logical_to_world(b.x, b.y, base_h)
 		st.add_vertex(t0)
+		st.add_vertex(b1)
 		st.add_vertex(t1)
-		st.add_vertex(b1)
 		st.add_vertex(t0)
-		st.add_vertex(b1)
 		st.add_vertex(b0)
+		st.add_vertex(b1)
 		added = true
 	if not added:
 		return null

@@ -4,7 +4,7 @@ extends RefCounted
 
 func run() -> bool:
 	var w := WorldSpace.logical_to_world(10.0, 20.0, 5.0)
-	if w != Vector3(10, 5, 20):
+	if w != Vector3(-10, 5, 20):
 		push_error("logical_to_world mismatch %s" % w)
 		return false
 	var back: Dictionary = WorldSpace.world_to_logical(w)

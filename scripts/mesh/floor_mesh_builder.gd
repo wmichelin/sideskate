@@ -59,9 +59,10 @@ static func _quad(st: SurfaceTool, x0: float, z0: float, x1: float, z1: float, y
 	var b := WorldSpace.logical_to_world(x1, z0, y)
 	var c := WorldSpace.logical_to_world(x1, z1, y)
 	var d := WorldSpace.logical_to_world(x0, z1, y)
+	# Winding flipped vs logical order: WorldSpace mirrors X.
 	st.add_vertex(a)
+	st.add_vertex(c)
 	st.add_vertex(b)
-	st.add_vertex(c)
 	st.add_vertex(a)
-	st.add_vertex(c)
 	st.add_vertex(d)
+	st.add_vertex(c)
