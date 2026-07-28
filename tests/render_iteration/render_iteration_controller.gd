@@ -1,6 +1,6 @@
 extends Node
 ## Persistent orchestrator — never uses change_scene (that would free this node).
-## Swaps a Host child between 2D/3D/menu packed scenes.
+## Swaps a Host child between gameplay / menu packed scenes.
 
 
 func _ready() -> void:
@@ -23,10 +23,9 @@ func _run() -> void:
 	var mode: String = str(args.get("mode", "3d-only"))
 	var wait_frames: int = int(args.get("wait_frames", 4))
 
-	var path_2d := "res://levels/%s.ssk" % pair
-	var path_3d := "res://levels_3d/%s.ssk" % pair
-	if not FileAccess.file_exists(path_3d):
-		push_error("missing 3D twin %s" % path_3d)
+	var path := "res://levels/%s.ssk" % pair
+	if not FileAccess.file_exists(path):
+		push_error("missing level %s" % path)
 		get_tree().quit(1)
 		return
 
@@ -38,16 +37,16 @@ func _run() -> void:
 		"pair": pair,
 		"pose": pose_name,
 		"mode": mode,
-		"path_2d": path_2d,
-		"path_3d": path_3d,
+		"path": path,
 		"errors": [],
 	}
 
 	var code := 0
 	if mode == "pair":
-		code = await _run_pair(path_2d, path_3d, dest, pose_name, wait_frames, report)
+		# Escape → menu → reload smoke (formerly 2D/3D pair).
+		code = await _run_escape_cycle(path, dest, pose_name, wait_frames, report)
 	else:
-		code = await _run_3d_only(path_3d, dest, pose_name, wait_frames, report)
+		code = await _run_3d_only(path, dest, pose_name, wait_frames, report)
 
 	var report_path := "%s/report.json" % dest
 	var f := FileAccess.open(report_path, FileAccess.WRITE)
@@ -71,13 +70,12 @@ func _swap_scene(packed_path: String) -> Node:
 
 
 func _run_3d_only(
-	path_3d: String, dest: String, pose_name: String, wait_frames: int, report: Dictionary
+	path: String, dest: String, pose_name: String, wait_frames: int, report: Dictionary
 ) -> int:
-	GameSession.pending_level_path = path_3d
-	GameSession.pending_backend = GameSession.RenderBackend.WORLD_3D
-	var scene := _swap_scene(GameSession.SCENE_3D)
+	GameSession.pending_level_path = path
+	var scene := _swap_scene(GameSession.GAMEPLAY_SCENE)
 	if scene == null:
-		report["errors"].append("load 3d failed")
+		report["errors"].append("load gameplay failed")
 		return 1
 	await _wait_frames(wait_frames + 2)
 	_apply_pose(scene, pose_name)
@@ -91,28 +89,21 @@ func _run_3d_only(
 	return 0
 
 
-func _run_pair(
-	path_2d: String,
-	path_3d: String,
+func _run_escape_cycle(
+	path: String,
 	dest: String,
 	pose_name: String,
 	wait_frames: int,
 	report: Dictionary
 ) -> int:
-	GameSession.pending_level_path = path_2d
-	GameSession.pending_backend = GameSession.RenderBackend.CANVAS_2D
-	var scene2 := _swap_scene(GameSession.SCENE_2D)
-	if scene2 == null:
-		report["errors"].append("load 2d failed")
+	GameSession.pending_level_path = path
+	var scene1 := _swap_scene(GameSession.GAMEPLAY_SCENE)
+	if scene1 == null:
+		report["errors"].append("load gameplay failed")
 		return 1
 	await _wait_frames(wait_frames + 2)
-	_apply_pose(scene2, pose_name)
+	_apply_pose(scene1, pose_name)
 	await _wait_frames(maxi(wait_frames, 2))
-	var shot2 := "%s/2d.png" % dest
-	if not await _capture(shot2):
-		report["errors"].append("2d capture failed")
-		return 1
-	report["shot_2d"] = shot2
 
 	# Escape → menu (simulate GameSession.return_to_menu without freeing runner).
 	var menu := _swap_scene(GameSession.MENU_SCENE)
@@ -122,21 +113,20 @@ func _run_pair(
 	await _wait_frames(wait_frames)
 	report["escape_ok"] = true
 
-	GameSession.pending_level_path = path_3d
-	GameSession.pending_backend = GameSession.RenderBackend.WORLD_3D
-	var scene3 := _swap_scene(GameSession.SCENE_3D)
-	if scene3 == null:
-		report["errors"].append("load 3d after menu failed")
+	GameSession.pending_level_path = path
+	var scene2 := _swap_scene(GameSession.GAMEPLAY_SCENE)
+	if scene2 == null:
+		report["errors"].append("load gameplay after menu failed")
 		return 1
 	await _wait_frames(wait_frames + 2)
-	_apply_pose(scene3, pose_name)
+	_apply_pose(scene2, pose_name)
 	await _wait_frames(maxi(wait_frames, 2))
 	var shot3 := "%s/3d.png" % dest
 	if not await _capture(shot3):
 		report["errors"].append("3d capture failed")
 		return 1
 	report["shot_3d"] = shot3
-	_fill_3d_stats(scene3, report)
+	_fill_3d_stats(scene2, report)
 	return 0
 
 

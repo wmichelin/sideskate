@@ -1,10 +1,9 @@
 extends Control
-## Start menu: splash title + buttons for .ssk in res://levels/ and res://levels_3d/.
+## Start menu: splash title + buttons for .ssk in res://levels/.
 ## Files whose names start with `_` (e.g. `_template.ssk`) are skipped.
 ## Arrow / WASD moves focus; Enter selects; list scrolls with focus.
 
-const LEVELS_2D := "res://levels"
-const LEVELS_3D := "res://levels_3d"
+const LEVELS_DIR := "res://levels"
 
 @onready var _list: VBoxContainer = %LevelList
 @onready var _scroll: ScrollContainer = %LevelScroll
@@ -57,30 +56,15 @@ func _populate_levels() -> void:
 
 	var style_normal := _make_button_style(Color(0.14, 0.16, 0.18, 0.95), Color(0.85, 0.55, 0.28, 0.55))
 	var style_hover := _make_button_style(Color(0.22, 0.18, 0.12, 0.98), Color(0.95, 0.65, 0.3, 0.9))
-	var style_3d := _make_button_style(Color(0.12, 0.16, 0.2, 0.95), Color(0.35, 0.7, 0.85, 0.55))
-	var style_3d_hover := _make_button_style(Color(0.14, 0.2, 0.26, 0.98), Color(0.45, 0.8, 0.95, 0.9))
 
-	var paths_2d := _scan_level_paths(LEVELS_2D)
-	var paths_3d := _scan_level_paths(LEVELS_3D)
-	if paths_2d.is_empty() and paths_3d.is_empty():
-		_status.text = "No levels found in res://levels/ or res://levels_3d/"
+	var paths := _scan_level_paths(LEVELS_DIR)
+	if paths.is_empty():
+		_status.text = "No levels found in res://levels/"
 		return
 
 	_status.text = "Select a level  ·  ↑↓ / WS  ·  Enter"
-	if not paths_3d.is_empty():
-		_add_section_header("3D Levels")
-		for path in paths_3d:
-			_add_level_button(
-				path,
-				"[3D] %s" % _display_name_for(path),
-				GameSession.RenderBackend.WORLD_3D,
-				style_3d,
-				style_3d_hover
-			)
-	if not paths_2d.is_empty():
-		_add_section_header("2D Levels")
-		for path in paths_2d:
-			_add_level_button(path, _display_name_for(path), GameSession.RenderBackend.CANVAS_2D, style_normal, style_hover)
+	for path in paths:
+		_add_level_button(path, _display_name_for(path), style_normal, style_hover)
 
 	if not _buttons.is_empty():
 		_buttons[0].grab_focus()
@@ -88,20 +72,9 @@ func _populate_levels() -> void:
 			_scroll.follow_focus = true
 
 
-func _add_section_header(text: String) -> void:
-	var lab := Label.new()
-	lab.text = text
-	lab.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	lab.add_theme_font_size_override("font_size", 14)
-	lab.add_theme_color_override("font_color", Color(0.65, 0.7, 0.78, 1))
-	lab.focus_mode = Control.FOCUS_NONE
-	_list.add_child(lab)
-
-
 func _add_level_button(
 	path: String,
 	display: String,
-	backend: GameSession.RenderBackend,
 	style_normal: StyleBoxFlat,
 	style_hover: StyleBoxFlat
 ) -> void:
@@ -115,7 +88,7 @@ func _add_level_button(
 	btn.add_theme_stylebox_override("hover", style_hover)
 	btn.add_theme_stylebox_override("pressed", style_hover)
 	btn.add_theme_stylebox_override("focus", style_hover)
-	btn.pressed.connect(_on_level_pressed.bind(path, backend))
+	btn.pressed.connect(_on_level_pressed.bind(path))
 	_list.add_child(btn)
 	_buttons.append(btn)
 
@@ -165,6 +138,6 @@ func _display_name_for(path: String) -> String:
 	return path.get_file().get_basename()
 
 
-func _on_level_pressed(path: String, backend: GameSession.RenderBackend) -> void:
+func _on_level_pressed(path: String) -> void:
 	_status.text = "Loading…"
-	GameSession.play_level(path, backend)
+	GameSession.play_level(path)

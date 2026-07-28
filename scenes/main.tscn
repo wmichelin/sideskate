@@ -1,27 +1,18 @@
-[gd_scene format=3 uid="uid://bdepthproto01"]
+[gd_scene format=3 uid="uid://cqtrfd1pk51yq"]
 
 [ext_resource type="Script" uid="uid://df0xdkvcwl4gq" path="res://scripts/ramp_level.gd" id="1_level"]
-[ext_resource type="Script" uid="uid://bfl23pxmg6bg0" path="res://scripts/ramp_visual.gd" id="3_visual"]
 [ext_resource type="Script" uid="uid://bfqwqs48r0cyd" path="res://scripts/player.gd" id="4_player"]
 [ext_resource type="Script" uid="uid://ccsid5t7kcfm5" path="res://scripts/pseudo_depth_body.gd" id="5_depth"]
 [ext_resource type="Script" uid="uid://cy2j0ajrjipwf" path="res://scripts/debug_overlay.gd" id="6_debug"]
-[ext_resource type="Script" uid="uid://bt2eynnt5cbqm" path="res://scripts/main.gd" id="7_main"]
-[ext_resource type="Script" uid="uid://bjukc50nc4o3b" path="res://scripts/follow_camera.gd" id="8_camera"]
+[ext_resource type="Script" path="res://scripts/main.gd" id="7_main"]
 [ext_resource type="Script" uid="uid://b5c20xe6x0frg" path="res://scripts/debug_sliders.gd" id="9_sliders"]
-[ext_resource type="Script" uid="uid://bq6pejaq1h5br" path="res://scripts/velocity_debug_arrow.gd" id="10_vel_arrow"]
 [ext_resource type="Script" uid="uid://cuasx6cbqxf7j" path="res://scripts/fps_debug.gd" id="11_fps"]
 [ext_resource type="Script" uid="uid://d1v6q74p1adtk" path="res://scripts/death_overlay.gd" id="12_death"]
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_head"]
-content_margin_left = 8.0
-content_margin_top = 3.0
-content_margin_right = 8.0
-content_margin_bottom = 3.0
-bg_color = Color(0.05, 0.06, 0.09, 0.78)
-corner_radius_top_left = 4
-corner_radius_top_right = 4
-corner_radius_bottom_right = 4
-corner_radius_bottom_left = 4
+[ext_resource type="Script" path="res://scripts/rendering_3d/level_visual_3d.gd" id="13_vis3d"]
+[ext_resource type="Script" path="res://scripts/rendering_3d/logical_pose_presenter_3d.gd" id="14_pose3d"]
+[ext_resource type="Script" path="res://scripts/rendering_3d/camera_rig_3d.gd" id="15_cam3d"]
+[ext_resource type="Script" path="res://scripts/rendering_3d/level_debug_3d.gd" id="16_dbg3d"]
+[ext_resource type="Script" path="res://scripts/rendering_3d/player_debug_3d.gd" id="17_pdbg3d"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_panel"]
 content_margin_left = 12.0
@@ -34,82 +25,52 @@ corner_radius_top_right = 8
 corner_radius_bottom_right = 8
 corner_radius_bottom_left = 8
 
-[node name="Main" type="Node2D" unique_id=2057660754]
+[node name="Main" type="Node" unique_id=2057660755]
 script = ExtResource("7_main")
 
-[node name="WorldBackdrop" type="CanvasLayer" parent="." unique_id=1463926595]
-layer = -100
+[node name="World3D" type="Node3D" parent="."]
 
-[node name="ColorRect" type="ColorRect" parent="WorldBackdrop" unique_id=1552944546]
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-mouse_filter = 2
-color = Color(0.08, 0.1, 0.14, 1)
+[node name="WorldEnvironment" type="WorldEnvironment" parent="World3D"]
+
+[node name="KeyLight" type="DirectionalLight3D" parent="World3D"]
+transform = Transform3D(0.866, -0.354, 0.354, 0, 0.707, 0.707, -0.5, -0.612, 0.612, 0, 400, 0)
+light_energy = 1.15
+shadow_enabled = true
+
+[node name="FillLight" type="DirectionalLight3D" parent="World3D"]
+transform = Transform3D(0.707, 0.0, -0.707, 0.0, 1, 0, 0.707, 0, 0.707, 0, 200, 0)
+light_energy = 0.35
+
+[node name="LevelVisual3D" type="Node3D" parent="World3D"]
+script = ExtResource("13_vis3d")
+level_path = NodePath("../../RampLevel")
+
+[node name="PlayerVisual" type="Node3D" parent="World3D"]
+script = ExtResource("14_pose3d")
+depth_path = NodePath("../../Player/PseudoDepthBody")
+player_path = NodePath("../../Player")
+
+[node name="CameraRig3D" type="Node3D" parent="World3D"]
+script = ExtResource("15_cam3d")
+target_path = NodePath("../PlayerVisual")
+
+[node name="LevelDebug3D" type="Node3D" parent="World3D"]
+script = ExtResource("16_dbg3d")
+player_path = NodePath("../../Player")
+level_path = NodePath("../../RampLevel")
+
+[node name="PlayerDebug3D" type="Node3D" parent="World3D"]
+script = ExtResource("17_pdbg3d")
+player_path = NodePath("../../Player")
 
 [node name="RampLevel" type="Node2D" parent="." unique_id=1434297277]
 script = ExtResource("1_level")
-
-[node name="RampVisual" type="Node2D" parent="RampLevel" unique_id=283015009]
-script = ExtResource("3_visual")
 
 [node name="Player" type="Node2D" parent="." unique_id=1706349078]
 script = ExtResource("4_player")
 
 [node name="PseudoDepthBody" type="Node" parent="Player" unique_id=1532835232]
 script = ExtResource("5_depth")
-
-[node name="Shadow" type="Polygon2D" parent="Player" unique_id=1016364103]
-z_index = -1
-color = Color(0, 0, 0, 0.55)
-
-[node name="Body" type="Polygon2D" parent="Player" unique_id=58950740]
-color = Color(0.92, 0.25, 0.45, 0.92)
-polygon = PackedVector2Array(0, -40, 14, -12, 10, 0, -10, 0, -14, -12)
-
-[node name="FaceNose" type="Polygon2D" parent="Player/Body" unique_id=1256278741]
-z_index = 1
-position = Vector2(12, -22)
-color = Color(0.98, 0.92, 0.55, 1)
-polygon = PackedVector2Array(0, -5, 4, -2, 4, 2, 0, 5, -4, 2, -4, -2)
-
-[node name="HeadDebug" type="PanelContainer" parent="Player/Body" unique_id=786460520]
-visible = false
-z_index = 20
-offset_left = -40.0
-offset_top = -72.0
-offset_right = 40.0
-offset_bottom = -44.0
-mouse_filter = 2
-theme_override_styles/panel = SubResource("StyleBoxFlat_head")
-
-[node name="Label" type="Label" parent="Player/Body/HeadDebug" unique_id=1939827550]
-layout_mode = 2
-theme_override_colors/font_color = Color(0.9, 0.93, 0.98, 1)
-theme_override_font_sizes/font_size = 13
-text = "flat"
-horizontal_alignment = 1
-
-[node name="VelocityArrow" type="Node2D" parent="Player/Body" unique_id=1704464314]
-position = Vector2(-12, -68)
-script = ExtResource("10_vel_arrow")
-
-[node name="MomentumArrow" type="Node2D" parent="Player/Body" unique_id=106386296]
-position = Vector2(12, -68)
-script = ExtResource("10_vel_arrow")
-kind = 1
-arrow_color = Color(1, 0.72, 0.28, 0.95)
-
-[node name="InputArrow" type="Node2D" parent="Player/Body" unique_id=338502724]
-position = Vector2(0, -78)
-script = ExtResource("10_vel_arrow")
-kind = 2
-arrow_color = Color(0.35, 0.72, 1, 0.95)
-
-[node name="FollowCamera" type="Camera2D" parent="." unique_id=1242588525]
-script = ExtResource("8_camera")
 
 [node name="DebugOverlay" type="CanvasLayer" parent="." unique_id=1788673540]
 script = ExtResource("6_debug")

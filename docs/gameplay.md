@@ -177,8 +177,8 @@ Debug tools are gated by autoload `DebugTools`: available when `OS.is_debug_buil
 |--------|------|
 | [`scripts/player.gd`](../scripts/player.gd) | Motion, air, transfer, acid drop, ride-off; `motion_screen` / `motion_speed` |
 | [`scripts/ramp_level.gd`](../scripts/ramp_level.gd) | Load `.ssk`, sample surfaces, project to screen |
-| [`scripts/ramp_visual.gd`](../scripts/ramp_visual.gd) | Park draw (floors, pipe ribbons/walls/endcaps, deck tops/sides; Far/Near Z-split) + cell / facing-cast highlight |
-| [`scripts/ramp_visual_pass.gd`](../scripts/ramp_visual_pass.gd) | CanvasItem half of the Far/Near painter split |
+| [`scripts/rendering_3d/level_visual_3d.gd`](../scripts/rendering_3d/level_visual_3d.gd) | 3D park meshes from LevelSpec + pipes |
+| [`scripts/rendering_3d/logical_pose_presenter_3d.gd`](../scripts/rendering_3d/logical_pose_presenter_3d.gd) | Logical pose → 3D player visual |
 | [`scripts/level_loader.gd`](../scripts/level_loader.gd) / [`level_spec.gd`](../scripts/level_spec.gd) | Parse IDL → floors, decks, pipes, grid metrics |
 | [`scripts/perspective_math.gd`](../scripts/perspective_math.gd) | Pure pseudo-depth projection helpers |
 | [`scripts/pipe_math.gd`](../scripts/pipe_math.gd) | Pure coping / opposite-pipe helpers |
@@ -186,10 +186,9 @@ Debug tools are gated by autoload `DebugTools`: available when `OS.is_debug_buil
 | [`scripts/motion_vectors.gd`](../scripts/motion_vectors.gd) | Named triad `INPUT` / `MOMENTUM` / `ACTUAL` |
 | [`scripts/aerial_math.gd`](../scripts/aerial_math.gd) | Pure transfer / spine / acid routing + `merge_drop_in_along` / `lock_carry_velocity_x` |
 | [`scripts/facing_cast_math.gd`](../scripts/facing_cast_math.gd) | Pure facing-cast cells + story/pipe/coping surface resolve |
-| [`scripts/pseudo_depth_body.gd`](../scripts/pseudo_depth_body.gd) | Logical pose → screen body + air/ground shadow |
+| [`scripts/pseudo_depth_body.gd`](../scripts/pseudo_depth_body.gd) | Logical pose fields + optional CanvasItem apply |
 | [`scripts/quarter_pipe.gd`](../scripts/quarter_pipe.gd) | Pipe sample (θ, height, zone) |
 | [`scripts/debug_tools.gd`](../scripts/debug_tools.gd) | Production gate + god mode state |
-| [`scripts/velocity_debug_arrow.gd`](../scripts/velocity_debug_arrow.gd) | Head arrow for one `MotionVectors.Kind` |
 | [`scripts/debug_overlay.gd`](../scripts/debug_overlay.gd) / [`debug_sliders.gd`](../scripts/debug_sliders.gd) | HUD debug |
 
 ## Behavioral invariants (do not regress)

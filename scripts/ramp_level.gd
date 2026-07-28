@@ -52,7 +52,7 @@ var _proj_cache_ref: float = NAN
 var _proj_cache_inset: float = NAN
 var _proj_cache_width: float = NAN
 
-@onready var _visual: Node2D = $RampVisual
+@onready var _visual: Node2D = get_node_or_null("RampVisual") as Node2D
 
 
 func _ready() -> void:

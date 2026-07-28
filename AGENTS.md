@@ -39,17 +39,16 @@ Prefer `LevelLoader.parse_text` over `load_path` in tests (`load_path` aborts th
 
 Level fixtures for tests live in `tests/levels/` — do not point tests at `res://levels/` (playable maps). Copy a playable `.ssk` into `tests/levels/` when a test needs it.
 
-## Dual renderer (2D + 3D)
+## Renderer (3D)
 
-- `res://levels/` → CanvasItem pipeline (`scenes/main.tscn`)
-- `res://levels_3d/` → Godot 3D pipeline (`scenes/main_3d.tscn`) — byte-identical twins
-- Escape (`menu_back`) always returns to the start menu from either backend
+- Playable maps live in `res://levels/` and load into `scenes/main.tscn` (Godot 3D park + logical Player sim).
+- Escape (`menu_back`) returns to the start menu.
 
 ### Agent iteration loop
 
 1. Make one milestone-sized edit to the 3D renderer / pose / camera.
 2. Run headless tests: `godot4 --headless --path . --script res://tests/test_runner.gd`
-3. Fast visual gate (3D only):
+3. Fast visual gate:
    ```bash
    ./tools/render_iteration.sh plaza_default spawn 3d-only
    ```
@@ -60,4 +59,4 @@ Level fixtures for tests live in `tests/levels/` — do not point tests at `res:
    ./tools/render_iteration.sh plaza_default spawn pair
    ```
 
-Do not pixel-diff 2D vs 3D. Compare structural landmarks and side-by-side screenshots. Required gates: `plaza_default`, `spine_demo`, `layered_demo`, `variable_height_ramps`, `plaza_default_deep`.
+Required gates: `plaza_default`, `spine_demo`, `layered_demo`, `variable_height_ramps`, `plaza_default_deep`.

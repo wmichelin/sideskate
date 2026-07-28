@@ -1,5 +1,5 @@
 extends RefCounted
-## 3D scene loads, meshes rebuild, camera exists.
+## Gameplay scene loads, 3D meshes rebuild, camera exists.
 
 
 func run() -> bool:
@@ -8,10 +8,9 @@ func run() -> bool:
 		push_error("no tree")
 		return false
 	GameSession.pending_level_path = "res://tests/levels/test_halfpipe.ssk"
-	GameSession.pending_backend = GameSession.RenderBackend.WORLD_3D
-	var packed: PackedScene = load("res://scenes/main_3d.tscn")
+	var packed: PackedScene = load("res://scenes/main.tscn")
 	if packed == null:
-		push_error("main_3d.tscn missing")
+		push_error("main.tscn missing")
 		return false
 	var main: Node = packed.instantiate()
 	tree.root.add_child(main)
@@ -44,5 +43,4 @@ func run() -> bool:
 
 	main.queue_free()
 	GameSession.pending_level_path = ""
-	GameSession.pending_backend = GameSession.RenderBackend.CANVAS_2D
 	return true

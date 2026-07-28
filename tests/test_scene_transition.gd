@@ -3,21 +3,6 @@ extends RefCounted
 
 
 func run() -> bool:
-	# Backend routing helpers.
-	if GameSession.backend_for_path("res://levels/plaza_default.ssk") != GameSession.RenderBackend.CANVAS_2D:
-		push_error("2D path backend wrong")
-		return false
-	if GameSession.backend_for_path("res://levels_3d/plaza_default.ssk") != GameSession.RenderBackend.WORLD_3D:
-		push_error("3D path backend wrong")
-		return false
-	var twin := GameSession.paired_path("res://levels/plaza_default.ssk")
-	if twin != "res://levels_3d/plaza_default.ssk":
-		push_error("paired_path 2D→3D got %s" % twin)
-		return false
-	if GameSession.paired_path(twin) != "res://levels/plaza_default.ssk":
-		push_error("paired_path 3D→2D round-trip failed")
-		return false
-
 	# Baked DeathOverlay must be present in main.tscn (no mid-_ready add_child).
 	var packed: PackedScene = load("res://scenes/main.tscn")
 	if packed == null:
@@ -55,8 +40,13 @@ func run() -> bool:
 		main.queue_free()
 		return false
 
+	# 3D gameplay subtree present.
+	if main.get_node_or_null("World3D/CameraRig3D") == null:
+		push_error("CameraRig3D missing from unified main.tscn")
+		main.queue_free()
+		return false
+
 	GameSession.pending_level_path = ""
-	GameSession.pending_backend = GameSession.RenderBackend.CANVAS_2D
 
 	main.queue_free()
 	var main2: Node = packed.instantiate()
