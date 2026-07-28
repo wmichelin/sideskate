@@ -330,12 +330,17 @@ static func acid_should_reject_land(
 
 
 ## Spine mid-lerp: only land on the locked target pipe (and matching story).
+## While X settle is still active and not coping-aligned, defer target land too
+## (early mid-wall drop-in). Intervening deck/flat stay rejected for land —
+## clearance soft-floor rides over them instead of tunneling.
 static func spine_should_reject_land(
 	land_hit: Dictionary,
 	spine_transfer_lock: bool,
 	air_side: int,
 	air_lip_x: float,
 	air_base_height: float,
+	settle_active: bool = false,
+	aligned: bool = true,
 ) -> bool:
 	if not spine_transfer_lock:
 		return false
@@ -348,6 +353,9 @@ static func spine_should_reject_land(
 	var spine_base := float(land_hit.get("base_height", NAN))
 	if not is_nan(spine_base) and not is_nan(air_base_height) \
 			and absf(spine_base - air_base_height) > 0.5:
+		return true
+	# Matching target: wait until X settle finishes or coping align.
+	if settle_active and not aligned:
 		return true
 	return false
 

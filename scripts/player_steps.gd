@@ -3,6 +3,9 @@ extends RefCounted
 ## Step bodies: per-tick sim procedures that mutate a live Player (`p`).
 ## Prefer pure helpers for policy; keep player.gd as thin orchestrator.
 
+const _SpineClearance := preload("res://scripts/aerial_spine_clearance.gd")
+
+
 static func apply_grounded_motion(p, delta: float, speed_mul: float) -> void:
 	var prev_support_h: float = p.depth.surface_height
 	p._commit_xz(p.depth.logical_x, p.depth.logical_z + p._velocity.y * speed_mul * delta)
@@ -228,6 +231,8 @@ static func try_land_from_air_contact(p, contact: Dictionary, h_before: float, d
 		p._air_lip_x,
 		p._spine_transfer_lock,
 		p._air_base_height,
+		bool(p._settle.x_active),
+		p._is_aligned_with_air_coping(),
 	):
 		return false
 
@@ -481,6 +486,8 @@ static func apply_locked_air_motion(p, delta: float, speed_mul: float) -> void:
 	var h_before: float = p.air_abs_height
 	var contact: Dictionary = p._resolve_and_apply_air_contact(h_before)
 	p._integrate_air_gravity(delta)
+	if p._spine_transfer_lock:
+		_apply_spine_clearance(p)
 	p._try_apex_facing_flip(prev_air_vy)
 	if p._try_fly_out_from_pipe_lock():
 		if not p._settle.x_active:
@@ -490,6 +497,42 @@ static func apply_locked_air_motion(p, delta: float, speed_mul: float) -> void:
 			)
 		contact = p._resolve_and_apply_air_contact(h_before)
 	p._try_land_from_air_contact(contact, h_before, delta, speed_mul)
+
+
+## Ride over intervening solids during spine settle (no tunnel through deck/pipe).
+## Holds feet at/above dest coping floor until X is ready to land.
+static func _apply_spine_clearance(p) -> void:
+	if p._level == null:
+		return
+	var under: Dictionary = p._level.resolve_air_contact(
+		p.depth.logical_x,
+		p.depth.logical_z,
+		p.air_abs_height,
+		-1,
+		NAN,
+		NAN,
+		false,
+		NAN,
+		NAN,
+	)
+	var settle_active: bool = bool(p._settle.x_active)
+	var aligned: bool = p._is_aligned_with_air_coping()
+	var floor_h: float = _SpineClearance.clearance_floor(
+		under,
+		p._air_side,
+		p._air_lip_x,
+		p._air_base_height,
+		p._air_radius,
+		settle_active,
+		aligned,
+	)
+	if is_nan(floor_h):
+		return
+	var patch: Dictionary = _SpineClearance.apply_clearance(
+		p.air_abs_height, p.air_vel_y, floor_h
+	)
+	p.air_abs_height = float(patch.height)
+	p.air_vel_y = float(patch.vel_y)
 
 
 static func apply_free_air_motion(p, delta: float, speed_mul: float) -> void:

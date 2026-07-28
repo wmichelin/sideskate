@@ -85,6 +85,7 @@ static func _resolve_hole_lower(
 
 
 ## Acid/spine target-only landing rejects (exit-pipe identity supplied by Player).
+## Spine also defers target land while X settle is active and not coping-aligned.
 static func should_reject_land(
 	land_hit: Dictionary,
 	acid_drop_lock: bool,
@@ -93,13 +94,21 @@ static func should_reject_land(
 	air_lip_x: float,
 	spine_transfer_lock: bool,
 	air_base_height: float,
+	settle_active: bool = false,
+	aligned: bool = true,
 ) -> bool:
 	if _ContactMath.acid_should_reject_land(
 		land_hit, acid_drop_lock, is_exit_pipe, air_side, air_lip_x
 	):
 		return true
 	return _ContactMath.spine_should_reject_land(
-		land_hit, spine_transfer_lock, air_side, air_lip_x, air_base_height
+		land_hit,
+		spine_transfer_lock,
+		air_side,
+		air_lip_x,
+		air_base_height,
+		settle_active,
+		aligned,
 	)
 
 

@@ -397,6 +397,12 @@ func _acid_spine_land_rejects() -> bool:
 	if not ContactMath.spine_should_reject_land(wrong_story, true, 1, 500.0, 0.0):
 		push_error("spine must reject mismatched story")
 		return false
+	if not ContactMath.spine_should_reject_land(target, true, 1, 500.0, 0.0, true, false):
+		push_error("spine must defer target land while settle unaligned")
+		return false
+	if ContactMath.spine_should_reject_land(target, true, 1, 500.0, 0.0, true, true):
+		push_error("spine must accept target when aligned")
+		return false
 	return true
 
 

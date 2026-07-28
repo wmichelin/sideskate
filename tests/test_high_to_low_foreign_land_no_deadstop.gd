@@ -86,6 +86,7 @@ func run() -> bool:
 
 
 ## Mid-lerp over an L1 deck must not clip a spine lock aimed at L0.
+## Target land is deferred until settle finishes or coping-aligned.
 func _spine_refuses_deck_land(player, l0: QuarterPipe, z: float) -> bool:
 	player.call("_clear_air")
 	player._on_ramp = false
@@ -109,6 +110,7 @@ func _spine_refuses_deck_land(player, l0: QuarterPipe, z: float) -> bool:
 	player.depth.logical_x = player._air_coping_x + 20.0
 	player.depth.logical_z = z
 	player.depth.surface_height = player.air_abs_height
+	player._settle.x_active = true
 
 	var deck_hit := {"zone": "deck", "active": true, "height": 141.0}
 	var contact := ContactMath.make_air_contact("deck", 1, 141.0, true, deck_hit)
@@ -135,6 +137,23 @@ func _spine_refuses_deck_land(player, l0: QuarterPipe, z: float) -> bool:
 	)
 	player.air_abs_height = float(pipe_hit.height) - 1.0
 	player.air_vel_y = -40.0
+	var deferred: bool = bool(
+		player.call(
+			"_try_land_from_air_contact",
+			pipe_contact,
+			float(pipe_hit.height) + 10.0,
+			1.0 / 60.0,
+			1.0,
+		)
+	)
+	if deferred:
+		push_error("spine must defer target land while settle unaligned")
+		return false
+
+	player._settle.x_active = false
+	player.depth.logical_x = player._air_coping_x
+	player.air_abs_height = float(pipe_hit.height) - 1.0
+	player.air_vel_y = -40.0
 	var pipe_landed: bool = bool(
 		player.call(
 			"_try_land_from_air_contact",
@@ -145,7 +164,7 @@ func _spine_refuses_deck_land(player, l0: QuarterPipe, z: float) -> bool:
 		)
 	)
 	if not pipe_landed:
-		push_error("spine must still land on locked target pipe")
+		push_error("spine must land on locked target once settle done")
 		return false
 	return true
 
