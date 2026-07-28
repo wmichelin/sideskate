@@ -606,20 +606,10 @@ func _apply_motion(delta: float, speed_mul: float) -> void:
 func _step_transfer_x(delta: float) -> void:
 	if not _transfer_x_active:
 		return
+	# Duration is baked at begin — live height must not retune mid-settle (jitter).
 	var duration := maxf(_transfer_x_dur, 0.0001)
-	if _transfer_x_ease:
-		var above := maxf(air_abs_height - _air_coping_floor(), 0.0)
-		duration = maxf(
-			_AerialMath.lock_x_duration_for_height(
-				above,
-				acid_drop_x_duration,
-				acid_drop_x_duration_per_height,
-				acid_drop_x_duration_max,
-			),
-			0.0001,
-		)
 	_transfer_x_u = clampf(_transfer_x_u + delta / duration, 0.0, 1.0)
-	var w := _AerialMath.smoothstep01(_transfer_x_u) if _transfer_x_ease else _transfer_x_u
+	var w := _AerialMath.smootherstep01(_transfer_x_u) if _transfer_x_ease else _transfer_x_u
 	var next_x := lerpf(_transfer_x_from, _transfer_x_to, w)
 	# Acid: hard clamp — settle may only advance along locked travel.
 	if _acid_drop_lock and absf(_acid_travel_x) >= 1.0:
@@ -638,15 +628,27 @@ func _step_transfer_x(delta: float) -> void:
 	_clamp_pose_playable()
 
 
-## Start horizontal settle onto `to_x`. Acid/spine: live duration from height above
-## coping (`base + rate * h`) + smoothstep. Free transfer: fixed duration, linear.
+## Start horizontal settle onto `to_x`. Acid/spine: duration from height above
+## coping at start (frozen) + smootherstep. Free transfer: fixed duration, linear.
 ## Height-scaled also starts a tilt settle (even when X is already on the coping).
 func _begin_transfer_x_lerp(to_x: float, height_scaled: bool, _coping_radius: float = 0.0) -> void:
 	_transfer_x_from = depth.logical_x
 	_transfer_x_to = to_x
 	_transfer_x_u = 0.0
 	_transfer_x_ease = height_scaled
-	_transfer_x_dur = transfer_x_duration
+	if height_scaled:
+		var above := maxf(air_abs_height - _air_coping_floor(), 0.0)
+		_transfer_x_dur = maxf(
+			_AerialMath.lock_x_duration_for_height(
+				above,
+				acid_drop_x_duration,
+				acid_drop_x_duration_per_height,
+				acid_drop_x_duration_max,
+			),
+			0.0001,
+		)
+	else:
+		_transfer_x_dur = transfer_x_duration
 	_transfer_x_active = absf(to_x - depth.logical_x) > 0.05
 	if not _transfer_x_active:
 		depth.logical_x = to_x
@@ -2085,7 +2087,7 @@ func _update_face_nose() -> void:
 
 
 ## Lean onto the pipe so local-up follows the surface normal (into the bowl).
-## Spine/acid run a dedicated tilt settle (same smoothstep timing as X); otherwise ease.
+## Spine/acid run a dedicated tilt settle (same smootherstep timing as X); otherwise ease.
 func _step_body_tilt(delta: float) -> void:
 	if _tilt_lerp_active:
 		_advance_tilt_lerp(delta)
@@ -2106,7 +2108,21 @@ func _begin_tilt_lerp(to_tilt: float, height_scaled: bool) -> void:
 	_tilt_lerp_to = to_tilt
 	_tilt_lerp_u = 0.0
 	_tilt_lerp_ease = height_scaled
-	_tilt_lerp_dur = transfer_x_duration
+	if height_scaled:
+		var above := 0.0
+		if _air_x_locked and not is_nan(_air_radius):
+			above = maxf(air_abs_height - (_air_base_height + _air_radius), 0.0)
+		_tilt_lerp_dur = maxf(
+			_AerialMath.lock_x_duration_for_height(
+				above,
+				acid_drop_x_duration,
+				acid_drop_x_duration_per_height,
+				acid_drop_x_duration_max,
+			),
+			0.0001,
+		)
+	else:
+		_tilt_lerp_dur = transfer_x_duration
 	if absf(_tilt_lerp_to - _tilt_lerp_from) <= 0.02:
 		_body_tilt = _tilt_lerp_to
 		_tilt_lerp_active = false
@@ -2117,22 +2133,10 @@ func _begin_tilt_lerp(to_tilt: float, height_scaled: bool) -> void:
 func _advance_tilt_lerp(delta: float) -> void:
 	if not _tilt_lerp_active:
 		return
+	# Duration baked at begin — matches X settle (no live height retune).
 	var duration := maxf(_tilt_lerp_dur, 0.0001)
-	if _tilt_lerp_ease:
-		var above := 0.0
-		if _air_x_locked and not is_nan(_air_radius):
-			above = maxf(air_abs_height - (_air_base_height + _air_radius), 0.0)
-		duration = maxf(
-			_AerialMath.lock_x_duration_for_height(
-				above,
-				acid_drop_x_duration,
-				acid_drop_x_duration_per_height,
-				acid_drop_x_duration_max,
-			),
-			0.0001,
-		)
 	_tilt_lerp_u = clampf(_tilt_lerp_u + delta / duration, 0.0, 1.0)
-	var w := _AerialMath.smoothstep01(_tilt_lerp_u) if _tilt_lerp_ease else _tilt_lerp_u
+	var w := _AerialMath.smootherstep01(_tilt_lerp_u) if _tilt_lerp_ease else _tilt_lerp_u
 	_body_tilt = lerpf(_tilt_lerp_from, _tilt_lerp_to, w)
 	if _tilt_lerp_u >= 1.0:
 		_body_tilt = _tilt_lerp_to

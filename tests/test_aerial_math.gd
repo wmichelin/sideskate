@@ -230,6 +230,20 @@ func _lock_x_duration() -> bool:
 	if absf(mid_s - 0.5) > 0.001:
 		push_error("smoothstep(0.5) → 0.5, got %s" % mid_s)
 		return false
+	if absf(AerialMath.smootherstep01(0.0)) > 0.001:
+		push_error("smootherstep(0) → 0")
+		return false
+	if absf(AerialMath.smootherstep01(1.0) - 1.0) > 0.001:
+		push_error("smootherstep(1) → 1")
+		return false
+	var s25 := AerialMath.smootherstep01(0.25)
+	if s25 >= 0.25:
+		push_error("smootherstep eases in, got %s" % s25)
+		return false
+	var s75 := AerialMath.smootherstep01(0.75)
+	if s75 <= 0.75:
+		push_error("smootherstep eases out, got %s" % s75)
+		return false
 	return true
 
 
