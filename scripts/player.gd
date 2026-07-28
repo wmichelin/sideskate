@@ -11,6 +11,10 @@ const _AerialTargeting := preload("res://scripts/aerial_targeting.gd")
 const _FacingCastMath := preload("res://scripts/facing_cast_math.gd")
 const _MotionVectors := preload("res://scripts/motion_vectors.gd")
 const _ContactMath := preload("res://scripts/contact_math.gd")
+const _GroundPipeMath := preload("res://scripts/ground_pipe_math.gd")
+const _PlayerPipeHits := preload("res://scripts/player_pipe_hits.gd")
+const _PlayerDeath := preload("res://scripts/player_death.gd")
+const _PlayerMotionDebug := preload("res://scripts/player_motion_debug.gd")
 
 @export var max_speed_x: float = 880.0
 
@@ -247,14 +251,37 @@ func _physics_process(delta: float) -> void:
 	if _level == null:
 		_level = get_node_or_null(level_path) as RampLevel
 
+	_tick_debug_god_input()
+	_tick_transfer_press()
+	_tick_integrate_input(delta)
+	_tick_apply_world_motion(delta)
+	_tick_clamp_playable_bounds()
+	_apply_surface()
+	_note_safe_pad_from_surface()
+	if _try_lava_death():
+		_step_body_tilt(0.0)
+		depth.apply()
+		return
+	_update_actual_velocity(delta)
+	_tick_transfer_hold()
+	_clear_momentum_if_at_rest()
+	_step_body_tilt(delta)
+	depth.apply()
+
+
+func _tick_debug_god_input() -> void:
 	if DebugTools.is_available() and Input.is_action_just_pressed("god_mode_toggle"):
 		DebugTools.toggle_god_mode()
 		if DebugTools.god_mode:
 			air_vel_y = 0.0
 
+
+func _tick_transfer_press() -> void:
 	if Input.is_action_just_pressed("transfer"):
 		_try_air_action()
 
+
+func _tick_integrate_input(delta: float) -> void:
 	var input := _read_move_input()
 	_last_input = input
 	# Stick must accelerate along-arc speed, not the post-projection horizontal remnant.
@@ -267,11 +294,15 @@ func _physics_process(delta: float) -> void:
 		_ramp_along = _velocity.x
 	_clamp_momentum_to_max_speed()
 
+
+func _tick_apply_world_motion(delta: float) -> void:
 	var speed_mul := depth.depth_speed_multiplier() if depth_speed_feel else 1.0
 	_apply_motion(delta, speed_mul)
 	_clamp_momentum_to_max_speed()
 	_step_god_vertical(delta)
 
+
+func _tick_clamp_playable_bounds() -> void:
 	if _level:
 		depth.logical_x = clampf(depth.logical_x, _level.x_min(), _level.x_max())
 		depth.z_min = _level.z_min
@@ -279,23 +310,16 @@ func _physics_process(delta: float) -> void:
 	else:
 		depth.logical_x = clampf(depth.logical_x, 80.0, 1200.0)
 
-	_apply_surface()
-	_note_safe_pad_from_surface()
-	if _try_lava_death():
-		_step_body_tilt(0.0)
-		depth.apply()
-		return
-	_update_actual_velocity(delta)
+
+func _tick_transfer_hold() -> void:
 	# Hold into a ramp / fall: auto-fire spine while rising, acid when cast sees a
 	# coping while falling (or after fly-out). Press still goes through _try_air_action.
-	if Input.is_action_pressed("transfer") and _airborne:
-		if _flew_out_this_aerial or not _transfer_vert_ok():
-			_try_acid_drop(true)
-		elif not _flew_out_this_aerial:
-			_try_spine_transfer(true)
-	_clear_momentum_if_at_rest()
-	_step_body_tilt(delta)
-	depth.apply()
+	if not Input.is_action_pressed("transfer") or not _airborne:
+		return
+	if _flew_out_this_aerial or not _transfer_vert_ok():
+		_try_acid_drop(true)
+	elif not _flew_out_this_aerial:
+		_try_spine_transfer(true)
 
 
 func _remember_safe_pad(x: float, z: float, h: float, face: String) -> void:
@@ -333,9 +357,7 @@ func _reset_all_motion() -> void:
 
 ## Grounded lava (`aerial=false`, zone lava): red death flash → last safe pad.
 func _try_lava_death() -> bool:
-	if _airborne or last_surface.is_empty():
-		return false
-	if not ContactMath.is_lava(last_surface):
+	if not _PlayerDeath.should_die_on_lava(_airborne, last_surface):
 		return false
 	_dead = true
 	_reset_all_motion()
@@ -507,7 +529,7 @@ func _apply_motion(delta: float, speed_mul: float) -> void:
 		var under: Dictionary = hit
 		# Sticky sample refuses fallthrough when inactive — still probe for a
 		# competing pipe (plain sample) so we launch instead of remounting it.
-		if not own.get("active", false) and not _is_pipe_hit(hit) and _level != null:
+		if not own.get("active", false) and not _ContactMath.is_pipe(hit) and _level != null:
 			under = _level.sample(
 				depth.logical_x, depth.logical_z, -1, NAN, _feet_height()
 			)
@@ -530,7 +552,7 @@ func _apply_motion(delta: float, speed_mul: float) -> void:
 	# sticky identity may cross θ=π/2 into coping-launch air.
 	var rejected_fresh_coping: bool = (
 		not _on_ramp
-		and _is_pipe_hit(hit)
+		and _ContactMath.is_pipe(hit)
 		and float(hit.get("theta", 0.0)) >= PI * 0.5 - 0.001
 	)
 	if rejected_fresh_coping:
@@ -555,7 +577,7 @@ func _apply_motion(delta: float, speed_mul: float) -> void:
 			var after_under: Dictionary = after_sample
 			if (
 				not after_own.get("active", false)
-				and not _is_pipe_hit(after_sample)
+				and not _ContactMath.is_pipe(after_sample)
 				and _level != null
 			):
 				after_under = _level.sample(
@@ -768,7 +790,7 @@ func _step_god_vertical(delta: float) -> void:
 		if zone == "oob":
 			zone = "flat"
 		var target := {"zone": zone, "lock_x": false, "anchor_x": depth.logical_x}
-		if _is_pipe_hit(under):
+		if _ContactMath.is_pipe(under):
 			target["side"] = int(under.get("side", QuarterPipe.PipeSide.RIGHT))
 			target["lip_x"] = float(under.get("lip_x", depth.logical_x))
 			target["radius"] = _pipe_radius_for_hit(under)
@@ -984,7 +1006,7 @@ func _try_ride_off_air(prev_support_h: float) -> void:
 	if zone == "oob" or zone == "hole":
 		zone = "flat"
 	var target := {"zone": zone, "lock_x": false, "anchor_x": depth.logical_x}
-	if _is_pipe_hit(under) and has_support:
+	if _ContactMath.is_pipe(under) and has_support:
 		target["side"] = int(under.get("side", QuarterPipe.PipeSide.RIGHT))
 		target["lip_x"] = float(under.get("lip_x", depth.logical_x))
 		target["radius"] = _pipe_radius_for_hit(under)
@@ -1032,16 +1054,14 @@ func _sample_underfoot() -> Dictionary:
 
 ## Sticky identity as a pipe hit dict (for ContactMath.same_pipe / air enter).
 func _ramp_pipe_hit() -> Dictionary:
-	return {
-		"active": true,
-		"zone": _pipe_zone_name(_ramp_side),
-		"side": _ramp_side,
-		"lip_x": _ramp_lip_x,
-		"radius": _sticky_pipe_radius(),
-		"base_height": _ramp_base_height,
-		"z_min": _ramp_z_min,
-		"z_max": _ramp_z_max,
-	}
+	return _PlayerPipeHits.ramp_pipe_hit(
+		_ramp_side,
+		_ramp_lip_x,
+		_ramp_base_height,
+		_ramp_z_min,
+		_ramp_z_max,
+		_sticky_pipe_radius(),
+	)
 
 
 ## Direct query of the sticky pipe underfoot (ignores competing stories).
@@ -1074,18 +1094,17 @@ func _apply_ramp_friction(delta: float) -> void:
 ## Split along-arc speed into remaining horizontal (`along * cosθ`). Vertical is
 ## carried by surface height while grounded; at the lip it becomes `air_vel_y`.
 func _project_ramp_velocity(theta: float) -> void:
-	var c := cos(clampf(theta, 0.0, PI * 0.5))
-	_velocity.x = _ramp_along * c
+	_velocity.x = _GroundPipeMath.project_horiz_from_along(_ramp_along, theta)
 
 
 func _sticky_pipe_radius() -> float:
-	return _pipe_radius_for_hit({
+	return _PlayerPipeHits.pipe_radius_for_hit({
 		"side": _ramp_side,
 		"lip_x": _ramp_lip_x,
 		"base_height": _ramp_base_height,
 		"z_min": _ramp_z_min,
 		"z_max": _ramp_z_max,
-	})
+	}, _pipes_array())
 
 
 func _leave_ramp_to_flat() -> void:
@@ -1098,38 +1117,25 @@ func _move_along_pipe(hit: Dictionary, arc_speed: float, delta: float) -> void:
 	var side: int = int(hit.get("side", QuarterPipe.PipeSide.RIGHT))
 	var lip: float = float(hit.get("lip_x", depth.logical_x))
 	var radius: float = _pipe_radius_for_hit(hit)
-	if radius <= 0.0001:
-		return
-	var sign: float = _coping_sign(side)
-	var signed_dx: float = arc_speed * delta
-	var toward_arc: float = signed_dx * sign
 	var theta: float = float(hit.get("theta", 0.0))
-	var d_theta: float = toward_arc / radius
-	var new_theta: float = theta + d_theta
-
-	if new_theta >= PI * 0.5:
-		# At vertical lip: all along-arc speed becomes vertical. No positional overshoot.
-		var up_speed: float = maxf(arc_speed * sign, 0.0)
-		_enter_air_from_pipe({
-			"side": side,
-			"lip_x": lip,
-			"radius": radius,
-			"base_height": float(hit.get("base_height", _ramp_base_height)),
-		}, up_speed)
-		return
-
-	if new_theta <= 0.0:
-		depth.logical_x = lip - sign * absf(new_theta) * radius
-		_clamp_pose_playable()
-		_leave_ramp_to_flat()
-		return
-
-	var x_off: float = radius * sin(new_theta)
-	if side == QuarterPipe.PipeSide.LEFT:
-		depth.logical_x = lip - x_off
-	else:
-		depth.logical_x = lip + x_off
-	_clamp_pose_playable()
+	var step: Dictionary = _GroundPipeMath.step_along_pipe(
+		side, lip, radius, theta, arc_speed, delta
+	)
+	match str(step.get("kind", "noop")):
+		"launch":
+			_enter_air_from_pipe({
+				"side": int(step.get("side", side)),
+				"lip_x": float(step.get("lip_x", lip)),
+				"radius": float(step.get("radius", radius)),
+				"base_height": float(hit.get("base_height", _ramp_base_height)),
+			}, float(step.get("up_speed", 0.0)))
+		"flat":
+			depth.logical_x = float(step.get("logical_x", depth.logical_x))
+			_clamp_pose_playable()
+			_leave_ramp_to_flat()
+		"arc":
+			depth.logical_x = float(step.get("logical_x", depth.logical_x))
+			_clamp_pose_playable()
 
 
 func _move_along_pipe_or_flat(arc_speed: float, delta: float) -> void:
@@ -1803,7 +1809,7 @@ func _try_transfer() -> bool:
 	)
 	# Tight spine / gap: probe may land on flat between facing copings — pick the
 	# nearest opposite pipe in the behind direction when no deck claimed the spot.
-	if not _is_pipe_hit(hit) and str(hit.get("zone", "")) != "deck":
+	if not _ContactMath.is_pipe(hit) and str(hit.get("zone", "")) != "deck":
 		var pipe_hit := _find_pipe_behind(probe_from_x, behind, exclude_side, exclude_lip)
 		if not pipe_hit.is_empty():
 			hit = pipe_hit
@@ -1817,7 +1823,7 @@ func _try_transfer() -> bool:
 	var anchor_x := probe_x
 	var target := {"zone": zone, "lock_x": false, "anchor_x": probe_x}
 
-	if _is_pipe_hit(hit):
+	if _ContactMath.is_pipe(hit):
 		var side: int = int(hit.get("side", QuarterPipe.PipeSide.RIGHT))
 		var lip: float = float(hit.get("lip_x", probe_x))
 		var radius: float = _pipe_radius_for_hit(hit)
@@ -1872,7 +1878,7 @@ func _try_transfer() -> bool:
 func _transfer_hit_is_meaningful(hit: Dictionary) -> bool:
 	if hit.is_empty():
 		return false
-	if _is_pipe_hit(hit):
+	if _ContactMath.is_pipe(hit):
 		return true
 	return str(hit.get("zone", "")) == "deck"
 
@@ -1893,32 +1899,13 @@ func _coping_x_for(side: int, lip_x: float, radius: float) -> float:
 
 
 func _pipe_radius_for_hit(hit: Dictionary) -> float:
-	if hit.has("radius") and float(hit.radius) > 0.0:
-		return float(hit.radius)
-	var lip := float(hit.get("lip_x", 0.0))
-	var side: int = int(hit.get("side", QuarterPipe.PipeSide.RIGHT))
-	if _level:
-		for pipe in _level.pipes:
-			if pipe.side != side or absf(pipe.lip_x - lip) >= 0.05:
-				continue
-			if hit.has("base_height") \
-					and absf(pipe.base_height - float(hit.base_height)) > 0.5:
-				continue
-			if hit.has("z_min") and absf(pipe.z_min - float(hit.z_min)) > 0.05:
-				continue
-			if hit.has("z_max") and absf(pipe.z_max - float(hit.z_max)) > 0.05:
-				continue
-			return pipe.radius
-	return 150.0
+	return _PlayerPipeHits.pipe_radius_for_hit(hit, _pipes_array())
 
 
-func _is_pipe_hit(hit: Dictionary) -> bool:
-	if hit.is_empty():
-		return false
-	if not hit.get("active", true) and not hit.has("zone"):
-		return false
-	var zone := str(hit.get("zone", ""))
-	return zone == "left_pipe" or zone == "right_pipe"
+func _pipes_array() -> Array:
+	if _level == null:
+		return []
+	return _level.pipes
 
 
 func _coping_sign(side: int) -> float:
@@ -2097,68 +2084,54 @@ func _body_tilt_target_radians() -> float:
 ## Screen-local vector for a [MotionVectors.Kind] (+X right, -Y up on screen).
 ## Prefer this over kind-specific helpers when branching in gameplay/debug code.
 func motion_screen(kind: _MotionVectors.Kind) -> Vector2:
-	match kind:
-		_MotionVectors.Kind.ACTUAL:
-			# +logical Z (farther) → up; +vertical (rising) → up.
-			return Vector2(_actual_vel_x, -_actual_vel_z - _vert_vel)
-		_MotionVectors.Kind.MOMENTUM:
-			if _on_ramp:
-				# Horiz remnant + converted vertical so the split is visible.
-				var th := 0.0
-				if last_surface.has("theta"):
-					th = float(last_surface.theta)
-				var sign := 1.0
-				if last_surface.has("side"):
-					sign = _coping_sign(int(last_surface.side))
-				var toward := _ramp_along * sign
-				var horiz := _ramp_along * cos(clampf(th, 0.0, PI * 0.5))
-				var vert := toward * sin(clampf(th, 0.0, PI * 0.5))
-				return Vector2(horiz, -vert)
-			# Flat: X + depth Z (_velocity.y is logical Z, not height).
-			return Vector2(_velocity.x, -_velocity.y)
-		_MotionVectors.Kind.INPUT:
-			# Planar wish only — never height (player cannot steer Y).
-			return Vector2(_last_input.x * max_speed_x, -_last_input.y * max_speed_z)
-	return Vector2.ZERO
+	return _PlayerMotionDebug.motion_screen(
+		kind,
+		_actual_vel_x,
+		_actual_vel_z,
+		_vert_vel,
+		_velocity,
+		_ramp_along,
+		_on_ramp,
+		last_surface,
+		_last_input,
+		max_speed_x,
+		max_speed_z,
+	)
 
 
 ## World-space motion for 3D debug arrows (WorldSpace: −logical X, height Y, Z).
 func motion_world(kind: _MotionVectors.Kind) -> Vector3:
-	match kind:
-		_MotionVectors.Kind.ACTUAL:
-			return Vector3(-_actual_vel_x, _vert_vel, _actual_vel_z)
-		_MotionVectors.Kind.MOMENTUM:
-			if _on_ramp:
-				var th := 0.0
-				if last_surface.has("theta"):
-					th = float(last_surface.theta)
-				var sign := 1.0
-				if last_surface.has("side"):
-					sign = _coping_sign(int(last_surface.side))
-				var toward := _ramp_along * sign
-				var horiz := _ramp_along * cos(clampf(th, 0.0, PI * 0.5))
-				var vert := toward * sin(clampf(th, 0.0, PI * 0.5))
-				return Vector3(-horiz, vert, 0.0)
-			return Vector3(-_velocity.x, 0.0, _velocity.y)
-		_MotionVectors.Kind.INPUT:
-			return Vector3(-_last_input.x * max_speed_x, 0.0, _last_input.y * max_speed_z)
-	return Vector3.ZERO
+	return _PlayerMotionDebug.motion_world(
+		kind,
+		_actual_vel_x,
+		_actual_vel_z,
+		_vert_vel,
+		_velocity,
+		_ramp_along,
+		_on_ramp,
+		last_surface,
+		_last_input,
+		max_speed_x,
+		max_speed_z,
+	)
 
 
 func motion_speed(kind: _MotionVectors.Kind) -> float:
-	match kind:
-		_MotionVectors.Kind.ACTUAL:
-			return Vector3(_actual_vel_x, _vert_vel, _actual_vel_z).length()
-		_MotionVectors.Kind.MOMENTUM:
-			# Along-arc is the control speed on a pipe; horiz remnant is only display split.
-			if _on_ramp:
-				return absf(_ramp_along)
-			if _airborne:
-				return max(absf(_velocity.x), absf(air_vel_y), _air_carry_speed)
-			return _velocity.length()
-		_MotionVectors.Kind.INPUT:
-			return Vector2(_last_input.x * max_speed_x, _last_input.y * max_speed_z).length()
-	return 0.0
+	return _PlayerMotionDebug.motion_speed(
+		kind,
+		_actual_vel_x,
+		_actual_vel_z,
+		_vert_vel,
+		_velocity,
+		_ramp_along,
+		_on_ramp,
+		_airborne,
+		_last_input,
+		max_speed_x,
+		max_speed_z,
+		air_vel_y,
+		_air_carry_speed,
+	)
 
 
 ## Instantaneous control acceleration from last integrate (u/s²).

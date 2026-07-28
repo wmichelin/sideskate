@@ -11,7 +11,7 @@ extends CanvasLayer
 @onready var _body: Label = $Panel/VBox/Body
 @onready var _toggle: Button = $Panel/VBox/Header/Toggle
 
-var _player: Node2D
+var _player: Node
 var _collapsed: bool = true
 var _is_3d := false
 
@@ -21,7 +21,7 @@ func _ready() -> void:
 	if not DebugTools.is_available():
 		queue_free()
 		return
-	_player = get_node_or_null(player_path) as Node2D
+	_player = get_node_or_null(player_path) as Node
 	_is_3d = get_node_or_null("../World3D") != null
 	_wire_header_toggle()
 	_set_collapsed(start_collapsed)

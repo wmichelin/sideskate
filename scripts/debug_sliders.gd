@@ -103,8 +103,8 @@ extends CanvasLayer
 @onready var _cast_cells_value: Label = $Panel/VBox/Body/CastCellsRow/Value
 @onready var _god_check: CheckButton = $Panel/VBox/Body/GodModeRow/Check
 
-var _player: Node2D
-var _level: Node2D
+var _player: Node
+var _level: Node
 var _level_debug_3d: Node3D
 var _camera_rig: Node3D
 var _syncing_god := false
@@ -122,8 +122,8 @@ func _ready() -> void:
 		queue_free()
 		return
 
-	_player = get_node_or_null(player_path) as Node2D
-	_level = get_node_or_null(ramp_level_path) as Node2D
+	_player = get_node_or_null(player_path) as Node
+	_level = get_node_or_null(ramp_level_path) as Node
 	_level_debug_3d = get_node_or_null("../World3D/LevelDebug3D") as Node3D
 	_camera_rig = get_node_or_null("../World3D/CameraRig3D") as Node3D
 
