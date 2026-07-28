@@ -182,11 +182,10 @@ static func smoothstep01(u: float) -> float:
 	return t * t * (3.0 - 2.0 * t)
 
 
-## Quintic smootherstep — zero 1st/2nd derivatives at ends (less settle jitter).
+## Quintic smootherstep — zero 1st/2nd derivatives at ends.
 static func smootherstep01(u: float) -> float:
 	var t := clampf(u, 0.0, 1.0)
 	return t * t * t * (t * (t * 6.0 - 15.0) + 10.0)
-
 
 
 ## Pipe-exit X-lock → free air (parabolic fly-out) when still rising, feet are
