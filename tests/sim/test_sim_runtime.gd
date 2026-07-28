@@ -436,10 +436,10 @@ func _coast_with_zero_friction() -> bool:
 
 func _wall_extension_climbs() -> bool:
 	var sim := PlayerSim.new()
-	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
-		push_error("setup layered wall")
+	if not sim.setup_from_path("res://tests/levels/sim/sim_wall_extension.ssk"):
+		push_error("setup wall_extension fixture")
 		return false
-	# Find a WALL_EXTENSION pipe (L0 → L1 deck).
+	# Find a WALL_EXTENSION pipe (taller outward floor).
 	var wall_pipe: PipeSurface = null
 	for id in sim.model.pipes.keys():
 		var p: PipeSurface = sim.model.pipes[id]
@@ -448,7 +448,7 @@ func _wall_extension_climbs() -> bool:
 			wall_pipe = p
 			break
 	if wall_pipe == null:
-		push_error("no WALL_EXTENSION pipe in layered_demo")
+		push_error("no WALL_EXTENSION pipe in sim_wall_extension")
 		return false
 	var cope: CopingEdge = sim.model.copings[wall_pipe.coping_id]
 	var z := (wall_pipe.z_min + wall_pipe.z_max) * 0.5
@@ -479,17 +479,17 @@ func _wall_extension_climbs() -> bool:
 		if sim.model.pipes.has(sim.state.surface_id) and sim.state.u > 1.05 and sim.state.u < 1.95:
 			saw_wall = true
 			heights.append(sim.state.position.z)
-			# Must not teleport to deck top in one step from geometric.
+			# Must not teleport to pad top in one step from geometric.
 			if sim.state.position.z >= h_eff - 1.0 and heights.size() < 3:
-				push_error("teleported to deck top instead of climbing wall")
+				push_error("teleported to pad top instead of climbing wall")
 				return false
 		if sim.model.patches.has(sim.state.surface_id):
-			# Mounted deck after climb.
+			# Mounted floor after climb.
 			if not saw_wall:
-				push_error("mounted deck without climbing wall u-range")
+				push_error("mounted pad without climbing wall u-range")
 				return false
 			if absf(sim.state.position.z - h_eff) > SimTolerances.SEAM_EPS * 2.0:
-				push_error("deck mount height %.1f want ~%.1f" % [sim.state.position.z, h_eff])
+				push_error("pad mount height %.1f want ~%.1f" % [sim.state.position.z, h_eff])
 				return false
 			# Climbing heights should increase monotonically while on wall.
 			for hi in range(heights.size() - 1):
@@ -497,7 +497,7 @@ func _wall_extension_climbs() -> bool:
 					push_error("wall height went down while climbing")
 					return false
 			return true
-	push_error("never mounted deck after wall climb (saw_wall=%s u=%s h=%.1f)" % [
+	push_error("never mounted pad after wall climb (saw_wall=%s u=%s h=%.1f)" % [
 		saw_wall, sim.state.u, sim.state.position.z
 	])
 	return false

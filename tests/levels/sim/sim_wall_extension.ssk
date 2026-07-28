@@ -1,0 +1,19 @@
+ssk 2
+name sim_wall_extension
+# Right pipe with taller floor pad outward (not a # deck) → WALL_EXTENSION.
+---
+layer 0
+height 0
+=====>>>====
+=====>>>====
+=====@>>====
+=====>>>====
+=====>>>====
+---
+layer 1
+height 200
+........====
+........====
+........====
+........====
+........====

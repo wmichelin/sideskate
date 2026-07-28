@@ -256,18 +256,17 @@ static func _classify_copings(spec: LevelSpec, model: ParkModel) -> void:
 			cope.coping_class = SimKinds.CopingClass.OPEN
 			continue
 		var dh := best_patch.height - ch
-		if absf(dh) <= SimTolerances.SEAM_EPS:
-			# Matching-height deck is air/fly corridor (OPEN), not auto-mount.
-			# Matching-height floor remains a SUPPORT_SEAM roll-on.
-			if best_patch.kind == SimKinds.SurfaceKind.DECK:
-				cope.coping_class = SimKinds.CopingClass.OPEN
-			else:
-				cope.coping_class = SimKinds.CopingClass.SUPPORT_SEAM
-				cope.support_patch_id = best_patch.id
+		# Outward decks are always air/fly corridors (never auto-mount / wall-climb).
+		# Only floors (and other non-deck pads) form seams or wall extensions.
+		if best_patch.kind == SimKinds.SurfaceKind.DECK:
+			cope.coping_class = SimKinds.CopingClass.OPEN
+		elif absf(dh) <= SimTolerances.SEAM_EPS:
+			cope.coping_class = SimKinds.CopingClass.SUPPORT_SEAM
+			cope.support_patch_id = best_patch.id
 		elif dh > SimTolerances.SEAM_EPS:
 			cope.coping_class = SimKinds.CopingClass.WALL_EXTENSION
 			cope.support_patch_id = best_patch.id
-			# Raise effective coping to deck top.
+			# Raise effective coping to pad top.
 			for s in cope.height_samples:
 				s["height"] = best_patch.height
 		else:

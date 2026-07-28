@@ -28,7 +28,7 @@ See also [AGENTS.md](../AGENTS.md) and [movement_contract.md](movement_contract.
 |--------------|----------|
 | `OPEN` | Air-out on rise; stick fly-out / deck-out in window |
 | `SUPPORT_SEAM` | Auto-roll onto abutting **floor** at matching height |
-| `WALL_EXTENSION` | Continuous vertical climb from geometric coping → pad top (`u` 1→2), then mount |
+| `WALL_EXTENSION` | Continuous vertical climb onto taller outward **floor** (`u` 1→2), then mount |
 | `SHARED_SPINE` | Opposite-facing pair; spine target; air/fly like `OPEN` |
 
 Same-height outward `#` is an air/fly corridor (`OPEN`), not an auto-mount.

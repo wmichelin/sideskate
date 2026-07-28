@@ -105,10 +105,10 @@ Every compiled `CopingEdge` has exactly one class:
 |-------|----------|
 | `OPEN` | Air-out on rise; fly-out when stick-outward in window |
 | `SUPPORT_SEAM` | Auto-roll onto abutting **floor** at matching height only |
-| `WALL_EXTENSION` | Outward pad strictly above coping: climb `u` 1→2 then mount |
+| `WALL_EXTENSION` | Outward **floor** strictly above coping: climb `u` 1→2 then mount |
 | `SHARED_SPINE` | Opposite-facing pair; spine relation; air-out / fly-out like `OPEN` |
 
-Outward `#` deck at ≈ coping height ⇒ `OPEN` (air/fly corridor). Matching-height `=` floor ⇒ `SUPPORT_SEAM`. Strictly taller outward solid ⇒ `WALL_EXTENSION`.
+Outward `#` decks (any height) ⇒ `OPEN` (air/fly corridor). Matching-height `=` floor ⇒ `SUPPORT_SEAM`. Strictly taller outward floor ⇒ `WALL_EXTENSION`.
 
 ## Velocity rules
 
