@@ -1,11 +1,18 @@
 class_name LevelDebug3D
 extends Node3D
-## Cell highlight + facing-cast cell pads for the 3D park (mirrors RampVisual debug).
+## Cell highlight + facing-cast pads + green edge / orange surface lattices.
 
 @export var debug_cell_highlight: bool = false
 @export var debug_facing_cast: bool = false
+## Green edge wire + orange surface lattice on collidable solids (default on).
+@export var debug_edge_lines: bool = true
 @export_range(1, 16, 1) var facing_cast_distance: int = 3
 @export var highlight_lift: float = 0.08
+@export var edge_lift: float = 0.35
+## Spacing for the orange surface lattice (logical units).
+@export var lattice_spacing: float = 28.0
+@export_range(2, 24, 1) var pipe_lattice_arc_steps: int = 8
+@export_range(2, 24, 1) var pipe_lattice_z_steps: int = 6
 @export var player_path: NodePath = NodePath("../../Player")
 @export var level_path: NodePath = NodePath("../../RampLevel")
 
@@ -13,9 +20,13 @@ var _player: Node
 var _level: RampLevel
 var _cell_root: Node3D
 var _cast_root: Node3D
+var _edge_root: Node3D
 var _cell_mat: StandardMaterial3D
 var _cast_mat: StandardMaterial3D
 var _cast_cope_mat: StandardMaterial3D
+var _edge_mat: StandardMaterial3D
+var _lattice_mat: StandardMaterial3D
+var _edge_cache_key: String = ""
 
 
 func _ready() -> void:
@@ -25,9 +36,14 @@ func _ready() -> void:
 	_cast_root = Node3D.new()
 	_cast_root.name = "FacingCast"
 	add_child(_cast_root)
+	_edge_root = Node3D.new()
+	_edge_root.name = "EdgeLines"
+	add_child(_edge_root)
 	_cell_mat = _make_mat(Color(0.35, 0.95, 0.55, 0.38))
 	_cast_mat = _make_mat(Color(0.35, 0.85, 1.0, 0.32))
 	_cast_cope_mat = _make_mat(Color(1.0, 0.72, 0.25, 0.4))
+	_edge_mat = _make_line_mat(Color(0.15, 1.0, 0.35, 1.0))
+	_lattice_mat = _make_line_mat(Color(1.0, 0.55, 0.12, 1.0))
 	_resolve_refs()
 
 
@@ -42,13 +58,18 @@ func _process(_delta: float) -> void:
 	if _player == null or _level == null or _level.spec == null:
 		_clear_children(_cell_root)
 		_clear_children(_cast_root)
+		_clear_children(_edge_root)
+		_edge_cache_key = ""
 		return
 	if not DebugTools.is_available():
 		_clear_children(_cell_root)
 		_clear_children(_cast_root)
+		_clear_children(_edge_root)
+		_edge_cache_key = ""
 		return
 	_update_cell_highlight()
 	_update_facing_cast()
+	_update_edge_lines()
 
 
 func _make_mat(color: Color) -> StandardMaterial3D:
@@ -58,6 +79,17 @@ func _make_mat(color: Color) -> StandardMaterial3D:
 	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
 	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 	mat.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_DISABLED
+	return mat
+
+
+func _make_line_mat(color: Color) -> StandardMaterial3D:
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.albedo_color = color
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	# Occlude like park meshes (no x-ray through nearer solids).
+	mat.no_depth_test = false
+	mat.depth_draw_mode = BaseMaterial3D.DEPTH_DRAW_OPAQUE_ONLY
 	return mat
 
 
@@ -132,6 +164,294 @@ func _update_facing_cast() -> void:
 		var mat := _cast_cope_mat if is_cope else _cast_mat
 		var c: Vector2i = hit.get("cell", Vector2i(int(hit.get("col", 0)), int(hit.get("row", 0))))
 		_add_cell_pad(_cast_root, c, h, mat)
+
+
+func _update_edge_lines() -> void:
+	if not debug_edge_lines:
+		_clear_children(_edge_root)
+		_edge_cache_key = ""
+		return
+	var key := _edge_rebuild_key()
+	if key == _edge_cache_key and _edge_root.get_child_count() > 0:
+		return
+	_edge_cache_key = key
+	_rebuild_edge_lines()
+
+
+func _edge_rebuild_key() -> String:
+	var s: LevelSpec = _level.spec
+	return "%s:%s:%s:%s:%s:%s:%s:%s" % [
+		s.get_instance_id(),
+		s.cell_w,
+		s.cell_h,
+		s.decks.size(),
+		_level.pipes.size(),
+		lattice_spacing,
+		pipe_lattice_arc_steps,
+		pipe_lattice_z_steps,
+	]
+
+
+func _rebuild_edge_lines() -> void:
+	_clear_children(_edge_root)
+	var lift := edge_lift
+	_add_line_mesh("Edges", _edge_mat, func(st: SurfaceTool) -> void:
+		_append_deck_wireframe(st, lift)
+		_append_pipe_wireframe(st, lift)
+	)
+	_add_line_mesh("Lattice", _lattice_mat, func(st: SurfaceTool) -> void:
+		_append_deck_lattice(st, lift)
+		_append_pipe_lattice(st, lift)
+	)
+
+
+func _add_line_mesh(mesh_name: String, mat: Material, fill: Callable) -> void:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_LINES)
+	fill.call(st)
+	var mesh := st.commit()
+	if mesh == null or mesh.get_surface_count() <= 0:
+		return
+	var mi := MeshInstance3D.new()
+	mi.name = mesh_name
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mi.mesh = mesh
+	mi.material_override = mat
+	_edge_root.add_child(mi)
+
+
+## Deck tops + vertical walls (skip wall/bottom on coping-shared edges — pipe owns those).
+func _append_deck_wireframe(st: SurfaceTool, lift: float) -> void:
+	for deck in _level.spec.decks:
+		var poly: PackedVector2Array = deck.get("poly", PackedVector2Array())
+		if poly.size() < 2:
+			continue
+		var top_h := float(deck.get("height", 0.0)) + lift
+		var base_h := float(deck.get("base_height", 0.0)) + lift
+		var has_walls := top_h > base_h + 0.05
+		var n := poly.size()
+		for i in range(n):
+			var a: Vector2 = poly[i]
+			var b: Vector2 = poly[(i + 1) % n]
+			if a.distance_squared_to(b) < 0.01:
+				continue
+			# Top outline always.
+			_add_line_vert(st, a.x, a.y, top_h)
+			_add_line_vert(st, b.x, b.y, top_h)
+			var on_cope := _deck_edge_on_coping(deck, a, b)
+			if has_walls and not on_cope:
+				# Bottom of the rendered wall + verticals at both corners.
+				_add_line_vert(st, a.x, a.y, base_h)
+				_add_line_vert(st, b.x, b.y, base_h)
+				_add_line_vert(st, a.x, a.y, top_h)
+				_add_line_vert(st, a.x, a.y, base_h)
+				_add_line_vert(st, b.x, b.y, top_h)
+				_add_line_vert(st, b.x, b.y, base_h)
+
+
+## Orange lattice on deck tops and non-coping wall faces.
+func _append_deck_lattice(st: SurfaceTool, lift: float) -> void:
+	var step := maxf(lattice_spacing, 4.0)
+	for deck in _level.spec.decks:
+		var poly: PackedVector2Array = deck.get("poly", PackedVector2Array())
+		if poly.size() < 3:
+			continue
+		var top_h := float(deck.get("height", 0.0)) + lift
+		var base_h := float(deck.get("base_height", 0.0)) + lift
+		_lattice_poly_top(st, poly, top_h, step)
+		if top_h > base_h + 0.05:
+			var n := poly.size()
+			for i in range(n):
+				var a: Vector2 = poly[i]
+				var b: Vector2 = poly[(i + 1) % n]
+				if a.distance_squared_to(b) < 0.01:
+					continue
+				if _deck_edge_on_coping(deck, a, b):
+					continue
+				_lattice_vertical_wall(st, a, b, base_h, top_h, step)
+
+
+func _lattice_poly_top(st: SurfaceTool, poly: PackedVector2Array, height: float, step: float) -> void:
+	var min_x := poly[0].x
+	var max_x := poly[0].x
+	var min_z := poly[0].y
+	var max_z := poly[0].y
+	for p in poly:
+		min_x = minf(min_x, p.x)
+		max_x = maxf(max_x, p.x)
+		min_z = minf(min_z, p.y)
+		max_z = maxf(max_z, p.y)
+	# Lines of constant X across Z.
+	var x := min_x
+	while x <= max_x + 0.001:
+		_lattice_polyline_in_poly(st, poly, true, x, min_z, max_z, height, step)
+		x += step
+	# Lines of constant Z across X.
+	var z := min_z
+	while z <= max_z + 0.001:
+		_lattice_polyline_in_poly(st, poly, false, z, min_x, max_x, height, step)
+		z += step
+
+
+## Walk a straight scan line; emit segments where both endpoints are inside poly.
+func _lattice_polyline_in_poly(
+	st: SurfaceTool,
+	poly: PackedVector2Array,
+	fixed_x: bool,
+	fixed: float,
+	t0: float,
+	t1: float,
+	height: float,
+	step: float,
+) -> void:
+	var samples := maxi(int(ceil((t1 - t0) / maxf(step * 0.5, 1.0))), 2)
+	var prev_in := false
+	var prev_t := t0
+	for i in range(samples + 1):
+		var t := lerpf(t0, t1, float(i) / float(samples))
+		var pt := Vector2(fixed, t) if fixed_x else Vector2(t, fixed)
+		var inside := LevelSpec.point_in_poly(pt, poly)
+		if prev_in and inside:
+			if fixed_x:
+				_add_line_vert(st, fixed, prev_t, height)
+				_add_line_vert(st, fixed, t, height)
+			else:
+				_add_line_vert(st, prev_t, fixed, height)
+				_add_line_vert(st, t, fixed, height)
+		prev_in = inside
+		prev_t = t
+
+
+func _lattice_vertical_wall(
+	st: SurfaceTool, a: Vector2, b: Vector2, base_h: float, top_h: float, step: float
+) -> void:
+	var edge_len := a.distance_to(b)
+	if edge_len < 0.01:
+		return
+	var u_steps := maxi(int(ceil(edge_len / step)), 1)
+	var v_steps := maxi(int(ceil((top_h - base_h) / step)), 1)
+	# Verticals along the wall.
+	for i in range(u_steps + 1):
+		var u := float(i) / float(u_steps)
+		var p := a.lerp(b, u)
+		_add_line_vert(st, p.x, p.y, base_h)
+		_add_line_vert(st, p.x, p.y, top_h)
+	# Horizontals at height bands.
+	for j in range(v_steps + 1):
+		var h := lerpf(base_h, top_h, float(j) / float(v_steps))
+		_add_line_vert(st, a.x, a.y, h)
+		_add_line_vert(st, b.x, b.y, h)
+
+
+func _deck_edge_on_coping(deck: Dictionary, a: Vector2, b: Vector2, eps: float = 0.05) -> bool:
+	for anchor in deck.get("anchors", []):
+		var cx := float(anchor.get("coping_x", NAN))
+		if is_nan(cx):
+			continue
+		if absf(a.x - cx) <= eps and absf(b.x - cx) <= eps:
+			return true
+	return false
+
+
+## Pipe coping + back wall + endcap side silhouettes — never rails on the ride face.
+func _append_pipe_wireframe(st: SurfaceTool, lift: float) -> void:
+	const ARC_STEPS := 12
+	for pipe in _level.pipes:
+		var side := int(pipe.side)
+		var is_left := side == QuarterPipe.PipeSide.LEFT
+		var lip_x := float(pipe.lip_x)
+		var radius := float(pipe.radius)
+		var base := float(pipe.base_height)
+		var z0 := float(pipe.z_min)
+		var z1 := float(pipe.z_max)
+		if absf(z1 - z0) < 0.01 or radius <= 0.001:
+			continue
+		var cope_x := PipeMath.coping_x(side, lip_x, radius)
+		var cope_h := base + radius
+		# Coping (top of back) along Z.
+		_add_line_vert(st, cope_x, z0, cope_h + lift)
+		_add_line_vert(st, cope_x, z1, cope_h + lift)
+		# Back wall bottom along Z.
+		_add_line_vert(st, cope_x, z0, base + lift)
+		_add_line_vert(st, cope_x, z1, base + lift)
+		# Back-wall side verticals at both Z ends.
+		_add_line_vert(st, cope_x, z0, cope_h + lift)
+		_add_line_vert(st, cope_x, z0, base + lift)
+		_add_line_vert(st, cope_x, z1, cope_h + lift)
+		_add_line_vert(st, cope_x, z1, base + lift)
+		# Endcap sides only (no along-Z ride rails): arc + base chord at z_min/z_max.
+		for z_end in [z0, z1]:
+			var prev := _pipe_profile_point(lip_x, radius, base, 0.0, is_left)
+			for i in range(1, ARC_STEPS + 1):
+				var theta := (float(i) / float(ARC_STEPS)) * PI * 0.5
+				var p := _pipe_profile_point(lip_x, radius, base, theta, is_left)
+				_add_line_vert(st, prev.x, z_end, prev.y + lift)
+				_add_line_vert(st, p.x, z_end, p.y + lift)
+				prev = p
+			_add_line_vert(st, lip_x, z_end, base + lift)
+			_add_line_vert(st, cope_x, z_end, base + lift)
+
+
+## Orange lattice on pipe ride surface + outer back wall.
+func _append_pipe_lattice(st: SurfaceTool, lift: float) -> void:
+	var arc_n := maxi(pipe_lattice_arc_steps, 2)
+	var z_n := maxi(pipe_lattice_z_steps, 2)
+	for pipe in _level.pipes:
+		var side := int(pipe.side)
+		var is_left := side == QuarterPipe.PipeSide.LEFT
+		var lip_x := float(pipe.lip_x)
+		var radius := float(pipe.radius)
+		var base := float(pipe.base_height)
+		var z0 := float(pipe.z_min)
+		var z1 := float(pipe.z_max)
+		if absf(z1 - z0) < 0.01 or radius <= 0.001:
+			continue
+		var cope_x := PipeMath.coping_x(side, lip_x, radius)
+		var cope_h := base + radius
+		# Ride surface: constant-θ rails along Z + constant-Z arcs.
+		for i in range(arc_n + 1):
+			var theta := (float(i) / float(arc_n)) * PI * 0.5
+			var p := _pipe_profile_point(lip_x, radius, base, theta, is_left)
+			_add_line_vert(st, p.x, z0, p.y + lift)
+			_add_line_vert(st, p.x, z1, p.y + lift)
+		for j in range(z_n + 1):
+			var z := lerpf(z0, z1, float(j) / float(z_n))
+			var prev := _pipe_profile_point(lip_x, radius, base, 0.0, is_left)
+			for i in range(1, arc_n + 1):
+				var theta := (float(i) / float(arc_n)) * PI * 0.5
+				var p := _pipe_profile_point(lip_x, radius, base, theta, is_left)
+				_add_line_vert(st, prev.x, z, prev.y + lift)
+				_add_line_vert(st, p.x, z, p.y + lift)
+				prev = p
+		# Back wall lattice (coping face).
+		var step := maxf(lattice_spacing, 4.0)
+		var z_steps := maxi(int(ceil(absf(z1 - z0) / step)), 1)
+		var h_steps := maxi(int(ceil((cope_h - base) / step)), 1)
+		for i in range(z_steps + 1):
+			var z := lerpf(z0, z1, float(i) / float(z_steps))
+			_add_line_vert(st, cope_x, z, base + lift)
+			_add_line_vert(st, cope_x, z, cope_h + lift)
+		for j in range(h_steps + 1):
+			var h := lerpf(base, cope_h, float(j) / float(h_steps)) + lift
+			_add_line_vert(st, cope_x, z0, h)
+			_add_line_vert(st, cope_x, z1, h)
+
+
+## Profile point matching PipeMeshBuilder: Vector2(x, height), θ=0 lip → π/2 coping.
+func _pipe_profile_point(
+	lip_x: float, radius: float, base_height: float, theta: float, is_left: bool
+) -> Vector2:
+	var h := base_height + radius * (1.0 - cos(theta))
+	var x: float
+	if is_left:
+		x = lip_x - radius * sin(theta)
+	else:
+		x = lip_x + radius * sin(theta)
+	return Vector2(x, h)
+
+
+func _add_line_vert(st: SurfaceTool, logical_x: float, logical_z: float, height: float) -> void:
+	st.add_vertex(WorldSpace.logical_to_world(logical_x, logical_z, height))
 
 
 func _add_cell_pad(parent: Node3D, cell: Vector2i, height: float, mat: Material) -> void:

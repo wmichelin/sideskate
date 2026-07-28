@@ -167,6 +167,8 @@ Debug **cell highlight** (default off) draws the cell under the player in yellow
 
 Debug **facing cast** (default off) draws **N** green logical cells ahead of `facing_h` along X only. Cast length is the **cast cells** slider (default 3, max 16). Gameplay acid/spine use **`facing_coping_cells`** (**coping cells** slider, default 3) via the same FacingCastMath cast. Each tile is a flat constant-height pad; holes fall through; coping cells draw amber (`is_coping`).
 
+Debug **edge lattice** (default on) draws a green edge wireframe (deck tops/walls; pipe coping / back / endcap sides) plus an **orange surface lattice** on collidable faces (deck tops & walls, pipe ride + back). Lines use normal depth test (`LevelDebug3D.debug_edge_lines`).
+
 ## Debug overlays
 
 Debug tools are gated by autoload `DebugTools`: available when `OS.is_debug_build()` **or** export feature `debug_tools`. Release exports strip HUD/arrows/cell highlight (group `debug_tools`) and ignore god mode.
@@ -175,7 +177,7 @@ Debug tools are gated by autoload `DebugTools`: available when `OS.is_debug_buil
 |-------|------|
 | Head arrows | [Motion vectors](#motion-vectors): green **ACTUAL**, orange **MOMENTUM**, cyan **INPUT** |
 | Top-left overlay | Depth/zone/surface + **airborne** + cell + **next coping** |
-| Top-right sliders | Gravity, acid buffer, **fly out**, cell-highlight / facing-cast, cast cells / **coping cells**, **god mode** |
+| Top-right sliders | Gravity, acid buffer, **fly out**, cell-highlight / facing-cast / **edge lattice**, cast cells / **coping cells**, **god mode** |
 | **God mode** (default off; `G` or checkbox) | No gravity; **k** rise / **j** lower (`god_vert_speed`) |
 
 ## Key scripts

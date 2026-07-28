@@ -95,6 +95,7 @@ extends CanvasLayer
 @onready var _depth_grid_check: CheckButton = $Panel/VBox/Body/DepthGridRow/Check
 @onready var _cell_check: CheckButton = $Panel/VBox/Body/CellHighlightRow/Check
 @onready var _facing_cast_check: CheckButton = $Panel/VBox/Body/FacingCastRow/Check
+@onready var _edge_lines_check: CheckButton = $Panel/VBox/Body/EdgeLinesRow/Check
 @onready var _motion_vectors_check: CheckButton = $Panel/VBox/Body/MotionVectorsRow/Check
 @onready var _head_debug_check: CheckButton = $Panel/VBox/Body/HeadDebugRow/Check
 @onready var _fps_check: CheckButton = $Panel/VBox/Body/FpsRow/Check
@@ -183,6 +184,13 @@ func _ready() -> void:
 	_facing_cast_check.button_pressed = facing_on
 	_facing_cast_check.focus_mode = Control.FOCUS_NONE
 	_facing_cast_check.toggled.connect(_on_facing_cast_toggled)
+
+	var edges_on := true
+	if _level_debug_3d != null and _level_debug_3d.get("debug_edge_lines") != null:
+		edges_on = bool(_level_debug_3d.get("debug_edge_lines"))
+	_edge_lines_check.button_pressed = edges_on
+	_edge_lines_check.focus_mode = Control.FOCUS_NONE
+	_edge_lines_check.toggled.connect(_on_edge_lines_toggled)
 
 	_motion_vectors_check.button_pressed = DebugTools.show_motion_vectors
 	_motion_vectors_check.focus_mode = Control.FOCUS_NONE
@@ -715,6 +723,12 @@ func _on_facing_cast_toggled(on: bool) -> void:
 	_level_debug_3d.set("debug_facing_cast", on)
 	if _level_debug_3d.has_method("refresh"):
 		_level_debug_3d.call("refresh")
+
+
+func _on_edge_lines_toggled(on: bool) -> void:
+	if _level_debug_3d == null:
+		return
+	_level_debug_3d.set("debug_edge_lines", on)
 
 
 func _on_motion_vectors_toggled(on: bool) -> void:
