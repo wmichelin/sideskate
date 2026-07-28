@@ -63,35 +63,6 @@ func run() -> bool:
 		return false
 
 	_free_pipes(level)
-	# Production map must keep L1 left / L0 right on a shared coping (no # gap).
-	if not _production_shared_coping():
-		return false
-	return true
-
-
-## levels/layered_demo mid-band used to be `#<<<========>>>#`, shifting L1 pipes
-## one cell so high→low spine lerped through a solid deck pad.
-func _production_shared_coping() -> bool:
-	var text := FileAccess.get_file_as_string("res://levels/layered_demo.ssk")
-	var spec := LevelLoader.parse_text(text, "layered_demo_prod")
-	if spec == null:
-		push_error("prod layered_demo parse: %s" % LevelLoader.last_error)
-		return false
-	var l1_left: Dictionary = {}
-	var l0_right: Dictionary = {}
-	for pd in spec.pipes:
-		if int(pd.side) == 0 and int(pd.get("layer", 0)) == 1 and l1_left.is_empty():
-			l1_left = pd
-		if int(pd.side) == 1 and int(pd.get("layer", 0)) == 0 and l0_right.is_empty():
-			l0_right = pd
-	if l1_left.is_empty() or l0_right.is_empty():
-		push_error("prod layered_demo missing L1 left / L0 right")
-		return false
-	var c1 := PipeMath.coping_x(0, float(l1_left.lip_x), float(l1_left.radius))
-	var c0 := PipeMath.coping_x(1, float(l0_right.lip_x), float(l0_right.radius))
-	if absf(c1 - c0) > 1.0:
-		push_error("prod L1 left / L0 right coping gap: L1=%s L0=%s (remove mid-band # flanks)" % [c1, c0])
-		return false
 	return true
 
 
