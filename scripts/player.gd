@@ -6,6 +6,8 @@ extends Node2D
 const _PipeMath := preload("res://scripts/pipe_math.gd")
 const _MotionMath := preload("res://scripts/motion_math.gd")
 const _AerialMath := preload("res://scripts/aerial_math.gd")
+const _AerialSettle := preload("res://scripts/aerial_settle.gd")
+const _AerialTargeting := preload("res://scripts/aerial_targeting.gd")
 const _FacingCastMath := preload("res://scripts/facing_cast_math.gd")
 const _MotionVectors := preload("res://scripts/motion_vectors.gd")
 const _ContactMath := preload("res://scripts/contact_math.gd")
@@ -110,24 +112,10 @@ var _acid_pressed_this_aerial: bool = false
 ## Last behind-sign used for transfer probes when unlocked.
 var _transfer_behind_sign: float = 1.0
 
-var _transfer_x_active: bool = false
-var _transfer_x_from: float = 0.0
-var _transfer_x_to: float = 0.0
-## Progress 0…1 for the active X settle (advanced by delta / live duration).
-var _transfer_x_u: float = 0.0
-## Fixed duration when not height-scaled (free-air transfer).
-var _transfer_x_dur: float = 0.15
-## Height-scaled settle (acid / spine): duration = f(live height above coping).
-var _transfer_x_ease: bool = false
+## Transfer-X + body-tilt settle (acid / spine / free transfer).
+var _settle := _AerialSettle.new()
 ## Displayed body tilt (radians); lerps toward target / transfer endpoints.
 var _body_tilt: float = 0.0
-var _tilt_lerp_from: float = 0.0
-var _tilt_lerp_to: float = 0.0
-var _tilt_lerp_u: float = 0.0
-var _tilt_lerp_dur: float = 0.15
-## Height-scaled tilt settle (spine / acid) — independent of whether X must move.
-var _tilt_lerp_active: bool = false
-var _tilt_lerp_ease: bool = false
 ## One transfer per aerial; replenished on any surface contact.
 var _transfer_available: bool = true
 ## One acid drop per aerial; replenished on any surface contact.
@@ -448,7 +436,7 @@ func _apply_motion(delta: float, speed_mul: float) -> void:
 
 		if _air_x_locked:
 			# Don't pin X while a transfer/acid-drop lerp is carrying us to coping.
-			if not _transfer_x_active:
+			if not _settle.x_active:
 				depth.logical_x = _air_coping_x
 			_clamp_pose_playable()
 			_commit_xz(depth.logical_x, depth.logical_z + _velocity.y * speed_mul * delta)
@@ -467,7 +455,7 @@ func _apply_motion(delta: float, speed_mul: float) -> void:
 			_try_apex_facing_flip(prev_air_vy)
 			# Fly-out unlocks X but must still run landing this tick.
 			if _try_fly_out_from_pipe_lock():
-				if not _transfer_x_active:
+				if not _settle.x_active:
 					_commit_xz(
 						depth.logical_x + _velocity.x * speed_mul * delta,
 						depth.logical_z
@@ -478,7 +466,7 @@ func _apply_motion(delta: float, speed_mul: float) -> void:
 			return
 
 		# Unlocked air: free XZ then contact → gravity → land from same contact.
-		if not _transfer_x_active:
+		if not _settle.x_active:
 			_commit_xz(
 				depth.logical_x + _velocity.x * speed_mul * delta,
 				depth.logical_z + _velocity.y * speed_mul * delta
@@ -604,45 +592,19 @@ func _apply_motion(delta: float, speed_mul: float) -> void:
 
 
 func _step_transfer_x(delta: float) -> void:
-	if not _transfer_x_active:
+	if not _settle.x_active:
 		return
-	# Live height retune: duration shrinks as you fall so X reaches coping before
-	# land. Snap shorter (catch-up); ease longer only (cuts height-noise jitter).
-	var duration := maxf(_transfer_x_dur, 0.0001)
-	if _transfer_x_ease:
-		var above := maxf(air_abs_height - _air_coping_floor(), 0.0)
-		var target := maxf(
-			_AerialMath.lock_x_duration_for_height(
-				above,
-				acid_drop_x_duration,
-				acid_drop_x_duration_per_height,
-				acid_drop_x_duration_max,
-			),
-			0.0001,
-		)
-		if target < _transfer_x_dur:
-			_transfer_x_dur = target
-		else:
-			var k := 1.0 - exp(-10.0 * delta)
-			_transfer_x_dur = lerpf(_transfer_x_dur, target, k)
-		duration = maxf(_transfer_x_dur, 0.0001)
-	_transfer_x_u = clampf(_transfer_x_u + delta / duration, 0.0, 1.0)
-	var w := _AerialMath.smoothstep01(_transfer_x_u) if _transfer_x_ease else _transfer_x_u
-	var next_x := lerpf(_transfer_x_from, _transfer_x_to, w)
-	# Acid: hard clamp — settle may only advance along locked travel.
-	if _acid_drop_lock and absf(_acid_travel_x) >= 1.0:
-		next_x = _AerialMath.acid_clamp_x_step(
-			depth.logical_x, next_x, _transfer_x_to, _acid_travel_x
-		)
-	depth.logical_x = next_x
-	if _transfer_x_u >= 1.0:
-		_transfer_x_active = false
-		if _acid_drop_lock and absf(_acid_travel_x) >= 1.0:
-			depth.logical_x = _AerialMath.acid_clamp_x_step(
-				depth.logical_x, _transfer_x_to, _transfer_x_to, _acid_travel_x
-			)
-		else:
-			depth.logical_x = _transfer_x_to
+	var above := maxf(air_abs_height - _air_coping_floor(), 0.0)
+	depth.logical_x = _settle.step_x(
+		delta,
+		depth.logical_x,
+		above,
+		acid_drop_x_duration,
+		acid_drop_x_duration_per_height,
+		acid_drop_x_duration_max,
+		_acid_drop_lock,
+		_acid_travel_x,
+	)
 	_clamp_pose_playable()
 
 
@@ -651,25 +613,18 @@ func _step_transfer_x(delta: float) -> void:
 ## linear. Height-scaled also starts a tilt settle (even when X is already on
 ## the coping).
 func _begin_transfer_x_lerp(to_x: float, height_scaled: bool, _coping_radius: float = 0.0) -> void:
-	_transfer_x_from = depth.logical_x
-	_transfer_x_to = to_x
-	_transfer_x_u = 0.0
-	_transfer_x_ease = height_scaled
-	if height_scaled:
-		var above := maxf(air_abs_height - _air_coping_floor(), 0.0)
-		_transfer_x_dur = maxf(
-			_AerialMath.lock_x_duration_for_height(
-				above,
-				acid_drop_x_duration,
-				acid_drop_x_duration_per_height,
-				acid_drop_x_duration_max,
-			),
-			0.0001,
-		)
-	else:
-		_transfer_x_dur = transfer_x_duration
-	_transfer_x_active = absf(to_x - depth.logical_x) > 0.05
-	if not _transfer_x_active:
+	var above := maxf(air_abs_height - _air_coping_floor(), 0.0)
+	var active := _settle.begin_x(
+		depth.logical_x,
+		to_x,
+		height_scaled,
+		above,
+		transfer_x_duration,
+		acid_drop_x_duration,
+		acid_drop_x_duration_per_height,
+		acid_drop_x_duration_max,
+	)
+	if not active:
 		depth.logical_x = to_x
 	if height_scaled:
 		_begin_tilt_lerp(_body_tilt_target_radians(), true)
@@ -761,7 +716,7 @@ func _adopt_air_pipe_from_hit(under: Dictionary, keep_lock: bool) -> void:
 		_air_over_layer = _layer_index_for_base(_air_base_height)
 	if keep_lock:
 		_air_x_locked = true
-		if not _transfer_x_active:
+		if not _settle.x_active:
 			depth.logical_x = _air_coping_x
 		_clamp_pose_playable()
 
@@ -1426,8 +1381,7 @@ func _clear_air() -> void:
 	_acid_drop_lock = false
 	_spine_transfer_lock = false
 	_apex_facing_done = false
-	_transfer_x_active = false
-	_tilt_lerp_active = false
+	_settle.reset()
 	_transfer_available = true
 	_acid_drop_available = true
 	_last_nonzero_vert_vel = 0.0
@@ -1529,9 +1483,9 @@ func _try_acid_drop(from_hold: bool = false) -> void:
 	_preserve_acid_travel_velocity()
 
 	_begin_transfer_x_lerp(coping, true, radius)
-	if not _AerialMath.acid_coping_ahead(_transfer_x_from, _transfer_x_to, travel_x) \
-			and absf(_transfer_x_to - _transfer_x_from) > 0.05:
-		_transfer_x_active = false
+	if not _AerialMath.acid_coping_ahead(_settle.x_from, _settle.x_to, travel_x) \
+			and absf(_settle.x_to - _settle.x_from) > 0.05:
+		_settle.x_active = false
 		_acid_drop_lock = false
 		if from_hold:
 			return
@@ -1603,42 +1557,19 @@ func _is_exit_pipe_coping(coping: float, side: int, lip: float) -> bool:
 func _find_acid_coping_target(travel_x: float) -> Dictionary:
 	if _level == null or _level.spec == null:
 		return {}
-	if absf(travel_x) < 1.0:
-		return {}
-	var want_side := _AerialMath.acid_drop_want_side(travel_x)
 	var cell: Vector2i = cell_under_feet()
 	var xz: Vector2 = cell_sample_xz()
-	var face := "r" if travel_x > 0.0 else "l"
-	var prefer_h := _feet_height()
-	var hits: Array = _FacingCastMath.cast_ahead(
+	return _AerialTargeting.find_acid_coping_target(
 		_level.spec,
 		_level.pipes,
-		cell.x,
-		cell.y,
-		face,
-		facing_coping_cells,
+		cell,
 		xz.y,
-		prefer_h,
+		_feet_height(),
+		depth.logical_x,
+		travel_x,
+		facing_coping_cells,
+		Callable(self, "_is_exit_pipe_hit"),
 	)
-	for hit in hits:
-		if not bool(hit.get("is_coping", false)):
-			continue
-		var side := int(hit.get("side", -1))
-		if side != want_side:
-			continue
-		if _is_exit_pipe_hit(hit):
-			continue
-		var coping := float(hit.get("top_coping", NAN))
-		if is_nan(coping):
-			coping = _coping_x_for(
-				side,
-				float(hit.get("lip_x", depth.logical_x)),
-				float(hit.get("radius", 150.0)),
-			)
-		if not _AerialMath.acid_coping_ahead(depth.logical_x, coping, travel_x):
-			continue
-		return hit
-	return {}
 
 
 ## Spine transfer: rising air, or rising on a pipe, when FacingCastMath finds a
@@ -1701,8 +1632,8 @@ func _launch_air_for_spine_from_ramp() -> void:
 	_acid_drop_lock = false
 	_spine_transfer_lock = false
 	_apex_facing_done = false
-	_transfer_x_active = false
-	_tilt_lerp_active = false
+	_settle.x_active = false
+	_settle.tilt_active = false
 	air_abs_height = depth.surface_height
 	air_vel_y = maxf(up, 0.0)
 	_ramp_along = 0.0
@@ -1822,33 +1753,41 @@ func _find_facing_coping_target(facing_override: String = "") -> Dictionary:
 		facing = facing_h
 	if facing != "l" and facing != "r":
 		facing = "r"
-	var prefer_h := _feet_height()
 	var exclude_side := -1
 	var exclude_lip := NAN
+	var exclude_z_min := NAN
+	var exclude_z_max := NAN
 	if _exit_pipe_side >= 0 and not is_nan(_exit_pipe_lip):
 		# Survive fly-out → flat/hole air_over so we never re-target the exit wall.
 		exclude_side = _exit_pipe_side
 		exclude_lip = _exit_pipe_lip
+		exclude_z_min = _exit_pipe_z_min
+		exclude_z_max = _exit_pipe_z_max
 	elif _air_x_locked or air_over == "left_pipe" or air_over == "right_pipe" \
 			or (air_over == "hole" and (_air_side == QuarterPipe.PipeSide.LEFT \
 				or _air_side == QuarterPipe.PipeSide.RIGHT)):
 		exclude_side = _air_side
 		exclude_lip = _air_lip_x
+		exclude_z_min = _air_z_min
+		exclude_z_max = _air_z_max
 	elif _on_ramp:
 		# Grounded pipe ride: skip this wall's coping so cast can see the next one.
 		exclude_side = _ramp_side
 		exclude_lip = _ramp_lip_x
-	return _FacingCastMath.first_coping_ahead(
+		exclude_z_min = _ramp_z_min
+		exclude_z_max = _ramp_z_max
+	return _AerialTargeting.find_facing_coping_target(
 		_level.spec,
 		_level.pipes,
-		cell.x,
-		cell.y,
+		cell,
+		xz.y,
+		_feet_height(),
 		facing,
 		facing_coping_cells,
-		xz.y,
-		prefer_h,
 		exclude_side,
 		exclude_lip,
+		exclude_z_min,
+		exclude_z_max,
 	)
 
 
@@ -1931,11 +1870,11 @@ func _try_transfer() -> bool:
 	# Locked pipe air spent stick X on height — release it as free-air horizontal.
 	if was_locked:
 		_velocity.x = behind * maxf(absf(_velocity.x), transfer_release_min)
-		_transfer_x_active = false
+		_settle.x_active = false
 		return true
 
 	_begin_transfer_x_lerp(anchor_x, false)
-	if not _transfer_x_active and _air_x_locked:
+	if not _settle.x_active and _air_x_locked:
 		depth.logical_x = _air_coping_x
 	return true
 
@@ -2108,7 +2047,7 @@ func _update_face_nose() -> void:
 ## Lean onto the pipe so local-up follows the surface normal (into the bowl).
 ## Spine/acid run a dedicated tilt settle (same smoothstep timing as X); otherwise ease.
 func _step_body_tilt(delta: float) -> void:
-	if _tilt_lerp_active:
+	if _settle.tilt_active:
 		_advance_tilt_lerp(delta)
 		depth.surface_tilt = _body_tilt
 		return
@@ -2123,60 +2062,34 @@ func _step_body_tilt(delta: float) -> void:
 
 
 func _begin_tilt_lerp(to_tilt: float, height_scaled: bool) -> void:
-	_tilt_lerp_from = _body_tilt
-	_tilt_lerp_to = to_tilt
-	_tilt_lerp_u = 0.0
-	_tilt_lerp_ease = height_scaled
-	_tilt_lerp_dur = transfer_x_duration
-	if height_scaled:
-		var above := 0.0
-		if _air_x_locked and not is_nan(_air_radius):
-			above = maxf(air_abs_height - (_air_base_height + _air_radius), 0.0)
-		_tilt_lerp_dur = maxf(
-			_AerialMath.lock_x_duration_for_height(
-				above,
-				acid_drop_x_duration,
-				acid_drop_x_duration_per_height,
-				acid_drop_x_duration_max,
-			),
-			0.0001,
-		)
-	if absf(_tilt_lerp_to - _tilt_lerp_from) <= 0.02:
-		_body_tilt = _tilt_lerp_to
-		_tilt_lerp_active = false
-		return
-	_tilt_lerp_active = true
+	var above := 0.0
+	if _air_x_locked and not is_nan(_air_radius):
+		above = maxf(air_abs_height - (_air_base_height + _air_radius), 0.0)
+	if not _settle.begin_tilt(
+		_body_tilt,
+		to_tilt,
+		height_scaled,
+		above,
+		transfer_x_duration,
+		acid_drop_x_duration,
+		acid_drop_x_duration_per_height,
+		acid_drop_x_duration_max,
+	):
+		_body_tilt = to_tilt
 
 
 func _advance_tilt_lerp(delta: float) -> void:
-	if not _tilt_lerp_active:
-		return
-	var duration := maxf(_tilt_lerp_dur, 0.0001)
-	if _tilt_lerp_ease:
-		var above := 0.0
-		if _air_x_locked and not is_nan(_air_radius):
-			above = maxf(air_abs_height - (_air_base_height + _air_radius), 0.0)
-		var target := maxf(
-			_AerialMath.lock_x_duration_for_height(
-				above,
-				acid_drop_x_duration,
-				acid_drop_x_duration_per_height,
-				acid_drop_x_duration_max,
-			),
-			0.0001,
-		)
-		if target < _tilt_lerp_dur:
-			_tilt_lerp_dur = target
-		else:
-			var k := 1.0 - exp(-10.0 * delta)
-			_tilt_lerp_dur = lerpf(_tilt_lerp_dur, target, k)
-		duration = maxf(_tilt_lerp_dur, 0.0001)
-	_tilt_lerp_u = clampf(_tilt_lerp_u + delta / duration, 0.0, 1.0)
-	var w := _AerialMath.smoothstep01(_tilt_lerp_u) if _tilt_lerp_ease else _tilt_lerp_u
-	_body_tilt = lerpf(_tilt_lerp_from, _tilt_lerp_to, w)
-	if _tilt_lerp_u >= 1.0:
-		_body_tilt = _tilt_lerp_to
-		_tilt_lerp_active = false
+	var above := 0.0
+	if _air_x_locked and not is_nan(_air_radius):
+		above = maxf(air_abs_height - (_air_base_height + _air_radius), 0.0)
+	_body_tilt = _settle.step_tilt(
+		delta,
+		_body_tilt,
+		above,
+		acid_drop_x_duration,
+		acid_drop_x_duration_per_height,
+		acid_drop_x_duration_max,
+	)
 
 
 func _body_tilt_target_radians() -> float:
