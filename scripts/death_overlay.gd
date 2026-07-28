@@ -10,6 +10,11 @@ var _label: Label
 var _busy: bool = false
 
 
+func _enter_tree() -> void:
+	if not is_in_group("death_overlay"):
+		add_to_group("death_overlay")
+
+
 func _ready() -> void:
 	layer = 100
 	process_mode = Node.PROCESS_MODE_ALWAYS

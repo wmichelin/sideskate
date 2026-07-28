@@ -1,5 +1,5 @@
-extends Node2D
-## Gameplay root helpers (return to menu).
+extends Node
+## Shared Escape → menu handler for 2D and 3D gameplay roots.
 
 
 func _input(event: InputEvent) -> void:

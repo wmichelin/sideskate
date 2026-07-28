@@ -38,3 +38,26 @@ godot4 --headless --path . --script res://tests/test_runner.gd
 Prefer `LevelLoader.parse_text` over `load_path` in tests (`load_path` aborts the process on bad maps).
 
 Level fixtures for tests live in `tests/levels/` — do not point tests at `res://levels/` (playable maps). Copy a playable `.ssk` into `tests/levels/` when a test needs it.
+
+## Dual renderer (2D + 3D)
+
+- `res://levels/` → CanvasItem pipeline (`scenes/main.tscn`)
+- `res://levels_3d/` → Godot 3D pipeline (`scenes/main_3d.tscn`) — byte-identical twins
+- Escape (`menu_back`) always returns to the start menu from either backend
+
+### Agent iteration loop
+
+1. Make one milestone-sized edit to the 3D renderer / pose / camera.
+2. Run headless tests: `godot4 --headless --path . --script res://tests/test_runner.gd`
+3. Fast visual gate (3D only):
+   ```bash
+   ./tools/render_iteration.sh plaza_default spawn 3d-only
+   ```
+4. Inspect `artifacts/render_compare/<level>/<pose>/3d.png` + `report.json`.
+5. Fix issues; repeat.
+6. Smoke the Escape path periodically:
+   ```bash
+   ./tools/render_iteration.sh plaza_default spawn pair
+   ```
+
+Do not pixel-diff 2D vs 3D. Compare structural landmarks and side-by-side screenshots. Required gates: `plaza_default`, `spine_demo`, `layered_demo`, `variable_height_ramps`, `plaza_default_deep`.

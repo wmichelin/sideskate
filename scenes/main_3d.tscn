@@ -1,16 +1,19 @@
-[gd_scene format=3 uid="uid://bdepthproto01"]
+[gd_scene format=3 uid="uid://cqtrfd1pk51yq"]
 
 [ext_resource type="Script" uid="uid://df0xdkvcwl4gq" path="res://scripts/ramp_level.gd" id="1_level"]
 [ext_resource type="Script" uid="uid://bfl23pxmg6bg0" path="res://scripts/ramp_visual.gd" id="3_visual"]
 [ext_resource type="Script" uid="uid://bfqwqs48r0cyd" path="res://scripts/player.gd" id="4_player"]
 [ext_resource type="Script" uid="uid://ccsid5t7kcfm5" path="res://scripts/pseudo_depth_body.gd" id="5_depth"]
 [ext_resource type="Script" uid="uid://cy2j0ajrjipwf" path="res://scripts/debug_overlay.gd" id="6_debug"]
-[ext_resource type="Script" uid="uid://bt2eynnt5cbqm" path="res://scripts/main.gd" id="7_main"]
+[ext_resource type="Script" path="res://scripts/main_3d.gd" id="7_main"]
 [ext_resource type="Script" uid="uid://bjukc50nc4o3b" path="res://scripts/follow_camera.gd" id="8_camera"]
 [ext_resource type="Script" uid="uid://b5c20xe6x0frg" path="res://scripts/debug_sliders.gd" id="9_sliders"]
 [ext_resource type="Script" uid="uid://bq6pejaq1h5br" path="res://scripts/velocity_debug_arrow.gd" id="10_vel_arrow"]
 [ext_resource type="Script" uid="uid://cuasx6cbqxf7j" path="res://scripts/fps_debug.gd" id="11_fps"]
 [ext_resource type="Script" uid="uid://d1v6q74p1adtk" path="res://scripts/death_overlay.gd" id="12_death"]
+[ext_resource type="Script" path="res://scripts/rendering_3d/level_visual_3d.gd" id="13_vis3d"]
+[ext_resource type="Script" path="res://scripts/rendering_3d/logical_pose_presenter_3d.gd" id="14_pose3d"]
+[ext_resource type="Script" path="res://scripts/rendering_3d/camera_rig_3d.gd" id="15_cam3d"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_head"]
 content_margin_left = 8.0
@@ -34,11 +37,38 @@ corner_radius_top_right = 8
 corner_radius_bottom_right = 8
 corner_radius_bottom_left = 8
 
-[node name="Main" type="Node2D" unique_id=2057660754]
+[node name="Main3D" type="Node" unique_id=2057660755]
 script = ExtResource("7_main")
+
+[node name="World3D" type="Node3D" parent="."]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="World3D"]
+
+[node name="KeyLight" type="DirectionalLight3D" parent="World3D"]
+transform = Transform3D(0.866, -0.354, 0.354, 0, 0.707, 0.707, -0.5, -0.612, 0.612, 0, 400, 0)
+light_energy = 1.15
+shadow_enabled = true
+
+[node name="FillLight" type="DirectionalLight3D" parent="World3D"]
+transform = Transform3D(0.707, 0.0, -0.707, 0.0, 1, 0, 0.707, 0, 0.707, 0, 200, 0)
+light_energy = 0.35
+
+[node name="LevelVisual3D" type="Node3D" parent="World3D"]
+script = ExtResource("13_vis3d")
+level_path = NodePath("../../RampLevel")
+
+[node name="PlayerVisual" type="Node3D" parent="World3D"]
+script = ExtResource("14_pose3d")
+depth_path = NodePath("../../Player/PseudoDepthBody")
+player_path = NodePath("../../Player")
+
+[node name="CameraRig3D" type="Node3D" parent="World3D"]
+script = ExtResource("15_cam3d")
+target_path = NodePath("../PlayerVisual")
 
 [node name="WorldBackdrop" type="CanvasLayer" parent="." unique_id=1463926595]
 layer = -100
+visible = false
 
 [node name="ColorRect" type="ColorRect" parent="WorldBackdrop" unique_id=1552944546]
 anchors_preset = 15

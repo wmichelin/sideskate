@@ -1,0 +1,48 @@
+extends RefCounted
+## 3D scene loads, meshes rebuild, camera exists.
+
+
+func run() -> bool:
+	var tree := Engine.get_main_loop() as SceneTree
+	if tree == null:
+		push_error("no tree")
+		return false
+	GameSession.pending_level_path = "res://tests/levels/test_halfpipe.ssk"
+	GameSession.pending_backend = GameSession.RenderBackend.WORLD_3D
+	var packed: PackedScene = load("res://scenes/main_3d.tscn")
+	if packed == null:
+		push_error("main_3d.tscn missing")
+		return false
+	var main: Node = packed.instantiate()
+	tree.root.add_child(main)
+
+	var level := main.get_node_or_null("RampLevel") as RampLevel
+	var vis := main.get_node_or_null("World3D/LevelVisual3D")
+	var cam := main.get_node_or_null("World3D/CameraRig3D")
+	var pvis := main.get_node_or_null("World3D/PlayerVisual")
+	if level == null or vis == null or cam == null or pvis == null:
+		push_error("missing 3D nodes")
+		main.queue_free()
+		GameSession.pending_level_path = ""
+		return false
+
+	# Force rebuild after level apply.
+	if level.spec == null:
+		var text := FileAccess.get_file_as_string("res://tests/levels/test_halfpipe.ssk")
+		var spec := LevelLoader.parse_text(text, "test_halfpipe")
+		if spec == null:
+			push_error(LevelLoader.last_error)
+			main.queue_free()
+			return false
+		level.apply_spec(spec)
+	vis.call("rebuild")
+	if int(vis.get("mesh_count")) <= 0:
+		push_error("mesh_count == 0 after rebuild")
+		main.queue_free()
+		GameSession.pending_level_path = ""
+		return false
+
+	main.queue_free()
+	GameSession.pending_level_path = ""
+	GameSession.pending_backend = GameSession.RenderBackend.CANVAS_2D
+	return true

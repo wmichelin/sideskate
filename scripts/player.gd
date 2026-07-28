@@ -186,20 +186,27 @@ func _ready() -> void:
 
 
 func _ensure_death_overlay() -> void:
+	# Prefer scene-baked overlay on the gameplay root (parent), not current_scene
+	# (tests may parent Main under root without setting current_scene).
+	var host: Node = get_parent()
+	if host != null:
+		var baked := host.get_node_or_null("DeathOverlay")
+		if baked != null:
+			_death_overlay = baked
+			return
 	_death_overlay = get_tree().get_first_node_in_group("death_overlay")
 	if _death_overlay != null:
 		return
+	if host == null:
+		host = get_tree().current_scene
 	var overlay_script: Script = load("res://scripts/death_overlay.gd") as Script
 	if overlay_script == null:
 		return
 	var overlay: CanvasLayer = CanvasLayer.new()
 	overlay.set_script(overlay_script)
 	overlay.add_to_group("death_overlay")
-	var host := get_tree().current_scene
-	if host == null:
-		host = get_parent()
 	if host:
-		host.add_child(overlay)
+		host.add_child.call_deferred(overlay)
 	_death_overlay = overlay
 
 
