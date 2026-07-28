@@ -13,6 +13,8 @@ func run() -> bool:
 	ok = _smoke_fixture("res://tests/levels/test_lava.ssk") and ok
 	ok = _lava_glyph_samples() and ok
 	ok = _halfpipe_geometry() and ok
+	ok = _pipe_radius_scales_with_glyphs() and ok
+	ok = _pipe_screen_quarter_circle() and ok
 	ok = _ledge_spawn_facing() and ok
 	ok = _uneven_rows_fail() and ok
 	ok = _ssk1_rejected() and ok
@@ -93,6 +95,121 @@ func _halfpipe_geometry() -> bool:
 		if absf(float(p2.get("base_height", -1.0))) > 0.001:
 			push_error("halfpipe pipes should have base_height 0")
 			return false
+	return true
+
+
+## `<` → 1×cell radius; `<<<<` → 4×cell (height rise = radius for a quarter circle).
+func _pipe_radius_scales_with_glyphs() -> bool:
+	var text := """ssk 2
+name glyph_radius
+---
+layer 0
+height 0
+<<<<====================>>>>
+<<<<=========@==========>>>>
+<<<<====================>>>>
+"""
+	var spec := LevelLoader.parse_text(text, "glyph_radius")
+	if spec == null:
+		push_error("glyph_radius parse failed: %s" % LevelLoader.last_error)
+		return false
+	var cx := LevelLoader.cell_size_x
+	var left_r := -1.0
+	var right_r := -1.0
+	for p in spec.pipes:
+		if int(p.side) == QuarterPipe.PipeSide.LEFT:
+			left_r = float(p.radius)
+		else:
+			right_r = float(p.radius)
+	var want := 4.0 * cx
+	if not is_equal_approx(left_r, want) or not is_equal_approx(right_r, want):
+		push_error("<<<< radius want %s got L=%s R=%s" % [want, left_r, right_r])
+		return false
+	var one := """ssk 2
+name one_glyph
+---
+layer 0
+height 0
+<========================>
+<===========@============>
+<========================>
+"""
+	var spec1 := LevelLoader.parse_text(one, "one_glyph")
+	if spec1 == null:
+		push_error("one_glyph parse failed: %s" % LevelLoader.last_error)
+		return false
+	var r1 := -1.0
+	for p1 in spec1.pipes:
+		if int(p1.side) == QuarterPipe.PipeSide.LEFT:
+			r1 = float(p1.radius)
+			break
+	if r1 < 0.0:
+		r1 = float(spec1.pipes[0].radius)
+	if not is_equal_approx(r1, cx):
+		push_error("< radius want %s got %s" % [cx, r1])
+		return false
+	if not is_equal_approx(left_r, 4.0 * r1):
+		push_error("<<<< should be 4× < radius (%s vs %s)" % [left_r, r1])
+		return false
+	return true
+
+
+## Drawn profile is a true quarter circle in screen space; coping meets deck height.
+func _pipe_screen_quarter_circle() -> bool:
+	var level := RampLevel.new()
+	level.perspective_origin_x = 640.0
+	level.perspective_origin_z = 200.0
+	level.z_min = 0.0
+	level.near_screen_y = 560.0
+	level.far_screen_y = 300.0
+	level.reference_depth = 400.0
+	level.reference_width = 1280.0
+	level.perspective_inset = 70.0
+	level.far_geometry_scale = 1.0
+	var pipe := QuarterPipe.new()
+	pipe.side = QuarterPipe.PipeSide.RIGHT
+	pipe.lip_x = 400.0
+	pipe.radius = 141.0
+	pipe.base_height = 0.0
+	pipe.z_min = 0.0
+	pipe.z_max = 100.0
+	var z := 180.0
+	var lip: Vector2 = level.pipe_screen_point_for(pipe, z, 0.0)
+	var mid: Vector2 = level.pipe_screen_point_for(pipe, z, 0.5)
+	var cope: Vector2 = level.pipe_screen_point_for(pipe, z, 1.0)
+	var deck_p: Dictionary = level.project(pipe.lip_x + pipe.radius, z, pipe.radius)
+	var deck_y := float(deck_p.ground_y) - float(deck_p.surface_screen_h)
+	var r := absf(lip.y - deck_y)
+	var center := Vector2(lip.x, lip.y - r)
+	var d0 := lip.distance_to(center)
+	var d1 := mid.distance_to(center)
+	var d2 := cope.distance_to(center)
+	if absf(d0 - r) > 0.05 or absf(d1 - r) > 0.05 or absf(d2 - r) > 0.05:
+		push_error("pipe screen points not on circle r=%s d=%s,%s,%s" % [r, d0, d1, d2])
+		pipe.free()
+		level.free()
+		return false
+	# Coping Y must match projected deck/coping height.
+	if absf(cope.y - deck_y) > 0.05:
+		push_error("coping Y want deck %s got %s" % [deck_y, cope.y])
+		pipe.free()
+		level.free()
+		return false
+	# 90°: lip straight down from center, coping horizontal from center.
+	var lip_off := lip - center
+	var cope_off := cope - center
+	if absf(lip_off.x) > 0.05 or lip_off.y < 0.0:
+		push_error("lip should be directly below center, got off=%s" % lip_off)
+		pipe.free()
+		level.free()
+		return false
+	if absf(cope_off.y) > 0.05 or cope_off.x < 0.0:
+		push_error("coping should be directly right of center, got off=%s" % cope_off)
+		pipe.free()
+		level.free()
+		return false
+	pipe.free()
+	level.free()
 	return true
 
 

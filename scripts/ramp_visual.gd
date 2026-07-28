@@ -649,44 +649,52 @@ func _draw_pipe_walls(pipe: QuarterPipe, band: Vector2) -> void:
 	var wall_col := Color(0.28, 0.24, 0.32, 0.96) if is_left else Color(0.24, 0.28, 0.34, 0.96)
 	var deck_wall_col := Color(0.38, 0.32, 0.22, 1.0)
 	var end_col := Color(0.34, 0.30, 0.38, 0.96) if is_left else Color(0.30, 0.34, 0.40, 0.96)
-	var coping_x := pipe.x_min() if is_left else pipe.x_max()
-	var h0 := pipe.base_height
-	var h1 := pipe.base_height + pipe.radius
 	var covered := _deck_z_ranges_covering_pipe(pipe)
 	for seg in _z_segments_minus_covered(z0, z1, covered):
 		var sz0 := float(seg.x)
 		var sz1 := float(seg.y)
 		if sz1 <= sz0 + 0.001:
 			continue
-		_paint.draw_colored_polygon(
-			PackedVector2Array([
-				_surf_point(coping_x, sz0, h1),
-				_surf_point(coping_x, sz1, h1),
-				_surf_point(coping_x, sz1, h0),
-				_surf_point(coping_x, sz0, h0),
-			]),
-			wall_col
-		)
+		_draw_pipe_outer_wall_span(pipe, sz0, sz1, wall_col)
 	# Deck-owned coping spans: brown, before ribbon (ribbon still wins at the lip).
 	for c in covered:
 		var cz0 := maxf(float(c.x), z0)
 		var cz1 := minf(float(c.y), z1)
 		if cz1 <= cz0 + 0.001:
 			continue
-		_paint.draw_colored_polygon(
-			PackedVector2Array([
-				_surf_point(coping_x, cz0, h1),
-				_surf_point(coping_x, cz1, h1),
-				_surf_point(coping_x, cz1, h0),
-				_surf_point(coping_x, cz0, h0),
-			]),
-			deck_wall_col
-		)
+		_draw_pipe_outer_wall_span(pipe, cz0, cz1, deck_wall_col)
 	# Endcaps only on real pipe ends, and never under a deck (deck face owns that view).
 	if absf(z0 - pipe.z_min) <= 0.05 and not _deck_covers_pipe_at_z(pipe, z0):
 		_draw_pipe_endcap(pipe, z0, end_col)
 	if absf(z1 - pipe.z_max) <= 0.05 and not _deck_covers_pipe_at_z(pipe, z1):
 		_draw_pipe_endcap(pipe, z1, end_col)
+
+
+## Outer drop under the visual coping (matches screen-circle ribbon top).
+func _draw_pipe_outer_wall_span(
+	pipe: QuarterPipe, z0: float, z1: float, col: Color
+) -> void:
+	var top0: Vector2 = _level.pipe_screen_point_for(pipe, z0, 1.0)
+	var top1: Vector2 = _level.pipe_screen_point_for(pipe, z1, 1.0)
+	var bot_y0 := _surf_point(
+		pipe.x_min() if pipe.side == QuarterPipe.PipeSide.LEFT else pipe.x_max(),
+		z0,
+		pipe.base_height
+	).y
+	var bot_y1 := _surf_point(
+		pipe.x_min() if pipe.side == QuarterPipe.PipeSide.LEFT else pipe.x_max(),
+		z1,
+		pipe.base_height
+	).y
+	_paint.draw_colored_polygon(
+		PackedVector2Array([
+			top0,
+			top1,
+			Vector2(top1.x, bot_y1),
+			Vector2(top0.x, bot_y0),
+		]),
+		col
+	)
 
 
 ## Filled quarter-pipe silhouette at constant Z: arc + outer drop + base.
@@ -696,9 +704,15 @@ func _draw_pipe_endcap(pipe: QuarterPipe, logical_z: float, col: Color) -> void:
 	pts.resize(steps + 3)
 	for i in range(steps + 1):
 		pts[i] = _level.pipe_screen_point_for(pipe, logical_z, float(i) / float(steps))
-	var coping_x := pipe.x_min() if pipe.side == QuarterPipe.PipeSide.LEFT else pipe.x_max()
-	pts[steps + 1] = _surf_point(coping_x, logical_z, pipe.base_height)
-	pts[steps + 2] = _level.pipe_screen_point_for(pipe, logical_z, 0.0)
+	var cope: Vector2 = pts[steps]
+	var lip: Vector2 = pts[0]
+	var bot_y := _surf_point(
+		pipe.x_min() if pipe.side == QuarterPipe.PipeSide.LEFT else pipe.x_max(),
+		logical_z,
+		pipe.base_height
+	).y
+	pts[steps + 1] = Vector2(cope.x, bot_y)
+	pts[steps + 2] = lip
 	_paint.draw_colored_polygon(pts, col)
 
 

@@ -701,13 +701,22 @@ func project(logical_x: float, logical_z: float, surface_height: float = 0.0) ->
 
 
 func pipe_screen_point_for(pipe: QuarterPipe, logical_z: float, u: float) -> Vector2:
+	## Screen-space quarter circle (θ=0 lip → θ=π/2 coping).
+	## Radius follows the projected lip→deck rise so every adjacent pipe meets the
+	## pad top at the same height (glyph run still sets logical radius / physics).
 	var theta := clampf(u, 0.0, 1.0) * PI * 0.5
-	var x_off := pipe.radius * sin(theta)
-	var height := pipe.base_height + pipe.radius * (1.0 - cos(theta))
-	var logical_x: float
-	if pipe.side == QuarterPipe.PipeSide.LEFT:
-		logical_x = pipe.lip_x - x_off
-	else:
-		logical_x = pipe.lip_x + x_off
-	var p := project(logical_x, logical_z, height)
-	return Vector2(p.screen_x, p.ground_y - p.surface_screen_h)
+	var is_left := pipe.side == QuarterPipe.PipeSide.LEFT
+	var coping_x := pipe.x_min() if is_left else pipe.x_max()
+	var lip_p: Dictionary = project(pipe.lip_x, logical_z, pipe.base_height)
+	var cope_p: Dictionary = project(
+		coping_x, logical_z, pipe.base_height + pipe.radius
+	)
+	var lip := Vector2(float(lip_p.screen_x), float(lip_p.ground_y) - float(lip_p.surface_screen_h))
+	var cope_y := float(cope_p.ground_y) - float(cope_p.surface_screen_h)
+	# Vertical span to the projected coping/deck height — keeps pads flush.
+	var r := absf(lip.y - cope_y)
+	if r <= 0.0001:
+		return lip
+	var center := Vector2(lip.x, lip.y - r)
+	var sgn := -1.0 if is_left else 1.0
+	return Vector2(center.x + sgn * r * sin(theta), center.y + r * cos(theta))

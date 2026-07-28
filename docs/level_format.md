@@ -38,7 +38,11 @@ Level extents are automatic:
 
 Add glyphs to grow the plaza; do not set `width` / `depth` in the header (ignored if present). Cell sizes are game-wide (RampLevel exports + TUNING sliders `cell x` / `cell z`).
 
-Pipe radius follows run width in cells (`<<<` → 3 × cell_x), so the same glyph pattern always builds the same logical ramp. Pipe **base** sits at the layer’s `height`; surface height is `base_height + radius * (1 − cos θ)`.
+Pipe radius follows run width in cells (`<<<` → 3 × cell_x, `<<<<` → 4 × cell_x), so
+glyph count sets both horizontal span and coping rise (`base_height + radius`). The
+logical profile is a quarter circle (`θ = 0…π/2`); draw code re-rounds that profile in
+**screen space** using the projected lip→deck height so every pipe meets its deck top
+flush (a true 90° circle whose vertical radius matches the pad).
 
 Perspective (`perspective_inset`, `far_geometry_scale`, `reference_depth`, `reference_width`) lives on **RampLevel** / TUNING only — not in `.ssk` files.
 
