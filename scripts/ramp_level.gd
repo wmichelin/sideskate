@@ -22,12 +22,12 @@ const ContactMath := preload("res://scripts/contact_math.gd")
 @export var far_screen_y: float = 300.0
 ## Logical depth span that maps near_screen_y → far_screen_y.
 ## Default matches glyph cells: one Z cell ≈ one X cell on screen at the near plane.
-@export var reference_depth: float = 260.0
+@export var reference_depth: float = 500.0
 ## Logical width used only for X convergence math — not the level's real span.
 @export var reference_width: float = 1280.0
 ## X convergence toward the skater. 0 = side-on truck (parallel edges, camera
 ## slides in Z). Higher values tilt into a looking-down vanishing point.
-@export var perspective_inset: float = 35.0
+@export var perspective_inset: float = 155.0
 @export var far_geometry_scale: float = 1.0
 
 signal rebuilt
@@ -39,10 +39,10 @@ var z_min: float = 0.0
 var z_max: float = 100.0
 ## Far X converges toward the skater so adjacent pipes share lean.
 var perspective_origin_x: float = 640.0
-## World-fixed Z lean anchor (z_min + reference_depth/2). Depth stick only trucks
-## the camera / draw window — it must not re-center X perspective.
+## Z lean anchor — locked to the skater so depth stick re-perspectives the park
+## (nearer / farther geometry widens or converges as you truck in Z).
 var perspective_origin_z: float = 0.0
-## Skater Z for draw-band culling only (not used for lean / x_scale).
+## Skater Z for draw-band culling (kept in sync with perspective_origin_z).
 var view_origin_z: float = 0.0
 var _loaded_path: String = ""
 
@@ -112,9 +112,9 @@ func apply_spec(s: LevelSpec) -> void:
 		_visual.queue_redraw()
 
 
-## Absolute lean band: t=0 at z_min, t=1 at z_min+reference_depth.
+## Keep lean Z locked to the current view / skater truck.
 func sync_lean_origin_z() -> void:
-	perspective_origin_z = z_min + reference_depth * 0.5
+	perspective_origin_z = view_origin_z
 
 
 ## Keep near-plane screen size of one Z cell matched to one X cell.
@@ -125,18 +125,16 @@ func sync_reference_depth_to_glyphs() -> void:
 	sync_lean_origin_z()
 
 
-## Skater X recenters horizontal lean. Skater Z only moves the draw window
-## (up/down truck) — never perspective_origin_z.
-## Threshold avoids redrawing the whole park every physics tick while skating.
+## Lock camera to the skater (homogeneous depth origin). Draw-band refresh is
+## thresholded; origins still update every call for smooth projective truck.
 func set_perspective_origin(logical_x: float, logical_z: float) -> void:
 	var x_moved := absf(logical_x - perspective_origin_x) >= 6.0
 	var z_moved := absf(logical_z - view_origin_z) >= 8.0
+	perspective_origin_x = logical_x
+	perspective_origin_z = logical_z
+	view_origin_z = logical_z
 	if not x_moved and not z_moved:
 		return
-	if x_moved:
-		perspective_origin_x = logical_x
-	if z_moved:
-		view_origin_z = logical_z
 	if _visual and _visual.has_method("refresh"):
 		_visual.refresh()
 	elif _visual:
@@ -150,13 +148,23 @@ func depth_t(logical_z: float) -> float:
 	return clampf((logical_z - z_min) / span, 0.0, 1.0)
 
 
-## Lean rate vs world-fixed origin_z. Unclamped so lip lines keep one slope.
+## Camera-relative lean rate (linear band param; projection uses depth_scale).
 func perspective_t(logical_z: float) -> float:
 	return _PerspectiveMath.perspective_t(logical_z, perspective_origin_z, reference_depth)
 
 
+## Homogeneous depth scale at this Z (1 on the skater's focus plane).
 func geometry_scale_at(logical_z: float) -> float:
-	return _PerspectiveMath.geometry_scale_at(perspective_t(logical_z), far_geometry_scale)
+	return (
+		_PerspectiveMath.depth_scale(
+			logical_z,
+			perspective_origin_z,
+			reference_depth,
+			perspective_inset,
+			reference_width
+		)
+		* maxf(far_geometry_scale, 0.01)
+	)
 
 
 func inset_at(logical_z: float) -> float:
@@ -169,10 +177,15 @@ func screen_y_per_z() -> float:
 
 
 func ground_screen_y(logical_z: float) -> float:
-	# Absolute mapping — deep levels grow taller in screen space and stay off-frame
-	# until the camera pans with the player.
+	# Same homogeneous depth scale as X — skater focus plane sits at mid-screen.
 	return _PerspectiveMath.ground_screen_y(
-		logical_z, z_min, near_screen_y, far_screen_y, reference_depth
+		logical_z,
+		perspective_origin_z,
+		near_screen_y,
+		far_screen_y,
+		reference_depth,
+		perspective_inset,
+		reference_width
 	)
 
 
@@ -705,8 +718,8 @@ func deck_visual_height(deck: Dictionary, logical_z: float) -> float:
 
 
 ## Project logical (x,z,height) to screen.
-## X scales toward perspective_origin_x with depth (same for floor/pipes/decks)
-## so adjacent features share lean instead of fanning from the level midpoint.
+## Camera at (perspective_origin_x, perspective_origin_z): X converges toward the
+## skater and ground Y shares the same depth `t` so Z motion does not shear.
 ## Height uses geometry_scale alone. X lean uses reference_width (not level span)
 ## so wider maps keep the same vanishing rate as a single bay.
 func project(logical_x: float, logical_z: float, surface_height: float = 0.0) -> Dictionary:
@@ -716,7 +729,6 @@ func project(logical_x: float, logical_z: float, surface_height: float = 0.0) ->
 		surface_height,
 		perspective_origin_x,
 		perspective_origin_z,
-		z_min,
 		near_screen_y,
 		far_screen_y,
 		reference_depth,

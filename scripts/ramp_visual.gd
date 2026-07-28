@@ -1,10 +1,11 @@
 extends Node2D
 ## Surface + solid-wall level draw: floors, pipe ribbons/walls/endcaps, deck tops/sides.
-## Per pass: floors → deck walls → pipes → elevated → deck tops.
-## Deck walls precede pipes so a pad end face never composites through a ribbon.
+## Per pass: floors → pipe outer walls → deck walls → pipe endcaps/ribbons →
+## elevated → deck tops.
+## Outer (back) flats sit behind pad walls; curved pipe endcaps composite over them.
 ## Far → Player → Near Z-split: nearer park geometry composites above the skater
-## so the player is occluded when behind a ramp. Draw window follows skater Z
-## (truck only). X lean uses world-fixed origin_z.
+## so the player is occluded when behind a ramp. Draw window and X lean both
+## follow skater Z (perspective locked to the camera / player).
 
 const _PassScript := preload("res://scripts/ramp_visual_pass.gd")
 
@@ -112,11 +113,13 @@ func paint_pass(ci: CanvasItem, near_pass: bool) -> void:
 	var band := _pass_band(view, near_pass, split_z)
 	if band.y > band.x + 0.001:
 		_draw_ground_floors(band)
-		# Deck side/end walls first, then pipes — the ride ribbon must composite
-		# over the pad walls so a deck end face never shows through a pipe.
+		# Outer flats behind deck walls; endcaps/ribbons after so only the curved
+		# pipe sidewall composites over an adjacent pad face (not the back wall).
+		for pipe in _pipes_far_to_near():
+			_draw_pipe_outer_walls(pipe, band)
 		_draw_deck_walls(band)
 		for pipe in _pipes_far_to_near():
-			_draw_pipe_walls(pipe, band)
+			_draw_pipe_endcaps(pipe, band)
 			_draw_pipe(pipe, band)
 		_draw_elevated_floors(band)
 		_draw_decks(band)
@@ -147,7 +150,7 @@ func _pass_band(view: Vector2, near_pass: bool, split_z: float) -> Vector2:
 	return Vector2(maxf(view.x, split_z), view.y)
 
 
-## Skater-centered draw window (culling only — does not move X lean).
+## Skater-centered draw window (culling — lean origin tracks the same Z).
 func _view_z_band() -> Vector2:
 	var ref := maxf(_level.reference_depth, 0.0001)
 	var half := ref * (0.5 + maxf(draw_band_pad, 0.0))
@@ -639,36 +642,28 @@ func _draw_pipe(pipe: QuarterPipe, band: Vector2) -> void:
 	)
 
 
-## Outer vertical face under coping + solid endcaps at true pipe Z ends.
-## Under a deck, the coping plane is deck-colored (seals the cavity) and endcaps
-## are skipped so the near/far deck face is what you see — not pipe interior.
-func _draw_pipe_walls(pipe: QuarterPipe, band: Vector2) -> void:
+## Back flat under coping (drawn before deck walls so pad faces occlude it).
+func _draw_pipe_outer_walls(pipe: QuarterPipe, band: Vector2) -> void:
 	var z0 := maxf(pipe.z_min, band.x)
 	var z1 := minf(pipe.z_max, band.y)
 	if z1 <= z0 + 0.001:
 		return
 	var is_left := pipe.side == QuarterPipe.PipeSide.LEFT
 	var wall_col := Color(0.28, 0.24, 0.32, 0.96) if is_left else Color(0.24, 0.28, 0.34, 0.96)
-	var deck_wall_col := Color(0.38, 0.32, 0.22, 1.0)
+	_draw_pipe_outer_wall_span(pipe, z0, z1, wall_col)
+
+
+## Curved Z-end silhouettes (drawn after deck walls so they sit on pad faces).
+func _draw_pipe_endcaps(pipe: QuarterPipe, band: Vector2) -> void:
+	var z0 := maxf(pipe.z_min, band.x)
+	var z1 := minf(pipe.z_max, band.y)
+	if z1 <= z0 + 0.001:
+		return
+	var is_left := pipe.side == QuarterPipe.PipeSide.LEFT
 	var end_col := Color(0.34, 0.30, 0.38, 0.96) if is_left else Color(0.30, 0.34, 0.40, 0.96)
-	var covered := _deck_z_ranges_covering_pipe(pipe)
-	for seg in _z_segments_minus_covered(z0, z1, covered):
-		var sz0 := float(seg.x)
-		var sz1 := float(seg.y)
-		if sz1 <= sz0 + 0.001:
-			continue
-		_draw_pipe_outer_wall_span(pipe, sz0, sz1, wall_col)
-	# Deck-owned coping spans: brown, before ribbon (ribbon still wins at the lip).
-	for c in covered:
-		var cz0 := maxf(float(c.x), z0)
-		var cz1 := minf(float(c.y), z1)
-		if cz1 <= cz0 + 0.001:
-			continue
-		_draw_pipe_outer_wall_span(pipe, cz0, cz1, deck_wall_col)
-	# Endcaps only on real pipe ends, and never under a deck (deck face owns that view).
-	if absf(z0 - pipe.z_min) <= 0.05 and not _deck_covers_pipe_at_z(pipe, z0):
+	if absf(z0 - pipe.z_min) <= 0.05:
 		_draw_pipe_endcap(pipe, z0, end_col)
-	if absf(z1 - pipe.z_max) <= 0.05 and not _deck_covers_pipe_at_z(pipe, z1):
+	if absf(z1 - pipe.z_max) <= 0.05:
 		_draw_pipe_endcap(pipe, z1, end_col)
 
 
@@ -725,58 +720,6 @@ func _draw_pipe_top_stroke(pipe: QuarterPipe, z0: float, z1: float) -> void:
 		Color(0.95, 0.55, 0.35, 0.9),
 		3.0
 	)
-
-
-func _deck_covers_pipe_at_z(pipe: QuarterPipe, logical_z: float) -> bool:
-	for r in _deck_z_ranges_covering_pipe(pipe):
-		if logical_z >= float(r.x) - 0.05 and logical_z <= float(r.y) + 0.05:
-			return true
-	return false
-
-
-func _deck_z_ranges_covering_pipe(pipe: QuarterPipe) -> Array:
-	var out: Array = []
-	if _level.spec == null:
-		return out
-	var coping := pipe.x_min() if pipe.side == QuarterPipe.PipeSide.LEFT else pipe.x_max()
-	for deck in _level.spec.decks:
-		var covers := false
-		for a in deck.get("anchors", []):
-			if absf(float(a.coping_x) - coping) < 0.05:
-				covers = true
-				break
-		if not covers:
-			for v in deck.poly:
-				if absf(v.x - coping) < 0.05:
-					covers = true
-					break
-		if not covers:
-			continue
-		var dz0 := _deck_z_min(deck)
-		var dz1 := _deck_z_max(deck)
-		var lo := maxf(dz0, pipe.z_min)
-		var hi := minf(dz1, pipe.z_max)
-		if lo < hi:
-			out.append(Vector2(lo, hi))
-	return out
-
-
-func _z_segments_minus_covered(z_min: float, z_max: float, covered: Array) -> Array:
-	if covered.is_empty():
-		return [Vector2(z_min, z_max)]
-	var sorted: Array = covered.duplicate()
-	sorted.sort_custom(func(a, b): return a.x < b.x)
-	var segs: Array = []
-	var cursor := z_min
-	for c in sorted:
-		var lo: float = maxf(c.x, z_min)
-		var hi: float = minf(c.y, z_max)
-		if lo > cursor + 0.001:
-			segs.append(Vector2(cursor, lo))
-		cursor = maxf(cursor, hi)
-	if cursor < z_max - 0.001:
-		segs.append(Vector2(cursor, z_max))
-	return segs
 
 
 func _arc_points(pipe: QuarterPipe, logical_z: float, steps: int) -> PackedVector2Array:

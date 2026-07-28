@@ -1,8 +1,43 @@
 class_name PerspectiveMath
 extends RefCounted
 ## Pure pseudo-depth projection helpers (no scene state).
+##
+## Camera-relative **homogeneous** depth: one scale `s = focal / (focal + Δz)`
+## drives screen X, ground Y, and height so Z truck is a projective move — not an
+## affine X lean sliding over a linear Y map (that shears / elongates the park).
 
 
+static func far_x_scale(perspective_inset: float, reference_width: float) -> float:
+	var ref_w := maxf(reference_width, 0.0001)
+	return clampf(1.0 - (2.0 * perspective_inset) / ref_w, 0.15, 0.99)
+
+
+## Focal length so scale at +reference_depth/2 matches inset far_x_scale.
+static func focal_length(
+	reference_depth: float, perspective_inset: float, reference_width: float
+) -> float:
+	var ref := maxf(reference_depth, 0.0001)
+	var far := far_x_scale(perspective_inset, reference_width)
+	# far = focal / (focal + ref/2)  →  focal = far * (ref/2) / (1 - far)
+	return far * (ref * 0.5) / maxf(1.0 - far, 0.01)
+
+
+## Homogeneous depth scale. 1 at the camera focus plane (`origin_z`).
+static func depth_scale(
+	logical_z: float,
+	origin_z: float,
+	reference_depth: float,
+	perspective_inset: float,
+	reference_width: float,
+) -> float:
+	var focal := focal_length(reference_depth, perspective_inset, reference_width)
+	var z_eye := focal + (logical_z - origin_z)
+	# Soft-limit behind / through the camera so X never inverts hard.
+	var s := focal / maxf(z_eye, focal * 0.08)
+	return clampf(s, 0.08, 2.5)
+
+
+## Linear band parameter (debug / art curves). Prefer `depth_scale` for projection.
 static func perspective_t(
 	logical_z: float, origin_z: float, reference_depth: float
 ) -> float:
@@ -11,15 +46,16 @@ static func perspective_t(
 	return (logical_z - z0) / ref
 
 
-static func far_x_scale(perspective_inset: float, reference_width: float) -> float:
-	var ref_w := maxf(reference_width, 0.0001)
-	return clampf(1.0 - (2.0 * perspective_inset) / ref_w, 0.15, 1.0)
-
-
-static func x_scale_at(t: float, perspective_inset: float, reference_width: float) -> float:
-	var far := far_x_scale(perspective_inset, reference_width)
-	# Unclamped t keeps one slope; soft-limit so extreme pads don't invert X.
-	return clampf(lerpf(1.0, far, t), 0.08, 2.5)
+static func x_scale_at(
+	logical_z: float,
+	origin_z: float,
+	reference_depth: float,
+	perspective_inset: float,
+	reference_width: float,
+) -> float:
+	return depth_scale(
+		logical_z, origin_z, reference_depth, perspective_inset, reference_width
+	)
 
 
 static func geometry_scale_at(t: float, far_geometry_scale: float) -> float:
@@ -50,26 +86,33 @@ static func glyph_matched_reference_depth(
 	return maxf(span * maxf(cell_size_z, 0.0001) / cell_x, 0.0001)
 
 
+## Ground Y from the same homogeneous `s` as X (focus plane → mid-screen).
 static func ground_screen_y(
 	logical_z: float,
-	z_min: float,
+	origin_z: float,
 	near_screen_y: float,
 	far_screen_y: float,
-	reference_depth: float
+	reference_depth: float,
+	perspective_inset: float,
+	reference_width: float,
 ) -> float:
-	return near_screen_y - (logical_z - z_min) * screen_y_per_z(
-		near_screen_y, far_screen_y, reference_depth
+	var s := depth_scale(
+		logical_z, origin_z, reference_depth, perspective_inset, reference_width
 	)
+	var focus_y := (near_screen_y + far_screen_y) * 0.5
+	var far := far_x_scale(perspective_inset, reference_width)
+	# At +ref/2, s=far and ground_y lands on far_screen_y.
+	var fy := (near_screen_y - far_screen_y) / (2.0 * maxf(1.0 - far, 0.01))
+	return focus_y - fy * (1.0 - s)
 
 
-## Project logical (x, z, height) → screen fields.
+## Project logical (x, z, height) → screen fields (camera at origin_x / origin_z).
 static func project(
 	logical_x: float,
 	logical_z: float,
 	surface_height: float,
 	origin_x: float,
 	origin_z: float,
-	z_min: float,
 	near_screen_y: float,
 	far_screen_y: float,
 	reference_depth: float,
@@ -78,13 +121,22 @@ static func project(
 	far_geometry_scale: float
 ) -> Dictionary:
 	var t := perspective_t(logical_z, origin_z, reference_depth)
-	var inset := inset_at(t, perspective_inset)
-	var gscale := geometry_scale_at(t, far_geometry_scale)
-	var ground_y := ground_screen_y(
-		logical_z, z_min, near_screen_y, far_screen_y, reference_depth
+	var s := depth_scale(
+		logical_z, origin_z, reference_depth, perspective_inset, reference_width
 	)
-	var x_scale := x_scale_at(t, perspective_inset, reference_width)
-	var screen_x := origin_x + (logical_x - origin_x) * x_scale
+	var inset := inset_at(t, perspective_inset)
+	# Heights share projective `s` (far_geometry_scale is an overall art multiply).
+	var gscale := s * maxf(far_geometry_scale, 0.01)
+	var ground_y := ground_screen_y(
+		logical_z,
+		origin_z,
+		near_screen_y,
+		far_screen_y,
+		reference_depth,
+		perspective_inset,
+		reference_width
+	)
+	var screen_x := origin_x + (logical_x - origin_x) * s
 	return {
 		"t": t,
 		"screen_x": screen_x,
@@ -92,7 +144,7 @@ static func project(
 		"surface_screen_h": surface_height * gscale,
 		"geometry_scale": gscale,
 		"inset": inset,
-		"x_scale": x_scale,
+		"x_scale": s,
 	}
 
 
