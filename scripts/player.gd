@@ -14,6 +14,7 @@ const _FacingCastMath := preload("res://scripts/facing_cast_math.gd")
 const _MotionVectors := preload("res://scripts/motion_vectors.gd")
 const _ContactMath := preload("res://scripts/contact_math.gd")
 const _GroundPipeMath := preload("res://scripts/ground_pipe_math.gd")
+const _GroundMotion := preload("res://scripts/ground_motion.gd")
 const _PlayerPipeHits := preload("res://scripts/player_pipe_hits.gd")
 const _PlayerDeath := preload("res://scripts/player_death.gd")
 const _PlayerMotionDebug := preload("res://scripts/player_motion_debug.gd")
@@ -527,7 +528,6 @@ func _apply_motion(delta: float, speed_mul: float) -> void:
 	if _on_ramp:
 		var own: Dictionary = _query_own_ramp_surface()
 		var current := _ramp_pipe_hit()
-		var toward: float = maxf(_velocity.x * _coping_sign(_ramp_side), 0.0)
 		var under: Dictionary = hit
 		# Sticky sample refuses fallthrough when inactive — still probe for a
 		# competing pipe (plain sample) so we launch instead of remounting it.
@@ -535,31 +535,23 @@ func _apply_motion(delta: float, speed_mul: float) -> void:
 			under = _level.sample(
 				depth.logical_x, depth.logical_z, -1, NAN, _feet_height()
 			)
-		var action := _ContactMath.sticky_ramp_action(
-			own.get("active", false), under, current, toward
+		var sticky: Dictionary = _GroundMotion.decide_sticky(
+			true, own.get("active", false), under, current, _velocity.x, _ramp_side
 		)
-		if action == "launch":
-			_enter_air_from_pipe(current, toward)
+		var sticky_action := str(sticky.get("action", "leave"))
+		if sticky_action == "launch":
+			_enter_air_from_pipe(current, float(sticky.get("toward", 0.0)))
 			return
-		if action == "leave":
+		if sticky_action == "leave":
 			_leave_ramp_to_flat()
 			hit = _sample_underfoot()
 		else:
 			hit = own
 	var solid_pad := _solid_pad_underfoot(prev_support_h)
-	var allow_pipe := _ContactMath.should_mount_pipe(
+	var mount: Dictionary = _GroundMotion.decide_mount(
 		hit, prev_support_h, _on_ramp, solid_pad, ride_off_height_eps
 	)
-	# A pipe top is an exit, not a safe fresh mount. Only a rider with an exact
-	# sticky identity may cross θ=π/2 into coping-launch air.
-	var rejected_fresh_coping: bool = (
-		not _on_ramp
-		and _ContactMath.is_pipe(hit)
-		and float(hit.get("theta", 0.0)) >= PI * 0.5 - 0.001
-	)
-	if rejected_fresh_coping:
-		allow_pipe = false
-	if allow_pipe:
+	if bool(mount.get("allow_pipe", false)):
 		if not _on_ramp:
 			_ramp_along = _velocity.x
 			_on_ramp = true
@@ -585,35 +577,42 @@ func _apply_motion(delta: float, speed_mul: float) -> void:
 				after_under = _level.sample(
 					depth.logical_x, depth.logical_z, -1, NAN, _feet_height()
 				)
-			var after_toward: float = maxf(_ramp_along * _coping_sign(_ramp_side), 0.0)
-			var after_action := _ContactMath.sticky_ramp_action(
-				after_own.get("active", false), after_under, _ramp_pipe_hit(), after_toward
+			var after: Dictionary = _GroundMotion.decide_post_move(
+				after_own.get("active", false),
+				after_own,
+				after_under,
+				_ramp_pipe_hit(),
+				_ramp_along,
+				_ramp_side,
 			)
-			if after_action == "ride" and after_own.get("active", false):
-				_project_ramp_velocity(float(after_own.get("theta", 0.0)))
+			var after_action := str(after.get("action", "leave"))
+			if after_action == "ride":
+				_project_ramp_velocity(float(after.get("theta", 0.0)))
 			elif after_action == "launch":
-				_enter_air_from_pipe(_ramp_pipe_hit(), after_toward)
+				_enter_air_from_pipe(_ramp_pipe_hit(), float(after.get("toward", 0.0)))
 			else:
 				_leave_ramp_to_flat()
 		return
 
 	if _on_ramp:
 		_leave_ramp_to_flat()
-	var arc_speed := _velocity.x * speed_mul
-	var next_x: float = depth.logical_x + arc_speed * delta
-	if rejected_fresh_coping:
+	var flat_arc := _velocity.x * speed_mul
+	var next_x: float = depth.logical_x + flat_arc * delta
+	var cross := _coping_cross_hit(depth.logical_x, next_x)
+	var flat: Dictionary = _GroundMotion.decide_flat_path(
+		hit,
+		cross,
+		solid_pad,
+		bool(mount.get("rejected_fresh_coping", false)),
+		flat_arc,
+	)
+	var flat_action := str(flat.get("action", "commit"))
+	if flat_action == "ride_off":
 		_commit_xz(next_x, depth.logical_z)
 		_try_ride_off_air(prev_support_h)
 		return
-	var cross := _coping_cross_hit(depth.logical_x, next_x)
-	if (
-		not cross.is_empty()
-		and not solid_pad
-		and _ContactMath.should_coping_launch(hit, cross)
-	):
-		var side: int = int(cross.side)
-		var up_speed: float = maxf(arc_speed * _coping_sign(side), 0.0)
-		_enter_air_from_pipe(cross, up_speed)
+	if flat_action == "coping_launch":
+		_enter_air_from_pipe(flat.get("hit", {}), float(flat.get("up_speed", 0.0)))
 		return
 	_commit_xz(next_x, depth.logical_z)
 	_try_ride_off_air(prev_support_h)
@@ -1175,32 +1174,11 @@ func _apply_surface() -> void:
 
 
 func _coping_cross_hit(from_x: float, to_x: float) -> Dictionary:
-	if _level == null or is_equal_approx(from_x, to_x):
+	if _level == null:
 		return {}
-	var prefer_h := _feet_height()
-	var best := {}
-	var best_base := -INF
-	for pipe in _level.pipes:
-		if depth.logical_z < pipe.z_min - 0.001 or depth.logical_z > pipe.z_max + 0.001:
-			continue
-		# Don't cross onto a pipe story far above the feet.
-		if pipe.base_height > prefer_h + 1.5:
-			continue
-		var sign: float = _coping_sign(pipe.side)
-		var from_off: float = (from_x - pipe.lip_x) * sign
-		var to_off: float = (to_x - pipe.lip_x) * sign
-		if from_off < pipe.radius - 0.001 and to_off >= pipe.radius - 0.001:
-			if pipe.base_height >= best_base:
-				best_base = pipe.base_height
-				best = {
-					"side": pipe.side,
-					"lip_x": pipe.lip_x,
-					"radius": pipe.radius,
-					"base_height": pipe.base_height,
-					"z_min": pipe.z_min,
-					"z_max": pipe.z_max,
-				}
-	return best
+	return _GroundMotion.find_coping_cross(
+		_level.pipes, depth.logical_z, from_x, to_x, _feet_height()
+	)
 
 
 ## Pipe-only entry path (today). Future entries should call _begin_air_over.
