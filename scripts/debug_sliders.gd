@@ -146,7 +146,7 @@ func _ready() -> void:
 		1.0,
 		_player,
 		"facing_coping_cells",
-		3.0,
+		6.0,
 		_on_acid_cells_changed,
 		_refresh_acid_cells_label
 	)

@@ -36,7 +36,7 @@ const _ContactMath := preload("res://scripts/contact_math.gd")
 @export var ride_off_height_eps: float = 0.5
 ## Acid/spine: max cells ahead along travel/facing cast to accept a top coping.
 ## Tuned via TUNING "acid cells" — independent of facing-cast debug draw distance.
-@export_range(1, 16, 1) var facing_coping_cells: int = 3
+@export_range(1, 16, 1) var facing_coping_cells: int = 6
 ## Acid/spine X settle seconds at coping (height-above = 0).
 @export var acid_drop_x_duration: float = 0.18
 ## Extra settle seconds per logical unit of height above coping.
@@ -1622,7 +1622,8 @@ func _find_acid_coping_target(travel_x: float) -> Dictionary:
 
 ## Spine transfer: rising air, or rising on a pipe, when FacingCastMath finds a
 ## top coping within `facing_coping_cells` ahead of facing_h (excludes current pipe).
-## Lock X to that coping; keep height / air_vel_y; land uses drop-in merge.
+## Requires feet at/above the opposite coping so low→high cannot start early and
+## clip through the dest back wall. Lock X; land uses drop-in merge.
 ## Spends both charges. A held transfer button is explicit input, including high→low.
 func _try_spine_transfer(_from_hold_buffer: bool = false) -> bool:
 	if _flew_out_this_aerial:
@@ -1638,6 +1639,12 @@ func _try_spine_transfer(_from_hold_buffer: bool = false) -> bool:
 
 	var hit: Dictionary = _find_facing_coping_target()
 	if hit.is_empty():
+		return false
+	var dest_coping_h := (
+		float(hit.get("base_height", 0.0)) + float(hit.get("radius", 150.0))
+	)
+	# Must already clear the opposite lip — no early spine into a taller back wall.
+	if _feet_height() < dest_coping_h - 0.5:
 		return false
 	# Peak aerial carry (exit speed), not live air_vel_y after a gravity climb.
 	_note_air_carry()

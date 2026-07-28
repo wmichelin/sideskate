@@ -239,20 +239,21 @@ theme_override_constants/separation = 8
 layout_mode = 2
 theme_override_colors/font_color = Color(0.75, 0.8, 0.88, 1)
 theme_override_font_sizes/font_size = 12
-text = "acid buf"
+text = "acid cells"
 
 [node name="Slider" type="HSlider" parent="DebugSliders/Panel/VBox/Body/AcidDropRow" unique_id=2069293446]
 layout_mode = 2
 size_flags_horizontal = 3
-max_value = 80.0
-value = 44.0
+min_value = 1.0
+max_value = 16.0
+value = 6.0
 
 [node name="Value" type="Label" parent="DebugSliders/Panel/VBox/Body/AcidDropRow" unique_id=991909478]
 custom_minimum_size = Vector2(72, 0)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.9, 0.93, 0.98, 1)
 theme_override_font_sizes/font_size = 12
-text = "44 u"
+text = "6"
 horizontal_alignment = 2
 
 [node name="FlyOutRow" type="HBoxContainer" parent="DebugSliders/Panel/VBox/Body" unique_id=412338194]
@@ -729,14 +730,14 @@ layout_mode = 2
 size_flags_horizontal = 3
 min_value = 1.0
 max_value = 16.0
-value = 3.0
+value = 6.0
 
 [node name="Value" type="Label" parent="DebugSliders/Panel/VBox/Body/CopingCellsRow" unique_id=679258922]
 custom_minimum_size = Vector2(72, 0)
 layout_mode = 2
 theme_override_colors/font_color = Color(0.9, 0.93, 0.98, 1)
 theme_override_font_sizes/font_size = 12
-text = "3"
+text = "6"
 horizontal_alignment = 2
 
 [node name="GodModeRow" type="HBoxContainer" parent="DebugSliders/Panel/VBox/Body" unique_id=272791587]
