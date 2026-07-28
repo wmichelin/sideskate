@@ -100,8 +100,11 @@ static func _build_endcaps(pipe: QuarterPipe) -> ArrayMesh:
 
 static func _endcap_at(st: SurfaceTool, pipe: QuarterPipe, logical_z: float, near_face: bool) -> void:
 	var is_left := pipe.side == QuarterPipe.PipeSide.LEFT
-	var lip := _profile_point(pipe, 0.0, is_left)
-	var origin := WorldSpace.logical_to_world(lip.x, logical_z, lip.y)
+	# Solid under the ride arc: fan from the outer base corner (cope_x, base)
+	# through arc samples — same silhouette as RampVisual._draw_pipe_endcap
+	# (arc → outer drop → base), not a hard chord triangle.
+	var cope_profile := _profile_point(pipe, PI * 0.5, is_left)
+	var cope_bot := WorldSpace.logical_to_world(cope_profile.x, logical_z, pipe.base_height)
 	for i in range(ARC_STEPS):
 		var t0 := float(i) / float(ARC_STEPS)
 		var t1 := float(i + 1) / float(ARC_STEPS)
@@ -109,20 +112,11 @@ static func _endcap_at(st: SurfaceTool, pipe: QuarterPipe, logical_z: float, nea
 		var p1 := _profile_point(pipe, t1 * PI * 0.5, is_left)
 		var a := WorldSpace.logical_to_world(p0.x, logical_z, p0.y)
 		var b := WorldSpace.logical_to_world(p1.x, logical_z, p1.y)
-		# Fan from lip; WorldSpace X-mirror reverses near/far winding.
+		# WorldSpace X-mirror reverses near/far winding.
 		if near_face:
-			_tri(st, origin, b, a)
+			_tri(st, cope_bot, a, b)
 		else:
-			_tri(st, origin, a, b)
-	# Outer drop triangle under coping.
-	var cope := _profile_point(pipe, PI * 0.5, is_left)
-	var cope_top := WorldSpace.logical_to_world(cope.x, logical_z, cope.y)
-	var cope_bot := WorldSpace.logical_to_world(cope.x, logical_z, pipe.base_height)
-	var lip_w := WorldSpace.logical_to_world(lip.x, logical_z, pipe.base_height)
-	if near_face:
-		_tri(st, cope_top, cope_bot, lip_w)
-	else:
-		_tri(st, cope_top, lip_w, cope_bot)
+			_tri(st, cope_bot, b, a)
 
 
 ## Profile point: Vector2(x, height) at angle theta from lip (0) to coping (π/2).
