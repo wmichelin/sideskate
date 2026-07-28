@@ -519,7 +519,39 @@ func _teleport_body_to_logical() -> void:
 	var h := _feet_height()
 	global_position = _WorldSpace.logical_to_world(depth.logical_x, depth.logical_z, h)
 	velocity = Vector3.ZERO
+	_depenetrate_body()
+	_sync_logical_from_body()
 	_derive_depth_presentation()
+
+
+## Push out of overlapping solids after teleports / large corrections.
+func _depenetrate_body() -> void:
+	_refresh_action_collision_filters()
+	if collision_mask == 0:
+		return
+	# Recover with short probes; CharacterBody has no built-in rest depenetration.
+	var recover := _WorldSpace.logic_to_meters(12.0)
+	for dir in [
+		Vector3.UP,
+		Vector3.DOWN,
+		Vector3.LEFT,
+		Vector3.RIGHT,
+		Vector3.FORWARD,
+		Vector3.BACK,
+	]:
+		for _i in range(4):
+			var col := move_and_collide(dir * recover * 0.25)
+			if col == null:
+				break
+			# Nudge along contact normal out of the solid.
+			var n := col.get_normal()
+			global_position += n * maxf(col.get_depth(), 0.002)
+	# Final zero-length collide to settle contacts if still overlapping.
+	for _j in range(3):
+		var hit := move_and_collide(Vector3.ZERO)
+		if hit == null:
+			break
+		global_position += hit.get_normal() * maxf(hit.get_depth(), 0.002)
 
 
 ## Swept move toward a logical pose; body transform is the authority afterward.
@@ -569,8 +601,8 @@ func _derive_depth_presentation() -> void:
 	depth.height_offset = 0.0
 
 
-## Acid/spine/sticky: suppress ride faces the capsule would otherwise embed in.
-## Walls/backs/endcaps stay solid off-ramp. Sticky ride uses analytical arc.
+## Acid/spine/sticky: suppress origin pipe ride+back so settle isn't snagged on the
+## coping back wall. Sticky ride uses analytical arc (mask cleared). Other walls stay.
 func _refresh_action_collision_filters() -> void:
 	_clear_ride_exceptions()
 	if _on_ramp:
@@ -582,8 +614,9 @@ func _refresh_action_collision_filters() -> void:
 		return
 	if not (_acid_drop_lock or _spine_transfer_lock or _settle.x_active or _flew_out_this_aerial):
 		return
+	# Exit/origin only — never the spine dest (`_air_*`), or landing falls through.
 	if _exit_pipe_side >= 0:
-		_exclude_pipe_faces(_exit_pipe_side, _exit_pipe_lip, ["ride"])
+		_exclude_pipe_faces(_exit_pipe_side, _exit_pipe_lip, ["ride", "back"])
 
 
 func _exclude_pipe_faces(side: int, lip_x: float, roles: Array) -> void:

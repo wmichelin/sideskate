@@ -34,9 +34,12 @@ static func build_one_parts(deck: Dictionary) -> Array:
 	var layer := int(deck.get("layer", 0))
 	var top = _build_top_part(poly, top_h, layer, base_h)
 	if top != null and not top.is_empty():
+		# Keep logical footprint for solid collision extrusion.
+		top.meta["poly"] = poly.duplicate()
 		out.append(top)
 	var walls = _build_walls_part(deck, poly, top_h, base_h, layer)
 	if walls != null and not walls.is_empty():
+		walls.meta["poly"] = poly.duplicate()
 		out.append(walls)
 	return out
 

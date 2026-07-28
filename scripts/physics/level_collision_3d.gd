@@ -1,10 +1,10 @@
 class_name LevelCollision3D
 extends Node3D
-## StaticBody3D trimeshes from shared MeshPart faces (same source as LevelVisual3D).
+## StaticBody3D colliders from shared MeshPart faces (same source as LevelVisual3D).
 
 const LevelGeometryScript := preload("res://scripts/mesh/level_geometry.gd")
-const MeshPartScript := preload("res://scripts/mesh/mesh_part.gd")
 const CollisionLayersScript := preload("res://scripts/physics/collision_layers.gd")
+const _WorldSpace := preload("res://scripts/world_space.gd")
 
 @export var level_path: NodePath = NodePath("../../RampLevel")
 
@@ -65,6 +65,10 @@ func meta_for_collider(collider: Object) -> Dictionary:
 
 func _add_part(part) -> void:
 	var face_role := str(part.meta.get("face_role", "top"))
+	var zone := str(part.meta.get("zone", ""))
+	# Deck walls are covered by the solid deck prism from the top part.
+	if zone == "deck" and face_role == "wall":
+		return
 	var body := StaticBody3D.new()
 	body.name = "%s_L%s_%s" % [part.material_key, part.layer, face_role]
 	body.collision_layer = CollisionLayersScript.bit(
@@ -73,18 +77,20 @@ func _add_part(part) -> void:
 	body.collision_mask = 0
 	body.set_meta("mesh_part_meta", part.meta.duplicate(true))
 	body.set_meta("face_role", face_role)
-	body.set_meta("zone", str(part.meta.get("zone", "")))
+	body.set_meta("zone", zone)
 	body.set_meta("layer", int(part.meta.get("layer", part.layer)))
 	var cs := CollisionShape3D.new()
 	cs.name = "Shape"
-	# Flat floors/lava: box from part AABB (zero-thickness trimesh is unreliable).
-	# Curved / vertical faces keep shared concave tris.
-	if face_role == "top" or face_role == "lava":
+	if zone == "deck" and face_role == "top":
+		var solid := _deck_solid_shape(part)
+		if solid == null:
+			return
+		cs.shape = solid
+	elif face_role == "top" or face_role == "lava":
 		var ab: AABB = part.aabb()
 		if ab.size.length() < 0.0001:
 			return
 		var box := BoxShape3D.new()
-		# Ensure minimum thickness for physics.
 		var sz := ab.size
 		sz.y = maxf(sz.y, 0.05)
 		box.size = sz
@@ -99,6 +105,43 @@ func _add_part(part) -> void:
 	_body_root.add_child(body)
 	_meta_by_owner[body.get_instance_id()] = part.meta.duplicate(true)
 	part_count += 1
+
+
+## Solid convex prism for deck footprint (base→top). Hollow wall trimeshes let
+## CharacterBody tunnel inside; this volume stays solid.
+func _deck_solid_shape(part) -> Shape3D:
+	var top_h := float(part.meta.get("height", 0.0))
+	var base_h := float(part.meta.get("base_height", 0.0))
+	if top_h < base_h:
+		var tmp := top_h
+		top_h = base_h
+		base_h = tmp
+	var poly = part.meta.get("poly", PackedVector2Array())
+	if typeof(poly) == TYPE_PACKED_VECTOR2_ARRAY and poly.size() >= 3:
+		var pts := PackedVector3Array()
+		for p in poly:
+			pts.append(_WorldSpace.logical_to_world(p.x, p.y, top_h))
+			pts.append(_WorldSpace.logical_to_world(p.x, p.y, base_h))
+		var convex := ConvexPolygonShape3D.new()
+		convex.points = pts
+		return convex
+	# Fallback: AABB prism as convex.
+	var ab: AABB = part.aabb()
+	if ab.size.length() < 0.0001:
+		return null
+	var y0 := _WorldSpace.logic_to_meters(base_h)
+	var y1 := _WorldSpace.logic_to_meters(top_h)
+	var pts2 := PackedVector3Array()
+	var x0 := ab.position.x
+	var x1 := ab.position.x + ab.size.x
+	var z0 := ab.position.z
+	var z1 := ab.position.z + ab.size.z
+	for xz in [Vector2(x0, z0), Vector2(x1, z0), Vector2(x1, z1), Vector2(x0, z1)]:
+		pts2.append(Vector3(xz.x, minf(y0, y1), xz.y))
+		pts2.append(Vector3(xz.x, maxf(y0, y1), xz.y))
+	var convex2 := ConvexPolygonShape3D.new()
+	convex2.points = pts2
+	return convex2
 
 
 func _clear() -> void:
