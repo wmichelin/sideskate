@@ -1,12 +1,15 @@
 class_name CameraRig3D
 extends Node3D
-## Fixed oblique Camera3D following the logical skater pose.
+## Orbit Camera3D following the logical skater pose.
 
 @export var target_path: NodePath = NodePath("../PlayerVisual")
-@export var distance: float = 900.0
-@export var height: float = 480.0
-@export var pitch_deg: float = -42.0
-@export var fov_deg: float = 50.0
+## Radial distance from focus (zoom).
+@export var distance: float = 310.0
+## Elevation angle in degrees. 0 = horizon behind; positive = above looking down.
+@export var pitch_deg: float = 48.5
+## Orbit yaw in degrees around the focus (0 = behind, looking +Z into the park).
+@export var yaw_deg: float = 0.0
+@export var fov_deg: float = 90.0
 @export var look_ahead: float = 80.0
 @export var screen_y_bias: float = 0.08
 @export var follow_smooth: float = 14.0
@@ -24,7 +27,6 @@ func _ready() -> void:
 	_cam.fov = fov_deg
 	add_child(_cam)
 	_target = get_node_or_null(target_path) as Node3D
-	_apply_local_offset()
 
 
 func set_follow_world(origin: Vector3) -> void:
@@ -38,12 +40,19 @@ func clear_manual_origin() -> void:
 
 func _physics_process(delta: float) -> void:
 	_cam.fov = fov_deg
-	_apply_local_offset()
 	var focus := _focus_point()
-	var desired := focus + _offset_world()
+	var desired := focus + _orbit_offset()
 	global_position = global_position.lerp(desired, clampf(follow_smooth * delta, 0.0, 1.0))
-	var look_at_pt := focus + Vector3(0.0, screen_y_bias * height, look_ahead)
-	_cam.look_at(look_at_pt, Vector3.UP)
+	var yaw := deg_to_rad(yaw_deg)
+	var forward := Vector3(sin(yaw), 0.0, cos(yaw))
+	var look_at_pt := focus + forward * look_ahead + Vector3(0.0, screen_y_bias * distance, 0.0)
+	var to_focus := look_at_pt - _cam.global_position
+	# Avoid look_at singularity when orbiting over the poles (±90° pitch).
+	var up := Vector3.UP
+	if absf(to_focus.normalized().dot(Vector3.UP)) > 0.98:
+		up = Vector3.FORWARD.rotated(Vector3.UP, yaw)
+	if to_focus.length_squared() > 0.0001:
+		_cam.look_at(look_at_pt, up)
 
 
 func _focus_point() -> Vector3:
@@ -56,14 +65,14 @@ func _focus_point() -> Vector3:
 	return Vector3.ZERO
 
 
-func _offset_world() -> Vector3:
-	# Behind (−Z) and above (+Y); pitch applied via look_at, not offset alone.
-	return Vector3(0.0, height, -distance)
-
-
-func _apply_local_offset() -> void:
-	_cam.position = Vector3.ZERO
-	_cam.rotation_degrees = Vector3(pitch_deg, 0.0, 0.0)
+func _orbit_offset() -> Vector3:
+	var yaw := deg_to_rad(yaw_deg)
+	var pitch := deg_to_rad(pitch_deg)
+	# Spherical offset: pitch rotates from −Z toward +Y; yaw spins around up.
+	var offset := Vector3(0.0, 0.0, -distance)
+	offset = offset.rotated(Vector3.RIGHT, pitch)
+	offset = offset.rotated(Vector3.UP, yaw)
+	return offset
 
 
 func calibration_error_px(level: RampLevel, samples: Array) -> float:
@@ -71,7 +80,6 @@ func calibration_error_px(level: RampLevel, samples: Array) -> float:
 	if level == null or _cam == null:
 		return INF
 	var worst := 0.0
-	var vp := get_viewport().get_visible_rect().size
 	for s in samples:
 		var x := float(s.get("x", 0.0))
 		var z := float(s.get("z", 0.0))
@@ -80,7 +88,6 @@ func calibration_error_px(level: RampLevel, samples: Array) -> float:
 		var screen_2d := Vector2(float(p2.screen_x), float(p2.ground_y) - float(p2.surface_screen_h))
 		var world := WorldSpace.logical_to_world(x, z, h)
 		var screen_3d: Vector2 = _cam.unproject_position(world)
-		# Normalize both into viewport pixel space roughly.
 		var err := screen_2d.distance_to(screen_3d)
 		worst = maxf(worst, err)
 	return worst

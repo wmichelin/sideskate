@@ -67,10 +67,6 @@ func _populate_levels() -> void:
 		return
 
 	_status.text = "Select a level  ·  ↑↓ / WS  ·  Enter"
-	if not paths_2d.is_empty():
-		_add_section_header("2D Levels")
-		for path in paths_2d:
-			_add_level_button(path, _display_name_for(path), GameSession.RenderBackend.CANVAS_2D, style_normal, style_hover)
 	if not paths_3d.is_empty():
 		_add_section_header("3D Levels")
 		for path in paths_3d:
@@ -81,6 +77,10 @@ func _populate_levels() -> void:
 				style_3d,
 				style_3d_hover
 			)
+	if not paths_2d.is_empty():
+		_add_section_header("2D Levels")
+		for path in paths_2d:
+			_add_level_button(path, _display_name_for(path), GameSession.RenderBackend.CANVAS_2D, style_normal, style_hover)
 
 	if not _buttons.is_empty():
 		_buttons[0].grab_focus()

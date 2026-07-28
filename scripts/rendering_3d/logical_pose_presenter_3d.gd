@@ -4,6 +4,8 @@ extends Node3D
 
 @export var depth_path: NodePath = NodePath("../../RampLevel/../Player/PseudoDepthBody")
 @export var player_path: NodePath = NodePath("../../Player")
+## Placeholder skater size. Root origin is the feet / ground contact.
+@export var body_size: Vector3 = Vector3(18, 40, 14)
 
 var _body: MeshInstance3D
 var _shadow: MeshInstance3D
@@ -20,8 +22,10 @@ func _build_meshes() -> void:
 	_body = MeshInstance3D.new()
 	_body.name = "SkaterBody"
 	var box := BoxMesh.new()
-	box.size = Vector3(18, 40, 14)
+	box.size = body_size
 	_body.mesh = box
+	# BoxMesh is centered on its origin; lift so the bottom edge sits on the feet.
+	_body.position = Vector3(0.0, body_size.y * 0.5, 0.0)
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = Color(0.92, 0.25, 0.45, 1.0)
 	_body.material_override = mat
@@ -49,12 +53,19 @@ func _resolve_refs() -> void:
 
 
 func apply_pose(pose: LogicalPose) -> void:
+	# Root = feet contact. Body mesh is offset up by half-height so its bottom
+	# stays on the surface even when body_size.y changes; tilt pivots at the feet.
 	global_position = WorldSpace.logical_to_world(pose.logical_x, pose.logical_z, pose.feet_height)
-	# 2D tilt is Y-down clockwise-positive; 3D Z-roll is Y-up — negate to match pipe lean.
-	rotation = Vector3(0.0, 0.0, -pose.surface_tilt)
-	# Facing +logical X is screen-right after WorldSpace X mirror; keep mesh facing that way.
+	scale = Vector3.ONE
+	# World X = −logical X mirrors the park vs 2D. CanvasItem tilt leans correctly
+	# on screen in 2D; after the mirror the same signed tilt must be applied as
+	# +Z roll (not negated) so the skater still leans into the pipe wall.
+	rotation = Vector3(0.0, 0.0, pose.surface_tilt)
 	var face := signf(pose.facing_h) if pose.facing_h != 0.0 else 1.0
-	scale = Vector3(-face, 1.0, 1.0)
+	if _body:
+		# Facing +logical X is screen-right after WorldSpace X mirror.
+		_body.scale = Vector3(-face, 1.0, 1.0)
+		_body.position = Vector3(0.0, body_size.y * 0.5, 0.0)
 	if _shadow:
 		if pose.airborne:
 			_shadow.visible = true

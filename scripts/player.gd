@@ -2163,6 +2163,29 @@ func motion_screen(kind: _MotionVectors.Kind) -> Vector2:
 	return Vector2.ZERO
 
 
+## World-space motion for 3D debug arrows (WorldSpace: −logical X, height Y, Z).
+func motion_world(kind: _MotionVectors.Kind) -> Vector3:
+	match kind:
+		_MotionVectors.Kind.ACTUAL:
+			return Vector3(-_actual_vel_x, _vert_vel, _actual_vel_z)
+		_MotionVectors.Kind.MOMENTUM:
+			if _on_ramp:
+				var th := 0.0
+				if last_surface.has("theta"):
+					th = float(last_surface.theta)
+				var sign := 1.0
+				if last_surface.has("side"):
+					sign = _coping_sign(int(last_surface.side))
+				var toward := _ramp_along * sign
+				var horiz := _ramp_along * cos(clampf(th, 0.0, PI * 0.5))
+				var vert := toward * sin(clampf(th, 0.0, PI * 0.5))
+				return Vector3(-horiz, vert, 0.0)
+			return Vector3(-_velocity.x, 0.0, _velocity.y)
+		_MotionVectors.Kind.INPUT:
+			return Vector3(-_last_input.x * max_speed_x, 0.0, _last_input.y * max_speed_z)
+	return Vector3.ZERO
+
+
 func motion_speed(kind: _MotionVectors.Kind) -> float:
 	match kind:
 		_MotionVectors.Kind.ACTUAL:

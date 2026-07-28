@@ -14,6 +14,8 @@
 [ext_resource type="Script" path="res://scripts/rendering_3d/level_visual_3d.gd" id="13_vis3d"]
 [ext_resource type="Script" path="res://scripts/rendering_3d/logical_pose_presenter_3d.gd" id="14_pose3d"]
 [ext_resource type="Script" path="res://scripts/rendering_3d/camera_rig_3d.gd" id="15_cam3d"]
+[ext_resource type="Script" path="res://scripts/rendering_3d/level_debug_3d.gd" id="16_dbg3d"]
+[ext_resource type="Script" path="res://scripts/rendering_3d/player_debug_3d.gd" id="17_pdbg3d"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_head"]
 content_margin_left = 8.0
@@ -65,6 +67,15 @@ player_path = NodePath("../../Player")
 [node name="CameraRig3D" type="Node3D" parent="World3D"]
 script = ExtResource("15_cam3d")
 target_path = NodePath("../PlayerVisual")
+
+[node name="LevelDebug3D" type="Node3D" parent="World3D"]
+script = ExtResource("16_dbg3d")
+player_path = NodePath("../../Player")
+level_path = NodePath("../../RampLevel")
+
+[node name="PlayerDebug3D" type="Node3D" parent="World3D"]
+script = ExtResource("17_pdbg3d")
+player_path = NodePath("../../Player")
 
 [node name="WorldBackdrop" type="CanvasLayer" parent="." unique_id=1463926595]
 layer = -100

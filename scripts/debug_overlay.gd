@@ -13,6 +13,7 @@ extends CanvasLayer
 
 var _player: Node2D
 var _collapsed: bool = true
+var _is_3d := false
 
 
 func _ready() -> void:
@@ -21,6 +22,7 @@ func _ready() -> void:
 		queue_free()
 		return
 	_player = get_node_or_null(player_path) as Node2D
+	_is_3d = get_node_or_null("../World3D") != null
 	_wire_header_toggle()
 	_set_collapsed(start_collapsed)
 
@@ -56,22 +58,27 @@ func _process(_delta: float) -> void:
 		surface = _player.last_surface
 	var zone := str(surface.get("zone", "flat"))
 	if _player.has_method("zone_debug_label"):
-		zone = str(_player.call("zone_debug_label"))
+		zone = str(_player.call("zone_debug_label")).replace("\n", " ")
+	var y := float(s.surface_height)
+	if bool(_player.get("_airborne")):
+		y = float(_player.get("air_abs_height"))
 	var pipe_angle := float(surface.get("angle", 0.0))
-	_body.text = (
-		"X: %.1f  (sx %.1f)\n" % [s.x, s.get("screen_x", s.x)]
-		+ "Z: %.1f  (t=%.2f)\n" % [s.z, s.t]
-		+ "Scale: %.3f\n" % s.scale
-		+ "Screen Y: %.1f\n" % s.screen_y
-		+ "z_index: %d\n" % s.z_index
-		+ "Zone: %s\n" % zone
+	var text := "x %.1f  y %.1f  z %.1f\n" % [s.x, y, s.z]
+	if not _is_3d:
+		text += (
+			"sx %.1f  t=%.2f  scale %.3f\n" % [s.get("screen_x", s.x), s.t, s.scale]
+			+ "Screen Y: %.1f  z_index: %d\n" % [s.screen_y, s.z_index]
+			+ "Surf scr H: %.1f\n" % s.get("surface_screen_h", 0.0)
+		)
+	text += (
+		"Zone: %s\n" % zone
 		+ "Airborne: %s\n" % _airborne_debug()
-		+ "Surf H: %.1f (scr %.1f)\n" % [s.surface_height, s.get("surface_screen_h", 0.0)]
 		+ "Pipe angle: %.1f deg\n" % pipe_angle
 		+ _cell_debug_line()
 		+ _next_coping_debug_line()
 		+ "WASD — Up = farther | Space = ollie | P/T = transfer↑ / acid↓ | G = god (j/k vert)"
 	)
+	_body.text = text
 	_fit_panel()
 
 

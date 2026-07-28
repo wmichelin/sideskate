@@ -47,6 +47,14 @@ extends CanvasLayer
 @export var cell_x_max: float = 120.0
 @export var cell_z_min: float = 10.0
 @export var cell_z_max: float = 200.0
+@export var cam_dist_min: float = 200.0
+@export var cam_dist_max: float = 2500.0
+@export var cam_pitch_min: float = -180.0
+@export var cam_pitch_max: float = 180.0
+@export var cam_yaw_min: float = -180.0
+@export var cam_yaw_max: float = 180.0
+@export var cam_fov_min: float = 20.0
+@export var cam_fov_max: float = 90.0
 
 @onready var _panel: PanelContainer = $Panel
 @onready var _header: Control = $Panel/VBox/Header
@@ -103,9 +111,16 @@ extends CanvasLayer
 var _player: Node2D
 var _level: Node2D
 var _visual: Node2D
+var _level_debug_3d: Node3D
+var _camera_rig: Node3D
+var _is_3d := false
 var _syncing_god := false
 var _collapsed: bool = true
 var _scroll: ScrollContainer
+var _cam_dist_value: Label
+var _cam_pitch_value: Label
+var _cam_yaw_value: Label
+var _cam_fov_value: Label
 
 
 func _ready() -> void:
@@ -117,10 +132,15 @@ func _ready() -> void:
 	_player = get_node_or_null(player_path) as Node2D
 	_level = get_node_or_null(ramp_level_path) as Node2D
 	_visual = get_node_or_null(ramp_visual_path) as Node2D
+	_level_debug_3d = get_node_or_null("../World3D/LevelDebug3D") as Node3D
+	_camera_rig = get_node_or_null("../World3D/CameraRig3D") as Node3D
+	_is_3d = _level_debug_3d != null or get_node_or_null("../World3D") != null
 
 	_wrap_body_in_scroll()
 	get_viewport().size_changed.connect(_refit_panel_layout)
 	_wire_header_toggle()
+	_apply_3d_panel_visibility()
+	_setup_3d_camera_sliders()
 
 	_bind_float_slider(_gravity_slider, gravity_min, gravity_max, 0.1, _player, "gravity_ms2", -19.0, _on_gravity_changed, _refresh_gravity_label)
 	_bind_float_slider(_acid_slider, acid_buffer_min, acid_buffer_max, 1.0, _player, "acid_drop_buffer", 44.0, _on_acid_buffer_changed, _refresh_acid_label)
@@ -143,51 +163,54 @@ func _ready() -> void:
 	_bind_float_slider(_ramp_friction_slider, ramp_friction_min, ramp_friction_max, 10.0, _player, "ramp_friction", 0.0, _on_ramp_friction_changed, _refresh_ramp_friction_label)
 	_bind_float_slider(_friction_slider, friction_min, friction_max, 10.0, _player, "friction", 0.0, _on_friction_changed, _refresh_friction_label)
 
-	_bind_float_slider(_persp_inset_slider, persp_inset_min, persp_inset_max, 1.0, _level, "perspective_inset", 155.0, _on_persp_inset_changed, _refresh_persp_inset_label)
-	_bind_float_slider(_far_geom_slider, far_geom_min, far_geom_max, 0.01, _level, "far_geometry_scale", 1.0, _on_far_geom_changed, _refresh_far_geom_label)
-	_bind_float_slider(_ref_depth_slider, ref_depth_min, ref_depth_max, 5.0, _level, "reference_depth", 500.0, _on_ref_depth_changed, _refresh_ref_depth_label)
-	_bind_float_slider(
-		_draw_band_pad_slider,
-		draw_band_pad_min,
-		draw_band_pad_max,
-		0.05,
-		_visual,
-		"draw_band_pad",
-		2.0,
-		_on_draw_band_pad_changed,
-		_refresh_draw_band_pad_label
-	)
-	_bind_float_slider(
-		_arc_steps_slider,
-		arc_steps_min,
-		arc_steps_max,
-		1.0,
-		_visual,
-		"arc_steps",
-		6.0,
-		_on_arc_steps_changed,
-		_refresh_arc_steps_label
-	)
+	if not _is_3d:
+		_bind_float_slider(_persp_inset_slider, persp_inset_min, persp_inset_max, 1.0, _level, "perspective_inset", 155.0, _on_persp_inset_changed, _refresh_persp_inset_label)
+		_bind_float_slider(_far_geom_slider, far_geom_min, far_geom_max, 0.01, _level, "far_geometry_scale", 1.0, _on_far_geom_changed, _refresh_far_geom_label)
+		_bind_float_slider(_ref_depth_slider, ref_depth_min, ref_depth_max, 5.0, _level, "reference_depth", 500.0, _on_ref_depth_changed, _refresh_ref_depth_label)
+		_bind_float_slider(
+			_draw_band_pad_slider,
+			draw_band_pad_min,
+			draw_band_pad_max,
+			0.05,
+			_visual,
+			"draw_band_pad",
+			2.0,
+			_on_draw_band_pad_changed,
+			_refresh_draw_band_pad_label
+		)
+		_bind_float_slider(
+			_arc_steps_slider,
+			arc_steps_min,
+			arc_steps_max,
+			1.0,
+			_visual,
+			"arc_steps",
+			6.0,
+			_on_arc_steps_changed,
+			_refresh_arc_steps_label
+		)
 	_bind_float_slider(_cell_x_slider, cell_x_min, cell_x_max, 1.0, _level, "cell_size_x", 47.0, _on_cell_x_changed, _refresh_cell_x_label)
 	_bind_float_slider(_cell_z_slider, cell_z_min, cell_z_max, 1.0, _level, "cell_size_z", 47.0, _on_cell_z_changed, _refresh_cell_z_label)
 
-	var depth_on := false
-	if _visual != null and _visual.get("show_depth_grid") != null:
-		depth_on = bool(_visual.get("show_depth_grid"))
-	_depth_grid_check.button_pressed = depth_on
-	_depth_grid_check.focus_mode = Control.FOCUS_NONE
-	_depth_grid_check.toggled.connect(_on_depth_grid_toggled)
+	if not _is_3d:
+		var depth_on := false
+		if _visual != null and _visual.get("show_depth_grid") != null:
+			depth_on = bool(_visual.get("show_depth_grid"))
+		_depth_grid_check.button_pressed = depth_on
+		_depth_grid_check.focus_mode = Control.FOCUS_NONE
+		_depth_grid_check.toggled.connect(_on_depth_grid_toggled)
 
 	var cell_on := false
-	if _visual != null and _visual.get("debug_cell_highlight") != null:
-		cell_on = bool(_visual.get("debug_cell_highlight"))
+	var cell_src: Object = _level_debug_3d if _is_3d else _visual
+	if cell_src != null and cell_src.get("debug_cell_highlight") != null:
+		cell_on = bool(cell_src.get("debug_cell_highlight"))
 	_cell_check.button_pressed = cell_on
 	_cell_check.focus_mode = Control.FOCUS_NONE
 	_cell_check.toggled.connect(_on_cell_highlight_toggled)
 
 	var facing_on := false
-	if _visual != null and _visual.get("debug_facing_cast") != null:
-		facing_on = bool(_visual.get("debug_facing_cast"))
+	if cell_src != null and cell_src.get("debug_facing_cast") != null:
+		facing_on = bool(cell_src.get("debug_facing_cast"))
 	_facing_cast_check.button_pressed = facing_on
 	_facing_cast_check.focus_mode = Control.FOCUS_NONE
 	_facing_cast_check.toggled.connect(_on_facing_cast_toggled)
@@ -208,12 +231,13 @@ func _ready() -> void:
 	_vsync_check.focus_mode = Control.FOCUS_NONE
 	_vsync_check.toggled.connect(_on_vsync_toggled)
 
+	var cast_target: Object = _level_debug_3d if _is_3d else _visual
 	_bind_float_slider(
 		_cast_cells_slider,
 		cast_cells_min,
 		cast_cells_max,
 		1.0,
-		_visual,
+		cast_target,
 		"facing_cast_distance",
 		3.0,
 		_on_cast_cells_changed,
@@ -250,6 +274,164 @@ func _ready() -> void:
 			row.focus_mode = Control.FOCUS_NONE
 
 	_set_collapsed(start_collapsed)
+
+
+func _apply_3d_panel_visibility() -> void:
+	if not _is_3d:
+		return
+	for row_name in [
+		"PerspInsetRow",
+		"FarGeomScaleRow",
+		"RefDepthRow",
+		"DrawBandPadRow",
+		"ArcStepsRow",
+		"DepthGridRow",
+	]:
+		var row := _body.get_node_or_null(row_name) as Control
+		if row != null:
+			row.visible = false
+
+
+func _setup_3d_camera_sliders() -> void:
+	if not _is_3d or _camera_rig == null or _body == null:
+		return
+	# Insert near the top of the tuning list (after friction block / before 2D-only rows).
+	var insert_at := 0
+	var friction_row := _body.get_node_or_null("FrictionRow")
+	if friction_row != null:
+		insert_at = friction_row.get_index() + 1
+
+	var dist_row := _make_slider_row("CamDistRow", "cam zoom", insert_at)
+	_cam_dist_value = dist_row["value"]
+	_bind_float_slider(
+		dist_row["slider"],
+		cam_dist_min,
+		cam_dist_max,
+		10.0,
+		_camera_rig,
+		"distance",
+		310.0,
+		_on_cam_dist_changed,
+		_refresh_cam_dist_label
+	)
+	dist_row["slider"].focus_mode = Control.FOCUS_NONE
+
+	var pitch_row := _make_slider_row("CamPitchRow", "cam pitch", insert_at + 1)
+	_cam_pitch_value = pitch_row["value"]
+	_bind_float_slider(
+		pitch_row["slider"],
+		cam_pitch_min,
+		cam_pitch_max,
+		0.5,
+		_camera_rig,
+		"pitch_deg",
+		48.5,
+		_on_cam_pitch_changed,
+		_refresh_cam_pitch_label
+	)
+	pitch_row["slider"].focus_mode = Control.FOCUS_NONE
+
+	var yaw_row := _make_slider_row("CamYawRow", "cam yaw", insert_at + 2)
+	_cam_yaw_value = yaw_row["value"]
+	_bind_float_slider(
+		yaw_row["slider"],
+		cam_yaw_min,
+		cam_yaw_max,
+		1.0,
+		_camera_rig,
+		"yaw_deg",
+		0.0,
+		_on_cam_yaw_changed,
+		_refresh_cam_yaw_label
+	)
+	yaw_row["slider"].focus_mode = Control.FOCUS_NONE
+
+	var fov_row := _make_slider_row("CamFovRow", "cam fov", insert_at + 3)
+	_cam_fov_value = fov_row["value"]
+	_bind_float_slider(
+		fov_row["slider"],
+		cam_fov_min,
+		cam_fov_max,
+		1.0,
+		_camera_rig,
+		"fov_deg",
+		90.0,
+		_on_cam_fov_changed,
+		_refresh_cam_fov_label
+	)
+	fov_row["slider"].focus_mode = Control.FOCUS_NONE
+
+
+func _make_slider_row(row_name: String, caption: String, index: int) -> Dictionary:
+	var row := HBoxContainer.new()
+	row.name = row_name
+	row.add_theme_constant_override("separation", 8)
+	var cap := Label.new()
+	cap.name = "Caption"
+	cap.text = caption
+	cap.custom_minimum_size = Vector2(88, 0)
+	cap.add_theme_font_size_override("font_size", 12)
+	cap.add_theme_color_override("font_color", Color(0.75, 0.8, 0.88, 1))
+	var slider := HSlider.new()
+	slider.name = "Slider"
+	slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	slider.custom_minimum_size = Vector2(100, 0)
+	var value := Label.new()
+	value.name = "Value"
+	value.custom_minimum_size = Vector2(64, 0)
+	value.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	value.add_theme_font_size_override("font_size", 12)
+	value.add_theme_color_override("font_color", Color(0.9, 0.93, 0.98, 1))
+	row.add_child(cap)
+	row.add_child(slider)
+	row.add_child(value)
+	_body.add_child(row)
+	_body.move_child(row, mini(index, _body.get_child_count() - 1))
+	return {"row": row, "slider": slider, "value": value}
+
+
+func _on_cam_dist_changed(v: float) -> void:
+	if _camera_rig != null:
+		_camera_rig.set("distance", v)
+	_refresh_cam_dist_label(v)
+
+
+func _refresh_cam_dist_label(v: float) -> void:
+	if _cam_dist_value != null:
+		_cam_dist_value.text = "%.0f" % v
+
+
+func _on_cam_pitch_changed(v: float) -> void:
+	if _camera_rig != null:
+		_camera_rig.set("pitch_deg", v)
+	_refresh_cam_pitch_label(v)
+
+
+func _refresh_cam_pitch_label(v: float) -> void:
+	if _cam_pitch_value != null:
+		_cam_pitch_value.text = "%.1f°" % v
+
+
+func _on_cam_yaw_changed(v: float) -> void:
+	if _camera_rig != null:
+		_camera_rig.set("yaw_deg", v)
+	_refresh_cam_yaw_label(v)
+
+
+func _refresh_cam_yaw_label(v: float) -> void:
+	if _cam_yaw_value != null:
+		_cam_yaw_value.text = "%.0f°" % v
+
+
+func _on_cam_fov_changed(v: float) -> void:
+	if _camera_rig != null:
+		_camera_rig.set("fov_deg", v)
+	_refresh_cam_fov_label(v)
+
+
+func _refresh_cam_fov_label(v: float) -> void:
+	if _cam_fov_value != null:
+		_cam_fov_value.text = "%.0f°" % v
 
 
 func _wire_header_toggle() -> void:
@@ -579,21 +761,25 @@ func _on_depth_grid_toggled(on: bool) -> void:
 
 
 func _on_cell_highlight_toggled(on: bool) -> void:
-	if _visual != null:
-		_visual.set("debug_cell_highlight", on)
-		if _visual.has_method("refresh"):
-			_visual.call("refresh")
-		else:
-			_visual.queue_redraw()
+	var target: Object = _level_debug_3d if _is_3d else _visual
+	if target == null:
+		return
+	target.set("debug_cell_highlight", on)
+	if target.has_method("refresh"):
+		target.call("refresh")
+	elif target is CanvasItem:
+		(target as CanvasItem).queue_redraw()
 
 
 func _on_facing_cast_toggled(on: bool) -> void:
-	if _visual != null:
-		_visual.set("debug_facing_cast", on)
-		if _visual.has_method("refresh"):
-			_visual.call("refresh")
-		else:
-			_visual.queue_redraw()
+	var target: Object = _level_debug_3d if _is_3d else _visual
+	if target == null:
+		return
+	target.set("debug_facing_cast", on)
+	if target.has_method("refresh"):
+		target.call("refresh")
+	elif target is CanvasItem:
+		(target as CanvasItem).queue_redraw()
 
 
 func _on_motion_vectors_toggled(on: bool) -> void:
@@ -613,12 +799,13 @@ func _on_vsync_toggled(on: bool) -> void:
 
 
 func _on_cast_cells_changed(v: float) -> void:
-	if _visual != null:
-		_visual.set("facing_cast_distance", int(round(v)))
-		if _visual.has_method("refresh"):
-			_visual.call("refresh")
-		else:
-			_visual.queue_redraw()
+	var target: Object = _level_debug_3d if _is_3d else _visual
+	if target != null:
+		target.set("facing_cast_distance", int(round(v)))
+		if target.has_method("refresh"):
+			target.call("refresh")
+		elif target is CanvasItem:
+			(target as CanvasItem).queue_redraw()
 	_refresh_cast_cells_label(v)
 
 
