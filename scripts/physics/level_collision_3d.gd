@@ -66,9 +66,9 @@ func meta_for_collider(collider: Object) -> Dictionary:
 func _add_part(part) -> void:
 	var face_role := str(part.meta.get("face_role", "top"))
 	var zone := str(part.meta.get("zone", ""))
-	# Deck walls are covered by the solid deck prism from the top part.
-	if zone == "deck" and face_role == "wall":
-		return
+	# Coping-aligned deck wall faces are omitted from the mesh (pipe back owns that
+	# plane). Keep remaining deck walls as colliders — do not solid-fill the volume
+	# (that recreated a catch wall on the open coping face).
 	var body := StaticBody3D.new()
 	body.name = "%s_L%s_%s" % [part.material_key, part.layer, face_role]
 	body.collision_layer = CollisionLayersScript.bit(
@@ -82,10 +82,10 @@ func _add_part(part) -> void:
 	var cs := CollisionShape3D.new()
 	cs.name = "Shape"
 	if zone == "deck" and face_role == "top":
-		var solid := _deck_solid_shape(part)
-		if solid == null:
+		var top := _deck_top_shape(part)
+		if top == null:
 			return
-		cs.shape = solid
+		cs.shape = top
 	elif face_role == "back":
 		# Thin plane trimeshes tunnel; solid slab thickened outward from coping.
 		var back := _pipe_back_solid_shape(part)
@@ -113,8 +113,9 @@ func _add_part(part) -> void:
 	part_count += 1
 
 
-## Outer pipe wall as a convex slab, thickened away from the bowl so approaches
-## from behind the coping cannot tunnel through a zero-thickness trimesh.
+## Outer pipe wall as a convex slab. Thickens through any outward `#` deck that
+## anchors on this coping so the deck back is a solid wall extension — not a
+## hollow you can fly into from the lip.
 func _pipe_back_solid_shape(part) -> Shape3D:
 	var side := int(part.meta.get("side", -1))
 	var radius := float(part.meta.get("radius", 0.0))
@@ -133,6 +134,32 @@ func _pipe_back_solid_shape(part) -> Shape3D:
 	# Outward from bowl: LEFT → −X logical, RIGHT → +X.
 	var outward := -1.0 if side == 0 else 1.0
 	var thick_logic := 8.0
+	if _level != null and _level.spec != null:
+		for deck in _level.spec.decks:
+			if typeof(deck) != TYPE_DICTIONARY:
+				continue
+			var deck_h := float(deck.get("height", top_h))
+			var matched := false
+			for anchor in deck.get("anchors", []):
+				if typeof(anchor) != TYPE_DICTIONARY:
+					continue
+				if int(anchor.get("side", -2)) != side:
+					continue
+				if absf(float(anchor.get("coping_x", NAN)) - cope) > 0.75:
+					continue
+				matched = true
+				break
+			if not matched:
+				continue
+			var poly = deck.get("poly", PackedVector2Array())
+			if typeof(poly) != TYPE_PACKED_VECTOR2_ARRAY:
+				continue
+			for p in poly:
+				var out_d: float = (p.x - cope) * outward
+				if out_d > 0.5:
+					thick_logic = maxf(thick_logic, out_d)
+			# Raise the wall through the deck top when the pad sits on this coping.
+			top_h = maxf(top_h, deck_h)
 	var x_in := cope
 	var x_out := cope + outward * thick_logic
 	var pts := PackedVector3Array()
@@ -145,41 +172,35 @@ func _pipe_back_solid_shape(part) -> Shape3D:
 	return convex
 
 
-## Solid convex prism for deck footprint (base→top). Hollow wall trimeshes let
-## CharacterBody tunnel inside; this volume stays solid.
-func _deck_solid_shape(part) -> Shape3D:
+## Thin deck top slab (not a full-height prism). Coping-aligned faces stay open so
+## the pipe back remains the continuous wall; non-coping walls use wall parts.
+func _deck_top_shape(part) -> Shape3D:
 	var top_h := float(part.meta.get("height", 0.0))
-	var base_h := float(part.meta.get("base_height", 0.0))
-	if top_h < base_h:
-		var tmp := top_h
-		top_h = base_h
-		base_h = tmp
+	var thick_logic := _WorldSpace.meters_to_logic(0.06)
+	var y0 := top_h
+	var y1 := top_h - thick_logic
 	var poly = part.meta.get("poly", PackedVector2Array())
+	var pts := PackedVector3Array()
 	if typeof(poly) == TYPE_PACKED_VECTOR2_ARRAY and poly.size() >= 3:
-		var pts := PackedVector3Array()
 		for p in poly:
-			pts.append(_WorldSpace.logical_to_world(p.x, p.y, top_h))
-			pts.append(_WorldSpace.logical_to_world(p.x, p.y, base_h))
-		var convex := ConvexPolygonShape3D.new()
-		convex.points = pts
-		return convex
-	# Fallback: AABB prism as convex.
-	var ab: AABB = part.aabb()
-	if ab.size.length() < 0.0001:
+			pts.append(_WorldSpace.logical_to_world(p.x, p.y, y0))
+			pts.append(_WorldSpace.logical_to_world(p.x, p.y, y1))
+	else:
+		var ab: AABB = part.aabb()
+		if ab.size.length() < 0.0001:
+			return null
+		var x0 := ab.position.x
+		var x1 := ab.position.x + ab.size.x
+		var z0 := ab.position.z
+		var z1 := ab.position.z + ab.size.z
+		for xz in [Vector2(x0, z0), Vector2(x1, z0), Vector2(x1, z1), Vector2(x0, z1)]:
+			pts.append(Vector3(xz.x, _WorldSpace.logic_to_meters(y0), xz.y))
+			pts.append(Vector3(xz.x, _WorldSpace.logic_to_meters(y1), xz.y))
+	if pts.is_empty():
 		return null
-	var y0 := _WorldSpace.logic_to_meters(base_h)
-	var y1 := _WorldSpace.logic_to_meters(top_h)
-	var pts2 := PackedVector3Array()
-	var x0 := ab.position.x
-	var x1 := ab.position.x + ab.size.x
-	var z0 := ab.position.z
-	var z1 := ab.position.z + ab.size.z
-	for xz in [Vector2(x0, z0), Vector2(x1, z0), Vector2(x1, z1), Vector2(x0, z1)]:
-		pts2.append(Vector3(xz.x, minf(y0, y1), xz.y))
-		pts2.append(Vector3(xz.x, maxf(y0, y1), xz.y))
-	var convex2 := ConvexPolygonShape3D.new()
-	convex2.points = pts2
-	return convex2
+	var convex := ConvexPolygonShape3D.new()
+	convex.points = pts
+	return convex
 
 
 func _clear() -> void:

@@ -15,6 +15,7 @@ func run() -> bool:
 	ok = _air_contact_land_rules() and ok
 	ok = _resolve_air_contact_integration() and ok
 	ok = _acid_spine_land_rejects() and ok
+	ok = _outward_deck_extension() and ok
 	return ok
 
 
@@ -409,6 +410,59 @@ func _acid_spine_land_rejects() -> bool:
 		return false
 	if ContactMath.spine_should_reject_land(deck, true, 1, 500.0, 0.0, false, true, false):
 		push_error("spine must allow deck crash when off target Z")
+		return false
+	return true
+
+
+func _outward_deck_extension() -> bool:
+	var cope := 100.0
+	var deck := {
+		"height": 141.0,
+		"base_height": 0.0,
+		"poly": PackedVector2Array([
+			Vector2(0.0, 40.0),
+			Vector2(100.0, 40.0),
+			Vector2(100.0, 80.0),
+			Vector2(0.0, 80.0),
+		]),
+		"anchors": [{
+			"side": QuarterPipe.PipeSide.LEFT,
+			"coping_x": cope,
+			"lip_x": 241.0,
+			"radius": 141.0,
+		}],
+	}
+	var hit: Dictionary = ContactMath.outward_deck_extension(
+		[deck], QuarterPipe.PipeSide.LEFT, cope, 60.0
+	)
+	if hit.is_empty():
+		push_error("left pipe must see outward deck extension")
+		return false
+	if absf(ContactMath.effective_coping_floor(0.0, 141.0, hit) - 141.0) > 0.01:
+		push_error("effective coping should be deck top")
+		return false
+	if not ContactMath.outward_deck_extension(
+		[deck], QuarterPipe.PipeSide.LEFT, cope, 200.0
+	).is_empty():
+		push_error("z outside deck must not match")
+		return false
+	if not ContactMath.outward_deck_extension(
+		[deck], QuarterPipe.PipeSide.RIGHT, cope, 60.0
+	).is_empty():
+		push_error("wrong side must not match")
+		return false
+	# Deck only inward of coping is not an outward extension.
+	var inward := deck.duplicate(true)
+	inward["poly"] = PackedVector2Array([
+		Vector2(100.0, 40.0),
+		Vector2(200.0, 40.0),
+		Vector2(200.0, 80.0),
+		Vector2(100.0, 80.0),
+	])
+	if not ContactMath.outward_deck_extension(
+		[inward], QuarterPipe.PipeSide.LEFT, cope, 60.0
+	).is_empty():
+		push_error("inward-only deck must not count as extension")
 		return false
 	return true
 

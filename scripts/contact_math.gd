@@ -384,3 +384,62 @@ static func zone_from_glyph(glyph: String) -> String:
 			return "oob"
 		_:
 			return "flat"
+
+
+## Deck sitting outward of a pipe coping (same-layer `#` run abutting `<>`),
+## treated as a wall extension — deck top is the effective coping platform.
+## Returns the deck Dictionary or {}.
+static func outward_deck_extension(
+	decks: Array,
+	side: int,
+	coping_x: float,
+	logical_z: float,
+	eps: float = 0.75,
+) -> Dictionary:
+	if side < 0 or is_nan(coping_x) or decks.is_empty():
+		return {}
+	var outward := -1.0 if side == QuarterPipe.PipeSide.LEFT else 1.0
+	for deck in decks:
+		if typeof(deck) != TYPE_DICTIONARY:
+			continue
+		var anchored := false
+		for anchor in deck.get("anchors", []):
+			if typeof(anchor) != TYPE_DICTIONARY:
+				continue
+			if int(anchor.get("side", -2)) != side:
+				continue
+			if absf(float(anchor.get("coping_x", NAN)) - coping_x) > eps:
+				continue
+			anchored = true
+			break
+		if not anchored:
+			continue
+		var poly = deck.get("poly", PackedVector2Array())
+		if typeof(poly) != TYPE_PACKED_VECTOR2_ARRAY or poly.size() < 3:
+			continue
+		var z_min := INF
+		var z_max := -INF
+		var extends_out := false
+		for p in poly:
+			z_min = minf(z_min, p.y)
+			z_max = maxf(z_max, p.y)
+			if (p.x - coping_x) * outward > eps:
+				extends_out = true
+		if not extends_out:
+			continue
+		if logical_z < z_min - eps or logical_z > z_max + eps:
+			continue
+		return deck
+	return {}
+
+
+## Coping floor when an outward deck extension is present: deck top wins.
+static func effective_coping_floor(
+	pipe_base: float,
+	pipe_radius: float,
+	extension_deck: Dictionary,
+) -> float:
+	var pipe_h := pipe_base + pipe_radius
+	if extension_deck.is_empty():
+		return pipe_h
+	return maxf(pipe_h, float(extension_deck.get("height", pipe_h)))

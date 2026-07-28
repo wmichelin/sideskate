@@ -487,7 +487,20 @@ func _feet_height() -> float:
 
 
 func _air_coping_floor() -> float:
-	return _air_base_height + _air_radius
+	var ext := _outward_deck_extension_for_air()
+	return _ContactMath.effective_coping_floor(_air_base_height, _air_radius, ext)
+
+
+## Same-layer `#` deck abutting this air pipe's coping (wall extension).
+func _outward_deck_extension_for_air() -> Dictionary:
+	if _level == null or _level.spec == null:
+		return {}
+	var coping := _air_coping_x
+	if is_nan(coping) or _air_side < 0:
+		return {}
+	return _ContactMath.outward_deck_extension(
+		_level.spec.decks, _air_side, coping, depth.logical_z
+	)
 
 
 ## Keep moves inside layer-0 playable footprint (hard boundary). Swept body wins.
@@ -517,7 +530,8 @@ func _clamp_pose_playable() -> void:
 ## Teleport body + depth together (spawn / respawn / hard land snaps).
 func _teleport_body_to_logical() -> void:
 	var h := _feet_height()
-	global_position = _WorldSpace.logical_to_world(depth.logical_x, depth.logical_z, h)
+	var x := _body_sample_x(depth.logical_x)
+	global_position = _WorldSpace.logical_to_world(x, depth.logical_z, h)
 	velocity = Vector3.ZERO
 	_depenetrate_body()
 	_sync_logical_from_body()
@@ -556,18 +570,19 @@ func _depenetrate_body() -> void:
 
 func _depenetrate_push(col: KinematicCollision3D) -> Vector3:
 	var push: Vector3 = col.get_normal() * maxf(col.get_depth(), 0.002)
-	if _collider_is_pipe_ride_or_back(col.get_collider()):
+	# Ride-face normals are near-horizontal at the lip and would kick X off the
+	# arc. Pipe *backs* must still separate fully or fly-out ghosts through them.
+	if _collider_is_pipe_ride(col.get_collider()):
 		push.x = 0.0
 		push.z = 0.0
 	return push
 
 
-func _collider_is_pipe_ride_or_back(collider: Object) -> bool:
+func _collider_is_pipe_ride(collider: Object) -> bool:
 	if collider == null or not (collider is CollisionObject3D):
 		return false
 	var body := collider as CollisionObject3D
-	var role := str(body.get_meta("face_role", ""))
-	if role != "ride" and role != "back":
+	if str(body.get_meta("face_role", "")) != "ride":
 		return false
 	return str(body.get_meta("zone", "")).ends_with("_pipe") or body.has_meta("mesh_part_meta")
 
@@ -576,11 +591,15 @@ func _collider_is_pipe_ride_or_back(collider: Object) -> bool:
 func _sweep_to_logical(next_x: float, next_z: float, next_h: float) -> void:
 	_refresh_action_collision_filters()
 	var z := depth.clamp_z(next_z)
-	var target := _WorldSpace.logical_to_world(next_x, z, next_h)
+	var body_x := _body_sample_x(next_x)
+	var target := _WorldSpace.logical_to_world(body_x, z, next_h)
 	var motion := target - global_position
 	_last_physics_hits.clear()
 	if motion.length_squared() <= 1e-16:
 		_sync_logical_from_body()
+		# Keep gameplay X on the intended logical target when hang-offsetting the body.
+		if _hang_offsets_body():
+			depth.logical_x = next_x
 		return
 	var remaining := motion
 	for _i in range(4):
@@ -592,11 +611,14 @@ func _sweep_to_logical(next_x: float, next_z: float, next_h: float) -> void:
 		if remaining.length_squared() <= 1e-16:
 			break
 	_sync_logical_from_body()
+	if _hang_offsets_body():
+		depth.logical_x = next_x
 
 
 func _sync_logical_from_body() -> void:
 	var L: Dictionary = _WorldSpace.world_to_logical(global_position)
-	depth.logical_x = float(L.x)
+	if not _hang_offsets_body():
+		depth.logical_x = float(L.x)
 	depth.logical_z = depth.clamp_z(float(L.z))
 	var h := float(L.height)
 	if _airborne:
@@ -606,6 +628,27 @@ func _sync_logical_from_body() -> void:
 	else:
 		depth.surface_height = h
 		depth.airborne = false
+
+
+## Pipe hang pins gameplay X on the coping while the physics capsule sits a
+## radius into the bowl so it does not embed in the solid back wall.
+func _hang_offsets_body() -> bool:
+	return (
+		_airborne
+		and _air_x_locked
+		and not _flew_out_this_aerial
+		and not _settle.x_active
+		and not _spine_transfer_lock
+		and not _acid_drop_lock
+		and _air_side >= 0
+	)
+
+
+func _body_sample_x(logical_x: float) -> float:
+	if not _hang_offsets_body():
+		return logical_x
+	var clear := _WorldSpace.meters_to_logic(BODY_RADIUS_M + 0.03)
+	return logical_x - _PipeMath.coping_sign(_air_side) * clear
 
 
 ## PseudoDepthBody is presentation / helper scratch; keep tilt + support derived.
@@ -619,10 +662,9 @@ func _derive_depth_presentation() -> void:
 	depth.height_offset = 0.0
 
 
-## Sticky ride clears mask (analytical arc). Airborne hang/settle: suppress the
-## exit/origin pipe ride+back so the capsule doesn't embed in the coping wall.
-## Free-fall keeps exit ride (high→low needs it); always drop exit *back*.
-## Never exclude spine dest (`_air_*`) — landing would fall through.
+## Sticky ride clears mask (analytical arc). Hang excludes exit *ride* only so the
+## capsule can sit at coping; pipe *back* stays solid (thickened through aligned
+## decks) — never ghost through after fly-out. Spine still drops dest back + decks.
 func _refresh_action_collision_filters() -> void:
 	_clear_ride_exceptions()
 	if _on_ramp:
@@ -632,19 +674,49 @@ func _refresh_action_collision_filters() -> void:
 	collision_mask = _CollisionLayers.player_mask()
 	if not _airborne:
 		return
-	if _exit_pipe_side < 0:
-		return
-	# Thin back plane at coping tunnels/sticks during any aerial over the exit pipe.
-	_exclude_pipe_faces(_exit_pipe_side, _exit_pipe_lip, ["back"])
-	var hang := (
-		_air_x_locked
-		or _acid_drop_lock
-		or _spine_transfer_lock
-		or _settle.x_active
-		or _flew_out_this_aerial
+	# Hang / settle on exit pipe: ride trimesh embeds at coping. Do NOT exclude
+	# back here — and never keep ride exceptions after fly-out.
+	var hang_on_exit := (
+		_exit_pipe_side >= 0
+		and not _flew_out_this_aerial
+		and (
+			_air_x_locked
+			or _acid_drop_lock
+			or _spine_transfer_lock
+			or _settle.x_active
+		)
 	)
-	if hang:
+	if hang_on_exit:
 		_exclude_pipe_faces(_exit_pipe_side, _exit_pipe_lip, ["ride"])
+	if (_spine_transfer_lock or _acid_drop_lock) and _air_side >= 0 and not is_nan(_air_lip_x):
+		# Dest coping wall only — keep dest ride for landing.
+		_exclude_pipe_faces(_air_side, _air_lip_x, ["back"])
+	if _spine_transfer_lock:
+		_exclude_zone_faces("deck", ["top", "wall"])
+
+
+func _exclude_zone_faces(zone: String, roles: Array) -> void:
+	var root := get_tree().get_first_node_in_group("level_collision_3d")
+	if root == null:
+		var main := get_parent()
+		if main != null:
+			root = main.get_node_or_null("World3D/LevelCollision3D")
+	if root == null:
+		return
+	var bodies_node := root.get_node_or_null("Bodies")
+	if bodies_node == null:
+		return
+	for child in bodies_node.get_children():
+		if not (child is CollisionObject3D):
+			continue
+		var body := child as CollisionObject3D
+		if str(body.get_meta("zone", "")) != zone:
+			continue
+		var role := str(body.get_meta("face_role", ""))
+		if not roles.has(role):
+			continue
+		add_collision_exception_with(body)
+		_excluded_ride_bodies.append(body)
 
 
 func _exclude_pipe_faces(side: int, lip_x: float, roles: Array) -> void:
@@ -1066,6 +1138,39 @@ func _move_along_pipe(hit: Dictionary, arc_speed: float, delta: float) -> void:
 			_clamp_pose_playable()
 
 
+## Aligned `#` deck abutting this coping: roll onto the deck top instead of air
+## hang / fly-out into the wall extension.
+func _try_mount_outward_deck_from_pipe(hit: Dictionary, up_speed: float) -> bool:
+	if _level == null or _level.spec == null:
+		return false
+	var side := int(hit.get("side", _ramp_side))
+	var lip := float(hit.get("lip_x", _ramp_lip_x))
+	var radius := float(hit.get("radius", _pipe_radius_for_hit(hit)))
+	var base_h := float(hit.get("base_height", _ramp_base_height))
+	var cope := _PipeMath.coping_x(side, lip, radius)
+	var ext: Dictionary = _ContactMath.outward_deck_extension(
+		_level.spec.decks, side, cope, depth.logical_z
+	)
+	if ext.is_empty():
+		return false
+	var sign := _PipeMath.coping_sign(side)
+	# Sit just onto the deck pad (past the coping plane) at deck-top height.
+	var onto := cope + sign * _WorldSpace.meters_to_logic(BODY_RADIUS_M + 0.04)
+	var deck_h := float(ext.get("height", base_h + radius))
+	var keep_vx := sign * maxf(absf(up_speed), absf(_velocity.x))
+	_on_ramp = false
+	_ramp_along = 0.0
+	_clear_air()
+	depth.logical_x = onto
+	depth.logical_z = depth.clamp_z(depth.logical_z)
+	depth.surface_height = deck_h
+	depth.airborne = false
+	_airborne = false
+	_velocity.x = keep_vx
+	_teleport_body_to_logical()
+	return true
+
+
 func _move_along_pipe_or_flat(arc_speed: float, delta: float) -> void:
 	var hit: Dictionary = {
 		"active": true,
@@ -1129,6 +1234,9 @@ func _apply_air_patch(p: Dictionary) -> void:
 
 ## Pipe-only entry path (today). Future entries should call _begin_air_over.
 func _enter_air_from_pipe(hit: Dictionary, up_speed: float = 0.0) -> void:
+	# Aligned outward deck → roll onto deck top (effective coping), no air hang.
+	if _try_mount_outward_deck_from_pipe(hit, up_speed):
+		return
 	var patch: Dictionary = _PlayerAirState.enter_from_pipe_bundle(
 		hit,
 		depth.logical_x,
@@ -1144,6 +1252,9 @@ func _enter_air_from_pipe(hit: Dictionary, up_speed: float = 0.0) -> void:
 
 func _try_fly_out_from_pipe_lock() -> bool:
 	if not _crossed_pipe_coping_this_aerial or _spine_transfer_lock:
+		return false
+	# Aligned outward deck = pipe-wall extension; deck top is the coping — no fly-out.
+	if not _outward_deck_extension_for_air().is_empty():
 		return false
 	if not _fly_out_has_outward_room():
 		return false

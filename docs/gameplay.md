@@ -88,7 +88,9 @@ Feet height while airborne: `air_abs_height`. Vertical rate for gravity: `air_ve
 
 While in **pipe coping lock** (not acid-drop / spine), X stays locked even if underfoot becomes hole / flat / another zone — only **fly-out** clears it. Fly-out requires still **rising** (`air_vel_y > 0`), feet within `fly_out_above_coping` **above** the lip (`coping_floor`…`coping_floor + fly_out_above_coping`; debug slider **fly out**, default 40 — a *max* window, not a minimum; apex is outside a small window), planar **INPUT** that is **X-dominant** (`|input_x| > |input_z|`) toward that pipe’s side (right pipe → right; left → left), **and** a playable cell outward via facing cast (edge of level / nowhere ahead → stay locked). MOMENTUM is never consulted. Keep `air_abs_height` / `air_vel_y` on unlock for a **parabolic** arc. Falling or Z-dominant / vertical-only stick → stay locked and land as usual. While locked, air contact **force-sticky**s to that coping — rising past a higher opposite pipe does **not** auto spine; press transfer for spine low→high.
 
-Pipe coping lock treats the top coping height (`base_height + radius`) as the floor. Acid-drop lock and free air **must not** use that shortcut (it would snap feet upward); they sample the real surface under `(x, z)`.
+**Aligned deck extension:** when a same-layer `#` deck abuts the pipe coping (glyph-aligned, deck anchors on that coping), the deck is a **wall extension** of the pipe — not outward free space. Leaving the pipe at the lip **mounts the deck top** (effective coping) instead of entering air hang. Fly-out is refused if somehow locked there; the pipe back collider thickens through the deck footprint so you cannot ghost through the wall.
+
+Pipe coping lock treats the top coping height (`base_height + radius`, or aligned deck top when higher) as the floor. Acid-drop lock and free air **must not** use that shortcut (it would snap feet upward); they sample the real surface under `(x, z)`.
 
 ### Ride-off
 

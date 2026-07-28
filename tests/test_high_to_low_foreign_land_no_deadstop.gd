@@ -79,7 +79,7 @@ func run() -> bool:
 			"high→low land regression: landed=%s base=%s side=%s along=%s spine=%s"
 			% [landed, landed_base, landed_side, landed_along, player._spine_transfer_lock]
 		)
-	var spine_ok := _held_high_to_low_spine_transfers(player, l1l, l0r, z)
+	var spine_ok := _held_high_to_low_spine_transfers(fx, player, l1l, l0r, z)
 	var deck_ok := _spine_refuses_deck_land(player, l0r, z)
 	fx.teardown()
 	return land_ok and spine_ok and deck_ok
@@ -170,7 +170,7 @@ func _spine_refuses_deck_land(player, l0: QuarterPipe, z: float) -> bool:
 
 
 func _held_high_to_low_spine_transfers(
-	player, l1: QuarterPipe, l0: QuarterPipe, z: float
+	fx, player, l1: QuarterPipe, l0: QuarterPipe, z: float
 ) -> bool:
 	var coping := PipeMath.coping_x(int(l1.side), l1.lip_x, l1.radius)
 	player.call("_clear_air")
@@ -219,4 +219,28 @@ func _held_high_to_low_spine_transfers(
 			"held high→low spine picked wrong target: base=%s z=[%s,%s]"
 			% [player._air_base_height, player._air_z_min, player._air_z_max]
 		)
-	return target_ok
+		return false
+
+	# Solid deck prisms used to snag the capsule mid-settle (side-wall stick).
+	# X must keep advancing toward the dest coping through the deck corridor.
+	var dest_cope := PipeMath.coping_x(int(l0.side), l0.lip_x, l0.radius)
+	var start_x := float(player.depth.logical_x)
+	if not bool(player._settle.x_active):
+		player._begin_spine_x_lerp(dest_cope)
+	var stuck := true
+	for _i in range(90):
+		fx.tick(1)
+		var x := float(player.depth.logical_x)
+		if absf(x - dest_cope) < 15.0 or absf(x - start_x) > 40.0:
+			stuck = false
+			break
+		if not bool(player._spine_transfer_lock):
+			stuck = false
+			break
+	if stuck:
+		push_error(
+			"high→low spine stuck mid-deck: x=%s start=%s dest=%s"
+			% [player.depth.logical_x, start_x, dest_cope]
+		)
+		return false
+	return true
