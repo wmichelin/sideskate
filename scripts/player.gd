@@ -124,6 +124,15 @@ var _transfer_x_u: float = 0.0
 var _transfer_x_dur: float = 0.15
 ## Height-scaled settle (acid / spine): duration = f(live height above coping).
 var _transfer_x_ease: bool = false
+## Displayed body tilt (radians); lerps toward target / transfer endpoints.
+var _body_tilt: float = 0.0
+var _tilt_lerp_from: float = 0.0
+var _tilt_lerp_to: float = 0.0
+var _tilt_lerp_u: float = 0.0
+var _tilt_lerp_dur: float = 0.15
+## Height-scaled tilt settle (spine / acid) — independent of whether X must move.
+var _tilt_lerp_active: bool = false
+var _tilt_lerp_ease: bool = false
 ## One transfer per aerial; replenished on any surface contact.
 var _transfer_available: bool = true
 ## One acid drop per aerial; replenished on any surface contact.
@@ -234,6 +243,7 @@ func _apply_spawn_from_level() -> void:
 	_prev_feet_h = _feet_height()
 	_refresh_head_debug()
 	_update_face_nose()
+	_step_body_tilt(0.0)
 	depth.apply()
 
 
@@ -278,6 +288,7 @@ func _physics_process(delta: float) -> void:
 	_apply_surface()
 	_note_safe_pad_from_surface()
 	if _try_lava_death():
+		_step_body_tilt(0.0)
 		depth.apply()
 		return
 	_update_actual_velocity(delta)
@@ -286,6 +297,7 @@ func _physics_process(delta: float) -> void:
 	if Input.is_action_pressed("transfer") and _airborne and not _flew_out_this_aerial:
 		_try_spine_transfer(true)
 	_clear_momentum_if_at_rest()
+	_step_body_tilt(delta)
 	depth.apply()
 
 
@@ -361,6 +373,7 @@ func _respawn_at_safe_pad() -> void:
 	_prev_feet_h = _feet_height()
 	_refresh_head_debug()
 	_update_face_nose()
+	_step_body_tilt(0.0)
 	depth.apply()
 
 
@@ -622,6 +635,7 @@ func _step_transfer_x(delta: float) -> void:
 
 ## Start horizontal settle onto `to_x`. Acid/spine: live duration from height above
 ## coping (`base + rate * h`) + smoothstep. Free transfer: fixed duration, linear.
+## Height-scaled also starts a tilt settle (even when X is already on the coping).
 func _begin_transfer_x_lerp(to_x: float, height_scaled: bool, _coping_radius: float = 0.0) -> void:
 	_transfer_x_from = depth.logical_x
 	_transfer_x_to = to_x
@@ -631,6 +645,8 @@ func _begin_transfer_x_lerp(to_x: float, height_scaled: bool, _coping_radius: fl
 	_transfer_x_active = absf(to_x - depth.logical_x) > 0.05
 	if not _transfer_x_active:
 		depth.logical_x = to_x
+	if height_scaled:
+		_begin_tilt_lerp(_body_tilt_target_radians(), true)
 
 
 ## Resolve air contact at current XZ and write air_over / layer / sticky ids from it.
@@ -1380,6 +1396,7 @@ func _clear_air() -> void:
 	_spine_transfer_lock = false
 	_apex_facing_done = false
 	_transfer_x_active = false
+	_tilt_lerp_active = false
 	_transfer_available = true
 	_acid_drop_available = true
 	_last_nonzero_vert_vel = 0.0
@@ -1635,6 +1652,7 @@ func _launch_air_for_spine_from_ramp() -> void:
 	_spine_transfer_lock = false
 	_apex_facing_done = false
 	_transfer_x_active = false
+	_tilt_lerp_active = false
 	air_abs_height = depth.surface_height
 	air_vel_y = maxf(up, 0.0)
 	_ramp_along = 0.0
@@ -2032,9 +2050,77 @@ func _try_apex_facing_flip(prev_air_vy: float) -> void:
 func _update_face_nose() -> void:
 	if _face_nose == null:
 		return
-	# Sit on the facing side of the body silhouette.
+	# Sit on the facing side of the body silhouette (local; rotates with Body tilt).
 	var side := 1.0 if facing_h == "r" else -1.0
-	_face_nose.position = Vector2(22.0 * side, -40.0)
+	_face_nose.position = Vector2(12.0 * side, -22.0)
+
+
+## Lean onto the pipe so local-up follows the surface normal (into the bowl).
+## Spine/acid run a dedicated tilt settle (same smoothstep timing as X); otherwise ease.
+func _step_body_tilt(delta: float) -> void:
+	if _tilt_lerp_active:
+		_advance_tilt_lerp(delta)
+		depth.surface_tilt = _body_tilt
+		return
+	var target := _body_tilt_target_radians()
+	if delta <= 0.0:
+		_body_tilt = target
+	else:
+		# ~14/s — tracks riding θ, softens lock/unlock and free-air snaps.
+		var k := 1.0 - exp(-14.0 * delta)
+		_body_tilt = lerpf(_body_tilt, target, k)
+	depth.surface_tilt = _body_tilt
+
+
+func _begin_tilt_lerp(to_tilt: float, height_scaled: bool) -> void:
+	_tilt_lerp_from = _body_tilt
+	_tilt_lerp_to = to_tilt
+	_tilt_lerp_u = 0.0
+	_tilt_lerp_ease = height_scaled
+	_tilt_lerp_dur = transfer_x_duration
+	if absf(_tilt_lerp_to - _tilt_lerp_from) <= 0.02:
+		_body_tilt = _tilt_lerp_to
+		_tilt_lerp_active = false
+		return
+	_tilt_lerp_active = true
+
+
+func _advance_tilt_lerp(delta: float) -> void:
+	if not _tilt_lerp_active:
+		return
+	var duration := maxf(_tilt_lerp_dur, 0.0001)
+	if _tilt_lerp_ease:
+		var above := 0.0
+		if _air_x_locked and not is_nan(_air_radius):
+			above = maxf(air_abs_height - (_air_base_height + _air_radius), 0.0)
+		duration = maxf(
+			_AerialMath.lock_x_duration_for_height(
+				above,
+				acid_drop_x_duration,
+				acid_drop_x_duration_per_height,
+				acid_drop_x_duration_max,
+			),
+			0.0001,
+		)
+	_tilt_lerp_u = clampf(_tilt_lerp_u + delta / duration, 0.0, 1.0)
+	var w := _AerialMath.smoothstep01(_tilt_lerp_u) if _tilt_lerp_ease else _tilt_lerp_u
+	_body_tilt = lerpf(_tilt_lerp_from, _tilt_lerp_to, w)
+	if _tilt_lerp_u >= 1.0:
+		_body_tilt = _tilt_lerp_to
+		_tilt_lerp_active = false
+
+
+func _body_tilt_target_radians() -> float:
+	if _air_x_locked:
+		# Coping face is θ=π/2; keep that lean for the locked side until unlock.
+		return -_coping_sign(_air_side) * (PI * 0.5)
+	if _airborne or not _on_ramp:
+		return 0.0
+	if last_surface.is_empty() or not last_surface.has("theta"):
+		return 0.0
+	var th := clampf(float(last_surface.theta), 0.0, PI * 0.5)
+	var side := int(last_surface.get("side", _ramp_side))
+	return -_coping_sign(side) * th
 
 
 ## Screen-local vector for a [MotionVectors.Kind] (+X right, -Y up on screen).

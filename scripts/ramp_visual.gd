@@ -114,6 +114,8 @@ func paint_pass(ci: CanvasItem, near_pass: bool) -> void:
 			_draw_pipe_walls(pipe, band)
 			_draw_pipe(pipe, band)
 		_draw_elevated_floors(band)
+		# After ribbons: near/far deck faces hide pipe guts under the pad.
+		# Coping edges are skipped so this does not re-slice the arc.
 		_draw_deck_walls(band)
 		_draw_decks(band)
 	if near_pass:
@@ -326,18 +328,21 @@ func _draw_decks(band: Vector2) -> void:
 		if pts.size() < 3:
 			continue
 		_paint.draw_colored_polygon(pts, Color(0.55, 0.48, 0.32, 0.92))
-		# Skip edges introduced by the Far/Near (or view-band) Z clip — those
-		# were stroking a horizontal seam that tracked the skater's split_z.
+		# Skip Far/Near clip seams and coping edges (pipe owns that face).
 		var n := clipped.size()
 		for i in range(n):
 			var a: Vector2 = clipped[i]
 			var b: Vector2 = clipped[(i + 1) % n]
 			if _edge_on_z_plane(a, b, band.x) or _edge_on_z_plane(a, b, band.y):
 				continue
+			if _deck_edge_on_coping(deck, a, b):
+				continue
 			_paint.draw_line(pts[i], pts[(i + 1) % n], Color(0.95, 0.55, 0.35, 0.85), 2.5)
 
 
 ## Vertical faces under each deck edge (height → base_height).
+## Coping edges are omitted — the pipe outer wall already fills that plane, and
+## drawing both after the ribbon made decks appear to cut through the pipe.
 func _draw_deck_walls(band: Vector2) -> void:
 	if _level.spec == null:
 		return
@@ -356,6 +361,8 @@ func _draw_deck_walls(band: Vector2) -> void:
 			var b: Vector2 = clipped[(i + 1) % n]
 			if _edge_on_z_plane(a, b, band.x) or _edge_on_z_plane(a, b, band.y):
 				continue
+			if _deck_edge_on_coping(deck, a, b):
+				continue
 			if a.distance_squared_to(b) < 0.01:
 				continue
 			_paint.draw_colored_polygon(
@@ -367,6 +374,17 @@ func _draw_deck_walls(band: Vector2) -> void:
 				]),
 				wall_col
 			)
+
+
+## True when both endpoints lie on a neighboring pipe's coping X.
+func _deck_edge_on_coping(deck: Dictionary, a: Vector2, b: Vector2, eps: float = 0.05) -> bool:
+	for anchor in deck.get("anchors", []):
+		var cx := float(anchor.get("coping_x", NAN))
+		if is_nan(cx):
+			continue
+		if absf(a.x - cx) <= eps and absf(b.x - cx) <= eps:
+			return true
+	return false
 
 
 ## True when both endpoints lie on the same logical-Z clip plane.
@@ -623,22 +641,17 @@ func _draw_pipe_walls(pipe: QuarterPipe, band: Vector2) -> void:
 	var coping_x := pipe.x_min() if is_left else pipe.x_max()
 	var h0 := pipe.base_height
 	var h1 := pipe.base_height + pipe.radius
-	# Outer wall — skip Z spans owned by decks (deck side draws that face).
-	var covered := _deck_z_ranges_covering_pipe(pipe)
-	for seg in _z_segments_minus_covered(z0, z1, covered):
-		var sz0: float = float(seg.x)
-		var sz1: float = float(seg.y)
-		if sz1 <= sz0 + 0.001:
-			continue
-		_paint.draw_colored_polygon(
-			PackedVector2Array([
-				_surf_point(coping_x, sz0, h1),
-				_surf_point(coping_x, sz1, h1),
-				_surf_point(coping_x, sz1, h0),
-				_surf_point(coping_x, sz0, h0),
-			]),
-			wall_col
-		)
+	# Full outer wall including under decks — decks omit their coping edge so this
+	# plane is owned by the pipe (avoids deck walls slicing the ride ribbon).
+	_paint.draw_colored_polygon(
+		PackedVector2Array([
+			_surf_point(coping_x, z0, h1),
+			_surf_point(coping_x, z1, h1),
+			_surf_point(coping_x, z1, h0),
+			_surf_point(coping_x, z0, h0),
+		]),
+		wall_col
+	)
 	# Endcaps only on the pipe's real near/far edges (not the skater Z-split).
 	if absf(z0 - pipe.z_min) <= 0.05:
 		_draw_pipe_endcap(pipe, z0, end_col)

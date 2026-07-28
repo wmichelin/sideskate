@@ -65,22 +65,22 @@ z_index = -1
 color = Color(0, 0, 0, 0.55)
 
 [node name="Body" type="Polygon2D" parent="Player" unique_id=58950740]
-color = Color(0.92, 0.25, 0.45, 1)
-polygon = PackedVector2Array(0, -72, 28, -20, 18, 0, -18, 0, -28, -20)
+color = Color(0.92, 0.25, 0.45, 0.92)
+polygon = PackedVector2Array(0, -40, 14, -12, 10, 0, -10, 0, -14, -12)
 
 [node name="FaceNose" type="Polygon2D" parent="Player/Body" unique_id=1256278741]
 z_index = 1
-position = Vector2(22, -40)
+position = Vector2(12, -22)
 color = Color(0.98, 0.92, 0.55, 1)
-polygon = PackedVector2Array(0, -7, 6, -3, 6, 3, 0, 7, -6, 3, -6, -3)
+polygon = PackedVector2Array(0, -5, 4, -2, 4, 2, 0, 5, -4, 2, -4, -2)
 
 [node name="HeadDebug" type="PanelContainer" parent="Player/Body" unique_id=786460520]
 visible = false
 z_index = 20
 offset_left = -40.0
-offset_top = -118.0
+offset_top = -72.0
 offset_right = 40.0
-offset_bottom = -80.0
+offset_bottom = -44.0
 mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_head")
 
@@ -92,17 +92,17 @@ text = "flat"
 horizontal_alignment = 1
 
 [node name="VelocityArrow" type="Node2D" parent="Player/Body" unique_id=1704464314]
-position = Vector2(-18, -118)
+position = Vector2(-12, -68)
 script = ExtResource("10_vel_arrow")
 
 [node name="MomentumArrow" type="Node2D" parent="Player/Body" unique_id=106386296]
-position = Vector2(18, -118)
+position = Vector2(12, -68)
 script = ExtResource("10_vel_arrow")
 kind = 1
 arrow_color = Color(1, 0.72, 0.28, 0.95)
 
 [node name="InputArrow" type="Node2D" parent="Player/Body" unique_id=338502724]
-position = Vector2(0, -138)
+position = Vector2(0, -78)
 script = ExtResource("10_vel_arrow")
 kind = 2
 arrow_color = Color(0.35, 0.72, 1, 0.95)

@@ -32,8 +32,8 @@ const _PerspectiveMath := preload("res://scripts/perspective_math.gd")
 @export var level_path: NodePath = NodePath("../../RampLevel")
 
 @export_group("Air Shadow")
-## Logical half-width of the circular ground shadow at support (matches body ~28).
-@export var air_shadow_radius: float = 28.0
+## Logical half-width of the circular ground shadow at support (matches slim body ~14).
+@export var air_shadow_radius: float = 14.0
 ## Height above support (logical) at which shadow width hits `air_shadow_min_scale`.
 @export var air_shadow_ref_height: float = 200.0
 @export var air_shadow_min_scale: float = 0.5
@@ -45,6 +45,8 @@ var logical_z: float = 0.0
 ## Feet absolute height (grounded support, or air_abs_height while airborne).
 var surface_height: float = 0.0
 var height_offset: float = 0.0
+## Body rotation (radians). Set by Player so local-up follows pipe surface normal.
+var surface_tilt: float = 0.0
 ## True while airborne — shadow pins to support_height instead of feet height.
 var airborne: bool = false
 ## Underfoot surface height while airborne (shadow rests here).
@@ -125,6 +127,8 @@ func apply() -> void:
 	if _visual:
 		_visual.position = Vector2(0.0, -(surface_screen_h + height_offset * s))
 		_visual.scale = Vector2(s, s)
+		# Player sets surface_tilt so Body local-up follows the pipe normal.
+		_visual.rotation = surface_tilt
 		_visual.z_index = 1
 
 	if _shadow:
