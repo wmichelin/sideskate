@@ -58,15 +58,22 @@ func _step_free(state: SimState, wish: Vector2, delta: float) -> void:
 	if not hit.is_empty():
 		var t := float(hit.get("t", 1.0))
 		state.position = from.lerp(to, maxf(t - 0.01, 0.0))
-		# Pipe/deck/wall hits snap onto the ride surface — never leave you stuck inside.
-		if _snap_onto_solid(state, hit):
-			return
-		_resolve_bounds_hit(state, hit, from)
-		_try_land(state, from.z)
-		# If still buried after a bounds bounce, snap to any support under feet.
-		if not query.blocker_at(state.position).is_empty():
+		var kind := str(hit.get("kind", ""))
+		# Deck / pipe / wall: remount onto ride surface. Bounds: axis-stop only.
+		if kind == "pipe" or kind == "deck" or kind == "wall":
+			if _snap_onto_solid(state, hit):
+				return
+			# Remount refused (e.g. opposite hang) — depenetrate, never freeze.
+			_bounce_off_solid(state, hit, from)
 			_try_land(state, from.z)
-			_snap_buried_to_surface(state)
+			if not query.blocker_at(state.position).is_empty():
+				_snap_buried_to_surface(state)
+		else:
+			_resolve_bounds_hit(state, hit, from)
+			_try_land(state, from.z)
+			if not query.blocker_at(state.position).is_empty():
+				_try_land(state, from.z)
+				_snap_buried_to_surface(state)
 		state.position.y = clampf(state.position.y, 0.05, maxf(model.depth - 0.05, 0.05))
 		return
 	state.position = to
@@ -93,19 +100,22 @@ func _snap_onto_solid(state: SimState, hit: Dictionary) -> bool:
 		var pipe: PipeSurface = model.pipes.get(str(hit.get("surface_id", "")))
 		if pipe == null:
 			return false
-		var proj := pipe.project(state.position.x, state.position.y, state.position.z)
-		if not bool(proj.get("ok", false)):
-			var pt: Vector3 = hit.get("point", state.position)
-			proj = pipe.project(pt.x, pt.y, pt.z)
-		if not bool(proj.get("ok", false)):
-			return false
+		var proj := _pipe_proj_for_air_hit(state, pipe, hit)
+		# Lower-story pipe bodies can wrap under upper lips — prefer a same-side
+		# pipe whose surface matches the contact height.
+		if not proj.is_empty():
+			var dh0 := absf(float(proj.point.z) - state.position.z)
+			var max_dh0 := maxf(float(proj.get("radius", 40.0)), 40.0)
+			if dh0 > max_dh0:
+				proj = {}
+		if proj.is_empty():
+			var alt := _best_pipe_proj_at_height(state, pipe.side if pipe != null else -1)
+			if alt.is_empty():
+				return false
+			pipe = alt.pipe
+			proj = alt.proj
 		if not _pipe_snap_allowed(state, pipe, proj):
-			# Bounce off: stay airborne just outside the solid — no auto-transfer.
-			state.position.z = maxf(
-				state.position.z, float(proj.point.z) + SimTolerances.CONTACT_EPS
-			)
-			if state.velocity.z < 0.0:
-				state.velocity.z = 0.0
+			# Leave position at the contact; bounce handler will depenetrate.
 			return false
 		state.mode = SimState.Mode.GROUNDED
 		state.surface_id = pipe.id
@@ -141,6 +151,11 @@ func _snap_onto_solid(state: SimState, hit: Dictionary) -> bool:
 		if cope == null:
 			return false
 		var samp := cope.sample_at_z(state.position.y)
+		# Wall slabs often belong to a lower story; mount the pipe whose ride
+		# surface is actually here (L1 drop-in on a L0 wall-extension).
+		var mounted := _try_mount_pipe_at_wall(state, cope, samp, impact, vz)
+		if mounted:
+			return true
 		if model.patches.has(cope.support_patch_id):
 			var pad: SupportPatch = model.patches[cope.support_patch_id]
 			state.mode = SimState.Mode.GROUNDED
@@ -157,23 +172,128 @@ func _snap_onto_solid(state: SimState, hit: Dictionary) -> bool:
 			state.velocity = Vector3.ZERO
 			state.clear_hang()
 			return true
-		# No pad — perch at effective coping then hang if rising.
-		state.position = Vector3(float(samp.coping_x), state.position.y, float(samp.height))
-		state.velocity = Vector3(0.0, vz, maxf(state.velocity.z, 0.0))
+		# No mount — leave velocity alone; bounce handler depenetrates.
 		return false
 	return false
 
 
+## Mount a pipe under a wall-extension hit when snap is allowed.
+## Match by coping X + contact height — wall-extension side can belong to the
+## lower story's opposite-facing pipe at a shared lip.
+func _try_mount_pipe_at_wall(
+	state: SimState, cope: CopingEdge, samp: Dictionary, impact: float, vz: float
+) -> bool:
+	var cx := float(samp.get("coping_x", state.position.x))
+	var best: PipeSurface = null
+	var best_proj: Dictionary = {}
+	var best_dh := INF
+	for id in model.pipes.keys():
+		var pipe: PipeSurface = model.pipes[id]
+		if state.position.y < pipe.z_min - 0.001 or state.position.y > pipe.z_max + 0.001:
+			continue
+		var pcx := pipe.coping_x_at(state.position.y)
+		if is_nan(pcx) or absf(pcx - cx) > model.cell_w:
+			continue
+		var proj := _pipe_proj_for_air_hit(state, pipe)
+		if proj.is_empty():
+			var lip_h := pipe.height_at_theta(state.position.y, PI * 0.5)
+			if not is_nan(lip_h):
+				proj = pipe.project(pcx, state.position.y, lip_h)
+		if not bool(proj.get("ok", false)):
+			continue
+		if not _pipe_snap_allowed(state, pipe, proj):
+			continue
+		# Prefer the story whose surface is actually under the contact height —
+		# do not drop through an upper lip onto a lower-story pipe body.
+		var dh := absf(float(proj.point.z) - state.position.z)
+		var max_dh := maxf(float(proj.get("radius", 40.0)), 40.0)
+		if dh > max_dh:
+			continue
+		if dh < best_dh:
+			best_dh = dh
+			best = pipe
+			best_proj = proj
+	if best == null:
+		return false
+	state.mode = SimState.Mode.GROUNDED
+	state.surface_id = best.id
+	state.u = float(best_proj.u)
+	state.v = float(best_proj.v)
+	state.position = best_proj.point
+	state.tangent_velocity = Vector2(-maxf(impact, 80.0), vz)
+	state.velocity = Vector3.ZERO
+	state.clear_hang()
+	return true
+
+
+## Best same-side pipe projection near the current contact height.
+func _best_pipe_proj_at_height(state: SimState, side: int) -> Dictionary:
+	var best: PipeSurface = null
+	var best_proj: Dictionary = {}
+	var best_dh := INF
+	for id in model.pipes.keys():
+		var pipe: PipeSurface = model.pipes[id]
+		if side >= 0 and pipe.side != side:
+			continue
+		if state.position.y < pipe.z_min - 0.001 or state.position.y > pipe.z_max + 0.001:
+			continue
+		var proj := _pipe_proj_for_air_hit(state, pipe)
+		if proj.is_empty():
+			continue
+		var dh := absf(float(proj.point.z) - state.position.z)
+		var max_dh := maxf(float(proj.get("radius", 40.0)), 40.0)
+		if dh > max_dh:
+			continue
+		if dh < best_dh:
+			best_dh = dh
+			best = pipe
+			best_proj = proj
+	if best == null:
+		return {}
+	return {"pipe": best, "proj": best_proj}
+
+
+## Project onto a pipe for an air solid hit. Outside the X band (drop-in from
+## beyond the coping) snaps to the lip so inbound landings can mount.
+func _pipe_proj_for_air_hit(state: SimState, pipe: PipeSurface, hit: Dictionary = {}) -> Dictionary:
+	var proj := pipe.project(state.position.x, state.position.y, state.position.z)
+	if bool(proj.get("ok", false)):
+		return proj
+	if not hit.is_empty():
+		var pt: Vector3 = hit.get("point", state.position)
+		proj = pipe.project(pt.x, pt.y, pt.z)
+		if bool(proj.get("ok", false)):
+			return proj
+	var cx := pipe.coping_x_at(state.position.y)
+	if is_nan(cx):
+		return {}
+	var out := pipe.outward_sign()
+	# Beyond coping on the outward side → lip mount for drop-in / re-entry.
+	if (state.position.x - cx) * out >= -SimTolerances.CAPSULE_RADIUS:
+		var lip_h := pipe.height_at_theta(state.position.y, PI * 0.5)
+		proj = pipe.project(cx, state.position.y, lip_h)
+		if bool(proj.get("ok", false)):
+			return proj
+	return {}
+
+
 ## True when mounting this pipe would be an ordinary land (not a spine/acid steal).
 func _pipe_snap_allowed(state: SimState, pipe: PipeSurface, proj: Dictionary) -> bool:
-	# Opposite-facing mounts are spine/acid — transfer button only, never auto.
+	# Hang on one pipe must never auto-mount the opposite (spine = transfer button).
 	if state.is_hanging() and model.pipes.has(state.hang_pipe_id):
 		var hp: PipeSurface = model.pipes[state.hang_pipe_id]
 		if pipe.side != hp.side:
 			return false
 	else:
-		var vx := state.velocity.x
-		if absf(vx) >= 1.0:
+		# Free air: drop-in / re-entry from the outward side is ordinary land.
+		# Same-facing travel still lands from the bowl; opposite from the bowl = spine.
+		var cx := pipe.coping_x_at(state.position.y)
+		var out := pipe.outward_sign()
+		var from_outward := not is_nan(cx) and (state.position.x - cx) * out >= -SimTolerances.CAPSULE_RADIUS
+		if not from_outward:
+			var vx := state.velocity.x
+			if absf(vx) < 1.0:
+				return false
 			var want := SimKinds.PipeSide.LEFT if vx < 0.0 else SimKinds.PipeSide.RIGHT
 			if pipe.side != want:
 				return false
@@ -187,8 +307,35 @@ func _pipe_snap_allowed(state: SimState, pipe: PipeSurface, proj: Dictionary) ->
 	}
 	if not _pick_ordinary_land(state, [cand]).is_empty():
 		return true
-	# Escape hatch: deeply buried, and not an opposite-facing steal (checked above).
+	# Escape hatch: deeply buried on an already-facing-ok pipe.
 	return state.position.z < float(proj.point.z) - SimTolerances.CAPSULE_RADIUS
+
+
+## Rejected pipe/deck/wall contact: push out and kill only into-solid speed.
+## Must not zero all velocity (that froze inbound landings on layered right pipes).
+func _bounce_off_solid(state: SimState, hit: Dictionary, from: Vector3) -> void:
+	var kind := str(hit.get("kind", ""))
+	if kind == "pipe":
+		var pipe: PipeSurface = model.pipes.get(str(hit.get("surface_id", "")))
+		if pipe != null:
+			var proj := _pipe_proj_for_air_hit(state, pipe, hit)
+			if not proj.is_empty():
+				# Sit just above the ride surface; keep horizontal travel for a real land.
+				state.position.z = maxf(
+					state.position.z, float(proj.point.z) + SimTolerances.CONTACT_EPS
+				)
+				# Kill only downward into the surface; keep vx so try_land / next tick can settle.
+				if state.velocity.z < 0.0:
+					state.velocity.z = 0.0
+				_depenetrate(state, from)
+				return
+	# Deck / wall / fallback: walk back along the motion, stop into-wall axes.
+	if state.velocity.z < 0.0:
+		state.velocity.z = 0.0
+	_depenetrate(state, from)
+	var clamped := model.clamp_xz(state.position.x, state.position.y)
+	state.position.x = clamped.x
+	state.position.y = clamped.y
 
 
 ## Bounds / space only — stop into-wall motion; never crash.
@@ -213,7 +360,14 @@ func _snap_buried_to_surface(state: SimState) -> void:
 	var hit := query.blocker_at(state.position)
 	if hit.is_empty():
 		return
-	_snap_onto_solid(state, hit)
+	if _snap_onto_solid(state, hit):
+		return
+	# Escape pin: deck/wall always remount even when pipe facing refuses.
+	var kind := str(hit.get("kind", ""))
+	if kind == "deck" and ground != null:
+		ground._mount_deck_from_hit(state, hit, state.position)
+	elif kind == "wall" and ground != null:
+		ground._mount_wall_from_hit(state, hit, state.position)
 
 
 ## Walk back toward `from` until the capsule is outside solids.
@@ -361,12 +515,19 @@ func _pick_ordinary_land(state: SimState, candidates: Array) -> Dictionary:
 		var pipe2: PipeSurface = c.get("pipe")
 		if pipe2 == null:
 			continue
-		# Free air: pipe land only if travel matches pipe outward (same-facing as travel).
-		var vx := state.velocity.x
-		if absf(vx) < 1.0:
-			continue ## no clear travel — skip pipes, prefer flats below
-		var want := SimKinds.PipeSide.LEFT if vx < 0.0 else SimKinds.PipeSide.RIGHT
-		if pipe2.side != want:
-			continue
+		# Free air: drop-in from outward side, or same-facing travel from the bowl.
+		var cx2 := pipe2.coping_x_at(state.position.y)
+		var out2 := pipe2.outward_sign()
+		var from_outward := (
+			not is_nan(cx2)
+			and (state.position.x - cx2) * out2 >= -SimTolerances.CAPSULE_RADIUS
+		)
+		if not from_outward:
+			var vx := state.velocity.x
+			if absf(vx) < 1.0:
+				continue ## no clear travel — skip pipes, prefer flats below
+			var want := SimKinds.PipeSide.LEFT if vx < 0.0 else SimKinds.PipeSide.RIGHT
+			if pipe2.side != want:
+				continue
 		return c
 	return {}

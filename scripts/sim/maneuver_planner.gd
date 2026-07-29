@@ -42,11 +42,18 @@ func try_fly_out(state: SimState, input_x: float, input_z: float) -> Dictionary:
 		return _reject("fly-out unavailable")
 	if cope == null:
 		return _reject("no coping")
-	var is_wall := cope.coping_class == SimKinds.CopingClass.WALL_EXTENSION
+	var wall_live := (
+		cope.coping_class == SimKinds.CopingClass.WALL_EXTENSION
+		and query.wall_extension_active_at(cope, pos.y)
+	)
+	var is_wall := wall_live
 	if cope.coping_class != SimKinds.CopingClass.OPEN \
 			and cope.coping_class != SimKinds.CopingClass.SHARED_SPINE \
-			and not is_wall:
+			and cope.coping_class != SimKinds.CopingClass.WALL_EXTENSION:
 		return _reject("coping not OPEN (%s)" % cope.class_name_str())
+	# Inactive WALL_EXTENSION (hole / lava gap under empty upper story) = OPEN lip.
+	if cope.coping_class == SimKinds.CopingClass.WALL_EXTENSION and not wall_live:
+		is_wall = false
 	# Wall climb: fly-out only at the effective (upper) lip, never mid-face / L0 geometric.
 	if is_wall and state.is_grounded() and state.u < 1.98:
 		return _reject("still climbing wall")
@@ -64,7 +71,10 @@ func try_fly_out(state: SimState, input_x: float, input_z: float) -> Dictionary:
 	if input_x * out <= 0.15:
 		return _reject("input not outward")
 	var samp := cope.sample_at_z(pos.y)
-	var cope_h := float(samp.height) ## effective lip (raised for WALL_EXTENSION)
+	# Effective lip only while the wall is live; otherwise geometric coping.
+	var cope_h := (
+		float(samp.height) if is_wall else pipe.height_at_theta(pos.y, PI * 0.5)
+	)
 	var above := pos.z - cope_h
 	if above < -SimTolerances.CONTACT_EPS:
 		return _reject("below coping")

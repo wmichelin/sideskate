@@ -28,6 +28,10 @@ func run() -> bool:
 		and _spine_deck_solid_from_floor()
 		and _land_snaps_out_of_pipe_solid()
 		and _no_auto_opposite_pipe_snap()
+		and _layered_inbound_right_pipe_lands()
+		and _layered_hole_not_invisible_wall()
+		and _deck_hash_no_pin_from_floor()
+		and _l0_lava_gap_no_phantom_wall_climb()
 	)
 
 
@@ -1151,7 +1155,7 @@ func _land_snaps_out_of_pipe_solid() -> bool:
 
 
 func _no_auto_opposite_pipe_snap() -> bool:
-	# Hitting an opposite-facing pipe in free air must not auto-mount (spine/acid).
+	# Hanging on one pipe must not auto-mount the opposite (spine needs transfer).
 	var sim := PlayerSim.new()
 	if not sim.setup_from_path("res://tests/levels/sim/sim_spine.ssk"):
 		push_error("auto: setup")
@@ -1168,16 +1172,16 @@ func _no_auto_opposite_pipe_snap() -> bool:
 		push_error("auto: need both pipes")
 		return false
 	var z := (left.z_min + left.z_max) * 0.5
-	# Travel right (+X wants right-facing land only) into a left pipe body.
 	var lx := left.x_at_theta(z, PI * 0.4)
 	var lh := left.height_at_theta(z, PI * 0.4)
 	sim.state.mode = SimState.Mode.AIRBORNE
 	sim.state.surface_id = ""
-	sim.state.clear_hang()
+	sim.state.hang_pipe_id = right.id
 	sim.state.maneuver = null
 	sim.state.facing = "r"
-	sim.state.position = Vector3(lx - 30.0, z, lh + 10.0)
-	sim.state.velocity = Vector3(300.0, 0.0, -50.0)
+	# Still hanging on the right; drift into the left pipe body without transfer.
+	sim.state.position = Vector3(lx - 10.0, z, lh + 20.0)
+	sim.state.velocity = Vector3(200.0, 0.0, -120.0)
 	for _i in range(45):
 		sim.set_input(Vector2(1, 0), false, false)
 		sim.tick()
@@ -1185,9 +1189,338 @@ func _no_auto_opposite_pipe_snap() -> bool:
 			push_error("auto: maneuver started without transfer button")
 			return false
 		if sim.state.is_grounded() and sim.state.surface_id == left.id:
-			push_error("auto: snapped onto opposite (left) pipe while traveling +X")
+			push_error("auto: snapped onto opposite (left) pipe while hanging on right")
 			return false
 	return true
+
+
+func _layered_inbound_right_pipe_lands() -> bool:
+	# layered_demo L1 right: approach from outside (−X + descending) must mount,
+	# not freeze airborne with zero velocity against the coping / wall-extension.
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
+		push_error("inbound: setup")
+		return false
+	var right: PipeSurface = null
+	for id in sim.model.pipes.keys():
+		var p: PipeSurface = sim.model.pipes[id]
+		if p.side != SimKinds.PipeSide.RIGHT:
+			continue
+		var mid_z := (p.z_min + p.z_max) * 0.5
+		var samp := p.sample_at_z(mid_z)
+		if float(samp.get("base_height", 0.0)) < 100.0:
+			continue
+		right = p
+		break
+	if right == null:
+		push_error("inbound: no L1 right pipe")
+		return false
+	var z := (right.z_min + right.z_max) * 0.5
+	var cx := right.coping_x_at(z)
+	var lip_h := right.height_at_theta(z, PI * 0.5)
+	sim.state.mode = SimState.Mode.AIRBORNE
+	sim.state.surface_id = ""
+	sim.state.clear_hang()
+	sim.state.maneuver = null
+	sim.state.facing = "l"
+	sim.state.position = Vector3(cx + 40.0, z, lip_h + 40.0)
+	sim.state.velocity = Vector3(-220.0, 0.0, -280.0)
+	var grounded := false
+	for _i in range(90):
+		sim.set_input(Vector2(-1, 0), false, false)
+		sim.tick()
+		if not sim.state.alive:
+			push_error("inbound: died")
+			return false
+		if sim.state.is_grounded():
+			grounded = true
+			break
+		if (
+			sim.state.is_airborne()
+			and absf(sim.state.velocity.x) < 1.0
+			and absf(sim.state.velocity.z) < 1.0
+			and absf(sim.state.position.z - lip_h) < 30.0
+		):
+			push_error(
+				"inbound: stuck airborne vx=%.1f vh=%.1f h=%.1f"
+				% [sim.state.velocity.x, sim.state.velocity.z, sim.state.position.z]
+			)
+			return false
+	if not grounded:
+		push_error(
+			"inbound: never grounded mode=%s sid=%s h=%.1f"
+			% [sim.state.mode, sim.state.surface_id, sim.state.position.z]
+		)
+		return false
+	if sim.state.surface_id != right.id:
+		push_error(
+			"inbound: expected L1 right pipe, got %s"
+			% sim.state.surface_id
+		)
+		return false
+	return true
+
+
+func _layered_hole_not_invisible_wall() -> bool:
+	# L1 `.` gap between pipe islands must be fall-through, not a Z wall —
+	# including when skating near the pipe (mount then ride off the pipe end).
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
+		push_error("hole: setup")
+		return false
+	var cell_h := sim.model.cell_h
+	var H := sim.model.grid_h
+	# Last L1 floor row before the hole (ASCII row 8), near the right pipe.
+	var edge_z := (float(H - 1 - 8) + 0.5) * cell_h
+	var hole_z := (float(H - 1 - 10) + 0.5) * cell_h
+	var right: PipeSurface = null
+	for id in sim.model.pipes.keys():
+		var p: PipeSurface = sim.model.pipes[id]
+		if p.side != SimKinds.PipeSide.RIGHT:
+			continue
+		if edge_z < p.z_min - 1.0 or edge_z > p.z_max + 1.0:
+			continue
+		var samp := p.sample_at_z(edge_z)
+		if float(samp.get("base_height", 0.0)) < 100.0:
+			continue
+		right = p
+		break
+	if right == null:
+		push_error("hole: no L1 right pipe at edge")
+		return false
+	# Start on L1 floor beside the right pipe, drive −Z into the hole.
+	var floor_id := ""
+	var start_x := 0.0
+	for pid in sim.model.patches.keys():
+		var pad: SupportPatch = sim.model.patches[pid]
+		if pad.height < 100.0:
+			continue
+		if edge_z < pad.z_min - 1.0 or edge_z > pad.z_max + 1.0:
+			continue
+		# Prefer floor whose right edge meets this pipe.
+		if absf(pad.x_max - right.x_at_theta(edge_z, 0.0)) > sim.model.cell_w * 2.0 \
+				and not pad.contains_xz((pad.x_min + pad.x_max) * 0.5, edge_z):
+			continue
+		if pad.contains_xz(pad.x_max - 5.0, edge_z):
+			floor_id = pid
+			start_x = pad.x_max - 10.0
+			break
+	if floor_id.is_empty():
+		# Fallback: any L1 floor covering the edge row.
+		for pid2 in sim.model.patches.keys():
+			var pad2: SupportPatch = sim.model.patches[pid2]
+			if pad2.height < 100.0:
+				continue
+			if pad2.contains_xz((pad2.x_min + pad2.x_max) * 0.5, edge_z):
+				floor_id = pid2
+				start_x = pad2.x_max - 10.0
+				break
+	if floor_id.is_empty():
+		push_error("hole: no L1 floor beside pipe")
+		return false
+	sim.state.mode = SimState.Mode.GROUNDED
+	sim.state.surface_id = floor_id
+	sim.state.position = Vector3(start_x, edge_z, 141.0)
+	sim.state.tangent_velocity = Vector2.ZERO
+	sim.state.velocity = Vector3.ZERO
+	sim.state.clear_hang()
+	var left_pipe := false
+	for _i in range(90):
+		sim.set_input(Vector2(0, -1), false, false)
+		sim.tick()
+		if not sim.state.alive:
+			push_error("hole: died")
+			return false
+		if sim.state.is_airborne():
+			left_pipe = true
+			break
+		# Still grounded past the hole Z ⇒ invisible wall trapped us.
+		if sim.state.position.y <= hole_z + 5.0 and sim.state.is_grounded():
+			# Landed on L0 under the hole — also OK.
+			if sim.model.patches.has(sim.state.surface_id):
+				var landed: SupportPatch = sim.model.patches[sim.state.surface_id]
+				if landed.height < 50.0:
+					return true
+			push_error(
+				"hole: grounded through hole on %s y=%.1f"
+				% [sim.state.surface_id, sim.state.position.y]
+			)
+			return false
+	if not left_pipe and sim.state.is_grounded():
+		push_error(
+			"hole: stuck mode=%s sid=%s y=%.1f tvz=%.1f"
+			% [
+				sim.state.mode,
+				sim.state.surface_id,
+				sim.state.position.y,
+				sim.state.tangent_velocity.y,
+			]
+		)
+		return false
+	# Phantom wall-extension must not block L1 height inside the hole band.
+	var mid_x := right.coping_x_at(hole_z)
+	var phantom := sim.query.blocker_at(Vector3(mid_x, hole_z, 141.0))
+	if str(phantom.get("kind", "")) == "wall":
+		push_error("hole: phantom wall-extension in hole rows: %s" % phantom)
+		return false
+	return true
+
+
+func _deck_hash_no_pin_from_floor() -> bool:
+	# `#<<<===` — contact with the `#` prism remounts onto the deck top,
+	# never freezes with zero velocity against the vertical face.
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
+		push_error("hash: setup")
+		return false
+	var deck: SupportPatch = null
+	for pid in sim.model.patches.keys():
+		var p: SupportPatch = sim.model.patches[pid]
+		if int(p.kind) != SimKinds.SurfaceKind.DECK:
+			continue
+		if p.height < 200.0:
+			continue ## prefer L1 deck (base 141, top 282)
+		deck = p
+		break
+	if deck == null:
+		push_error("hash: no L1 deck")
+		return false
+	var z := (deck.z_min + deck.z_max) * 0.5
+	var mid_x := (deck.x_min + deck.x_max) * 0.5
+	# Floor at deck base height (story floor).
+	var floor_id := ""
+	for pid in sim.model.patches.keys():
+		var pad: SupportPatch = sim.model.patches[pid]
+		if int(pad.kind) != SimKinds.SurfaceKind.FLOOR:
+			continue
+		if absf(pad.height - deck.base_height) > 1.0:
+			continue
+		floor_id = pid
+		break
+	if floor_id.is_empty():
+		push_error("hash: no story floor")
+		return false
+	# 1) Already inside the deck volume at mid-height → remount to top.
+	sim.state.mode = SimState.Mode.GROUNDED
+	sim.state.surface_id = floor_id
+	sim.state.position = Vector3(mid_x, z, deck.base_height + 20.0)
+	sim.state.tangent_velocity = Vector2(200.0, 0.0)
+	sim.state.velocity = Vector3.ZERO
+	sim.state.clear_hang()
+	sim.set_input(Vector2(1, 0), false, false)
+	sim.tick()
+	if not sim.state.is_grounded() or sim.state.surface_id != deck.id:
+		push_error(
+			"hash: buried remount failed mode=%s sid=%s h=%.1f"
+			% [sim.state.mode, sim.state.surface_id, sim.state.position.z]
+		)
+		return false
+	if absf(sim.state.position.z - deck.height) > SimTolerances.CONTACT_EPS * 2.0:
+		push_error("hash: not on deck top after remount h=%.1f" % sim.state.position.z)
+		return false
+	if absf(sim.state.tangent_velocity.x) < 1.0:
+		push_error("hash: remount cleared motion tv=%.1f" % sim.state.tangent_velocity.x)
+		return false
+	# 2) Floor approach into deck XZ at base height → remount via contain, not pin.
+	var pad: SupportPatch = sim.model.patches[floor_id]
+	var start_x := deck.x_max + 10.0
+	if not pad.contains_xz(start_x, z):
+		start_x = deck.x_min - 10.0
+	if not pad.contains_xz(start_x, z):
+		return true ## remount path already proven; no abutting floor cell
+	sim.state.mode = SimState.Mode.GROUNDED
+	sim.state.surface_id = floor_id
+	sim.state.position = Vector3(start_x, z, pad.height)
+	sim.state.tangent_velocity = Vector2(signf(mid_x - start_x) * 400.0, 0.0)
+	sim.state.velocity = Vector3.ZERO
+	for _i in range(45):
+		sim.set_input(Vector2(signf(mid_x - sim.state.position.x), 0), false, false)
+		sim.tick()
+		if not sim.state.alive:
+			push_error("hash: died")
+			return false
+		if sim.state.is_grounded() and sim.state.surface_id == deck.id:
+			return true
+		if (
+			sim.state.is_grounded()
+			and absf(sim.state.tangent_velocity.x) < 1.0
+			and absf(sim.state.tangent_velocity.y) < 1.0
+			and absf(sim.state.position.z - deck.base_height) < 5.0
+			and absf(sim.state.position.x - mid_x) < sim.model.cell_w * 1.5
+		):
+			push_error(
+				"hash: pinned at deck face x=%.1f h=%.1f sid=%s"
+				% [sim.state.position.x, sim.state.position.z, sim.state.surface_id]
+			)
+			return false
+	return true
+
+
+func _l0_lava_gap_no_phantom_wall_climb() -> bool:
+	# Under L1 hole rows, L0 pipes facing lava must air-out at geometric lip —
+	# not climb a phantom WALL_EXTENSION toward missing L1 geometry.
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
+		push_error("lava: setup")
+		return false
+	var right: PipeSurface = null
+	for id in sim.model.pipes.keys():
+		var p: PipeSurface = sim.model.pipes[id]
+		if p.side != SimKinds.PipeSide.RIGHT:
+			continue
+		var samp := p.sample_at_z((p.z_min + p.z_max) * 0.5)
+		if float(samp.get("base_height", 0.0)) > 10.0:
+			continue
+		if right == null or p.coping_x_at((p.z_min + p.z_max) * 0.5) < right.coping_x_at(
+			(right.z_min + right.z_max) * 0.5
+		):
+			right = p
+	if right == null:
+		push_error("lava: no L0 right pipe")
+		return false
+	var cope: CopingEdge = sim.model.copings.get(right.coping_id)
+	if cope == null or cope.coping_class != SimKinds.CopingClass.WALL_EXTENSION:
+		push_error("lava: expected WALL_EXTENSION coping")
+		return false
+	var cell_h := sim.model.cell_h
+	var H := sim.model.grid_h
+	# L1 hole band (ASCII rows ~9–14).
+	var hole_z := (float(H - 1 - 11) + 0.5) * cell_h
+	var z := clampf(hole_z, right.z_min + 1.0, right.z_max - 1.0)
+	if sim.query.wall_extension_active_at(cope, z):
+		push_error("lava: wall should be inactive in L1 hole rows")
+		return false
+	var h_geom := right.height_at_theta(z, PI * 0.5)
+	sim.state.mode = SimState.Mode.GROUNDED
+	sim.state.surface_id = right.id
+	sim.state.u = 0.95
+	sim.state.v = 0.5
+	sim.state.tangent_velocity = Vector2(500.0, 0.0)
+	sim.state.position = Vector3(
+		right.x_at_theta(z, 0.95 * PI * 0.5),
+		z,
+		right.height_at_theta(z, 0.95 * PI * 0.5)
+	)
+	sim.state.clear_hang()
+	for _i in range(45):
+		sim.set_input(Vector2(1, 0), false, false)
+		sim.tick()
+		if sim.state.is_airborne():
+			if sim.state.position.z > h_geom + 40.0:
+				push_error(
+					"lava: climbed phantom wall h=%.1f geom=%.1f"
+					% [sim.state.position.z, h_geom]
+				)
+				return false
+			if sim.state.u > 1.05:
+				push_error("lava: airborne with wall-climb u=%.2f" % sim.state.u)
+				return false
+			return true
+		if sim.state.u > 1.05:
+			push_error("lava: entered wall-climb u=%.2f h=%.1f" % [sim.state.u, sim.state.position.z])
+			return false
+	push_error("lava: never left pipe")
+	return false
 
 
 func _place_at_coping(sim: PlayerSim, pipe: PipeSurface, along: float) -> void:

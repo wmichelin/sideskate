@@ -85,6 +85,8 @@ A transition occurs only via:
 
 Invisible world-border walls: **X** sits outside the park AABB (by `CAPSULE_RADIUS`) so edge pipe copings remain rideable; **Z** sits on the park near/far faces so you cannot leave the support footprint and fall out. Unplayable `space`, pipe bodies, **deck volumes** (below the ride top), and wall-extension slabs are solid containment. An invisible `__void_floor__` patch at `VOID_FLOOR` catches fall-through when no other support remains. `#` decks are ride-on-top only — never pass through the base.
 
+**Contact rule:** hitting a deck / pipe body / wall-extension **remounts** onto that covering ride surface (deck top, pipe project, or wall pad). Only world borders and unplayable `space` axis-stop. Never pin with zeroed velocity against a face. Outward `#` remains `OPEN` for fly-out (no auto pipe→deck seam); grounded/air contact with the deck **volume** snaps to the deck top.
+
 ## Tolerances (`SimTolerances`)
 
 | Name | Default (logical) | Use |

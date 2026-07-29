@@ -227,11 +227,15 @@ func _blocker_at(p: Vector3) -> Dictionary:
 			"reason": "through deck body",
 		}
 	# Wall extension solids: inside outward pad volume below pad top near coping.
+	# Only where the upper story that created the wall actually exists — a full-
+	# depth L0 pipe classified from mid-Z must not wall off L1 hole rows.
 	for cid in model.copings.keys():
 		var cope: CopingEdge = model.copings[cid]
 		if cope.coping_class != SimKinds.CopingClass.WALL_EXTENSION:
 			continue
 		if not cope.contains_z(z):
+			continue
+		if not wall_extension_active_at(cope, z):
 			continue
 		var samp := cope.sample_at_z(z)
 		var cx := float(samp.coping_x)
@@ -255,3 +259,48 @@ func _blocker_at(p: Vector3) -> Dictionary:
 				"reason": "wall extension",
 			}
 	return {}
+
+
+## True when a WALL_EXTENSION still has upper-story geometry at this Z.
+## Full-depth L0 pipes classified from mid-Z must not climb/block in hole rows.
+func wall_extension_active_at(cope: CopingEdge, z: float) -> bool:
+	if not cope.support_patch_id.is_empty():
+		var pad: SupportPatch = model.patches.get(cope.support_patch_id)
+		if pad == null:
+			return false
+		return z >= pad.z_min - SimTolerances.ALIGN_EPS and z <= pad.z_max + SimTolerances.ALIGN_EPS
+	# Cross-story opposite-pipe climb (no pad): only solid where a taller
+	# opposite pipe still overlaps this Z.
+	var max_gap := model.cell_w * 3.0 + SimTolerances.ALIGN_EPS
+	var samp := cope.sample_at_z(z)
+	if samp.is_empty():
+		return false
+	var cx := float(samp.coping_x)
+	for pid in model.pipes.keys():
+		var other: PipeSurface = model.pipes[pid]
+		if other.side == cope.side:
+			continue
+		if z < other.z_min - 0.001 or z > other.z_max + 0.001:
+			continue
+		var ox := other.coping_x_at(z)
+		var oh := other.height_at_theta(z, PI * 0.5)
+		if is_nan(ox) or is_nan(oh):
+			continue
+		var gap := 0.0
+		if cope.side == SimKinds.PipeSide.RIGHT and other.side == SimKinds.PipeSide.LEFT:
+			gap = ox - cx
+		elif cope.side == SimKinds.PipeSide.LEFT and other.side == SimKinds.PipeSide.RIGHT:
+			gap = cx - ox
+		else:
+			continue
+		if gap < -SimTolerances.ALIGN_EPS or gap > max_gap:
+			continue
+		# Geometric coping of `cope`'s pipe at this Z (before raise) ≈ base+radius.
+		if model.pipes.has(cope.pipe_id):
+			var src: PipeSurface = model.pipes[cope.pipe_id]
+			var geom := src.height_at_theta(z, PI * 0.5)
+			if not is_nan(geom) and oh > geom + SimTolerances.SEAM_EPS:
+				return true
+		elif oh > 0.0:
+			return true
+	return false
