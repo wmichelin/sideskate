@@ -21,6 +21,7 @@ func run() -> bool:
 		and _layered_fly_out_at_upper_lip()
 		and _void_floor_catches_fall()
 		and _world_border_contains()
+		and _edge_pipe_coping_not_in_wall()
 		and _pipe_body_no_clip()
 		and _embedded_pipe_no_phase_through()
 		and _embedded_pipe_mounts_not_sticks()
@@ -680,21 +681,72 @@ func _world_border_contains() -> bool:
 	var mid_z := sim.model.depth * 0.5
 	sim.state.position = Vector3(sim.model.width - 20.0, mid_z, 80.0)
 	sim.state.velocity = Vector3(800.0, 0.0, 0.0)
+	var wall := sim.model.width + SimTolerances.CAPSULE_RADIUS
 	for _i in range(90):
 		sim.set_input(Vector2(1, 0), false, false)
 		sim.tick()
 		if not sim.state.alive:
 			push_error("border: died at world edge")
 			return false
-		if sim.state.position.x > sim.model.width - SimTolerances.CAPSULE_RADIUS + 1.0:
+		if sim.state.position.x > wall + 1.0:
 			push_error("border: escaped east wall x=%.1f" % sim.state.position.x)
 			return false
-		if sim.state.position.x < SimTolerances.CAPSULE_RADIUS - 1.0:
+		if sim.state.position.x < -SimTolerances.CAPSULE_RADIUS - 1.0:
 			push_error("border: escaped west wall")
 			return false
-	# Still inside AABB.
-	if not sim.model.in_world_xz(sim.state.position.x, sim.state.position.y):
-		push_error("border: left world AABB")
+	return true
+
+
+func _edge_pipe_coping_not_in_wall() -> bool:
+	# Plaza-style edge >>> must hang at coping without immediately hitting bounds.
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://levels/plaza_default.ssk"):
+		push_error("edge: setup plaza")
+		return false
+	var best: PipeSurface = null
+	for id in sim.model.pipes.keys():
+		var p: PipeSurface = sim.model.pipes[id]
+		if p.side != SimKinds.PipeSide.RIGHT:
+			continue
+		if best == null or p.coping_x_at((p.z_min + p.z_max) * 0.5) \
+				> best.coping_x_at((best.z_min + best.z_max) * 0.5):
+			best = p
+	if best == null:
+		push_error("edge: no right pipe")
+		return false
+	var z := (best.z_min + best.z_max) * 0.5
+	var cx := best.coping_x_at(z)
+	var hit := sim.query.blocker_at(Vector3(cx, z, best.height_at_theta(z, PI * 0.5)))
+	if str(hit.get("kind", "")) == "bounds":
+		push_error("edge: coping x=%.1f blocked by bounds %s" % [cx, hit])
+		return false
+	# Ride up into air-out hang; must keep living and not pin against the wall.
+	sim.state.mode = SimState.Mode.GROUNDED
+	sim.state.surface_id = best.id
+	sim.state.u = 0.85
+	sim.state.v = 0.5
+	sim.state.tangent_velocity = Vector2(500.0, 0.0)
+	var th := sim.state.u * PI * 0.5
+	sim.state.position = Vector3(
+		best.x_at_theta(z, th), z, best.height_at_theta(z, th)
+	)
+	var hung := false
+	for _i in range(60):
+		sim.set_input(Vector2(1, 0), false, false)
+		sim.tick()
+		if not sim.state.alive:
+			push_error("edge: died riding edge pipe")
+			return false
+		if sim.state.is_hanging():
+			hung = true
+			# Hang X is coping; must not be a bounds hit.
+			var h2 := sim.query.blocker_at(sim.state.position)
+			if str(h2.get("kind", "")) == "bounds":
+				push_error("edge: hang pinned in bounds at x=%.1f" % sim.state.position.x)
+				return false
+			break
+	if not hung:
+		push_error("edge: expected air-out hang at OPEN edge coping")
 		return false
 	return true
 

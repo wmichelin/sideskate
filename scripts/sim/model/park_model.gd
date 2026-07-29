@@ -75,12 +75,9 @@ func is_traversable_xz(x: float, z: float) -> bool:
 	return is_playable_cell(cell.x, cell.y)
 
 
-## Capsule-inset clamp to the world AABB (invisible border walls).
+## Capsule-inset clamp to the world AABB (invisible border walls sit outside).
 func clamp_xz(x: float, z: float) -> Vector2:
-	var m := SimTolerances.CAPSULE_RADIUS
-	var max_x := maxf(width - m, m)
-	var max_z := maxf(depth - m, m)
-	return Vector2(clampf(x, m, max_x), clampf(z, m, max_z))
+	return Vector2(clampf(x, 0.0, width), clampf(z, 0.0, depth))
 
 
 func cell_at(x: float, z: float) -> Vector2i:
