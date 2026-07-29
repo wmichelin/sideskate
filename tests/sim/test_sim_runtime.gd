@@ -21,6 +21,7 @@ func run() -> bool:
 		and _layered_fly_out_at_upper_lip()
 		and _void_floor_catches_fall()
 		and _world_border_contains()
+		and _edge_fly_out_wall_slide()
 		and _edge_pipe_coping_not_in_wall()
 		and _pipe_body_no_clip()
 		and _embedded_pipe_no_phase_through()
@@ -762,6 +763,85 @@ func _world_border_contains() -> bool:
 			return false
 		if sim.state.surface_id == "__void_floor__":
 			push_error("border: walked off map onto void floor z=%.1f" % sim.state.position.y)
+			return false
+	return true
+
+
+## A fly-out into the map-edge wall must land on the bordering deck. Pressing
+## into that wall must retain depth control and must not truncate vertical fall.
+func _edge_fly_out_wall_slide() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
+		push_error("edge wall slide: setup")
+		return false
+	var pipe: PipeSurface = sim.model.pipes.get("pipe_3_L0_S1")
+	if pipe == null:
+		push_error("edge wall slide: missing outer L0 pipe")
+		return false
+	var z := (pipe.z_min + pipe.z_max) * 0.5
+	sim.state.mode = SimState.Mode.GROUNDED
+	sim.state.surface_id = pipe.id
+	sim.state.u = 1.0
+	sim.state.v = 0.5
+	sim.state.position = Vector3(
+		pipe.coping_x_at(z), z, pipe.height_at_theta(z, PI * 0.5)
+	)
+	sim.state.tangent_velocity = Vector2(800.0, 0.0)
+	sim.state.clear_hang()
+	sim.set_input(Vector2(1, 0), false, false)
+	sim.tick()
+	var saw_air_wall := false
+	for _i in range(600):
+		sim.set_input(Vector2(1, 1), false, false)
+		sim.tick()
+		if not sim.state.alive or sim.state.surface_id == "__void_floor__":
+			push_error("edge wall slide: fell outside bordering deck")
+			return false
+		if not sim.model.in_world_xz(sim.state.position.x, sim.state.position.y):
+			push_error("edge wall slide: escaped world bounds at %s" % sim.state.position)
+			return false
+		if sim.state.is_airborne() and sim.state.position.x >= sim.model.width - 0.1:
+			saw_air_wall = true
+			if absf(sim.state.velocity.y) < 199.0:
+				push_error(
+					"edge wall slide: into-wall input dragged depth speed to %.1f"
+					% sim.state.velocity.y
+				)
+				return false
+	if not saw_air_wall:
+		push_error("edge wall slide: never contacted east wall while airborne")
+		return false
+	var landed: SupportPatch = sim.model.patches.get(sim.state.surface_id)
+	if landed == null or int(landed.kind) != SimKinds.SurfaceKind.DECK:
+		push_error("edge wall slide: expected bordering deck, got %s" % sim.state.surface_id)
+		return false
+	var pressed := PlayerSim.new()
+	var free := PlayerSim.new()
+	if not pressed.setup_from_path("res://levels/layered_demo.ssk") \
+			or not free.setup_from_path("res://levels/layered_demo.ssk"):
+		push_error("edge wall slide: fall comparison setup")
+		return false
+	var fall_start := Vector3(pressed.model.width - 0.05, pressed.model.depth * 0.5, 1000.0)
+	pressed.state.mode = SimState.Mode.AIRBORNE
+	pressed.state.surface_id = ""
+	pressed.state.position = fall_start
+	pressed.state.velocity = Vector3.ZERO
+	pressed.state.clear_hang()
+	free.state.mode = SimState.Mode.AIRBORNE
+	free.state.surface_id = ""
+	free.state.position = fall_start
+	free.state.velocity = Vector3.ZERO
+	free.state.clear_hang()
+	for _i in range(30):
+		pressed.set_input(Vector2(1, 0), false, false)
+		free.set_input(Vector2.ZERO, false, false)
+		pressed.tick()
+		free.tick()
+		if absf(pressed.state.position.z - free.state.position.z) > 0.1:
+			push_error(
+				"edge wall slide: into-wall input dragged fall %.2f vs %.2f"
+				% [pressed.state.position.z, free.state.position.z]
+			)
 			return false
 	return true
 
@@ -1886,45 +1966,34 @@ func _wall_z_exit_consumes_motion() -> bool:
 	if wall == null:
 		push_error("wall Z exit: fixture wall missing")
 		return false
-	var pipe: PipeSurface = sim.model.pipes[wall.source_pipe_id]
-	var z := (wall.z_min + wall.z_max) * 0.5
-	var theta := 0.9 * PI * 0.5
 	sim.state.mode = SimState.Mode.GROUNDED
-	sim.state.surface_id = pipe.id
-	sim.state.u = 0.9
-	sim.state.v = 0.5
-	sim.state.position = Vector3(
-		pipe.x_at_theta(z, theta), z, pipe.height_at_theta(z, theta)
-	)
-	sim.state.tangent_velocity = Vector2(500.0, 0.0)
+	sim.state.surface_id = wall.id
+	sim.state.u = 0.5
+	sim.state.v = 1.0
+	sim.state.position = wall.position_at(wall.z_max - 1.0, sim.state.u)
+	sim.state.tangent_velocity = Vector2(0.0, 400.0)
 	sim.state.velocity = Vector3.ZERO
 	sim.state.clear_hang()
-	var saw_wall := false
-	var exited_z := false
-	for _tick in range(180):
-		var previous_surface := sim.state.surface_id
-		sim.set_input(Vector2(-1.0, 1.0), false, false)
+	sim.set_input(Vector2(0.0, 1.0), false, false)
+	sim.tick()
+	if not sim.state.is_airborne() or sim.state.is_hanging():
+		push_error("wall Z exit did not enter free air")
+		return false
+	if sim.state.position.y <= wall.z_max + SimTolerances.ALIGN_EPS:
+		push_error(
+			"wall Z exit did not consume crossing: z=%.2f edge=%.2f"
+			% [sim.state.position.y, wall.z_max]
+		)
+		return false
+	for _tick in range(60):
+		sim.set_input(Vector2(0.0, 1.0), false, false)
 		sim.tick()
 		if sim.state.surface_id == wall.id:
-			saw_wall = true
-		if previous_surface == wall.id and sim.state.is_airborne() \
-				and not sim.state.is_hanging():
-			exited_z = true
-			if sim.state.position.y <= wall.z_max + SimTolerances.ALIGN_EPS:
-				push_error(
-					"wall Z exit did not consume crossing: z=%.2f edge=%.2f"
-					% [sim.state.position.y, wall.z_max]
-				)
-				return false
-		elif exited_z and sim.state.surface_id == wall.id:
 			push_error("wall Z exit remounted the departed wall")
 			return false
 		if absf(sim.state.velocity.z) > 1500.0:
 			push_error("wall Z exit pumped vertical speed: %.1f" % sim.state.velocity.z)
 			return false
-	if not saw_wall or not exited_z:
-		push_error("wall Z exit path was not exercised")
-		return false
 	return true
 
 

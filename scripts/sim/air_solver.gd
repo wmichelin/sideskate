@@ -32,8 +32,6 @@ func step(state: SimState, wish: Vector2, delta: float) -> void:
 
 func _step_free(state: SimState, wish: Vector2, delta: float) -> void:
 	var w := wish
-	if w.length() > 1.0:
-		w = w.normalized()
 	if state.is_hanging():
 		# Pipe hang: X locked to source coping only; height free; depth stick-kinematic.
 		state.velocity.x = 0.0
@@ -60,6 +58,7 @@ func _step_free(state: SimState, wish: Vector2, delta: float) -> void:
 			from.x = float(from_anchor.x)
 			state.position.x = from.x
 	var to := from + Vector3(state.velocity.x, state.velocity.y, state.velocity.z) * delta
+	to.x = clampf(to.x, 0.05, maxf(model.width - 0.05, 0.05))
 	to.y = clampf(to.y, 0.05, maxf(model.depth - 0.05, 0.05))
 	if state.is_hanging():
 		var to_anchor := _hang_anchor(state, to.y)
@@ -308,6 +307,12 @@ func _resolve_bounds_hit(state: SimState, hit: Dictionary, from: Vector3) -> voi
 	var clamped := model.clamp_xz(state.position.x, state.position.y)
 	state.position.x = clamped.x
 	state.position.y = clamped.y
+	if axis == "x":
+		var inset := 0.05
+		state.position.x = (
+			inset if float(hit.get("sign", 0.0)) < 0.0
+			else maxf(model.width - inset, inset)
+		)
 	state.position.z = maxf(state.position.z, SimTolerances.VOID_FLOOR)
 	_depenetrate(state, from)
 
