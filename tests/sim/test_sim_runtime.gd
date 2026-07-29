@@ -213,52 +213,60 @@ func _hang_apex_faces_into_ramp() -> bool:
 	var left := _left_pipe(sim.model)
 	_place_at_coping(sim, left, 350.0)
 	sim.state.facing = "l" ## outward when climbing a left pipe
-	SimTolerances.APEX_FACING_DELAY = 0.0
+	SimTolerances.APEX_FACING_DELAY = 0.05
 	sim.set_input(Vector2.ZERO, false, false)
 	sim.tick()
 	if not sim.state.is_hanging():
 		push_error("apex face: expected hang")
 		return false
 	var flipped := false
+	var apex_seen := false
 	for _i in range(120):
 		sim.tick()
-		if sim.state.facing == "r":
+		if not sim.state.is_hanging():
+			break
+		if sim.state.velocity.z <= 0.0:
+			apex_seen = true
+		if sim.state.hang_apex_facing_done:
 			flipped = true
+			# Left pipe: into bowl is +X → face right.
+			if sim.state.facing != "r":
+				push_error("apex face: left hang must face into ramp (r), got %s" % sim.state.facing)
+				return false
 			break
-		if not sim.state.is_hanging() and not sim.state.is_airborne():
-			break
-	if not flipped:
-		push_error("apex face: left hang never faced into ramp (r)")
+	if not apex_seen:
+		push_error("apex face: never reached apex")
 		return false
-	# With a non-zero delay, outward facing must hold past apex until the timer elapses.
+	if not flipped:
+		push_error("apex face: never flipped after delay")
+		return false
+	# Delay must hold facing until APEX_FACING_DELAY elapses.
 	var delayed := PlayerSim.new()
 	if not delayed.setup_from_path("res://tests/levels/sim/sim_open_fly.ssk"):
 		push_error("apex face delay: setup")
 		return false
-	_place_at_coping(delayed, _left_pipe(delayed.model), 500.0)
+	_place_at_coping(delayed, _left_pipe(delayed.model), 350.0)
 	delayed.state.facing = "l"
-	SimTolerances.APEX_FACING_DELAY = 0.10
+	SimTolerances.APEX_FACING_DELAY = 0.12
 	delayed.set_input(Vector2.ZERO, false, false)
 	delayed.tick()
 	var held_outward := false
-	var saw_apex := false
-	for _j in range(180):
+	for _j in range(120):
 		delayed.tick()
-		if delayed.state.velocity.z <= 0.0:
-			saw_apex = true
-		if saw_apex and delayed.state.facing == "l" and not delayed.state.hang_apex_facing_done:
-			held_outward = true
-		if delayed.state.facing == "r":
+		if not delayed.state.is_hanging():
+			break
+		if delayed.state.hang_apex_timer >= 0.0 and not delayed.state.hang_apex_facing_done:
+			if delayed.state.facing == "l":
+				held_outward = true
+		if delayed.state.hang_apex_facing_done:
 			if not held_outward:
 				push_error("apex face delay: flipped before delay elapsed")
-				SimTolerances.APEX_FACING_DELAY = 0.05
 				return false
-			SimTolerances.APEX_FACING_DELAY = 0.05
+			if delayed.state.facing != "r":
+				push_error("apex face delay: expected into-ramp facing")
+				return false
 			return true
-		if not delayed.state.is_hanging() and delayed.state.is_grounded():
-			break
-	SimTolerances.APEX_FACING_DELAY = 0.05
-	push_error("apex face delay: never flipped into ramp")
+	push_error("apex face delay: never flipped")
 	return false
 
 

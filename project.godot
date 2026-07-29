@@ -89,3 +89,9 @@ menu_back={
 [physics]
 
 3d/default_gravity=19.0
+
+[rendering]
+
+anti_aliasing/quality/msaa_3d=2
+lights_and_shadows/directional_shadow/soft_shadow_filter_quality=2
+lights_and_shadows/positional_shadow/soft_shadow_filter_quality=2
