@@ -650,12 +650,14 @@ func _mount_deck_from_hit(state: SimState, hit: Dictionary, at: Vector3) -> bool
 
 ## Floor-backed wall contact mounts its compiled top support. Cross-story walls
 ## have no auto destination; the opposite pipe remains maneuver-only.
+## Hang air-out always remounts the wall face — never a top deck/floor pad.
 func _mount_wall_from_hit(state: SimState, hit: Dictionary, at: Vector3) -> bool:
 	var wall_id := str(hit.get("surface_id", ""))
 	var wall: WallSurface = model.walls.get(wall_id)
 	if wall == null:
 		return false
-	if wall.top_support_id.is_empty():
+	var hang_wall_face := state.is_hanging() or wall.top_support_id.is_empty()
+	if hang_wall_face:
 		var projection := wall.project(at.x, at.y, at.z)
 		if not bool(projection.get("ok", false)):
 			return false

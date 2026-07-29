@@ -20,6 +20,11 @@ func run() -> bool:
 		and _air_no_x_friction()
 		and _wall_extension_climbs()
 		and _layered_deck_back_air_outs_at_upper_lip()
+		and _upper_deck_flyout_hold_right_decks_out()
+		and _upper_deck_2_no_stick_air_out()
+		and _upper_deck_2_hold_right_keeps_rise()
+		and _upper_deck_2_hang_return_past_deck_rear()
+		and _upper_deck_2_apex_no_deck_snap()
 		and _void_floor_catches_fall()
 		and _world_border_contains()
 		and _edge_fly_out_wall_slide()
@@ -783,6 +788,280 @@ func _layered_deck_back_air_outs_at_upper_lip() -> bool:
 			return true
 	push_error("layered air-out did not return to its source wall")
 	return false
+
+
+func _upper_deck_flyout_hold_right_decks_out() -> bool:
+	# Spawn on L0, hold +X: climb the right pipe / wall and deck-out onto the
+	# L1 rear deck past the connected upper lip. Must not remain air-out hang.
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/upper_deck_flyout_test.ssk"):
+		push_error("upper deck flyout: setup")
+		return false
+	var wall: WallSurface = null
+	for id in sim.model.walls.keys():
+		wall = sim.model.walls[id]
+		break
+	if wall == null:
+		push_error("upper deck flyout: expected cross-story wall")
+		return false
+	var top_h := float(wall.sample_at_z(sim.state.position.y).top_height)
+	var decked := false
+	for _i in range(120):
+		sim.set_input(Vector2(1, 0), false, false)
+		sim.tick()
+		if sim.state.is_airborne() and not sim.state.is_hanging() and sim.state.velocity.x > 1.0:
+			if sim.state.position.z < top_h - SimTolerances.CONTACT_EPS:
+				push_error(
+					"upper deck flyout: unlocked below connected upper lip h=%.1f top=%.1f"
+					% [sim.state.position.z, top_h]
+				)
+				return false
+			decked = true
+			break
+		if sim.state.is_grounded() and sim.model.patches.has(sim.state.surface_id):
+			var patch: SupportPatch = sim.model.patches[sim.state.surface_id]
+			if int(patch.kind) == SimKinds.SurfaceKind.DECK:
+				if sim.state.position.z < top_h - SimTolerances.CONTACT_EPS:
+					push_error("upper deck flyout: landed deck below upper lip")
+					return false
+				decked = true
+				break
+	if not decked:
+		push_error(
+			"upper deck flyout: hold-right never decked out mode=%s hang=%s surf=%s rej=%s h=%.1f"
+			% [
+				sim.state.mode,
+				sim.state.is_hanging(),
+				sim.state.surface_id,
+				sim.state.last_reject,
+				sim.state.position.z,
+			]
+		)
+		return false
+	return true
+
+
+func _upper_deck_2_setup() -> PlayerSim:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/upper_deck_flyout_test_2.ssk"):
+		push_error("upper_deck_2: setup")
+		return null
+	return sim
+
+
+func _upper_deck_2_right_wall(sim: PlayerSim) -> WallSurface:
+	var pipe: PipeSurface = null
+	for id in sim.model.pipes.keys():
+		var p: PipeSurface = sim.model.pipes[id]
+		if p.side == SimKinds.PipeSide.RIGHT and str(id).contains("L0"):
+			pipe = p
+			break
+	if pipe == null:
+		return null
+	var cope: CopingEdge = sim.model.copings[pipe.coping_id]
+	var span: CopingSpan = cope.span_at_z(sim.state.position.y)
+	if span == null or span.wall_id.is_empty():
+		return null
+	return sim.model.walls.get(span.wall_id)
+
+
+func _upper_deck_2_is_deck(sim: PlayerSim) -> bool:
+	if not sim.state.is_grounded() or not sim.model.patches.has(sim.state.surface_id):
+		return false
+	var patch: SupportPatch = sim.model.patches[sim.state.surface_id]
+	return int(patch.kind) == SimKinds.SurfaceKind.DECK
+
+
+## No stick at the upper lip: must air-out hang, never auto-ground on the L1 deck.
+func _upper_deck_2_no_stick_air_out() -> bool:
+	var sim := _upper_deck_2_setup()
+	if sim == null:
+		return false
+	var wall := _upper_deck_2_right_wall(sim)
+	if wall == null:
+		push_error("upper_deck_2 air-out: missing wall")
+		return false
+	var top_h := float(wall.sample_at_z(sim.state.position.y).top_height)
+	# Climb with +X until on/near the wall, then release stick before the lip.
+	var released := false
+	var hung := false
+	for _i in range(160):
+		if not released and sim.state.is_grounded() and sim.model.walls.has(sim.state.surface_id):
+			var u := sim.state.u
+			if u >= 0.85:
+				released = true
+		sim.set_input(Vector2.ZERO if released else Vector2(1, 0), false, false)
+		sim.tick()
+		if _upper_deck_2_is_deck(sim):
+			push_error("upper_deck_2 air-out: auto-grounded on deck without stick")
+			return false
+		if sim.state.is_airborne() and not sim.state.is_hanging() and absf(sim.state.velocity.x) > 1.0:
+			push_error("upper_deck_2 air-out: unlocked free air without outward stick")
+			return false
+		if sim.state.is_hanging():
+			hung = true
+			break
+	if not hung:
+		push_error("upper_deck_2 air-out: never entered hang")
+		return false
+	if sim.state.position.z < top_h - SimTolerances.CONTACT_EPS:
+		push_error("upper_deck_2 air-out: hang below upper lip")
+		return false
+	# Descend with zero stick; must remount source wall/pipe, never the deck.
+	for _j in range(180):
+		sim.set_input(Vector2.ZERO, false, false)
+		sim.tick()
+		if _upper_deck_2_is_deck(sim):
+			push_error("upper_deck_2 air-out: landed deck on return")
+			return false
+		if sim.state.is_grounded():
+			if sim.state.surface_id != wall.id and sim.state.surface_id != wall.source_pipe_id:
+				push_error("upper_deck_2 air-out: remounted %s" % sim.state.surface_id)
+				return false
+			return true
+	push_error("upper_deck_2 air-out: never remounted source")
+	return false
+
+
+## Hold +X decks out above the upper lip and keeps rising height (no early vz kill).
+func _upper_deck_2_hold_right_keeps_rise() -> bool:
+	var sim := _upper_deck_2_setup()
+	if sim == null:
+		return false
+	var wall := _upper_deck_2_right_wall(sim)
+	if wall == null:
+		push_error("upper_deck_2 rise: missing wall")
+		return false
+	var top_h := float(wall.sample_at_z(sim.state.position.y).top_height)
+	var unlocked := false
+	var saw_rising_free := false
+	for _i in range(160):
+		sim.set_input(Vector2(1, 0), false, false)
+		sim.tick()
+		if _upper_deck_2_is_deck(sim) and sim.state.position.z <= top_h + 0.5:
+			# Early deck snap while still near the lip — rising height was killed.
+			if not unlocked:
+				push_error("upper_deck_2 rise: grounded deck before free unlock")
+				return false
+		if sim.state.is_airborne() and not sim.state.is_hanging() and sim.state.velocity.x > 1.0:
+			if sim.state.position.z < top_h - SimTolerances.CONTACT_EPS:
+				push_error("upper_deck_2 rise: unlocked below upper lip")
+				return false
+			unlocked = true
+			if sim.state.velocity.z > 1.0:
+				saw_rising_free = true
+			# While still rising in free air, must not snap onto the deck.
+			if sim.state.velocity.z > 1.0 and _upper_deck_2_is_deck(sim):
+				push_error("upper_deck_2 rise: deck snap while rising")
+				return false
+			# Keep watching a few ticks of rising free air.
+			if saw_rising_free and sim.state.velocity.z <= 0.0:
+				break
+	if not unlocked:
+		push_error("upper_deck_2 rise: never unlocked free air with +X")
+		return false
+	if not saw_rising_free:
+		push_error("upper_deck_2 rise: free air never kept rising height velocity")
+		return false
+	# Eventually may land the deck only after descending.
+	for _j in range(120):
+		sim.set_input(Vector2(1, 0), false, false)
+		sim.tick()
+		if sim.state.velocity.z > 1.0 and _upper_deck_2_is_deck(sim):
+			push_error("upper_deck_2 rise: deck mount while still rising")
+			return false
+		if _upper_deck_2_is_deck(sim):
+			return true
+		if sim.state.is_grounded() and sim.model.patches.has(sim.state.surface_id):
+			# Floor past the deck is also fine after a successful unlock.
+			return true
+	return true
+
+
+## Hang above the lip, zero stick: return past the deck rear without stalling.
+func _upper_deck_2_hang_return_past_deck_rear() -> bool:
+	var sim := _upper_deck_2_setup()
+	if sim == null:
+		return false
+	var wall := _upper_deck_2_right_wall(sim)
+	if wall == null:
+		push_error("upper_deck_2 return: missing wall")
+		return false
+	var z := sim.state.position.y
+	var top_h := float(wall.sample_at_z(z).top_height)
+	var edge := sim.query.edge_at(wall.id, z, "top")
+	if edge == null:
+		push_error("upper_deck_2 return: missing top edge")
+		return false
+	sim.state.mode = SimState.Mode.AIRBORNE
+	sim.state.surface_id = ""
+	sim.state.begin_hang(edge.id)
+	sim.state.position = Vector3(float(wall.sample_at_z(z).x), z, top_h + 60.0)
+	sim.state.velocity = Vector3(0.0, 0.0, 200.0)
+	sim.state.maneuver = null
+	var stalled := 0
+	for _i in range(200):
+		var prev_vz := sim.state.velocity.z
+		sim.set_input(Vector2.ZERO, false, false)
+		sim.tick()
+		if _upper_deck_2_is_deck(sim):
+			push_error("upper_deck_2 return: deck stole hang")
+			return false
+		if sim.state.is_hanging() and absf(sim.state.position.z - top_h) <= 2.0 \
+				and absf(sim.state.velocity.z) < 1.0 and prev_vz < -10.0:
+			stalled += 1
+			if stalled >= 3:
+				push_error("upper_deck_2 return: vz stall at deck height")
+				return false
+		else:
+			stalled = 0
+		if sim.state.is_grounded():
+			var ok := sim.state.surface_id == wall.id or sim.state.surface_id == wall.source_pipe_id
+			if not ok:
+				push_error("upper_deck_2 return: remounted %s" % sim.state.surface_id)
+				return false
+			return true
+	push_error("upper_deck_2 return: never remounted source")
+	return false
+
+
+## Apex / lip skim over the L1 rear deck with leftover outward vx must not
+## sticky-snap (zero height, keep x). Mount needs a clear drop from above the pad.
+func _upper_deck_2_apex_no_deck_snap() -> bool:
+	var sim := _upper_deck_2_setup()
+	if sim == null:
+		return false
+	var deck: SupportPatch = null
+	for id in sim.model.patches.keys():
+		var p: SupportPatch = sim.model.patches[id]
+		if int(p.kind) == SimKinds.SurfaceKind.DECK:
+			deck = p
+			break
+	if deck == null:
+		push_error("upper_deck_2 apex: no deck")
+		return false
+	var mid_x := (deck.x_min + deck.x_max) * 0.5
+	var mid_z := (deck.z_min + deck.z_max) * 0.5
+	sim.state.mode = SimState.Mode.AIRBORNE
+	sim.state.surface_id = ""
+	sim.state.clear_hang()
+	sim.state.maneuver = null
+	# Skim at the ride top with outward free-air X (post fly-out apex).
+	sim.state.position = Vector3(mid_x, mid_z, deck.height)
+	sim.state.velocity = Vector3(400.0, 0.0, 0.0)
+	for _i in range(6):
+		sim.set_input(Vector2.ZERO, false, false)
+		sim.tick()
+		if _upper_deck_2_is_deck(sim):
+			push_error(
+				"upper_deck_2 apex: snapped to deck with vx=%.1f h=%.1f"
+				% [sim.state.tangent_velocity.x, sim.state.position.z]
+			)
+			return false
+		if not sim.state.is_airborne():
+			push_error("upper_deck_2 apex: left air unexpectedly on %s" % sim.state.surface_id)
+			return false
+	return true
 
 
 func _void_floor_catches_fall() -> bool:

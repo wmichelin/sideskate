@@ -39,6 +39,9 @@ func try_fly_out(state: SimState, input_x: float, input_z: float) -> Dictionary:
 		anchor_edge = query.edge_at(wall.id, pos.y, "top")
 		if anchor_edge == null or anchor_edge.kind != SimKinds.EdgeKind.OPEN_COPING:
 			return _reject("wall top is not open")
+		# Height gate uses the wall-top / connected upper lip via the anchor.
+		# Outward stick direction stays with the source pipe that climbed the
+		# wall so held climb input can deck-out onto the rear pad.
 		vel_h = state.tangent_velocity.x
 	elif state.is_hanging():
 		anchor_edge = model.edges.get(state.hang_edge_id)

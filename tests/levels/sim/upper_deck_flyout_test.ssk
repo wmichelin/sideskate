@@ -1,0 +1,26 @@
+ssk 2
+name upper_deck_flyout_test
+spawn_facing r
+# Minimal cross-story deck-out case:
+# L0 right pipe climbs a wall to L1. The L1 left pipe is backed by a one-cell
+# deck; held +X from spawn should deck-out onto that pad past the upper lip.
+---
+layer 0
+height 0
+=====>>>======
+=====>>>======
+=====>>>======
+==@==>>>======
+=====>>>======
+=====>>>======
+=====>>>======
+---
+layer 1
+height 141
+........#<<<==
+........#<<<==
+........#<<<==
+........#<<<==
+........#<<<==
+........#<<<==
+........#<<<==

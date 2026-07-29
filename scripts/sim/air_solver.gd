@@ -77,13 +77,21 @@ func _step_free(state: SimState, wish: Vector2, delta: float) -> void:
 		state.position = from.lerp(to, maxf(t - 0.01, 0.0))
 		var kind := str(hit.get("kind", ""))
 		if kind == "pipe" or kind == "deck" or kind == "wall":
-			if _snap_onto_solid(state, hit):
+			if _snap_onto_solid(state, hit, from.z):
 				return
 			# Compiled outward-deck edge is action-only: ordinary air passes through.
 			if kind == "pipe" and _pipe_contact_is_action_only(state, hit):
 				state.position = to
 				_try_land(state, from.z)
 				state.position.y = clampf(state.position.y, 0.05, maxf(model.depth - 0.05, 0.05))
+				return
+			# Hang exclusivity / non-descending or already-at-pad: never trip on a deck.
+			if kind == "deck" and not _deck_descending_cross_ok(state, hit, from.z):
+				state.position = to
+				_try_land(state, from.z)
+				state.position.y = clampf(
+					state.position.y, 0.05, maxf(model.depth - 0.05, 0.05)
+				)
 				return
 			# Wall faces are one-sided. Leaving a deck across its backing wall is
 			# an ordinary ride-off, not an automatic wall/acid mount.
@@ -164,7 +172,7 @@ func _anchor_crossing_time(state: SimState, from: Vector3, to: Vector3) -> float
 ## Returns true when the skater is now grounded on the hit geometry.
 ## Pipe snaps follow ordinary-land facing rules — never auto spine/acid onto an
 ## opposite-facing pipe (those need the transfer button).
-func _snap_onto_solid(state: SimState, hit: Dictionary) -> bool:
+func _snap_onto_solid(state: SimState, hit: Dictionary, from_height: float = NAN) -> bool:
 	var kind := str(hit.get("kind", ""))
 	var impact := maxf(absf(state.velocity.z), absf(state.velocity.x))
 	var vz := state.velocity.y
@@ -200,6 +208,8 @@ func _snap_onto_solid(state: SimState, hit: Dictionary) -> bool:
 		state.clear_hang()
 		return true
 	if kind == "deck":
+		if not _deck_descending_cross_ok(state, hit, from_height):
+			return false
 		var deck_id := str(hit.get("surface_id", ""))
 		if not model.patches.has(deck_id):
 			return false
@@ -342,8 +352,9 @@ func _bounce_off_solid(state: SimState, hit: Dictionary, from: Vector3) -> void:
 		# A vertical face never consumes falling speed.
 		_depenetrate(state, from)
 		return
-	# Deck / fallback: walk back along the motion, stop into-solid fall speed.
-	if state.velocity.z < 0.0:
+	# Deck / fallback: walk back along the motion. Hang and rising contacts must
+	# not consume height (rear-deck trip / mid fly-out stall).
+	if not state.is_hanging() and state.velocity.z < 0.0:
 		state.velocity.z = 0.0
 	_depenetrate(state, from)
 	var clamped := model.clamp_xz(state.position.x, state.position.y)
@@ -460,6 +471,13 @@ func _try_land(state: SimState, from_height: float = NAN) -> void:
 	# Require a descending crossing (or already penetrating) of this pad.
 	if not is_nan(from_height) and from_height < sh - SimTolerances.CONTACT_EPS:
 		return
+	# Decks: only a clear descending drop from above the pad. Apex over the lip
+	# (from_h ≈ pad height, or vz≈0 before gravity accumulates) must stay free.
+	if int(top.kind) == SimKinds.SurfaceKind.DECK:
+		if state.velocity.z >= -SimTolerances.CONTACT_EPS:
+			return
+		if is_nan(from_height) or from_height <= sh + SimTolerances.CONTACT_EPS:
+			return
 	var impact := maxf(absf(state.velocity.z), absf(state.velocity.x))
 	var vz := state.velocity.y
 	state.mode = SimState.Mode.GROUNDED
@@ -491,6 +509,21 @@ func _try_land(state: SimState, from_height: float = NAN) -> void:
 	state.clear_hang()
 	if top.get("lethal", false):
 		state.alive = false
+
+
+## True when free air may ground on this deck hit: not hang, clearly descending,
+## and this step started clearly above the ride top (not apex skim / in-volume).
+func _deck_descending_cross_ok(state: SimState, hit: Dictionary, from_height: float) -> bool:
+	if state.is_hanging():
+		return false
+	if state.velocity.z >= -SimTolerances.CONTACT_EPS:
+		return false
+	var deck: SupportPatch = model.patches.get(str(hit.get("surface_id", "")))
+	if deck == null or int(deck.kind) != SimKinds.SurfaceKind.DECK:
+		return false
+	if is_nan(from_height) or from_height <= deck.height + SimTolerances.CONTACT_EPS:
+		return false
+	return true
 
 
 ## Descending through the same compiled air-out edge returns to its source
@@ -544,7 +577,8 @@ func _pick_ordinary_land(state: SimState, candidates: Array) -> Dictionary:
 		if hp != null:
 			hang_side = hp.side
 			lock_x = float(anchor.x)
-	# Air-out: prefer same-facing X-aligned pipe over abutting deck at the lip.
+	# Air-out: only same-facing X-aligned pipes. Decks / floors under the lock
+	# never steal hang — remount is exclusively via the retained edge anchor.
 	if hang_side >= 0:
 		for c in candidates:
 			if int(c.kind) != SimKinds.SurfaceKind.PIPE:
@@ -556,9 +590,6 @@ func _pick_ordinary_land(state: SimState, candidates: Array) -> Dictionary:
 			if is_nan(cx) or absf(cx - lock_x) > SimTolerances.ALIGN_EPS:
 				continue
 			return c
-		for c2 in candidates:
-			if int(c2.kind) != SimKinds.SurfaceKind.PIPE:
-				return c2
 		return {}
 	for c in candidates:
 		if int(c.kind) != SimKinds.SurfaceKind.PIPE:

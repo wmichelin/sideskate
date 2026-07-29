@@ -46,7 +46,7 @@ While air-out (X-locked):
 - Descending through that edge returns to its source pipe or explicit wall with fall speed preserved.
 - Z travel leaving the edge’s compiled span clears the anchor and becomes free air.
 - Ordinary contact must **never** accept the edge’s opposite-facing transfer target (that requires spine).
-- Floors / decks under the locked X remain valid ordinary lands.
+- Hang remounts **only** the retained source pipe/wall via the edge anchor. Decks under the locked X are **not** ordinary lands (cross-story rear pads share the hang X).
 
 ### Spine landing
 
@@ -76,10 +76,10 @@ A transition occurs only via:
 | Grounded | Grounded | Continuous support seam, pipe→wall/wall→pipe seam, or same surface UV advance |
 | Grounded | Airborne (air-out) | Leave `OPEN` / `SHARED_SPINE` coping with rising along (no fly-out) |
 | Grounded | Airborne (free) | Leave unsupported edge / ride-off, or **fly-out** from `OPEN` / `SHARED_SPINE` |
-| Airborne (air-out) | Grounded | Descend through the retained anchor to its source pipe/wall; floor/deck contact under lock may land first |
+| Airborne (air-out) | Grounded | Descend through the retained anchor to its source pipe/wall only |
 | Airborne (air-out) | Airborne (free) | **Fly-out** (X-dominant outward stick in `FLY_OUT_ABOVE` window) |
 | Airborne (air-out) | Airborne+plan | Explicit spine (rising/apex) or acid (descending) |
-| Airborne (free) | Grounded | Ordinary descending land; pipes only if same-facing as travel (never opposite) |
+| Airborne (free) | Grounded | Ordinary descending land; pipes only if same-facing as travel (never opposite); decks only on a descending crossing of the pad top |
 | Airborne | Airborne+plan | Explicit spine (rising/apex) or acid (descending) |
 | Airborne+plan | Grounded | Plan landing time reached on destination coping/pipe |
 | Any | Crash | Grounded lava only |
@@ -130,8 +130,8 @@ Wall faces are one-sided. Riding off a deck through its backing wall enters ordi
 - Seam crossing: transport world tangent speed onto the destination surface; no dead-stop.
 - Pipe→wall and wall→pipe seams preserve tangent speed and consume the crossing once.
 - Air-out leave: seed vertical from wall/pipe tangent; `vx = 0`; retain and lock to the exact edge anchor until fly-out / spine / acid / return. Once per hang, after vertical apex, facing turns around the character's centered local Y axis into the source pipe over `APEX_FACING_DELAY` (0 = instant).
-- Fly-out / deck-out: clear hang; seed free-air velocity with outward X.
-- Ordinary land: require descending support crossing; pipes only same-facing (air-out: also coping-X aligned, any height); never opposite-facing.
+- Fly-out / deck-out: clear hang; seed free-air velocity with outward X. Rising or apex (`vz≈0`) contact with a `#` deck solid does **not** ground or kill height — decks mount only while clearly descending onto the pad top.
+- Ordinary land: require descending support crossing; pipes only same-facing (air-out: also coping-X aligned, any height); never opposite-facing. Air-out never ordinary-lands a deck.
 - Spine/acid land: convert descending vertical into destination pipe along-arc with travel sign preserved; never reverse travel.
 - Maneuver plans once accepted never retarget.
 
@@ -141,7 +141,7 @@ Wall faces are one-sided. Riding off a deck through its backing wall enters ordi
 |--------|-----------|
 | Move | Stick → wish in XZ / along-surface |
 | Ollie | Hold `ollie`: mild accel toward `max_speed` in **facing** direction; skipped while stick brakes opposite |
-| Fly-out / deck-out | X-dominant outward stick (−X left pipe / +X right pipe) while rising in `FLY_OUT_ABOVE` on `OPEN` / `SHARED_SPINE` or while air-out |
+| Fly-out / deck-out | X-dominant outward stick (−X left pipe / +X right pipe) while rising in `FLY_OUT_ABOVE` on `OPEN` / `SHARED_SPINE` or while air-out. Cross-story wall tops gate height on the connected upper lip, but outward stick stays with the source pipe that climbed the wall. |
 | Spine | Explicit action while rising/apex; dest opposite-facing; traveler outward of dest coping |
 | Acid | Explicit action while descending; classic opposite wall, or deck drop-in onto abutting pipe from its outward side |
 | Post fly-out | Same action may acid when descending; never spine at apex |
