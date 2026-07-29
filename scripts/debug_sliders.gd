@@ -260,7 +260,7 @@ func _setup_apex_facing_slider() -> void:
 	var fly_row := _body.get_node_or_null("FlyOutRow")
 	if fly_row != null:
 		insert_at = fly_row.get_index() + 1
-	var row := _make_slider_row("ApexFacingDelayRow", "apex face delay", insert_at)
+	var row := _make_slider_row("ApexFacingDelayRow", "apex turn", insert_at)
 	_apex_facing_value = row["value"]
 	_bind_float_slider(
 		row["slider"],

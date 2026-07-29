@@ -19,6 +19,11 @@ var position: Vector3 = Vector3.ZERO
 ## Airborne world velocity Vector3(vx, vz, vh).
 var velocity: Vector3 = Vector3.ZERO
 var facing: String = "r"
+## Presentation-facing stays on the takeoff side during a sagittal hang turn.
+## At hang exit it catches up to authoritative `facing` without a visual pop.
+var visual_facing: String = "r"
+## Centered local-Y facing turn (radians). 0 when settled; hangs lerp 0→±π.
+var facing_yaw: float = 0.0
 var maneuver = null ## ManeuverPlan or null
 ## Non-empty while air-out is anchored to a compiled OPEN edge.
 var hang_edge_id: String = ""
@@ -26,6 +31,9 @@ var hang_edge_id: String = ""
 var hang_apex_facing_done: bool = false
 ## Elapsed time since hang apex; < 0 until apex is reached.
 var hang_apex_timer: float = -1.0
+## Local-Y turn endpoints for the hang apex turn (set when apex is reached).
+var hang_apex_from_yaw: float = 0.0
+var hang_apex_to_yaw: float = 0.0
 var alive: bool = true
 var tick: int = 0
 ## Debug: last rejection reasons.
@@ -48,16 +56,28 @@ func has_maneuver() -> bool:
 	return maneuver != null
 
 
+func set_facing_side(side: String) -> void:
+	facing = "r" if side == "r" else "l"
+	visual_facing = facing
+	facing_yaw = 0.0
+
+
 func clear_hang() -> void:
 	hang_edge_id = ""
 	hang_apex_facing_done = false
 	hang_apex_timer = -1.0
+	facing_yaw = 0.0
+	visual_facing = facing
 
 
 func begin_hang(edge_id: String) -> void:
 	hang_edge_id = edge_id
 	hang_apex_facing_done = false
 	hang_apex_timer = -1.0
+	facing_yaw = 0.0
+	visual_facing = facing
+	hang_apex_from_yaw = 0.0
+	hang_apex_to_yaw = 0.0
 
 
 func to_dict() -> Dictionary:
@@ -70,6 +90,8 @@ func to_dict() -> Dictionary:
 		"position": position,
 		"velocity": velocity,
 		"facing": facing,
+		"visual_facing": visual_facing,
+		"facing_yaw": facing_yaw,
 		"alive": alive,
 		"tick": tick,
 		"has_maneuver": has_maneuver(),
@@ -81,11 +103,11 @@ func to_dict() -> Dictionary:
 func state_hash() -> String:
 	var ctx := HashingContext.new()
 	ctx.start(HashingContext.HASH_MD5)
-	var s := "%d|%s|%.4f|%.4f|%.4f|%.4f|%.4f|%.4f|%.4f|%.4f|%s|%s|%d" % [
+	var s := "%d|%s|%.4f|%.4f|%.4f|%.4f|%.4f|%.4f|%.4f|%.4f|%s|%s|%.4f|%s|%d" % [
 		mode, surface_id, u, v,
 		position.x, position.y, position.z,
 		velocity.x, velocity.y, velocity.z,
-		facing, hang_edge_id, tick,
+		facing, visual_facing, facing_yaw, hang_edge_id, tick,
 	]
 	ctx.update(s.to_utf8_buffer())
 	return ctx.finish().hex_encode()

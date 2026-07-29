@@ -103,25 +103,39 @@ func _hang_anchor(state: SimState, z: float) -> Dictionary:
 	return query.edge_anchor_sample(edge, z)
 
 
-## Once per air-out: after vertical apex (+ delay), face back into the source pipe.
+## Once per air-out: after vertical apex, turn around the body's local Y axis
+## into the source pipe over APEX_FACING_DELAY (0 = instant).
 func _update_hang_apex_facing(state: SimState, delta: float) -> void:
 	if state.hang_apex_facing_done:
 		return
-	if state.hang_apex_timer < 0.0:
-		if state.velocity.z > 0.0:
-			return
-		state.hang_apex_timer = 0.0
-	else:
-		state.hang_apex_timer += delta
-	if state.hang_apex_timer < SimTolerances.APEX_FACING_DELAY:
-		return
-	state.hang_apex_facing_done = true
 	var anchor := _hang_anchor(state, state.position.y)
 	var pipe: PipeSurface = model.pipes.get(str(anchor.get("source_pipe_id", "")))
 	if pipe == null:
 		return
 	# Into the bowl: opposite the pipe's outward (coping) direction.
-	state.facing = "l" if pipe.outward_sign() > 0.0 else "r"
+	var into := "l" if pipe.outward_sign() > 0.0 else "r"
+	if state.hang_apex_timer < 0.0:
+		if state.velocity.z > 0.0:
+			return
+		state.hang_apex_timer = 0.0
+		# Signed ±π around local Y into the bowl. Must not use
+		# lerp_angle:  ±π are the same angle so it always picks one spin.
+		state.hang_apex_from_yaw = 0.0
+		state.hang_apex_to_yaw = PI * pipe.outward_sign()
+		state.facing_yaw = 0.0
+	else:
+		state.hang_apex_timer += delta
+	var delay := maxf(SimTolerances.APEX_FACING_DELAY, 0.0)
+	var t := 1.0 if delay <= 0.0 else clampf(state.hang_apex_timer / delay, 0.0, 1.0)
+	state.facing_yaw = lerpf(state.hang_apex_from_yaw, state.hang_apex_to_yaw, t)
+	if t < 1.0:
+		return
+	state.hang_apex_facing_done = true
+	# Gameplay faces into the bowl now, but presentation keeps the takeoff-facing
+	# reflection until hang exit. R(±π) × old-facing is visually equivalent to
+	# R(0) × new-facing, so clear_hang can hand off without a pop.
+	state.facing = into
+	state.facing_yaw = state.hang_apex_to_yaw
 
 
 func _anchor_crossing_time(state: SimState, from: Vector3, to: Vector3) -> float:

@@ -212,61 +212,117 @@ func _hang_apex_faces_into_ramp() -> bool:
 		return false
 	var left := _left_pipe(sim.model)
 	_place_at_coping(sim, left, 350.0)
-	sim.state.facing = "l" ## outward when climbing a left pipe
-	SimTolerances.APEX_FACING_DELAY = 0.05
+	sim.state.set_facing_side("l") ## outward when climbing a left pipe
+	SimTolerances.APEX_FACING_DELAY = 0.0
 	sim.set_input(Vector2.ZERO, false, false)
 	sim.tick()
 	if not sim.state.is_hanging():
 		push_error("apex face: expected hang")
 		return false
 	var flipped := false
-	var apex_seen := false
 	for _i in range(120):
 		sim.tick()
-		if not sim.state.is_hanging():
-			break
-		if sim.state.velocity.z <= 0.0:
-			apex_seen = true
-		if sim.state.hang_apex_facing_done:
+		if sim.state.facing == "r" and absf(absf(sim.state.facing_yaw) - PI) < 0.01:
 			flipped = true
-			# Left pipe: into bowl is +X → face right.
-			if sim.state.facing != "r":
-				push_error("apex face: left hang must face into ramp (r), got %s" % sim.state.facing)
-				return false
 			break
-	if not apex_seen:
-		push_error("apex face: never reached apex")
-		return false
+		if not sim.state.is_hanging() and not sim.state.is_airborne():
+			break
 	if not flipped:
-		push_error("apex face: never flipped after delay")
+		push_error("apex face: left hang never faced into ramp (r)")
 		return false
-	# Delay must hold facing until APEX_FACING_DELAY elapses.
+	if sim.state.visual_facing != "l":
+		push_error("apex face: presentation facing changed before hang handoff")
+		return false
+	sim.state.clear_hang()
+	if sim.state.visual_facing != "r" or absf(sim.state.facing_yaw) > 0.01:
+		push_error("apex face: hang exit did not hand off settled facing")
+		return false
+	# Non-zero duration: centered local-Y turn must pass through mid-rotation.
 	var delayed := PlayerSim.new()
 	if not delayed.setup_from_path("res://tests/levels/sim/sim_open_fly.ssk"):
 		push_error("apex face delay: setup")
 		return false
-	_place_at_coping(delayed, _left_pipe(delayed.model), 350.0)
-	delayed.state.facing = "l"
+	_place_at_coping(delayed, _left_pipe(delayed.model), 500.0)
+	delayed.state.set_facing_side("l")
 	SimTolerances.APEX_FACING_DELAY = 0.12
 	delayed.set_input(Vector2.ZERO, false, false)
 	delayed.tick()
-	var held_outward := false
-	for _j in range(120):
+	var saw_mid_turn := false
+	var saw_apex := false
+	for _j in range(180):
 		delayed.tick()
-		if not delayed.state.is_hanging():
+		if delayed.state.velocity.z <= 0.0:
+			saw_apex = true
+		if saw_apex and delayed.state.hang_apex_timer >= 0.0 \
+				and not delayed.state.hang_apex_facing_done:
+			var yaw: float = delayed.state.facing_yaw
+			# Left pipe takes the negative local-Y path; midpoint is away from 0 and ±π.
+			if absf(yaw) > 0.4 and absf(absf(yaw) - PI) > 0.4:
+				saw_mid_turn = true
+			if delayed.state.hang_apex_to_yaw * yaw < 0.0 and absf(yaw) > 0.2:
+				push_error("apex face turn: rotating away from bowl (yaw=%.2f to=%.2f)" % [
+					yaw, delayed.state.hang_apex_to_yaw
+				])
+				SimTolerances.APEX_FACING_DELAY = 0.05
+				return false
+			if delayed.state.facing != "l":
+				push_error("apex face turn: discrete facing flipped before turn finished")
+				SimTolerances.APEX_FACING_DELAY = 0.05
+				return false
+		if delayed.state.hang_apex_facing_done and delayed.state.facing == "r":
+			if not saw_mid_turn:
+				push_error("apex face turn: yaw never passed through mid-turn")
+				SimTolerances.APEX_FACING_DELAY = 0.05
+				return false
+			if delayed.state.visual_facing != "l":
+				push_error("apex face turn: visual reflection changed during turn")
+				SimTolerances.APEX_FACING_DELAY = 0.05
+				return false
+			SimTolerances.APEX_FACING_DELAY = 0.05
+			return _right_hang_turns_into_ramp()
+		if not delayed.state.is_hanging() and delayed.state.is_grounded():
 			break
-		if delayed.state.hang_apex_timer >= 0.0 and not delayed.state.hang_apex_facing_done:
-			if delayed.state.facing == "l":
-				held_outward = true
-		if delayed.state.hang_apex_facing_done:
-			if not held_outward:
-				push_error("apex face delay: flipped before delay elapsed")
+	SimTolerances.APEX_FACING_DELAY = 0.05
+	push_error("apex face delay: never completed into-ramp turn")
+	return false
+
+
+func _right_hang_turns_into_ramp() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_open_fly.ssk"):
+		push_error("right apex face: setup")
+		return false
+	var right: PipeSurface = null
+	for id in sim.model.all_pipe_ids():
+		var candidate: PipeSurface = sim.model.pipes[id]
+		if candidate.side == SimKinds.PipeSide.RIGHT:
+			right = candidate
+			break
+	if right == null:
+		push_error("right apex face: missing pipe")
+		return false
+	_place_at_coping(sim, right, 500.0)
+	sim.state.set_facing_side("r")
+	SimTolerances.APEX_FACING_DELAY = 0.12
+	sim.set_input(Vector2.ZERO, false, false)
+	sim.tick()
+	for _i in range(180):
+		sim.tick()
+		if sim.state.hang_apex_timer >= 0.0:
+			if sim.state.hang_apex_to_yaw <= 0.0:
+				push_error("right apex face: target must rotate +Y into bowl")
+				SimTolerances.APEX_FACING_DELAY = 0.05
 				return false
-			if delayed.state.facing != "r":
-				push_error("apex face delay: expected into-ramp facing")
-				return false
-			return true
-	push_error("apex face delay: never flipped")
+			if absf(sim.state.facing_yaw) > 0.2:
+				var ok := sim.state.facing_yaw > 0.0
+				if not ok:
+					push_error("right apex face: rotating away from bowl")
+				SimTolerances.APEX_FACING_DELAY = 0.05
+				return ok
+		if not sim.state.is_hanging():
+			break
+	SimTolerances.APEX_FACING_DELAY = 0.05
+	push_error("right apex face: turn path was not exercised")
 	return false
 
 

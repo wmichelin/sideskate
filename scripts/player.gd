@@ -25,6 +25,8 @@ const BODY_CYLINDER_H_M := 0.22
 
 var depth: PseudoDepthBody
 var facing_h: String = "r"
+var visual_facing_h: String = "r"
+var facing_yaw: float = 0.0
 var _airborne: bool = false
 var air_abs_height: float = 0.0
 var last_surface: Dictionary = {}
@@ -143,6 +145,8 @@ func _sync_from_sim() -> void:
 	var st: SimState = _sim.state
 	var p := st.position
 	facing_h = st.facing
+	visual_facing_h = st.visual_facing
+	facing_yaw = st.facing_yaw
 	_airborne = st.is_airborne()
 	air_abs_height = p.z
 	last_surface = {
@@ -207,9 +211,10 @@ func _zone_from_state(st: SimState) -> String:
 func _capture_pose_snapshots() -> void:
 	if depth == null:
 		return
-	var facing := 1.0 if facing_h == "r" else -1.0
+	var facing := 1.0 if visual_facing_h == "r" else -1.0
 	var next = _LogicalPose.new()
 	next.copy_from_depth(depth, facing, 0)
+	next.facing_yaw = facing_yaw
 	if _pose_curr == null:
 		_pose_prev = next
 		_pose_curr = next

@@ -64,7 +64,7 @@ Stick → wish. Per axis:
 
 **Acid:** transfer button while descending → along travel to an opposite wall, or explicit deck drop-in onto an abutting pipe.
 
-Hang stores `hang_edge_id`; it clears on fly-out, spine, acid, return, or leaving the edge’s Z span. Plans never retarget mid-flight. At hang apex (+ `APEX_FACING_DELAY`), facing flips into the source pipe.
+Hang stores `hang_edge_id`; it clears on fly-out, spine, acid, return, or leaving the edge’s Z span. Plans never retarget mid-flight. At hang apex, facing turns around the character's centered local Y axis into the source pipe over `APEX_FACING_DELAY`.
 
 ## Motion vectors
 
@@ -90,7 +90,7 @@ Gated by autoload `DebugTools` (`OS.is_debug_build()` or export feature `debug_t
 |-------|------|
 | Head arrows | INPUT / MOMENTUM / ACTUAL |
 | Overlay | Zone / surface / next coping candidate |
-| TUNING sliders | Gravity, fly-out window, apex face delay, spine/acid cast cells, ollie, speeds, accel, brake, friction, cell size, camera |
+| TUNING sliders | Gravity, fly-out window, apex turn duration, spine/acid cast cells, ollie, speeds, accel, brake, friction, cell size, camera |
 | Cell / facing cast / edge lattice | Presentation-only highlight |
 
 Tunable sim values sync into `SimTolerances` / `PlayerSim` each physics tick. Cast-cell highlight distance is debug draw only (not a separate gameplay path).

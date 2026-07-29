@@ -14,7 +14,7 @@ func _init(m: ParkModel = null, q: SurfaceQuery = null) -> void:
 
 func spawn_state() -> SimState:
 	var st := SimState.new()
-	st.facing = model.spawn_facing if model != null else "r"
+	st.set_facing_side(model.spawn_facing if model != null else "r")
 	st.position = Vector3(model.spawn_x, model.spawn_z, model.spawn_height)
 	# Prefer the support at the IDL spawn height (story), not a lower pad that
 	# shares the same XZ footprint.
@@ -772,14 +772,14 @@ func _contain_ground_xz(state: SimState, proposed: Vector3) -> Dictionary:
 
 func _update_facing(state: SimState) -> void:
 	if absf(state.tangent_velocity.x) > 1.0:
-		state.facing = "r" if state.tangent_velocity.x > 0.0 else "l"
+		state.set_facing_side("r" if state.tangent_velocity.x > 0.0 else "l")
 
 
 func _update_facing_pipe(state: SimState, pipe: PipeSurface) -> void:
 	# Facing follows world X, not along-arc sign.
 	var world_vx := state.tangent_velocity.x * pipe.outward_sign()
 	if absf(world_vx) > 1.0:
-		state.facing = "r" if world_vx > 0.0 else "l"
+		state.set_facing_side("r" if world_vx > 0.0 else "l")
 
 
 ## Per-axis grounded control: coast (friction), brake only when stick opposes vel, else accel.

@@ -9,6 +9,8 @@ var support_height: float = 0.0
 var surface_tilt: float = 0.0
 var airborne: bool = false
 var facing_h: float = 1.0
+## Centered local-Y hang-apex turn (0 settled; ±π faces opposite).
+var facing_yaw: float = 0.0
 var active_layer: int = 0
 
 
@@ -20,6 +22,7 @@ func copy_from_depth(depth: PseudoDepthBody, facing: float = 1.0, layer: int = 0
 	surface_tilt = depth.surface_tilt
 	airborne = depth.airborne
 	facing_h = facing
+	facing_yaw = 0.0
 	active_layer = layer
 
 
@@ -32,6 +35,7 @@ func duplicate_pose() -> LogicalPose:
 	p.surface_tilt = surface_tilt
 	p.airborne = airborne
 	p.facing_h = facing_h
+	p.facing_yaw = facing_yaw
 	p.active_layer = active_layer
 	return p
 
@@ -52,6 +56,17 @@ static func lerp_poses(a: LogicalPose, b: LogicalPose, t: float) -> LogicalPose:
 	out.support_height = lerpf(a.support_height, b.support_height, u)
 	out.surface_tilt = lerp_angle(a.surface_tilt, b.surface_tilt, u)
 	out.airborne = b.airborne if u >= 0.5 else a.airborne
-	out.facing_h = b.facing_h if u >= 0.5 else a.facing_h
+	var equivalent_turn_handoff := (
+		a.facing_h * b.facing_h < 0.0
+		and absf(absf(a.facing_yaw - b.facing_yaw) - PI) < 0.01
+	)
+	if equivalent_turn_handoff:
+		# R(±π) × old-facing and R(0) × new-facing are the same visual pose.
+		# Pick the canonical endpoint instead of animating a second half-turn.
+		out.facing_h = b.facing_h
+		out.facing_yaw = b.facing_yaw
+	else:
+		out.facing_h = b.facing_h if u >= 0.5 else a.facing_h
+		out.facing_yaw = lerp_angle(a.facing_yaw, b.facing_yaw, u)
 	out.active_layer = b.active_layer if u >= 0.5 else a.active_layer
 	return out

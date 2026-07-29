@@ -97,30 +97,42 @@ func _resolve_refs() -> void:
 func apply_pose(pose: LogicalPose) -> void:
 	# Root = feet contact. Body mesh is offset up by half-height so its bottom
 	# stays on the surface even when body_size.y changes; tilt pivots at the feet.
-	global_position = WorldSpace.logical_to_world(pose.logical_x, pose.logical_z, pose.feet_height)
+	var world_position := WorldSpace.logical_to_world(
+		pose.logical_x, pose.logical_z, pose.feet_height
+	)
+	if is_inside_tree():
+		global_position = world_position
+	else:
+		position = world_position
 	scale = Vector3.ONE
-	# World X = −logical X mirrors the park vs 2D. CanvasItem tilt leans correctly
-	# on screen in 2D; after the mirror the same signed tilt must be applied as
-	# +Z roll (not negated) so the skater still leans into the pipe wall.
+	# Surface lean pivots at the feet. The apex facing change pivots separately
+	# around the body center's local Y axis, keeping the skater's lean while
+	# turning through depth.
 	rotation = Vector3(0.0, 0.0, pose.surface_tilt)
 	var face := signf(pose.facing_h) if pose.facing_h != 0.0 else 1.0
 	if _body:
 		# Facing +logical X is screen-right after WorldSpace X mirror.
 		_body.scale = Vector3(-face, 1.0, 1.0)
 		_body.position = Vector3(0.0, body_size.y * 0.5, 0.0)
+		_body.rotation = Vector3(0.0, pose.facing_yaw, 0.0)
 
 
 func _build_live_pose() -> LogicalPose:
 	var pose := LogicalPose.new()
 	var facing := 1.0
+	var yaw := 0.0
 	if _player != null:
-		var fh = _player.get("facing_h")
+		var fh = _player.get("visual_facing_h")
 		if typeof(fh) == TYPE_STRING:
 			facing = 1.0 if str(fh) == "r" else -1.0
 		elif typeof(fh) == TYPE_FLOAT or typeof(fh) == TYPE_INT:
 			facing = float(fh)
+		var fy = _player.get("facing_yaw")
+		if typeof(fy) == TYPE_FLOAT or typeof(fy) == TYPE_INT:
+			yaw = float(fy)
 	if _depth != null:
 		pose.copy_from_depth(_depth, facing, 0)
+	pose.facing_yaw = yaw
 	return pose
 
 

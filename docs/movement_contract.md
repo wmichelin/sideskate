@@ -97,7 +97,7 @@ Invisible world-border walls sit on the park AABB faces (X and Z) so you cannot 
 | `ALIGN_EPS` | `2.0` | Target coping alignment / Z overlap slack |
 | `MAX_EDGE_CROSSINGS` | `8` | Per-tick seam chain bound |
 | `FLY_OUT_ABOVE` | `40` | Max height above coping for fly-out window |
-| `APEX_FACING_DELAY` | `0.05` s | Delay after hang apex before facing into the pipe |
+| `APEX_FACING_DELAY` | `0.05` s | Centered local-Y hang turn duration into the source pipe |
 | `FACING_COPING_CELLS` | `3` | Spine cast range in cells |
 | `ACID_COPING_CELLS` | `16` | Acid cast range in cells |
 | `VOID_FLOOR` | `-200` | Invisible safety floor under the park AABB |
@@ -124,7 +124,7 @@ Outward `#` decks (any height) ⇒ `OPEN` (air/fly corridor). Matching-height `=
 - Free-air **X**: ballistic — no friction/coast decay; stick steers only while held (accelerate toward wish or brake when opposite). Aligned stick must **not** slow existing `|vx|` toward a lower wish cap. Release conserves vx. Height integrates gravity only.
 - Seam crossing: transport world tangent speed onto the destination surface; no dead-stop.
 - Pipe→wall and wall→pipe seams preserve tangent speed and consume the crossing once.
-- Air-out leave: seed vertical from wall/pipe tangent; `vx = 0`; retain and lock to the exact edge anchor until fly-out / spine / acid / return. Once per hang, after vertical apex (+ `APEX_FACING_DELAY`), facing flips into the source pipe.
+- Air-out leave: seed vertical from wall/pipe tangent; `vx = 0`; retain and lock to the exact edge anchor until fly-out / spine / acid / return. Once per hang, after vertical apex, facing turns around the character's centered local Y axis into the source pipe over `APEX_FACING_DELAY` (0 = instant).
 - Fly-out / deck-out: clear hang; seed free-air velocity with outward X.
 - Ordinary land: require descending support crossing; pipes only same-facing (air-out: also coping-X aligned, any height); never opposite-facing.
 - Spine/acid land: convert descending vertical into destination pipe along-arc with travel sign preserved; never reverse travel.
