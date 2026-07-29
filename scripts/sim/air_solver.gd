@@ -39,10 +39,16 @@ func _step_free(state: SimState, wish: Vector2, delta: float) -> void:
 		state.velocity.x = 0.0
 		state.velocity.y = 0.0 if absf(w.y) < 0.15 else w.y * 200.0
 	else:
-		# Free air: X is ballistic (no friction). Stick only steers when held;
-		# release conserves vx. Depth stick-kinematic; height = gravity only.
+		# Free air: X is ballistic (no friction). Stick steers without bleeding
+		# existing speed — aligned wish below |vx| conserves; opposite can brake.
 		if absf(w.x) >= 0.15:
-			state.velocity.x = move_toward(state.velocity.x, w.x * 400.0, 800.0 * delta)
+			var target := w.x * 400.0
+			var vx := state.velocity.x
+			if w.x * vx < 0.0:
+				state.velocity.x = move_toward(vx, target, 800.0 * delta)
+			elif absf(vx) < absf(target):
+				state.velocity.x = move_toward(vx, target, 800.0 * delta)
+			# else: same direction, already faster than wish cap — keep ballistic vx
 		state.velocity.y = 0.0 if absf(w.y) < 0.15 else w.y * 200.0
 	state.velocity.z += SimTolerances.GRAVITY * delta
 	var from := state.position

@@ -119,7 +119,7 @@ Outward `#` decks (any height) ⇒ `OPEN` (air/fly corridor). Matching-height `=
 
 - Grounded X / along: integrate control. Neutral stick coasts (`friction` / `ramp_friction`); stick opposite velocity brakes (`brake`); aligned stick accelerates (`accel`). Cap at max speeds.
 - Grounded / air **depth (Z)**: zero momentum — velocity is stick × max speed; release snaps to 0.
-- Free-air **X**: ballistic — no friction/coast decay; stick steers only while held. Height integrates gravity only.
+- Free-air **X**: ballistic — no friction/coast decay; stick steers only while held (accelerate toward wish or brake when opposite). Aligned stick must **not** slow existing `|vx|` toward a lower wish cap. Release conserves vx. Height integrates gravity only.
 - Seam crossing: transport world tangent speed onto the destination surface; no dead-stop.
 - Air-out leave: seed vertical from along at coping; `vx = 0`; lock X to coping until fly-out / spine / acid / land.
 - Fly-out / deck-out: clear hang; seed free-air velocity with outward X.

@@ -486,6 +486,21 @@ func _air_no_x_friction() -> bool:
 				% [vx0, sim.state.velocity.x]
 			)
 			return false
+	# Aligned stick under current speed must not bleed ballistic vx (felt like air friction).
+	sim.state.velocity.x = 550.0
+	vx0 = sim.state.velocity.x
+	for _i in range(12):
+		sim.set_input(Vector2(1, 0), false, false, false)
+		sim.tick()
+		if not sim.state.is_airborne():
+			push_error("air friction: landed while holding aligned stick")
+			return false
+		if sim.state.velocity.x + 1.0 < vx0:
+			push_error(
+				"aligned stick must not slow ballistic air X, %s → %s"
+				% [vx0, sim.state.velocity.x]
+			)
+			return false
 	return true
 
 
