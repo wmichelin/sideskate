@@ -7,6 +7,7 @@ func run() -> bool:
 		_ride_halfpipe()
 		and _fly_out_open_vs_backed()
 		and _hang_x_lock_until_fly_out()
+		and _fly_out_seeds_ballistic_outward_x()
 		and _hang_land_into_bowl()
 		and _hang_apex_faces_into_ramp()
 		and _spine_plan()
@@ -169,6 +170,97 @@ func _hang_x_lock_until_fly_out() -> bool:
 	if sim.state.velocity.x >= -1.0:
 		push_error("fly-out should seed outward (-X) velocity, got %s" % sim.state.velocity)
 		return false
+	return true
+
+
+## Fly-out must launch with outward X from climb/air speed, and free-air X must
+## stay ballistic after release (not snap to 0 like depth).
+func _fly_out_seeds_ballistic_outward_x() -> bool:
+	# --- Pipe hang fly-out ---
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_open_fly.ssk"):
+		push_error("fly-out ballistic: setup open")
+		return false
+	var left := _left_pipe(sim.model)
+	_place_at_coping(sim, left, 400.0)
+	sim.set_input(Vector2.ZERO, false, false)
+	sim.tick()
+	if not sim.state.is_hanging():
+		push_error("fly-out ballistic: expected hang")
+		return false
+	var climb_vh := sim.state.velocity.z
+	if climb_vh < 100.0:
+		push_error("fly-out ballistic: hang missing climb height vel %.1f" % climb_vh)
+		return false
+	sim.set_input(Vector2(-1, 0), false, false)
+	sim.tick()
+	if sim.state.is_hanging() or not sim.state.is_airborne():
+		push_error("fly-out ballistic: unlock failed reject=%s" % sim.state.last_reject)
+		return false
+	# Seed is outward and at least climb/air speed (planner floor 120).
+	var seeded := sim.state.velocity.x
+	if seeded >= -1.0:
+		push_error("fly-out ballistic: missing outward -X seed, got %s" % sim.state.velocity)
+		return false
+	if absf(seeded) + 1.0 < minf(absf(climb_vh), 120.0):
+		push_error(
+			"fly-out ballistic: seed |vx|=%.1f too small vs climb vh=%.1f"
+			% [absf(seeded), climb_vh]
+		)
+		return false
+	# Release stick: X must conserve (ballistic), not snap to 0.
+	sim.set_input(Vector2.ZERO, false, false)
+	for _i in range(8):
+		sim.tick()
+		if not sim.state.is_airborne():
+			push_error("fly-out ballistic: landed during coast")
+			return false
+		if absf(sim.state.velocity.x - seeded) > 1.0:
+			push_error(
+				"fly-out ballistic: release must conserve vx %.1f → %.1f"
+				% [seeded, sim.state.velocity.x]
+			)
+			return false
+	# --- Cross-story wall climb → fly-out ---
+	var wall_sim := _upper_deck_2_setup()
+	if wall_sim == null:
+		return false
+	var wall := _upper_deck_2_right_wall(wall_sim)
+	if wall == null:
+		push_error("fly-out ballistic: missing wall")
+		return false
+	var top_h := float(wall.sample_at_z(wall_sim.state.position.y).top_height)
+	var unlocked_vx := 0.0
+	var unlocked := false
+	for _j in range(160):
+		wall_sim.set_input(Vector2(1, 0), false, false)
+		wall_sim.tick()
+		if wall_sim.state.is_airborne() and not wall_sim.state.is_hanging() \
+				and wall_sim.state.velocity.x > 1.0:
+			if wall_sim.state.position.z < top_h - SimTolerances.CONTACT_EPS:
+				push_error("fly-out ballistic: wall unlock below lip")
+				return false
+			unlocked = true
+			unlocked_vx = wall_sim.state.velocity.x
+			break
+	if not unlocked:
+		push_error("fly-out ballistic: wall climb never unlocked with +X")
+		return false
+	if unlocked_vx < 100.0:
+		push_error("fly-out ballistic: wall fly-out vx too small %.1f" % unlocked_vx)
+		return false
+	wall_sim.set_input(Vector2.ZERO, false, false)
+	for _k in range(8):
+		wall_sim.tick()
+		if not wall_sim.state.is_airborne():
+			# May land the deck while coasting — still must not have killed vx first.
+			break
+		if absf(wall_sim.state.velocity.x - unlocked_vx) > 1.0:
+			push_error(
+				"fly-out ballistic: wall release must conserve vx %.1f → %.1f"
+				% [unlocked_vx, wall_sim.state.velocity.x]
+			)
+			return false
 	return true
 
 
