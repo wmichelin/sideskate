@@ -33,6 +33,7 @@ func run() -> bool:
 		and _deck_hash_no_pin_from_floor()
 		and _l0_lava_gap_no_phantom_wall_climb()
 		and _deck_ride_off_falls_acid_mounts()
+		and _map_edge_deck_no_void_exit()
 	)
 
 
@@ -703,7 +704,7 @@ func _world_border_contains() -> bool:
 	var mid_z := sim.model.depth * 0.5
 	sim.state.position = Vector3(sim.model.width - 20.0, mid_z, 80.0)
 	sim.state.velocity = Vector3(800.0, 0.0, 0.0)
-	var wall_x := sim.model.width + SimTolerances.CAPSULE_RADIUS
+	var wall_x := sim.model.width
 	for _i in range(90):
 		sim.set_input(Vector2(1, 0), false, false)
 		sim.tick()
@@ -713,7 +714,7 @@ func _world_border_contains() -> bool:
 		if sim.state.position.x > wall_x + 1.0:
 			push_error("border: escaped east wall x=%.1f" % sim.state.position.x)
 			return false
-		if sim.state.position.x < -SimTolerances.CAPSULE_RADIUS - 1.0:
+		if sim.state.position.x < -1.0:
 			push_error("border: escaped west wall")
 			return false
 	# Depth (Z): walls on the park faces — cannot leave [0, depth].
@@ -1648,6 +1649,57 @@ func _deck_ride_off_falls_acid_mounts() -> bool:
 		% [acid.state.mode, acid.state.surface_id, acid.state.last_reject]
 	)
 	return false
+
+
+## >>>#### at the map edge: skating off the deck must not fall into the void.
+func _map_edge_deck_no_void_exit() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
+		push_error("edge deck: setup")
+		return false
+	var deck: SupportPatch = null
+	for pid in sim.model.patches.keys():
+		var p: SupportPatch = sim.model.patches[pid]
+		if int(p.kind) != SimKinds.SurfaceKind.DECK:
+			continue
+		if deck == null or p.x_max > deck.x_max:
+			deck = p
+	if deck == null or deck.x_max < sim.model.width - 1.0:
+		push_error("edge deck: expected rightmost deck on map edge")
+		return false
+	var z := (deck.z_min + deck.z_max) * 0.5
+	sim.state.mode = SimState.Mode.GROUNDED
+	sim.state.surface_id = deck.id
+	sim.state.position = Vector3(deck.x_max - 10.0, z, deck.height)
+	sim.state.tangent_velocity = Vector2(500.0, 0.0)
+	sim.state.velocity = Vector3.ZERO
+	sim.state.clear_hang()
+	sim.state.maneuver = null
+	for _i in range(180):
+		sim.set_input(Vector2(1, 0), false, false)
+		sim.tick()
+		if not sim.state.alive:
+			push_error("edge deck: died")
+			return false
+		if sim.state.surface_id == "__void_floor__":
+			push_error("edge deck: fell to void floor x=%.1f" % sim.state.position.x)
+			return false
+		if sim.state.position.x > sim.model.width + 1.0:
+			push_error("edge deck: escaped east x=%.1f" % sim.state.position.x)
+			return false
+		if sim.state.is_airborne() and sim.state.position.z < deck.height - 40.0:
+			push_error(
+				"edge deck: fell off map rim in air h=%.1f x=%.1f"
+				% [sim.state.position.z, sim.state.position.x]
+			)
+			return false
+	if not sim.state.is_grounded() or sim.state.surface_id != deck.id:
+		push_error(
+			"edge deck: expected to stay on deck mode=%s surf=%s"
+			% [sim.state.mode, sim.state.surface_id]
+		)
+		return false
+	return true
 
 
 func _place_at_coping(sim: PlayerSim, pipe: PipeSurface, along: float) -> void:

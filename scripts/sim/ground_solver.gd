@@ -167,8 +167,47 @@ func _step_patch(
 			state.alive = false
 		_update_facing(state)
 		return
-	# Ride-off into air (holes / unsupported edges / deck→pipe — void floor catches).
+	# World rim: stay on this patch — never fall out of the level into the void.
+	if _stay_grounded_at_world_rim(state, patch, next):
+		_update_facing(state)
+		return
+	# Ride-off into air (holes / unsupported interior edges / deck→pipe).
 	_enter_air(state, Vector3(state.tangent_velocity.x, state.tangent_velocity.y, 0.0))
+
+
+## Keep grounded feet on a patch when clamped against the park AABB rim.
+## Map-edge decks/floors are walls, not air leave → void.
+func _stay_grounded_at_world_rim(state: SimState, patch: SupportPatch, next: Vector3) -> bool:
+	var at_rim := (
+		next.x <= 0.001
+		or next.x >= model.width - 0.001
+		or next.y <= 0.001
+		or next.y >= model.depth - 0.001
+	)
+	if not at_rim:
+		return false
+	var inset := 0.05
+	var x := next.x
+	var z := next.y
+	if patch.x_max - patch.x_min > inset * 2.0:
+		x = clampf(next.x, patch.x_min + inset, patch.x_max - inset)
+	else:
+		x = (patch.x_min + patch.x_max) * 0.5
+	if patch.z_max - patch.z_min > inset * 2.0:
+		z = clampf(next.y, patch.z_min + inset, patch.z_max - inset)
+	else:
+		z = (patch.z_min + patch.z_max) * 0.5
+	if not patch.contains_xz(x, z):
+		x = clampf(state.position.x, patch.x_min + inset, patch.x_max - inset)
+		z = clampf(state.position.y, patch.z_min + inset, patch.z_max - inset)
+		if not patch.contains_xz(x, z):
+			return false
+	if absf(x - next.x) > 0.001:
+		state.tangent_velocity.x = 0.0
+	if absf(z - next.y) > 0.001:
+		state.tangent_velocity.y = 0.0
+	state.position = Vector3(x, z, patch.height)
+	return true
 
 
 func _step_pipe(

@@ -177,13 +177,12 @@ func _blocker_at(p: Vector3) -> Dictionary:
 	var x := p.x
 	var z := p.y
 	var h := p.z
-	var margin := SimTolerances.CAPSULE_RADIUS
-	# X walls sit *outside* the AABB so edge pipe copings (x=0 / x=width) stay
-	# rideable. Z walls are closed on the park faces — floor polys often exclude
-	# the exact z=0/z=depth boundary, which previously dropped you into the void.
-	if x < -margin:
+	# World walls on the park faces — cannot leave the footprint and fall out.
+	# Edge pipe copings sit on x=0 / x=width (and z faces for depth); those poses
+	# remain free. Past the face is solid.
+	if x < 0.0:
 		return {"kind": "bounds", "axis": "x", "sign": -1.0, "reason": "west wall"}
-	if x > model.width + margin:
+	if x > model.width:
 		return {"kind": "bounds", "axis": "x", "sign": 1.0, "reason": "east wall"}
 	if z <= 0.0:
 		return {"kind": "bounds", "axis": "z", "sign": -1.0, "reason": "near wall"}
