@@ -11,6 +11,7 @@ func run() -> bool:
 		and _cross_story_spans_are_explicit()
 		and _cross_story_contact_ownership()
 		and _unrelated_story_breaks_do_not_split_coping()
+		and _deck_back_wall_keeps_deck_ownership()
 		and _open_coping()
 		and _playable_levels_compile()
 	)
@@ -212,6 +213,21 @@ func _unrelated_story_breaks_do_not_split_coping() -> bool:
 	var span: CopingSpan = coping.spans[0]
 	if absf(span.z_min - pipe.z_min) > 0.01 or absf(span.z_max - pipe.z_max) > 0.01:
 		push_error("coping seam: merged span does not cover the full quarter pipe")
+		return false
+	return true
+
+
+func _deck_back_wall_keeps_deck_ownership() -> bool:
+	var m := IdlCompiler.compile_path("res://levels/layered_demo.ssk")
+	var pipe: PipeSurface = m.pipes.get("pipe_1_L0_S1")
+	var coping: CopingEdge = m.copings.get(pipe.coping_id) if pipe != null else null
+	var span: CopingSpan = coping.span_at_z(1000.0) if coping != null else null
+	var wall: WallSurface = m.walls.get(span.wall_id) if span != null else null
+	if wall == null or wall.outward_deck_id != "deck_2_L1":
+		push_error("deck back: cross-story wall lost outward deck ownership")
+		return false
+	if not wall.top_support_id.is_empty():
+		push_error("deck back: outward deck must remain an air corridor, not a seam")
 		return false
 	return true
 

@@ -374,11 +374,14 @@ static func _classify_coping_at(
 		best_h = oh
 		best_other = other
 	if best_other != null:
+		var outward_deck_id := str(desc.get("outward_deck_id", ""))
 		desc = {
 			"class": SimKinds.CopingClass.WALL_EXTENSION,
 			"partner_pipe_id": best_other.id,
 			"partner_coping_id": best_other.coping_id,
 		}
+		if not outward_deck_id.is_empty():
+			desc["outward_deck_id"] = outward_deck_id
 	return desc
 
 
@@ -406,6 +409,7 @@ static func _build_wall_surface(
 	wall.z_min = span.z_min
 	wall.z_max = span.z_max
 	wall.top_support_id = span.support_patch_id
+	wall.outward_deck_id = span.outward_deck_id
 	wall.upper_partner_pipe_id = str(desc.get("partner_pipe_id", ""))
 	for z in [span.z_min, span.z_max]:
 		var geom := cope.sample_at_z(z)
@@ -634,11 +638,12 @@ static func _hash_model(model: ParkModel) -> String:
 	for id in model.all_wall_ids():
 		var wall: WallSurface = model.walls[id]
 		lines.append(
-			"wall:%s:%s:%s:%s:%.4f:%.4f"
+			"wall:%s:%s:%s:%s:%s:%.4f:%.4f"
 			% [
 				id,
 				wall.source_pipe_id,
 				wall.top_support_id,
+				wall.outward_deck_id,
 				wall.upper_partner_pipe_id,
 				wall.z_min,
 				wall.z_max,

@@ -19,7 +19,7 @@ func run() -> bool:
 		and _coast_with_zero_friction()
 		and _air_no_x_friction()
 		and _wall_extension_climbs()
-		and _layered_fly_out_at_upper_lip()
+		and _layered_deck_back_releases_at_upper_lip()
 		and _void_floor_catches_fall()
 		and _world_border_contains()
 		and _edge_fly_out_wall_slide()
@@ -708,11 +708,12 @@ func _wall_extension_climbs() -> bool:
 	return false
 
 
-func _layered_fly_out_at_upper_lip() -> bool:
-	# L0 right under L1 left: fly-out at L0 geometric must fail; after climb, fly at L1 height.
+func _layered_deck_back_releases_at_upper_lip() -> bool:
+	# L0 right under the L1 deck: the geometric lip climbs the explicit wall,
+	# while the wall top is an ordinary free-air edge rather than a fake coping.
 	var sim := PlayerSim.new()
 	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
-		push_error("setup layered fly")
+		push_error("setup layered deck back")
 		return false
 	var pipe: PipeSurface = null
 	for id in sim.model.pipes.keys():
@@ -735,6 +736,9 @@ func _layered_fly_out_at_upper_lip() -> bool:
 		push_error("layered wall span missing at test Z")
 		return false
 	var wall: WallSurface = sim.model.walls[span.wall_id]
+	if wall.outward_deck_id != "deck_2_L1":
+		push_error("layered deck back missing explicit outward deck ownership")
+		return false
 	var h_eff := float(wall.sample_at_z(z).top_height)
 	# At geometric lip with outward stick — must not fly through L1.
 	sim.state.mode = SimState.Mode.GROUNDED
@@ -750,36 +754,26 @@ func _layered_fly_out_at_upper_lip() -> bool:
 		return false
 	# Climb to effective lip.
 	sim.state.mode = SimState.Mode.GROUNDED
-	sim.state.surface_id = pipe.id
-	sim.state.u = 0.95
+	sim.state.surface_id = wall.id
+	sim.state.u = 0.9
+	sim.state.v = 0.5
 	sim.state.tangent_velocity = Vector2(500.0, 0.0)
-	sim.state.position = Vector3(pipe.x_at_theta(z, 0.95 * PI * 0.5), z, pipe.height_at_theta(z, 0.95 * PI * 0.5))
+	sim.state.position = wall.position_at(z, sim.state.u)
+	var reached_free_air := false
 	for _i in range(120):
-		sim.set_input(Vector2(1, 0), false, false)
+		sim.set_input(Vector2.ZERO, false, false)
 		sim.tick()
-		if sim.state.is_hanging() and sim.state.position.z >= h_eff - SimTolerances.CONTACT_EPS * 2.0:
+		if sim.state.is_airborne():
+			if sim.state.is_hanging():
+				push_error("layered deck back incorrectly created a coping air-out lock")
+				return false
+			reached_free_air = true
 			break
-	if sim.state.position.z < h_eff - 20.0:
-		push_error("never reached upper lip h=%.1f got %.1f" % [h_eff, sim.state.position.z])
-		return false
-	# Fly-out at upper lip.
-	sim.set_input(Vector2(1, 0), false, false)
-	sim.tick()
-	if sim.state.is_hanging():
-		# Need rising window — seed upward if we landed flat at top.
-		sim.state.velocity.z = maxf(sim.state.velocity.z, 80.0)
-		sim.set_input(Vector2(1, 0), false, false)
-		sim.tick()
-	if sim.state.is_hanging():
-		push_error("fly-out at L1 lip should unlock: reject=%s h=%.1f" % [
-			sim.state.last_reject, sim.state.position.z
-		])
-		return false
-	if not sim.state.is_airborne():
-		push_error("expected free air after upper fly-out")
+	if not reached_free_air:
+		push_error("layered deck back never released into free air")
 		return false
 	if sim.state.position.z < h_eff - 40.0:
-		push_error("fly-out height still near L0 (%.1f)" % sim.state.position.z)
+		push_error("deck-back release height still near L0 (%.1f)" % sim.state.position.z)
 		return false
 	return true
 

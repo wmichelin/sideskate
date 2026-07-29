@@ -56,7 +56,7 @@ Stick → wish. Per axis:
 | **Free** (fly-out / deck-out) | Outward X-dominant stick in `FLY_OUT_ABOVE`, or ride-off | Unlocked; ballistic (no friction — stick steers only while held) | Gravity only |
 | **Maneuver** | Accepted spine / acid / fly-out plan | Plan owns pose | Plan owns pose |
 
-**Fly-out / deck-out:** unlock X and travel away from the pipe (left on left / right on right). Stick into the lip (outward), X-dominant, within the height window.
+**Fly-out / deck-out:** unlock X and travel away from the pipe (left on left / right on right). Stick into the lip (outward), X-dominant, within the height window. Deck-backed wall tops release directly into ordinary free air instead of creating a coping lock.
 
 **Air-out land:** descending through the retained edge returns to its exact source pipe/wall with speed preserved. Never auto-land the opposite-facing transfer target.
 
