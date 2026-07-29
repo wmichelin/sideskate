@@ -21,6 +21,7 @@ func run() -> bool:
 		and _void_floor_catches_fall()
 		and _world_border_contains()
 		and _pipe_body_no_clip()
+		and _embedded_pipe_no_phase_through()
 	)
 
 
@@ -712,6 +713,121 @@ func _pipe_body_no_clip() -> bool:
 	if deepest_pen > SimTolerances.CONTACT_EPS * 4.0:
 		# Hit response should keep us out; brief skim OK, sustained deep no.
 		pass
+	return true
+
+
+func _embedded_pipe_no_phase_through() -> bool:
+	# Floor wraps around an embedded >> pipe; floor poly may cover the pipe
+	# cells, but grounded motion must not walk through the solid body.
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_embedded_pipe.ssk"):
+		push_error("embed: setup")
+		return false
+	var pipe: PipeSurface = null
+	for id in sim.model.pipes.keys():
+		pipe = sim.model.pipes[id]
+		break
+	if pipe == null:
+		push_error("embed: no pipe")
+		return false
+	var z := (pipe.z_min + pipe.z_max) * 0.5
+	var lip := float((pipe.samples[0] as Dictionary).lip_x)
+	var radius := float((pipe.samples[0] as Dictionary).radius)
+	var coping_x := lip + radius # right-facing
+	# Start on floor left of the lip; charge right through the obstacle.
+	sim.state.mode = SimState.Mode.GROUNDED
+	# Prefer any floor patch under spawn.
+	var floor_id := ""
+	for pid in sim.model.patches.keys():
+		var p: SupportPatch = sim.model.patches[pid]
+		if int(p.kind) != SimKinds.SurfaceKind.FLOOR or pid.begins_with("__"):
+			continue
+		if p.contains_xz(lip - 40.0, z):
+			floor_id = pid
+			break
+	if floor_id.is_empty():
+		push_error("embed: no floor left of pipe")
+		return false
+	sim.state.surface_id = floor_id
+	sim.state.position = Vector3(lip - 40.0, z, 0.0)
+	sim.state.tangent_velocity = Vector2(400.0, 0.0)
+	sim.state.u = 0.0
+	sim.state.v = 0.0
+	var max_h := 0.0
+	var rode_pipe := false
+	var phased := false
+	for _i in range(240):
+		sim.set_input(Vector2(1, 0), false, false)
+		sim.tick()
+		if not sim.state.alive:
+			push_error("embed: died")
+			return false
+		max_h = maxf(max_h, sim.state.position.z)
+		if sim.state.is_grounded() and sim.model.pipes.has(sim.state.surface_id):
+			rode_pipe = true
+		# Deep inside pipe body below ride surface = fail.
+		if pipe.contains_xz(sim.state.position.x, sim.state.position.y):
+			var proj := pipe.project(
+				sim.state.position.x, sim.state.position.y, sim.state.position.z
+			)
+			if bool(proj.get("ok", false)):
+				var ph := float(proj.point.z)
+				if sim.state.position.z < ph - SimTolerances.CAPSULE_RADIUS:
+					push_error(
+						"embed: phased into pipe body h=%.1f surface=%.1f x=%.1f"
+						% [sim.state.position.z, ph, sim.state.position.x]
+					)
+					return false
+		# Past coping on the far floor without ever climbing = walked through the solid.
+		if sim.state.position.x > coping_x + SimTolerances.CAPSULE_RADIUS \
+				and sim.state.position.z < 20.0 \
+				and sim.state.is_grounded() \
+				and not rode_pipe \
+				and max_h < radius * 0.35:
+			phased = true
+			break
+	if phased:
+		push_error("embed: walked through pipe to far side at floor height")
+		return false
+	# From the back (outward) side: must not phase left through the body on the floor.
+	sim.respawn()
+	var floor_r := ""
+	for pid2 in sim.model.patches.keys():
+		var p2: SupportPatch = sim.model.patches[pid2]
+		if int(p2.kind) != SimKinds.SurfaceKind.FLOOR or pid2.begins_with("__"):
+			continue
+		if p2.contains_xz(coping_x + 40.0, z):
+			floor_r = pid2
+			break
+	if floor_r.is_empty():
+		push_error("embed: no floor right of pipe")
+		return false
+	sim.state.mode = SimState.Mode.GROUNDED
+	sim.state.surface_id = floor_r
+	sim.state.position = Vector3(coping_x + 40.0, z, 0.0)
+	sim.state.tangent_velocity = Vector2(-400.0, 0.0)
+	sim.state.u = 0.0
+	sim.state.v = 0.0
+	for _j in range(240):
+		sim.set_input(Vector2(-1, 0), false, false)
+		sim.tick()
+		if not sim.state.alive:
+			push_error("embed: died from back")
+			return false
+		if pipe.contains_xz(sim.state.position.x, sim.state.position.y):
+			var proj2 := pipe.project(
+				sim.state.position.x, sim.state.position.y, sim.state.position.z
+			)
+			if bool(proj2.get("ok", false)) \
+					and sim.state.position.z < float(proj2.point.z) - SimTolerances.CAPSULE_RADIUS:
+				push_error("embed: phased into pipe from back")
+				return false
+		if sim.state.position.x < lip - SimTolerances.CAPSULE_RADIUS \
+				and sim.state.position.z < 20.0 \
+				and sim.state.is_grounded() \
+				and not sim.model.pipes.has(sim.state.surface_id):
+			push_error("embed: walked through pipe from back to lip side")
+			return false
 	return true
 
 

@@ -117,6 +117,21 @@ func _step_patch(
 		return
 	next = contained.pos
 	if patch.contains_xz(next.x, next.y):
+		# Floor outline can cover pipe cells; prefer mounting a same-height pipe
+		# at the lip instead of skating the fake floor under the arc.
+		var overlap := query.top_support(next.x, next.y, patch.height + SimTolerances.CONTACT_EPS)
+		if not overlap.is_empty() \
+				and int(overlap.kind) == SimKinds.SurfaceKind.PIPE \
+				and absf(float(overlap.height) - patch.height) <= SimTolerances.SEAM_EPS:
+			state.surface_id = str(overlap.surface_id)
+			var proj: Dictionary = overlap.proj
+			state.u = float(proj.u)
+			state.v = float(proj.v)
+			state.position = proj.point
+			var pipe_m: PipeSurface = model.pipes[state.surface_id]
+			state.tangent_velocity.x = state.tangent_velocity.x * pipe_m.outward_sign()
+			_update_facing(state)
+			return
 		state.position = next
 		_update_facing(state)
 		return
@@ -458,6 +473,10 @@ func _contain_ground_xz(state: SimState, proposed: Vector3) -> Dictionary:
 		c.x = clamped.x
 		c.y = clamped.y
 		if not model.is_traversable_xz(c.x, c.y):
+			continue
+		# Floor polys can wrap around pipe cells (hole outline lost) — still treat
+		# pipe bodies / wall slabs as solid so you cannot phase through obstacles.
+		if not query.blocker_at(Vector3(c.x, c.y, c.z)).is_empty():
 			continue
 		# Trim velocity components that were rejected by clamping / slide.
 		if absf(c.x - proposed.x) > 0.001:
