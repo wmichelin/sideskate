@@ -26,6 +26,7 @@ func run() -> bool:
 		and _embedded_pipe_no_phase_through()
 		and _embedded_pipe_mounts_not_sticks()
 		and _spine_deck_solid_from_floor()
+		and _land_snaps_out_of_pipe_solid()
 	)
 
 
@@ -1040,6 +1041,74 @@ func _spine_deck_solid_from_floor() -> bool:
 	var hit := sim.query.blocker_at(Vector3(mid_x, z, 0.0))
 	if str(hit.get("kind", "")) != "deck":
 		push_error("deck solid: expected deck blocker at floor under ##, got %s" % hit)
+		return false
+	return true
+
+
+func _land_snaps_out_of_pipe_solid() -> bool:
+	# Falling into a pipe body must snap onto the ride surface — not stick inside.
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_halfpipe.ssk"):
+		push_error("land snap: setup")
+		return false
+	var left := _left_pipe(sim.model)
+	if left == null:
+		return false
+	var z := (left.z_min + left.z_max) * 0.5
+	var mid_x := left.x_at_theta(z, PI * 0.35)
+	var mid_h := left.height_at_theta(z, PI * 0.35)
+	sim.state.mode = SimState.Mode.AIRBORNE
+	sim.state.surface_id = ""
+	sim.state.clear_hang()
+	sim.state.maneuver = null
+	# Start above the pipe and drop into the solid volume.
+	sim.state.position = Vector3(mid_x, z, mid_h + 80.0)
+	sim.state.velocity = Vector3(0.0, 0.0, -400.0)
+	var snapped := false
+	for _i in range(90):
+		sim.set_input(Vector2.ZERO, false, false)
+		sim.tick()
+		if not sim.state.alive:
+			push_error("land snap: died")
+			return false
+		if sim.state.is_grounded() and sim.state.surface_id == left.id:
+			snapped = true
+			var proj := left.project(
+				sim.state.position.x, sim.state.position.y, sim.state.position.z
+			)
+			if not bool(proj.get("ok", false)):
+				push_error("land snap: grounded but not on pipe band")
+				return false
+			if absf(sim.state.position.z - float(proj.point.z)) > SimTolerances.CONTACT_EPS:
+				push_error(
+					"land snap: feet not on surface h=%.1f want %.1f"
+					% [sim.state.position.z, float(proj.point.z)]
+				)
+				return false
+			if not sim.query.blocker_at(sim.state.position).is_empty():
+				push_error("land snap: still inside solid after land")
+				return false
+			break
+	if not snapped:
+		push_error("land snap: never grounded on pipe")
+		return false
+	# Buried start: already inside solid must resolve on the next grounded/air tick.
+	sim.state.mode = SimState.Mode.AIRBORNE
+	sim.state.surface_id = ""
+	sim.state.clear_hang()
+	sim.state.position = Vector3(mid_x, z, mid_h - 20.0)
+	sim.state.velocity = Vector3(0.0, 0.0, -10.0)
+	sim.set_input(Vector2.ZERO, false, false)
+	sim.tick()
+	if sim.query.blocker_at(sim.state.position).is_empty() == false \
+			and not (sim.state.is_grounded() and sim.model.pipes.has(sim.state.surface_id)):
+		# One more tick for snap path.
+		sim.tick()
+	if not sim.query.blocker_at(sim.state.position).is_empty():
+		push_error(
+			"land snap: remained buried kind=%s h=%.1f"
+			% [sim.query.blocker_at(sim.state.position), sim.state.position.z]
+		)
 		return false
 	return true
 

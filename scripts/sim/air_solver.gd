@@ -58,36 +58,123 @@ func _step_free(state: SimState, wish: Vector2, delta: float) -> void:
 	if not hit.is_empty():
 		var t := float(hit.get("t", 1.0))
 		state.position = from.lerp(to, maxf(t - 0.01, 0.0))
-		_resolve_solid_hit(state, hit, from)
+		# Pipe/deck/wall hits snap onto the ride surface — never leave you stuck inside.
+		if _snap_onto_solid(state, hit):
+			return
+		_resolve_bounds_hit(state, hit, from)
 		_try_land(state, from.z)
+		# If still buried after a bounds bounce, snap to any support under feet.
+		if not query.blocker_at(state.position).is_empty():
+			_try_land(state, from.z)
+			_snap_buried_to_surface(state)
 		return
 	state.position = to
 	_try_land(state, from.z)
+	_snap_buried_to_surface(state)
 
 
-## Invisible walls / pipe bodies: stop into-wall motion; never crash.
-func _resolve_solid_hit(state: SimState, hit: Dictionary, from: Vector3 = Vector3.ZERO) -> void:
+## Snap airborne contact with pipe / deck / wall onto that ride surface.
+## Returns true when the skater is now grounded on the hit geometry.
+func _snap_onto_solid(state: SimState, hit: Dictionary) -> bool:
 	var kind := str(hit.get("kind", ""))
+	var impact := maxf(absf(state.velocity.z), absf(state.velocity.x))
+	var vz := state.velocity.y
+	if kind == "pipe":
+		# Rising through a stacked pipe body (layered climb / hang) must not remount.
+		if state.velocity.z > SimTolerances.CONTACT_EPS * 10.0 and state.is_hanging():
+			return false
+		if state.velocity.z > 80.0:
+			return false
+		var pipe: PipeSurface = model.pipes.get(str(hit.get("surface_id", "")))
+		if pipe == null:
+			return false
+		var proj := pipe.project(state.position.x, state.position.y, state.position.z)
+		if not bool(proj.get("ok", false)):
+			# Use hit point XZ if the pre-hit pose is just outside the band.
+			var pt: Vector3 = hit.get("point", state.position)
+			proj = pipe.project(pt.x, pt.y, pt.z)
+		if not bool(proj.get("ok", false)):
+			return false
+		state.mode = SimState.Mode.GROUNDED
+		state.surface_id = pipe.id
+		state.u = float(proj.u)
+		state.v = float(proj.v)
+		state.position = proj.point
+		state.tangent_velocity = Vector2(-maxf(impact, 80.0), vz)
+		state.velocity = Vector3.ZERO
+		state.clear_hang()
+		return true
+	if kind == "deck":
+		var deck_id := str(hit.get("surface_id", ""))
+		if not model.patches.has(deck_id):
+			return false
+		var deck: SupportPatch = model.patches[deck_id]
+		state.mode = SimState.Mode.GROUNDED
+		state.surface_id = deck.id
+		state.u = 0.0
+		state.v = 0.0
+		var px := clampf(state.position.x, deck.x_min, deck.x_max)
+		var pz := clampf(state.position.y, deck.z_min, deck.z_max)
+		if deck.contains_xz(state.position.x, state.position.y):
+			px = state.position.x
+			pz = state.position.y
+		state.position = Vector3(px, pz, deck.height)
+		state.tangent_velocity = Vector2(state.velocity.x, vz)
+		state.velocity = Vector3.ZERO
+		state.clear_hang()
+		return true
+	if kind == "wall":
+		var cid := str(hit.get("coping_id", ""))
+		var cope: CopingEdge = model.copings.get(cid)
+		if cope == null:
+			return false
+		var samp := cope.sample_at_z(state.position.y)
+		if model.patches.has(cope.support_patch_id):
+			var pad: SupportPatch = model.patches[cope.support_patch_id]
+			state.mode = SimState.Mode.GROUNDED
+			state.surface_id = pad.id
+			state.u = 0.0
+			state.v = 0.0
+			var out := cope.outward_sign
+			state.position = Vector3(
+				float(samp.coping_x) + out * SimTolerances.CAPSULE_RADIUS,
+				state.position.y,
+				pad.height
+			)
+			state.tangent_velocity = Vector2(out * maxf(impact, 80.0), vz)
+			state.velocity = Vector3.ZERO
+			state.clear_hang()
+			return true
+		# No pad — perch at effective coping then hang if rising.
+		state.position = Vector3(float(samp.coping_x), state.position.y, float(samp.height))
+		state.velocity = Vector3(0.0, vz, maxf(state.velocity.z, 0.0))
+		return false
+	return false
+
+
+## Bounds / space only — stop into-wall motion; never crash.
+func _resolve_bounds_hit(state: SimState, hit: Dictionary, from: Vector3) -> void:
 	var axis := str(hit.get("axis", ""))
-	if kind == "bounds":
-		if axis == "x":
-			state.velocity.x = 0.0
-		elif axis == "z":
-			state.velocity.y = 0.0
-		else:
-			# Unplayable footprint — kill both horizontal components.
-			state.velocity.x = 0.0
-			state.velocity.y = 0.0
+	if axis == "x":
+		state.velocity.x = 0.0
+	elif axis == "z":
+		state.velocity.y = 0.0
 	else:
-		# Pipe / deck body / wall extension: no clip-through.
 		state.velocity.x = 0.0
 		state.velocity.y = 0.0
 	var clamped := model.clamp_xz(state.position.x, state.position.y)
 	state.position.x = clamped.x
 	state.position.y = clamped.y
-	# Keep height at or above the void floor.
 	state.position.z = maxf(state.position.z, SimTolerances.VOID_FLOOR)
 	_depenetrate(state, from)
+
+
+## If feet are inside solid after a move/land, snap onto the covering surface.
+func _snap_buried_to_surface(state: SimState) -> void:
+	var hit := query.blocker_at(state.position)
+	if hit.is_empty():
+		return
+	_snap_onto_solid(state, hit)
 
 
 ## Walk back toward `from` until the capsule is outside solids.
@@ -98,7 +185,6 @@ func _depenetrate(state: SimState, from: Vector3) -> void:
 		if query.blocker_at(state.position).is_empty():
 			return
 		state.position = state.position.lerp(from, 0.35)
-	# Last resort: snap to the pre-step pose if still solid.
 	if not query.blocker_at(state.position).is_empty():
 		state.position = from
 
@@ -201,6 +287,8 @@ func _try_land(state: SimState, from_height: float = NAN) -> void:
 	state.clear_hang()
 	if top.get("lethal", false):
 		state.alive = false
+	# Land must never leave feet inside the solid volume.
+	_snap_buried_to_surface(state)
 
 
 ## Ordinary aerial land filter: never opposite-facing pipes (spine only).

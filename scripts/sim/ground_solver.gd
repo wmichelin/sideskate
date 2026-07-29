@@ -70,6 +70,10 @@ func step(
 	if not state.is_grounded() or not state.alive:
 		return
 	assert(delta > 0.0)
+	# Feet must sit on the analytical surface — never remain buried in solids.
+	_ensure_surface_contact(state)
+	if not state.is_grounded() or not state.alive:
+		return
 	if model.pipes.has(state.surface_id):
 		_step_pipe(
 			state, wish, delta, accel, max_speed, max_speed_z,
@@ -454,6 +458,35 @@ func _enter_air(state: SimState, world_vel: Vector3, hang_pipe_id: String = "") 
 	state.maneuver = null
 	state.tangent_velocity = Vector2.ZERO
 	state.hang_pipe_id = hang_pipe_id
+
+
+## Snap grounded feet onto their surface; if buried in foreign solid, remount it.
+func _ensure_surface_contact(state: SimState) -> void:
+	# Wall-climb pose is off the quarter-pipe project band — do not remount.
+	if model.pipes.has(state.surface_id) and state.u > 1.0 + 0.0001:
+		return
+	if model.pipes.has(state.surface_id):
+		var pipe: PipeSurface = model.pipes[state.surface_id]
+		var proj := pipe.project(state.position.x, state.position.y, state.position.z)
+		if bool(proj.get("ok", false)):
+			state.position = proj.point
+			state.u = float(proj.u)
+			state.v = float(proj.v)
+	elif model.patches.has(state.surface_id):
+		var patch: SupportPatch = model.patches[state.surface_id]
+		state.position.z = patch.height
+	# Foreign solid still covering feet (deck under floor wrap, etc.).
+	var hit := query.blocker_at(state.position)
+	if hit.is_empty():
+		return
+	var kind := str(hit.get("kind", ""))
+	if kind == "pipe":
+		# Don't steal onto a stacked/foreign pipe while riding our own arc.
+		if model.pipes.has(state.surface_id):
+			return
+		_mount_pipe_at(state, state.position.x, state.position.y, state.tangent_velocity.x)
+	elif kind == "deck":
+		_rescue_deck_top(state)
 
 
 ## Snap grounded floor motion onto a pipe ride surface covering (x,z).
