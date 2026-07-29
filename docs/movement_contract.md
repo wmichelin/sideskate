@@ -60,7 +60,7 @@ Exactly one of:
 
 `hang_pipe_id` empty ⇒ free air (XZ control). Non-empty ⇒ **air-out**: **X only** locked to that pipe’s coping X at current Z (depth stick still applies; height ballistic). Hang clears on fly-out, spine, acid, or land.
 
-Crash / death is a terminal grounded→overlay path after lava contact or out-of-bounds fall; it is not a third motion state.
+Crash / death is a terminal grounded→overlay path after **lava** contact only; it is not a third motion state. World borders, unplayable space, and solid geometry are **containment** (invisible walls / void floor) — never crash.
 
 ## Transitions
 
@@ -81,7 +81,9 @@ A transition occurs only via:
 | Airborne (free) | Grounded | Ordinary descending land; pipes only if same-facing as travel (never opposite) |
 | Airborne | Airborne+plan | Explicit spine (rising/apex) or acid (descending) |
 | Airborne+plan | Grounded | Plan landing time reached on destination coping/pipe |
-| Any aerial | Crash | Blocker / lava / invalidated plan corridor |
+| Any | Crash | Grounded lava only |
+
+Invisible world-border walls, unplayable `space`, pipe bodies, and wall-extension slabs are solid containment (stop into-wall velocity). An invisible `__void_floor__` patch at `VOID_FLOOR` catches fall-through when no other support remains.
 
 ## Tolerances (`SimTolerances`)
 
@@ -94,6 +96,7 @@ A transition occurs only via:
 | `FLY_OUT_ABOVE` | `40` | Max height above coping for fly-out window |
 | `FACING_COPING_CELLS` | `3` | Spine cast range in cells |
 | `ACID_COPING_CELLS` | `16` | Acid cast range in cells |
+| `VOID_FLOOR` | `-200` | Invisible safety floor under the park AABB |
 
 No other magic epsilons in solvers.
 

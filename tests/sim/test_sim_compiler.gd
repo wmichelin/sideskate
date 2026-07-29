@@ -24,6 +24,13 @@ func _halfpipe_compiles() -> bool:
 	if m.model_hash.is_empty():
 		push_error("missing model hash")
 		return false
+	if not m.patches.has("__void_floor__"):
+		push_error("missing invisible void floor patch")
+		return false
+	var void_p: SupportPatch = m.patches["__void_floor__"]
+	if absf(void_p.height - SimTolerances.VOID_FLOOR) > 0.01:
+		push_error("void floor height wrong")
+		return false
 	return true
 
 

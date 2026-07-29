@@ -148,8 +148,13 @@ func copings_in_direction(
 	return out
 
 
-## Analytical capsule segment vs park blockers (walls / OOB / tall solids).
-## Returns earliest hit or {}.
+## Public solid query at a point (world border / space / pipe / wall).
+func blocker_at(p: Vector3) -> Dictionary:
+	return _blocker_at(p)
+
+
+## Analytical capsule segment vs solid containment (world border / space / pipe / wall).
+## Returns earliest hit or {}. Hits never kill — solvers stop into-wall motion.
 func sweep_capsule(from: Vector3, to: Vector3) -> Dictionary:
 	# from/to = Vector3(x, z, height)
 	var motion := to - from
@@ -172,10 +177,20 @@ func _blocker_at(p: Vector3) -> Dictionary:
 	var x := p.x
 	var z := p.y
 	var h := p.z
-	# OOB: outside playable footprint at this cell.
+	var margin := SimTolerances.CAPSULE_RADIUS
+	# Invisible world border walls (outside park AABB).
+	if x < margin:
+		return {"kind": "bounds", "axis": "x", "sign": -1.0, "reason": "west wall"}
+	if x > model.width - margin:
+		return {"kind": "bounds", "axis": "x", "sign": 1.0, "reason": "east wall"}
+	if z < margin:
+		return {"kind": "bounds", "axis": "z", "sign": -1.0, "reason": "near wall"}
+	if z > model.depth - margin:
+		return {"kind": "bounds", "axis": "z", "sign": 1.0, "reason": "far wall"}
+	# Non-playable footprint (space) — solid invisible wall, never fall out.
 	var cell := model.cell_at(x, z)
 	if not model.is_playable_cell(cell.x, cell.y):
-		return {"kind": "oob", "reason": "outside playable footprint"}
+		return {"kind": "bounds", "axis": "", "sign": 0.0, "reason": "unplayable cell"}
 	# Foreign pipe body: below the ride surface inside a pipe footprint = clipping through.
 	for pipe_id in model.pipes.keys():
 		var pipe: PipeSurface = model.pipes[pipe_id]

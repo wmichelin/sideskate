@@ -56,15 +56,49 @@ func _step_free(state: SimState, wish: Vector2, delta: float) -> void:
 	if not hit.is_empty():
 		var t := float(hit.get("t", 1.0))
 		state.position = from.lerp(to, maxf(t - 0.01, 0.0))
-		if str(hit.get("kind", "")) == "oob":
-			state.alive = false
-			return
-		# Wall: kill outward velocity.
-		state.velocity.x = 0.0
+		_resolve_solid_hit(state, hit, from)
 		_try_land(state, from.z)
 		return
 	state.position = to
 	_try_land(state, from.z)
+
+
+## Invisible walls / pipe bodies: stop into-wall motion; never crash.
+func _resolve_solid_hit(state: SimState, hit: Dictionary, from: Vector3 = Vector3.ZERO) -> void:
+	var kind := str(hit.get("kind", ""))
+	var axis := str(hit.get("axis", ""))
+	if kind == "bounds":
+		if axis == "x":
+			state.velocity.x = 0.0
+		elif axis == "z":
+			state.velocity.y = 0.0
+		else:
+			# Unplayable footprint — kill both horizontal components.
+			state.velocity.x = 0.0
+			state.velocity.y = 0.0
+	else:
+		# Pipe body / wall extension: no clip-through.
+		state.velocity.x = 0.0
+		state.velocity.y = 0.0
+	var clamped := model.clamp_xz(state.position.x, state.position.y)
+	state.position.x = clamped.x
+	state.position.y = clamped.y
+	# Keep height at or above the void floor.
+	state.position.z = maxf(state.position.z, SimTolerances.VOID_FLOOR)
+	_depenetrate(state, from)
+
+
+## Walk back toward `from` until the capsule is outside solids.
+func _depenetrate(state: SimState, from: Vector3) -> void:
+	if query.blocker_at(state.position).is_empty():
+		return
+	for _i in range(12):
+		if query.blocker_at(state.position).is_empty():
+			return
+		state.position = state.position.lerp(from, 0.35)
+	# Last resort: snap to the pre-step pose if still solid.
+	if not query.blocker_at(state.position).is_empty():
+		state.position = from
 
 
 func _step_maneuver(state: SimState, delta: float) -> void:

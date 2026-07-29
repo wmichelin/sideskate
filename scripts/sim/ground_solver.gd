@@ -110,6 +110,12 @@ func _step_patch(
 		0.0
 	)
 	next.z = patch.height
+	# Invisible border + space walls: slide / stop, never leave the park.
+	var contained := _contain_ground_xz(state, next)
+	if not bool(contained.get("ok", false)):
+		_update_facing(state)
+		return
+	next = contained.pos
 	if patch.contains_xz(next.x, next.y):
 		state.position = next
 		_update_facing(state)
@@ -131,7 +137,7 @@ func _step_patch(
 			state.alive = false
 		_update_facing(state)
 		return
-	# Ride-off into air.
+	# Ride-off into air (holes / unsupported edges — void floor catches falls).
 	_enter_air(state, Vector3(state.tangent_velocity.x, state.tangent_velocity.y, 0.0))
 
 
@@ -436,6 +442,32 @@ func _enter_air(state: SimState, world_vel: Vector3, hang_pipe_id: String = "") 
 	state.maneuver = null
 	state.tangent_velocity = Vector2.ZERO
 	state.hang_pipe_id = hang_pipe_id
+
+
+## Keep grounded XZ inside world + playable cells. Axis-slide when blocked.
+## Returns {ok:bool, pos:Vector3}. ok=false means stay put (into-wall speed cleared).
+func _contain_ground_xz(state: SimState, proposed: Vector3) -> Dictionary:
+	var trials: Array = [
+		proposed,
+		Vector3(proposed.x, state.position.y, proposed.z),
+		Vector3(state.position.x, proposed.y, proposed.z),
+	]
+	for trial in trials:
+		var c: Vector3 = trial
+		var clamped := model.clamp_xz(c.x, c.y)
+		c.x = clamped.x
+		c.y = clamped.y
+		if not model.is_traversable_xz(c.x, c.y):
+			continue
+		# Trim velocity components that were rejected by clamping / slide.
+		if absf(c.x - proposed.x) > 0.001:
+			state.tangent_velocity.x = 0.0
+		if absf(c.y - proposed.y) > 0.001:
+			state.tangent_velocity.y = 0.0
+		return {"ok": true, "pos": c}
+	state.tangent_velocity.x = 0.0
+	state.tangent_velocity.y = 0.0
+	return {"ok": false}
 
 
 func _update_facing(state: SimState) -> void:

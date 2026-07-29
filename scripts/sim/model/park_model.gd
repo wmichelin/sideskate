@@ -62,6 +62,27 @@ func is_playable_cell(col: int, row: int) -> bool:
 	return playable_mask[row * grid_w + col] != 0
 
 
+## True when (x,z) is inside the world rectangle (not clamped cell query).
+func in_world_xz(x: float, z: float) -> bool:
+	return x >= 0.0 and x <= width and z >= 0.0 and z <= depth
+
+
+## Traversable for feet: inside world and on a playable footprint cell.
+func is_traversable_xz(x: float, z: float) -> bool:
+	if not in_world_xz(x, z):
+		return false
+	var cell := cell_at(x, z)
+	return is_playable_cell(cell.x, cell.y)
+
+
+## Capsule-inset clamp to the world AABB (invisible border walls).
+func clamp_xz(x: float, z: float) -> Vector2:
+	var m := SimTolerances.CAPSULE_RADIUS
+	var max_x := maxf(width - m, m)
+	var max_z := maxf(depth - m, m)
+	return Vector2(clampf(x, m, max_x), clampf(z, m, max_z))
+
+
 func cell_at(x: float, z: float) -> Vector2i:
 	if grid_w <= 0 or grid_h <= 0 or cell_w <= 0.0 or cell_h <= 0.0:
 		return Vector2i.ZERO

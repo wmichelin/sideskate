@@ -45,8 +45,29 @@ static func compile_spec(spec: LevelSpec) -> ParkModel:
 	_classify_copings(spec, model)
 	_build_topology_edges(model)
 	_link_shared_spines(model)
+	_add_void_floor(model)
 	model.model_hash = _hash_model(model)
 	return model
+
+
+## Invisible floor under the whole park AABB — catches holes / fall-through.
+static func _add_void_floor(model: ParkModel) -> void:
+	var patch := SupportPatch.new()
+	patch.id = "__void_floor__"
+	patch.kind = SimKinds.SurfaceKind.FLOOR
+	patch.height = SimTolerances.VOID_FLOOR
+	patch.base_height = SimTolerances.VOID_FLOOR
+	patch.lethal = false
+	var w := maxf(model.width, model.cell_w)
+	var d := maxf(model.depth, model.cell_h)
+	patch.poly = PackedVector2Array([
+		Vector2(0.0, 0.0),
+		Vector2(w, 0.0),
+		Vector2(w, d),
+		Vector2(0.0, d),
+	])
+	_bounds_from_poly(patch)
+	model.patches[patch.id] = patch
 
 
 static func _compile_floors(spec: LevelSpec, model: ParkModel) -> void:

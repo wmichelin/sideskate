@@ -82,7 +82,7 @@ height 141
 | `height H` | Absolute logical floor height for this story |
 
 - Layer **0** defines the playable **footprint**: any non-space cell is playable.  
-- Upper layers must use `.` for holes **inside** that footprint — never space (space = hard OOB).  
+- Upper layers must use `.` for holes **inside** that footprint — never space (space = solid invisible wall).
 - One `@` spawn total across all layers (player starts at that story’s `height`).
 
 ## Glyphs
@@ -96,7 +96,7 @@ height 141
 | `@` | Spawn + floor | `layer.height` |
 | `<` | Left-facing pipe (lip on **right** edge of run) | `base + R(1−cosθ)` |
 | `>` | Right-facing pipe (lip on **left** edge of run) | `base + R(1−cosθ)` |
-| space | Out of bounds — player must never enter | — |
+| space | Solid invisible wall (never enter; not a kill) | — |
 
 ## Deck height
 

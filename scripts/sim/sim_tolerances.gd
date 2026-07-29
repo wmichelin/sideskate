@@ -13,6 +13,8 @@ const CAPSULE_CYLINDER_H := 22.0
 const BODY_FEET_TO_CENTER := CAPSULE_RADIUS + CAPSULE_CYLINDER_H * 0.5
 const FIXED_DT := 1.0 / 60.0
 const LOGIC_PER_METER := 100.0
+## Invisible safety floor under every park — catches fall-through; never die from voids.
+const VOID_FLOOR := -200.0
 
 ## Defaults match movement_contract.md; Player syncs debug sliders here.
 static var FLY_OUT_ABOVE: float = 40.0

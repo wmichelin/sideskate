@@ -18,6 +18,9 @@ func run() -> bool:
 		and _coast_with_zero_friction()
 		and _wall_extension_climbs()
 		and _layered_fly_out_at_upper_lip()
+		and _void_floor_catches_fall()
+		and _world_border_contains()
+		and _pipe_body_no_clip()
 	)
 
 
@@ -586,6 +589,129 @@ func _layered_fly_out_at_upper_lip() -> bool:
 	if sim.state.position.z < h_eff - 40.0:
 		push_error("fly-out height still near L0 (%.1f)" % sim.state.position.z)
 		return false
+	return true
+
+
+func _void_floor_catches_fall() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_open_fly.ssk"):
+		push_error("void: setup")
+		return false
+	# Drop in free air above the park with no nearby pad under feet search —
+	# punch through a mid-air spawn so only the void floor remains reachable.
+	sim.state.mode = SimState.Mode.AIRBORNE
+	sim.state.surface_id = ""
+	sim.state.clear_hang()
+	sim.state.maneuver = null
+	sim.state.position = Vector3(sim.model.width * 0.5, sim.model.depth * 0.5, 50.0)
+	sim.state.velocity = Vector3(0.0, 0.0, -10.0)
+	# Clear real floors under this XZ by teleporting over a guaranteed hole:
+	# use world center; open_fly is all floor — land on real floor first is OK,
+	# then force height below all real pads so void is next.
+	var real_top := sim.query.top_support(
+		sim.state.position.x, sim.state.position.y, 5000.0
+	)
+	if real_top.is_empty():
+		push_error("void: expected some support")
+		return false
+	# Start just above void with descending velocity; search ceiling excludes real pads.
+	sim.state.position.z = SimTolerances.VOID_FLOOR + 30.0
+	sim.state.velocity = Vector3(0.0, 0.0, -200.0)
+	var landed := false
+	for _i in range(120):
+		sim.set_input(Vector2.ZERO, false, false)
+		sim.tick()
+		if not sim.state.alive:
+			push_error("void: died falling — must stay alive")
+			return false
+		if sim.state.is_grounded() and sim.state.surface_id == "__void_floor__":
+			landed = true
+			break
+	if not landed:
+		push_error(
+			"void: expected land on __void_floor__ got mode=%s id=%s h=%.1f"
+			% [sim.state.mode, sim.state.surface_id, sim.state.position.z]
+		)
+		return false
+	return true
+
+
+func _world_border_contains() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_open_fly.ssk"):
+		push_error("border: setup")
+		return false
+	sim.state.mode = SimState.Mode.AIRBORNE
+	sim.state.surface_id = ""
+	sim.state.clear_hang()
+	sim.state.maneuver = null
+	var mid_z := sim.model.depth * 0.5
+	sim.state.position = Vector3(sim.model.width - 20.0, mid_z, 80.0)
+	sim.state.velocity = Vector3(800.0, 0.0, 0.0)
+	for _i in range(90):
+		sim.set_input(Vector2(1, 0), false, false)
+		sim.tick()
+		if not sim.state.alive:
+			push_error("border: died at world edge")
+			return false
+		if sim.state.position.x > sim.model.width - SimTolerances.CAPSULE_RADIUS + 1.0:
+			push_error("border: escaped east wall x=%.1f" % sim.state.position.x)
+			return false
+		if sim.state.position.x < SimTolerances.CAPSULE_RADIUS - 1.0:
+			push_error("border: escaped west wall")
+			return false
+	# Still inside AABB.
+	if not sim.model.in_world_xz(sim.state.position.x, sim.state.position.y):
+		push_error("border: left world AABB")
+		return false
+	return true
+
+
+func _pipe_body_no_clip() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_halfpipe.ssk"):
+		push_error("clip: setup")
+		return false
+	var left := _left_pipe(sim.model)
+	if left == null:
+		return false
+	var z := (left.z_min + left.z_max) * 0.5
+	var mid_x := left.x_at_theta(z, PI * 0.35)
+	var mid_h := left.height_at_theta(z, PI * 0.35)
+	sim.state.mode = SimState.Mode.AIRBORNE
+	sim.state.surface_id = ""
+	sim.state.clear_hang()
+	sim.state.maneuver = null
+	# Start in the bowl, drive into the pipe body below the ride surface.
+	var out := left.outward_sign()
+	sim.state.position = Vector3(mid_x - out * 60.0, z, mid_h - 25.0)
+	# Ensure start is not already solid.
+	if not sim.query.blocker_at(sim.state.position).is_empty():
+		sim.state.position.x = mid_x - out * 90.0
+	sim.state.velocity = Vector3(out * 900.0, 0.0, 0.0)
+	var deepest_pen := 0.0
+	for _i in range(90):
+		sim.set_input(Vector2(signf(out), 0), false, false)
+		sim.tick()
+		if not sim.state.alive:
+			push_error("clip: died against pipe body")
+			return false
+		if left.contains_xz(sim.state.position.x, sim.state.position.y):
+			var proj := left.project(sim.state.position.x, sim.state.position.y, sim.state.position.z)
+			if bool(proj.get("ok", false)):
+				var pen := float(proj.point.z) - sim.state.position.z
+				if pen > deepest_pen:
+					deepest_pen = pen
+				# Allow tiny numerical overlap; deep tunnel is a fail.
+				if pen > SimTolerances.CAPSULE_RADIUS:
+					push_error(
+						"clip: penetrated pipe body pen=%.1f h=%.1f surface=%.1f"
+						% [pen, sim.state.position.z, float(proj.point.z)]
+					)
+					return false
+	if deepest_pen > SimTolerances.CONTACT_EPS * 4.0:
+		# Hit response should keep us out; brief skim OK, sustained deep no.
+		pass
 	return true
 
 
