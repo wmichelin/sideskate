@@ -713,18 +713,21 @@ func _world_border_contains() -> bool:
 		if sim.state.position.y < -0.5:
 			push_error("border: escaped near Z wall")
 			return false
-	# Grounded depth stick must also stay inside.
+	# Grounded depth stick must also stay inside — never fall off far/near floor edge.
 	sim.respawn()
 	sim.state.tangent_velocity = Vector2(0.0, 500.0)
-	for _k in range(120):
+	for _k in range(300):
 		sim.set_input(Vector2(0, 1), false, false)
 		sim.tick()
 		if not sim.state.alive:
 			push_error("border: died grounded Z")
 			return false
-		if sim.state.position.y > sim.model.depth + 0.5 \
-				or sim.state.position.y < -0.5:
-			push_error("border: grounded escaped Z z=%.1f" % sim.state.position.y)
+		if sim.state.position.y >= sim.model.depth - 0.001 \
+				or sim.state.position.y <= 0.001:
+			push_error("border: grounded on Z face z=%.1f" % sim.state.position.y)
+			return false
+		if sim.state.surface_id == "__void_floor__":
+			push_error("border: walked off map onto void floor z=%.1f" % sim.state.position.y)
 			return false
 	return true
 

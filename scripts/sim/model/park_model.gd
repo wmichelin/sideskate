@@ -75,9 +75,12 @@ func is_traversable_xz(x: float, z: float) -> bool:
 	return is_playable_cell(cell.x, cell.y)
 
 
-## Capsule-inset clamp to the world AABB (invisible border walls sit outside).
+## Keep feet inside the park AABB. Z is inset so we stay inside floor polys
+## whose outlines exclude the exact z=0 / z=depth edges.
 func clamp_xz(x: float, z: float) -> Vector2:
-	return Vector2(clampf(x, 0.0, width), clampf(z, 0.0, depth))
+	var z_eps := 0.05
+	var z_hi := maxf(depth - z_eps, z_eps)
+	return Vector2(clampf(x, 0.0, width), clampf(z, z_eps, z_hi))
 
 
 func cell_at(x: float, z: float) -> Vector2i:

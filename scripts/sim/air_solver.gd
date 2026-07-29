@@ -67,13 +67,13 @@ func _step_free(state: SimState, wish: Vector2, delta: float) -> void:
 		if not query.blocker_at(state.position).is_empty():
 			_try_land(state, from.z)
 			_snap_buried_to_surface(state)
-		state.position.y = clampf(state.position.y, 0.0, model.depth)
+		state.position.y = clampf(state.position.y, 0.05, maxf(model.depth - 0.05, 0.05))
 		return
 	state.position = to
 	_try_land(state, from.z)
 	_snap_buried_to_surface(state)
 	# Depth walls sit on the park faces — keep feet inside even if a sweep skimmed.
-	state.position.y = clampf(state.position.y, 0.0, model.depth)
+	state.position.y = clampf(state.position.y, 0.05, maxf(model.depth - 0.05, 0.05))
 
 
 ## Snap airborne contact with pipe / deck / wall onto that ride surface.

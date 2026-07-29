@@ -460,12 +460,15 @@ func _enter_air(state: SimState, world_vel: Vector3, hang_pipe_id: String = "") 
 	state.hang_pipe_id = hang_pipe_id
 
 
-## Keep pipe depth inside both the pipe loft and the park AABB.
+## Keep pipe depth inside both the pipe loft and the park AABB (inset from faces).
 func _clamp_world_depth(pipe: PipeSurface, z: float) -> float:
-	var lo := maxf(pipe.z_min, 0.0)
-	var hi := minf(pipe.z_max, model.depth)
+	var z_eps := 0.05
+	var world_lo := z_eps
+	var world_hi := maxf(model.depth - z_eps, z_eps)
+	var lo := maxf(pipe.z_min, world_lo)
+	var hi := minf(pipe.z_max, world_hi)
 	if hi < lo:
-		return clampf(z, 0.0, model.depth)
+		return clampf(z, world_lo, world_hi)
 	return clampf(z, lo, hi)
 
 
