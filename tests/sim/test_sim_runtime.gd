@@ -35,6 +35,7 @@ func run() -> bool:
 		and _deck_hash_no_pin_from_floor()
 		and _l0_lava_gap_no_phantom_wall_climb()
 		and _deck_ride_off_falls_acid_mounts()
+		and _layered_deck_back_ride_off_stays_free()
 		and _map_edge_deck_no_void_exit()
 		and _layered_outer_coping_seam_stays_anchored()
 		and _layered_hang_remounts_wall_height()
@@ -1872,6 +1873,50 @@ func _deck_ride_off_falls_acid_mounts() -> bool:
 		% [acid.state.mode, acid.state.surface_id, acid.state.last_reject]
 	)
 	return false
+
+
+func _layered_deck_back_ride_off_stays_free() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
+		push_error("deck back fall: setup")
+		return false
+	var deck: SupportPatch = sim.model.patches.get("deck_2_L1")
+	if deck == null:
+		push_error("deck back fall: missing L1 deck")
+		return false
+	sim.state.mode = SimState.Mode.GROUNDED
+	sim.state.surface_id = deck.id
+	sim.state.position = Vector3(deck.x_min + 10.0, 1000.0, deck.height)
+	sim.state.tangent_velocity = Vector2(-300.0, 0.0)
+	sim.state.velocity = Vector3.ZERO
+	sim.state.clear_hang()
+	var saw_free_fall := false
+	for _i in range(30):
+		sim.set_input(Vector2(-1, 0), false, false)
+		sim.tick()
+		if sim.model.walls.has(sim.state.surface_id):
+			push_error("deck back fall: ordinary ride-off auto-mounted wall")
+			return false
+		if sim.state.is_hanging():
+			push_error("deck back fall: ordinary ride-off acquired X lock")
+			return false
+		if sim.state.is_airborne() \
+				and sim.state.position.x < deck.x_min - 1.0 \
+				and sim.state.velocity.z < -50.0:
+			saw_free_fall = true
+			break
+	if not saw_free_fall:
+		push_error(
+			"deck back fall: did not clear wall under gravity mode=%s surf=%s pos=%s vel=%s"
+			% [
+				sim.state.mode,
+				sim.state.surface_id,
+				sim.state.position,
+				sim.state.velocity,
+			]
+		)
+		return false
+	return true
 
 
 ## >>>#### at the map edge: skating off the deck must not fall into the void.

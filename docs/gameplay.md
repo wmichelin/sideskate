@@ -60,6 +60,8 @@ Stick → wish. Per axis:
 
 **Air-out land:** descending through the retained edge returns to its exact source pipe/wall with speed preserved. Never auto-land the opposite-facing transfer target.
 
+**Deck back ride-off:** crosses the one-sided backing wall into ordinary free air. It never mounts the wall or creates an implicit acid drop.
+
 **Spine:** transfer button while rising/apex → opposite-facing pipe from its outward side (left of left / right of right).
 
 **Acid:** transfer button while descending → along travel to an opposite wall, or explicit deck drop-in onto an abutting pipe.

@@ -85,6 +85,15 @@ func _step_free(state: SimState, wish: Vector2, delta: float) -> void:
 				_try_land(state, from.z)
 				state.position.y = clampf(state.position.y, 0.05, maxf(model.depth - 0.05, 0.05))
 				return
+			# Wall faces are one-sided. Leaving a deck across its backing wall is
+			# an ordinary ride-off, not an automatic wall/acid mount.
+			if kind == "wall" and _wall_contact_is_outward_exit(state, hit):
+				state.position = to
+				_try_land(state, from.z)
+				state.position.y = clampf(
+					state.position.y, 0.05, maxf(model.depth - 0.05, 0.05)
+				)
+				return
 			_bounce_off_solid(state, hit, from)
 			_try_land(state, from.z)
 		else:
@@ -238,6 +247,10 @@ func _snap_onto_solid(state: SimState, hit: Dictionary) -> bool:
 					state.velocity = Vector3.ZERO
 					state.clear_hang()
 					return true
+		# Ordinary free air never acquires wall ownership. Walls are entered from
+		# their source pipe seam or by returning through an anchored air-out.
+		if not state.is_hanging():
+			return false
 		var at: Vector3 = hit.get("projection", hit.get("point", state.position))
 		return ground._mount_wall_from_hit(state, hit, at)
 	return false
@@ -322,13 +335,25 @@ func _bounce_off_solid(state: SimState, hit: Dictionary, from: Vector3) -> void:
 					state.velocity.z = 0.0
 				_depenetrate(state, from)
 				return
-	# Deck / wall / fallback: walk back along the motion, stop into-wall axes.
+	if kind == "wall":
+		var normal: Vector3 = hit.get("normal", Vector3.ZERO)
+		if absf(normal.x) > 0.001 and state.velocity.x * normal.x < 0.0:
+			state.velocity.x = 0.0
+		# A vertical face never consumes falling speed.
+		_depenetrate(state, from)
+		return
+	# Deck / fallback: walk back along the motion, stop into-solid fall speed.
 	if state.velocity.z < 0.0:
 		state.velocity.z = 0.0
 	_depenetrate(state, from)
 	var clamped := model.clamp_xz(state.position.x, state.position.y)
 	state.position.x = clamped.x
 	state.position.y = clamped.y
+
+
+func _wall_contact_is_outward_exit(state: SimState, hit: Dictionary) -> bool:
+	var normal: Vector3 = hit.get("normal", Vector3.ZERO)
+	return absf(normal.x) > 0.001 and state.velocity.x * normal.x > 0.0
 
 
 ## Bounds / space only — stop into-wall motion; never crash.

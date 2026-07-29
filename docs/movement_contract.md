@@ -120,6 +120,8 @@ span has one behavior and one topology edge:
 
 Outward `#` decks (any height) ⇒ `OPEN` (air/fly corridor). Matching-height `=` floor ⇒ `SUPPORT_SEAM`. A taller outward floor or cross-story opposite pipe compiles an explicit wall only for the occupied Z spans. The upper opposite coping is stored as an action-only transfer target, never an ordinary seam.
 
+Wall faces are one-sided. Riding off a deck through its backing wall enters ordinary free air and preserves gravity; ordinary air contact never acquires wall ownership. Walls are mounted only from their source pipe seam or by returning through the retained air-out anchor.
+
 ## Velocity rules
 
 - Grounded X / along: integrate control. Neutral stick coasts (`friction` / `ramp_friction`); stick opposite velocity brakes (`brake`); aligned stick accelerates (`accel`). Cap at max speeds.
