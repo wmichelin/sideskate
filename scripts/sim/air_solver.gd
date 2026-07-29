@@ -78,6 +78,8 @@ func _step_free(state: SimState, wish: Vector2, delta: float) -> void:
 
 ## Snap airborne contact with pipe / deck / wall onto that ride surface.
 ## Returns true when the skater is now grounded on the hit geometry.
+## Pipe snaps follow ordinary-land facing rules — never auto spine/acid onto an
+## opposite-facing pipe (those need the transfer button).
 func _snap_onto_solid(state: SimState, hit: Dictionary) -> bool:
 	var kind := str(hit.get("kind", ""))
 	var impact := maxf(absf(state.velocity.z), absf(state.velocity.x))
@@ -93,10 +95,17 @@ func _snap_onto_solid(state: SimState, hit: Dictionary) -> bool:
 			return false
 		var proj := pipe.project(state.position.x, state.position.y, state.position.z)
 		if not bool(proj.get("ok", false)):
-			# Use hit point XZ if the pre-hit pose is just outside the band.
 			var pt: Vector3 = hit.get("point", state.position)
 			proj = pipe.project(pt.x, pt.y, pt.z)
 		if not bool(proj.get("ok", false)):
+			return false
+		if not _pipe_snap_allowed(state, pipe, proj):
+			# Bounce off: stay airborne just outside the solid — no auto-transfer.
+			state.position.z = maxf(
+				state.position.z, float(proj.point.z) + SimTolerances.CONTACT_EPS
+			)
+			if state.velocity.z < 0.0:
+				state.velocity.z = 0.0
 			return false
 		state.mode = SimState.Mode.GROUNDED
 		state.surface_id = pipe.id
@@ -153,6 +162,33 @@ func _snap_onto_solid(state: SimState, hit: Dictionary) -> bool:
 		state.velocity = Vector3(0.0, vz, maxf(state.velocity.z, 0.0))
 		return false
 	return false
+
+
+## True when mounting this pipe would be an ordinary land (not a spine/acid steal).
+func _pipe_snap_allowed(state: SimState, pipe: PipeSurface, proj: Dictionary) -> bool:
+	# Opposite-facing mounts are spine/acid — transfer button only, never auto.
+	if state.is_hanging() and model.pipes.has(state.hang_pipe_id):
+		var hp: PipeSurface = model.pipes[state.hang_pipe_id]
+		if pipe.side != hp.side:
+			return false
+	else:
+		var vx := state.velocity.x
+		if absf(vx) >= 1.0:
+			var want := SimKinds.PipeSide.LEFT if vx < 0.0 else SimKinds.PipeSide.RIGHT
+			if pipe.side != want:
+				return false
+	var cand := {
+		"surface_id": pipe.id,
+		"kind": SimKinds.SurfaceKind.PIPE,
+		"height": float(proj.point.z),
+		"lethal": false,
+		"pipe": pipe,
+		"proj": proj,
+	}
+	if not _pick_ordinary_land(state, [cand]).is_empty():
+		return true
+	# Escape hatch: deeply buried, and not an opposite-facing steal (checked above).
+	return state.position.z < float(proj.point.z) - SimTolerances.CAPSULE_RADIUS
 
 
 ## Bounds / space only — stop into-wall motion; never crash.

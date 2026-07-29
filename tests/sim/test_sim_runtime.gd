@@ -27,6 +27,7 @@ func run() -> bool:
 		and _embedded_pipe_mounts_not_sticks()
 		and _spine_deck_solid_from_floor()
 		and _land_snaps_out_of_pipe_solid()
+		and _no_auto_opposite_pipe_snap()
 	)
 
 
@@ -1096,9 +1097,10 @@ func _land_snaps_out_of_pipe_solid() -> bool:
 	sim.state.surface_id = ""
 	sim.state.clear_hang()
 	sim.state.maneuver = null
-	# Start above the pipe and drop into the solid volume.
+	# Start above the pipe and drop into the solid volume with travel matching side.
+	# Same-facing land: left pipe wants −X travel.
 	sim.state.position = Vector3(mid_x, z, mid_h + 80.0)
-	sim.state.velocity = Vector3(0.0, 0.0, -400.0)
+	sim.state.velocity = Vector3(left.outward_sign() * 200.0, 0.0, -400.0)
 	var snapped := false
 	for _i in range(90):
 		sim.set_input(Vector2.ZERO, false, false)
@@ -1145,6 +1147,46 @@ func _land_snaps_out_of_pipe_solid() -> bool:
 			% [sim.query.blocker_at(sim.state.position), sim.state.position.z]
 		)
 		return false
+	return true
+
+
+func _no_auto_opposite_pipe_snap() -> bool:
+	# Hitting an opposite-facing pipe in free air must not auto-mount (spine/acid).
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_spine.ssk"):
+		push_error("auto: setup")
+		return false
+	var left: PipeSurface = null
+	var right: PipeSurface = null
+	for id in sim.model.pipes.keys():
+		var p: PipeSurface = sim.model.pipes[id]
+		if p.side == SimKinds.PipeSide.LEFT and left == null:
+			left = p
+		elif p.side == SimKinds.PipeSide.RIGHT and right == null:
+			right = p
+	if left == null or right == null:
+		push_error("auto: need both pipes")
+		return false
+	var z := (left.z_min + left.z_max) * 0.5
+	# Travel right (+X wants right-facing land only) into a left pipe body.
+	var lx := left.x_at_theta(z, PI * 0.4)
+	var lh := left.height_at_theta(z, PI * 0.4)
+	sim.state.mode = SimState.Mode.AIRBORNE
+	sim.state.surface_id = ""
+	sim.state.clear_hang()
+	sim.state.maneuver = null
+	sim.state.facing = "r"
+	sim.state.position = Vector3(lx - 30.0, z, lh + 10.0)
+	sim.state.velocity = Vector3(300.0, 0.0, -50.0)
+	for _i in range(45):
+		sim.set_input(Vector2(1, 0), false, false)
+		sim.tick()
+		if sim.state.has_maneuver():
+			push_error("auto: maneuver started without transfer button")
+			return false
+		if sim.state.is_grounded() and sim.state.surface_id == left.id:
+			push_error("auto: snapped onto opposite (left) pipe while traveling +X")
+			return false
 	return true
 
 
