@@ -1,6 +1,6 @@
 class_name LogicalPosePresenter3D
 extends Node3D
-## Drives a 3D skater placeholder + shadow from LogicalPose / PseudoDepthBody.
+## Drives a 3D skater placeholder from LogicalPose / PseudoDepthBody.
 ## Simulation stays on physics ticks; visible pose interpolates on render frames.
 
 @export var depth_path: NodePath = NodePath("../Player/PseudoDepthBody")
@@ -10,7 +10,6 @@ extends Node3D
 
 var _body: MeshInstance3D
 var _facing_mark: MeshInstance3D
-var _shadow: MeshInstance3D
 var _depth: PseudoDepthBody
 var _player: Node
 
@@ -43,21 +42,6 @@ func _build_meshes() -> void:
 	_facing_mark.material_override = fmat
 	_facing_mark.position = Vector3(body_size.x * 0.5 + 0.01, 0.0, 0.0)
 	_body.add_child(_facing_mark)
-
-	_shadow = MeshInstance3D.new()
-	_shadow.name = "AirShadow"
-	var disc := CylinderMesh.new()
-	disc.top_radius = 0.14
-	disc.bottom_radius = 0.14
-	disc.height = 0.01
-	disc.radial_segments = 16
-	_shadow.mesh = disc
-	var sm := StandardMaterial3D.new()
-	sm.albedo_color = Color(0, 0, 0, 0.45)
-	sm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	_shadow.material_override = sm
-	_shadow.visible = false
-	add_child(_shadow)
 
 
 ## Flat triangle in the XZ plane pointing +X (tip), extruded slightly in Y.
@@ -124,16 +108,6 @@ func apply_pose(pose: LogicalPose) -> void:
 		# Facing +logical X is screen-right after WorldSpace X mirror.
 		_body.scale = Vector3(-face, 1.0, 1.0)
 		_body.position = Vector3(0.0, body_size.y * 0.5, 0.0)
-	if _shadow:
-		if pose.airborne:
-			_shadow.visible = true
-			_shadow.global_position = WorldSpace.logical_to_world(
-				pose.logical_x, pose.logical_z, pose.support_height
-			) + Vector3(0.0, 0.005, 0.0)
-			_shadow.rotation = Vector3.ZERO
-			_shadow.scale = Vector3.ONE
-		else:
-			_shadow.visible = false
 
 
 func _build_live_pose() -> LogicalPose:

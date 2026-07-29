@@ -80,7 +80,7 @@ Fly-out gates on **INPUT** only.
 
 ## Presentation
 
-Physics ticks publish `_pose_prev` / `_pose_curr`. `LogicalPosePresenter3D` and `CameraRig3D` interpolate on `_process`. Airborne: circular ground shadow on support height under feet. Hang keeps coping lean (body perpendicular to flat).
+Physics ticks publish `_pose_prev` / `_pose_curr`. `LogicalPosePresenter3D` and `CameraRig3D` interpolate on `_process`. Hang keeps coping lean (body perpendicular to flat).
 
 ## Debug overlays
 
