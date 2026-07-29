@@ -80,7 +80,7 @@ Fly-out gates on **INPUT** only.
 
 ## Presentation
 
-Physics ticks publish `_pose_prev` / `_pose_curr`. `LogicalPosePresenter3D` and `CameraRig3D` interpolate on `_process`. Hang keeps coping lean (body perpendicular to flat). Z-stick input adds a subtle centered local-Y body turn toward/away from the camera, mirrored by facing.
+Physics ticks publish `_pose_prev` / `_pose_curr`. `LogicalPosePresenter3D` and `CameraRig3D` interpolate on `_process`. Hang keeps coping lean (body perpendicular to flat); deck-back free air retains that source lean while X motion remains zero, then levels after horizontal release. Z-stick input adds a subtle centered local-Y body turn toward/away from the camera, mirrored by facing.
 
 ## Debug overlays
 
