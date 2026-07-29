@@ -112,7 +112,8 @@ Outward `#` decks (any height) ⇒ `OPEN` (air/fly corridor). Matching-height `=
 
 ## Velocity rules
 
-- Grounded: integrate control in surface UV. Neutral stick coasts (`friction` / `ramp_friction`); stick opposite velocity brakes (`brake`); aligned stick accelerates (`accel`). Cap at max speeds.
+- Grounded X / along: integrate control. Neutral stick coasts (`friction` / `ramp_friction`); stick opposite velocity brakes (`brake`); aligned stick accelerates (`accel`). Cap at max speeds.
+- Grounded / air **depth (Z)**: zero momentum — velocity is stick × max speed; release snaps to 0.
 - Seam crossing: transport world tangent speed onto the destination surface; no dead-stop.
 - Air-out leave: seed vertical from along at coping; `vx = 0`; lock X to coping until fly-out / spine / acid / land.
 - Fly-out / deck-out: clear hang; seed free-air velocity with outward X.

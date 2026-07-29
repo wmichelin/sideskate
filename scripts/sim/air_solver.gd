@@ -35,13 +35,13 @@ func _step_free(state: SimState, wish: Vector2, delta: float) -> void:
 	if w.length() > 1.0:
 		w = w.normalized()
 	if state.is_hanging():
-		# Pipe hang: X locked to source coping only; height/Z free.
+		# Pipe hang: X locked to source coping only; height free; depth stick-kinematic.
 		state.velocity.x = 0.0
-		state.velocity.y = move_toward(state.velocity.y, w.y * 200.0, 400.0 * delta)
+		state.velocity.y = 0.0 if absf(w.y) < 0.15 else w.y * 200.0
 	else:
-		# Free air: light XZ control.
+		# Free air: light X control; depth stick-kinematic (no momentum).
 		state.velocity.x = move_toward(state.velocity.x, w.x * 400.0, 800.0 * delta)
-		state.velocity.y = move_toward(state.velocity.y, w.y * 200.0, 400.0 * delta)
+		state.velocity.y = 0.0 if absf(w.y) < 0.15 else w.y * 200.0
 	state.velocity.z += SimTolerances.GRAVITY * delta
 	var from := state.position
 	if state.is_hanging() and model.pipes.has(state.hang_pipe_id):

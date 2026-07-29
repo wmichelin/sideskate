@@ -101,9 +101,8 @@ func _step_patch(
 	state.tangent_velocity.x = _integrate_axis(
 		state.tangent_velocity.x, wish.x, max_speed, accel, brake, friction, delta
 	)
-	state.tangent_velocity.y = _integrate_axis(
-		state.tangent_velocity.y, wish.y, max_speed_z, accel, brake, friction, delta
-	)
+	# Depth has no momentum: stick drives Z velocity; release snaps to 0.
+	state.tangent_velocity.y = _integrate_depth(wish.y, max_speed_z)
 	_apply_ollie_world_x(state, wish, delta, max_speed, ollie, ollie_accel)
 	var next := state.position + Vector3(
 		state.tangent_velocity.x * delta,
@@ -181,9 +180,7 @@ func _step_pipe(
 			state.tangent_velocity.x, along_wish, max_speed, accel, brake, ramp_friction, remaining
 		)
 		state.tangent_velocity.x += g_along * remaining
-		state.tangent_velocity.y = _integrate_axis(
-			state.tangent_velocity.y, wish.y, max_speed_z, accel, brake, friction, remaining
-		)
+		state.tangent_velocity.y = _integrate_depth(wish.y, max_speed_z)
 		_apply_ollie_pipe(state, pipe, wish, remaining, max_speed, ollie, ollie_accel)
 		var s := pipe.sample_at_z(state.position.y)
 		var radius := float(s.radius)
@@ -300,9 +297,7 @@ func _step_wall_extension(
 		state.tangent_velocity.x, along_wish, max_speed, accel, brake, ramp_friction, delta
 	)
 	state.tangent_velocity.x += SimTolerances.GRAVITY * delta
-	state.tangent_velocity.y = _integrate_axis(
-		state.tangent_velocity.y, wish.y, max_speed_z, accel, brake, friction, delta
-	)
+	state.tangent_velocity.y = _integrate_depth(wish.y, max_speed_z)
 	_apply_ollie_pipe(state, pipe, wish, delta, max_speed, ollie, ollie_accel)
 	var old_u := state.u
 	var new_z := clampf(z + state.tangent_velocity.y * delta, pipe.z_min, pipe.z_max)
@@ -471,6 +466,13 @@ func _integrate_axis(
 	if wish_n * v < 0.0:
 		return move_toward(v, 0.0, maxf(brake, 0.0) * delta)
 	return move_toward(v, clampf(wish_n, -1.0, 1.0) * max_spd, maxf(accel, 0.0) * delta)
+
+
+## Depth (logical Z): zero momentum — velocity is stick × max, release snaps to 0.
+func _integrate_depth(wish_n: float, max_spd: float) -> float:
+	if absf(wish_n) < 0.15:
+		return 0.0
+	return clampf(wish_n, -1.0, 1.0) * max_spd
 
 
 ## Mild forward thrust toward max_speed in facing direction (world X on flats).

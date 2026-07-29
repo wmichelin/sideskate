@@ -39,9 +39,8 @@ Glyphs: `=` / `#` / `x` solid; `.` hole; space OOB. Lava (`x`): airborne OK; gro
 
 Stick → wish. Per axis:
 
-- Neutral → **coast** (`friction` / `ramp_friction`; default 0)
-- Opposite velocity → **brake** (default 1250), no reverse until stopped
-- Aligned → **accel** toward max speed (default accel 3250, max X 880, max Z 400)
+- **X / along:** Neutral → **coast** (`friction` / `ramp_friction`; default 0). Opposite → **brake**. Aligned → **accel** toward max (default accel 3250, max X 880).
+- **Z (depth):** Zero momentum — velocity = stick × max Z (default 400); release stops immediately.
 
 **Facing** `l`/`r`: follows world X speed when X-dominant. Spawn from `spawn_facing`.
 

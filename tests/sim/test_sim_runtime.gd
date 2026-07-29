@@ -432,6 +432,18 @@ func _coast_with_zero_friction() -> bool:
 	if sim.state.tangent_velocity.x < 0.0:
 		push_error("brake must not reverse in one tick, got %s" % sim.state.tangent_velocity.x)
 		return false
+	# Depth: release snaps Z velocity to 0 (no momentum).
+	sim.state.tangent_velocity.y = 300.0
+	sim.set_input(Vector2.ZERO, false, false, false)
+	sim.tick()
+	if absf(sim.state.tangent_velocity.y) > 0.01:
+		push_error("depth must stop immediately on release, got %s" % sim.state.tangent_velocity.y)
+		return false
+	sim.set_input(Vector2(0, 1), false, false, false)
+	sim.tick()
+	if absf(sim.state.tangent_velocity.y - sim.max_speed_z) > 0.01:
+		push_error("depth stick should set vz=max, got %s" % sim.state.tangent_velocity.y)
+		return false
 	return true
 
 
