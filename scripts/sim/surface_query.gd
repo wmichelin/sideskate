@@ -206,6 +206,24 @@ func _blocker_at(p: Vector3) -> Dictionary:
 				"surface_id": pipe.id,
 				"reason": "through pipe body",
 			}
+	# Deck platforms: solid below the top — ride on top only, never through the base.
+	for patch_id in model.patches.keys():
+		var patch: SupportPatch = model.patches[patch_id]
+		if int(patch.kind) != SimKinds.SurfaceKind.DECK:
+			continue
+		if not patch.contains_xz(x, z):
+			continue
+		# On or above the ride surface — free (landing / skating the top).
+		if h >= patch.height - SimTolerances.CONTACT_EPS:
+			continue
+		# Below the platform base — open (story below).
+		if h < patch.base_height - SimTolerances.CONTACT_EPS:
+			continue
+		return {
+			"kind": "deck",
+			"surface_id": patch.id,
+			"reason": "through deck body",
+		}
 	# Wall extension solids: inside outward pad volume below pad top near coping.
 	for cid in model.copings.keys():
 		var cope: CopingEdge = model.copings[cid]

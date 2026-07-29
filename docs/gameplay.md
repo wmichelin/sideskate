@@ -53,7 +53,7 @@ Stick → wish. Per axis:
 | Mode | Enter | X | Height |
 |------|-------|---|--------|
 | **Air-out** | Leave `OPEN`/`SHARED_SPINE` with along | Locked to exit coping X | Ballistic |
-| **Free** (fly-out / deck-out) | Outward X-dominant stick in `FLY_OUT_ABOVE`, or ride-off | Unlocked | Ballistic |
+| **Free** (fly-out / deck-out) | Outward X-dominant stick in `FLY_OUT_ABOVE`, or ride-off | Unlocked; ballistic (no friction — stick steers only while held) | Gravity only |
 | **Maneuver** | Accepted spine / acid / fly-out plan | Plan owns pose | Plan owns pose |
 
 **Fly-out / deck-out:** unlock X and travel away from the pipe (left on left / right on right). Stick into the lip (outward), X-dominant, within the height window.

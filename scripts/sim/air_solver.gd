@@ -39,8 +39,10 @@ func _step_free(state: SimState, wish: Vector2, delta: float) -> void:
 		state.velocity.x = 0.0
 		state.velocity.y = 0.0 if absf(w.y) < 0.15 else w.y * 200.0
 	else:
-		# Free air: light X control; depth stick-kinematic (no momentum).
-		state.velocity.x = move_toward(state.velocity.x, w.x * 400.0, 800.0 * delta)
+		# Free air: X is ballistic (no friction). Stick only steers when held;
+		# release conserves vx. Depth stick-kinematic; height = gravity only.
+		if absf(w.x) >= 0.15:
+			state.velocity.x = move_toward(state.velocity.x, w.x * 400.0, 800.0 * delta)
 		state.velocity.y = 0.0 if absf(w.y) < 0.15 else w.y * 200.0
 	state.velocity.z += SimTolerances.GRAVITY * delta
 	var from := state.position
@@ -77,7 +79,7 @@ func _resolve_solid_hit(state: SimState, hit: Dictionary, from: Vector3 = Vector
 			state.velocity.x = 0.0
 			state.velocity.y = 0.0
 	else:
-		# Pipe body / wall extension: no clip-through.
+		# Pipe / deck body / wall extension: no clip-through.
 		state.velocity.x = 0.0
 		state.velocity.y = 0.0
 	var clamped := model.clamp_xz(state.position.x, state.position.y)

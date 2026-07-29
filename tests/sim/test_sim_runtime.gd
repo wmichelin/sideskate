@@ -16,12 +16,15 @@ func run() -> bool:
 		and _pipe_along_wish_and_lip_exit()
 		and _ollie_faces_direction()
 		and _coast_with_zero_friction()
+		and _air_no_x_friction()
 		and _wall_extension_climbs()
 		and _layered_fly_out_at_upper_lip()
 		and _void_floor_catches_fall()
 		and _world_border_contains()
 		and _pipe_body_no_clip()
 		and _embedded_pipe_no_phase_through()
+		and _embedded_pipe_mounts_not_sticks()
+		and _spine_deck_solid_from_floor()
 	)
 
 
@@ -451,6 +454,34 @@ func _coast_with_zero_friction() -> bool:
 	return true
 
 
+func _air_no_x_friction() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_open_fly.ssk"):
+		push_error("air friction: setup")
+		return false
+	sim.state.mode = SimState.Mode.AIRBORNE
+	sim.state.surface_id = ""
+	sim.state.clear_hang()
+	sim.state.maneuver = null
+	# High over the flat bowl so we do not clip a pipe body mid-fall.
+	sim.state.position = Vector3(sim.model.width * 0.5, sim.model.depth * 0.5, 400.0)
+	sim.state.velocity = Vector3(350.0, 0.0, 0.0)
+	var vx0 := sim.state.velocity.x
+	for _i in range(12):
+		sim.set_input(Vector2.ZERO, false, false, false)
+		sim.tick()
+		if not sim.state.is_airborne():
+			push_error("air friction: unexpectedly landed")
+			return false
+		if absf(sim.state.velocity.x - vx0) > 1.0:
+			push_error(
+				"air must conserve X with neutral stick (no friction), %s → %s"
+				% [vx0, sim.state.velocity.x]
+			)
+			return false
+	return true
+
+
 func _wall_extension_climbs() -> bool:
 	var sim := PlayerSim.new()
 	if not sim.setup_from_path("res://tests/levels/sim/sim_wall_extension.ssk"):
@@ -789,7 +820,8 @@ func _embedded_pipe_no_phase_through() -> bool:
 	if phased:
 		push_error("embed: walked through pipe to far side at floor height")
 		return false
-	# From the back (outward) side: must not phase left through the body on the floor.
+	# From the back (outward) side: may mount the pipe and ride, but must not
+	# skate the floor under the arc through to the lip.
 	sim.respawn()
 	var floor_r := ""
 	for pid2 in sim.model.patches.keys():
@@ -808,12 +840,15 @@ func _embedded_pipe_no_phase_through() -> bool:
 	sim.state.tangent_velocity = Vector2(-400.0, 0.0)
 	sim.state.u = 0.0
 	sim.state.v = 0.0
+	var rode_from_back := false
 	for _j in range(240):
 		sim.set_input(Vector2(-1, 0), false, false)
 		sim.tick()
 		if not sim.state.alive:
 			push_error("embed: died from back")
 			return false
+		if sim.model.pipes.has(sim.state.surface_id):
+			rode_from_back = true
 		if pipe.contains_xz(sim.state.position.x, sim.state.position.y):
 			var proj2 := pipe.project(
 				sim.state.position.x, sim.state.position.y, sim.state.position.z
@@ -825,9 +860,135 @@ func _embedded_pipe_no_phase_through() -> bool:
 		if sim.state.position.x < lip - SimTolerances.CAPSULE_RADIUS \
 				and sim.state.position.z < 20.0 \
 				and sim.state.is_grounded() \
-				and not sim.model.pipes.has(sim.state.surface_id):
+				and not sim.model.pipes.has(sim.state.surface_id) \
+				and not rode_from_back:
 			push_error("embed: walked through pipe from back to lip side")
 			return false
+	return true
+
+
+func _embedded_pipe_mounts_not_sticks() -> bool:
+	# Approaching >> from the lip must mount the ride surface, not stick under the arc.
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_embedded_pipe.ssk"):
+		push_error("mount: setup")
+		return false
+	var pipe: PipeSurface = null
+	for id in sim.model.pipes.keys():
+		pipe = sim.model.pipes[id]
+		break
+	if pipe == null:
+		return false
+	var z := (pipe.z_min + pipe.z_max) * 0.5
+	var lip := float((pipe.samples[0] as Dictionary).lip_x)
+	var floor_id := ""
+	for pid in sim.model.patches.keys():
+		var p: SupportPatch = sim.model.patches[pid]
+		if int(p.kind) != SimKinds.SurfaceKind.FLOOR or pid.begins_with("__"):
+			continue
+		if p.contains_xz(lip - 30.0, z):
+			floor_id = pid
+			break
+	if floor_id.is_empty():
+		push_error("mount: no floor")
+		return false
+	sim.state.mode = SimState.Mode.GROUNDED
+	sim.state.surface_id = floor_id
+	sim.state.position = Vector3(lip - 30.0, z, 0.0)
+	sim.state.tangent_velocity = Vector2(300.0, 0.0)
+	var mounted := false
+	for _i in range(90):
+		sim.set_input(Vector2(1, 0), false, false)
+		sim.tick()
+		if sim.model.pipes.has(sim.state.surface_id):
+			mounted = true
+			# Feet must sit on the analytical surface, not under it.
+			var proj := pipe.project(
+				sim.state.position.x, sim.state.position.y, sim.state.position.z
+			)
+			if bool(proj.get("ok", false)):
+				var ph := float(proj.point.z)
+				if absf(sim.state.position.z - ph) > SimTolerances.CONTACT_EPS * 2.0:
+					push_error(
+						"mount: on pipe but off surface h=%.1f want %.1f"
+						% [sim.state.position.z, ph]
+					)
+					return false
+			if sim.state.position.z > 5.0 or sim.state.u > 0.05:
+				break
+	if not mounted:
+		push_error("mount: never left floor onto embedded pipe (stuck under arc)")
+		return false
+	return true
+
+
+func _spine_deck_solid_from_floor() -> bool:
+	# ## spine deck is solid below the top — cannot walk through from the floor
+	# and fall through the park.
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_spine_deck_solid.ssk"):
+		push_error("deck solid: setup")
+		return false
+	var deck: SupportPatch = null
+	for pid in sim.model.patches.keys():
+		var p: SupportPatch = sim.model.patches[pid]
+		if int(p.kind) == SimKinds.SurfaceKind.DECK:
+			deck = p
+			break
+	if deck == null:
+		push_error("deck solid: no deck patch")
+		return false
+	var z := (deck.z_min + deck.z_max) * 0.5
+	var mid_x := (deck.x_min + deck.x_max) * 0.5
+	# Start on floor left of the spine, charge through the deck footprint at floor height.
+	var floor_id := ""
+	for pid2 in sim.model.patches.keys():
+		var p2: SupportPatch = sim.model.patches[pid2]
+		if int(p2.kind) != SimKinds.SurfaceKind.FLOOR or pid2.begins_with("__"):
+			continue
+		if p2.contains_xz(deck.x_min - 40.0, z):
+			floor_id = pid2
+			break
+	if floor_id.is_empty():
+		# Try farther left / mid floor band.
+		for pid3 in sim.model.patches.keys():
+			var p3: SupportPatch = sim.model.patches[pid3]
+			if int(p3.kind) != SimKinds.SurfaceKind.FLOOR or pid3.begins_with("__"):
+				continue
+			floor_id = pid3
+			break
+	if floor_id.is_empty():
+		push_error("deck solid: no floor")
+		return false
+	sim.state.mode = SimState.Mode.GROUNDED
+	sim.state.surface_id = floor_id
+	sim.state.position = Vector3(deck.x_min - 50.0, z, 0.0)
+	if not sim.model.patches[floor_id].contains_xz(sim.state.position.x, z):
+		sim.state.position.x = sim.model.patches[floor_id].x_min + 20.0
+	sim.state.tangent_velocity = Vector2(500.0, 0.0)
+	for _i in range(300):
+		sim.set_input(Vector2(1, 0), false, false)
+		sim.tick()
+		if not sim.state.alive:
+			push_error("deck solid: died")
+			return false
+		# Must never occupy deck XZ below the top (clip through base).
+		if deck.contains_xz(sim.state.position.x, sim.state.position.y) \
+				and sim.state.position.z < deck.height - SimTolerances.CONTACT_EPS * 2.0:
+			push_error(
+				"deck solid: under/through deck h=%.1f top=%.1f x=%.1f"
+				% [sim.state.position.z, deck.height, sim.state.position.x]
+			)
+			return false
+		# Must never land on the void floor after crossing the spine.
+		if sim.state.surface_id == "__void_floor__":
+			push_error("deck solid: fell to void floor through deck")
+			return false
+	# Direct probe: floor-height sample inside deck is a solid blocker.
+	var hit := sim.query.blocker_at(Vector3(mid_x, z, 0.0))
+	if str(hit.get("kind", "")) != "deck":
+		push_error("deck solid: expected deck blocker at floor under ##, got %s" % hit)
+		return false
 	return true
 
 

@@ -98,6 +98,14 @@ func _step_patch(
 	ollie_accel: float,
 ) -> void:
 	var patch: SupportPatch = model.patches[state.surface_id]
+	# Floor poly may cover pipe cells — if feet are already in a pipe band, ride it.
+	if _mount_pipe_at(state, state.position.x, state.position.y, state.tangent_velocity.x):
+		_update_facing_pipe(state, model.pipes[state.surface_id])
+		return
+	# Stuck under a deck volume (floor wrap / clip) → only legal pose is the top.
+	if _rescue_deck_top(state):
+		_update_facing(state)
+		return
 	state.tangent_velocity.x = _integrate_axis(
 		state.tangent_velocity.x, wish.x, max_speed, accel, brake, friction, delta
 	)
@@ -116,22 +124,11 @@ func _step_patch(
 		_update_facing(state)
 		return
 	next = contained.pos
+	# Entering a pipe footprint from floor → mount the ride surface (no stick under arc).
+	if _mount_pipe_at(state, next.x, next.y, state.tangent_velocity.x):
+		_update_facing_pipe(state, model.pipes[state.surface_id])
+		return
 	if patch.contains_xz(next.x, next.y):
-		# Floor outline can cover pipe cells; prefer mounting a same-height pipe
-		# at the lip instead of skating the fake floor under the arc.
-		var overlap := query.top_support(next.x, next.y, patch.height + SimTolerances.CONTACT_EPS)
-		if not overlap.is_empty() \
-				and int(overlap.kind) == SimKinds.SurfaceKind.PIPE \
-				and absf(float(overlap.height) - patch.height) <= SimTolerances.SEAM_EPS:
-			state.surface_id = str(overlap.surface_id)
-			var proj: Dictionary = overlap.proj
-			state.u = float(proj.u)
-			state.v = float(proj.v)
-			state.position = proj.point
-			var pipe_m: PipeSurface = model.pipes[state.surface_id]
-			state.tangent_velocity.x = state.tangent_velocity.x * pipe_m.outward_sign()
-			_update_facing(state)
-			return
 		state.position = next
 		_update_facing(state)
 		return
@@ -459,8 +456,50 @@ func _enter_air(state: SimState, world_vel: Vector3, hang_pipe_id: String = "") 
 	state.hang_pipe_id = hang_pipe_id
 
 
+## Snap grounded floor motion onto a pipe ride surface covering (x,z).
+## Prevents skating the floor poly under an embedded pipe (stick / clip).
+func _mount_pipe_at(state: SimState, x: float, z: float, world_vx: float) -> bool:
+	for pipe_id in model.pipes.keys():
+		var pipe: PipeSurface = model.pipes[pipe_id]
+		if not pipe.contains_xz(x, z):
+			continue
+		var proj := pipe.project(x, z, state.position.z)
+		if not bool(proj.get("ok", false)):
+			continue
+		state.mode = SimState.Mode.GROUNDED
+		state.surface_id = pipe.id
+		state.u = float(proj.u)
+		state.v = float(proj.v)
+		state.position = proj.point
+		state.tangent_velocity.x = world_vx * pipe.outward_sign()
+		state.velocity = Vector3.ZERO
+		state.clear_hang()
+		return true
+	return false
+
+
+## If feet are inside a deck's solid volume, snap to the ride top.
+func _rescue_deck_top(state: SimState) -> bool:
+	var hit := query.blocker_at(state.position)
+	if str(hit.get("kind", "")) != "deck":
+		return false
+	var deck_id := str(hit.get("surface_id", ""))
+	if not model.patches.has(deck_id):
+		return false
+	var deck: SupportPatch = model.patches[deck_id]
+	state.mode = SimState.Mode.GROUNDED
+	state.surface_id = deck.id
+	state.u = 0.0
+	state.v = 0.0
+	state.position.z = deck.height
+	state.velocity = Vector3.ZERO
+	state.clear_hang()
+	return true
+
+
 ## Keep grounded XZ inside world + playable cells. Axis-slide when blocked.
 ## Returns {ok:bool, pos:Vector3}. ok=false means stay put (into-wall speed cleared).
+## Pipe bodies are not rejected here — `_mount_pipe_at` claims those XZ samples.
 func _contain_ground_xz(state: SimState, proposed: Vector3) -> Dictionary:
 	var trials: Array = [
 		proposed,
@@ -474,9 +513,9 @@ func _contain_ground_xz(state: SimState, proposed: Vector3) -> Dictionary:
 		c.y = clamped.y
 		if not model.is_traversable_xz(c.x, c.y):
 			continue
-		# Floor polys can wrap around pipe cells (hole outline lost) — still treat
-		# pipe bodies / wall slabs as solid so you cannot phase through obstacles.
-		if not query.blocker_at(Vector3(c.x, c.y, c.z)).is_empty():
+		var hit := query.blocker_at(Vector3(c.x, c.y, c.z))
+		if not hit.is_empty() and str(hit.get("kind", "")) != "pipe":
+			# Bounds / space / wall-extension stay solid on the ground.
 			continue
 		# Trim velocity components that were rejected by clamping / slide.
 		if absf(c.x - proposed.x) > 0.001:

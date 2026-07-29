@@ -83,7 +83,7 @@ A transition occurs only via:
 | Airborne+plan | Grounded | Plan landing time reached on destination coping/pipe |
 | Any | Crash | Grounded lava only |
 
-Invisible world-border walls, unplayable `space`, pipe bodies, and wall-extension slabs are solid containment (stop into-wall velocity). An invisible `__void_floor__` patch at `VOID_FLOOR` catches fall-through when no other support remains.
+Invisible world-border walls, unplayable `space`, pipe bodies, **deck volumes** (below the ride top), and wall-extension slabs are solid containment (stop into-wall velocity). An invisible `__void_floor__` patch at `VOID_FLOOR` catches fall-through when no other support remains. `#` decks are ride-on-top only — never pass through the base.
 
 ## Tolerances (`SimTolerances`)
 
@@ -117,6 +117,7 @@ Outward `#` decks (any height) ⇒ `OPEN` (air/fly corridor). Matching-height `=
 
 - Grounded X / along: integrate control. Neutral stick coasts (`friction` / `ramp_friction`); stick opposite velocity brakes (`brake`); aligned stick accelerates (`accel`). Cap at max speeds.
 - Grounded / air **depth (Z)**: zero momentum — velocity is stick × max speed; release snaps to 0.
+- Free-air **X**: ballistic — no friction/coast decay; stick steers only while held. Height integrates gravity only.
 - Seam crossing: transport world tangent speed onto the destination surface; no dead-stop.
 - Air-out leave: seed vertical from along at coping; `vx = 0`; lock X to coping until fly-out / spine / acid / land.
 - Fly-out / deck-out: clear hang; seed free-air velocity with outward X.
