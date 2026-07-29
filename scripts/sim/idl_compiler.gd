@@ -58,13 +58,15 @@ static func _add_void_floor(model: ParkModel) -> void:
 	patch.height = SimTolerances.VOID_FLOOR
 	patch.base_height = SimTolerances.VOID_FLOOR
 	patch.lethal = false
-	var w := maxf(model.width, model.cell_w)
-	var d := maxf(model.depth, model.cell_h)
+	# Pad past AABB so a brief Z overshoot still has a support under feet.
+	var pad := SimTolerances.CAPSULE_RADIUS * 2.0
+	var w := maxf(model.width, model.cell_w) + pad
+	var d := maxf(model.depth, model.cell_h) + pad
 	patch.poly = PackedVector2Array([
-		Vector2(0.0, 0.0),
-		Vector2(w, 0.0),
+		Vector2(-pad, -pad),
+		Vector2(w, -pad),
 		Vector2(w, d),
-		Vector2(0.0, d),
+		Vector2(-pad, d),
 	])
 	_bounds_from_poly(patch)
 	model.patches[patch.id] = patch

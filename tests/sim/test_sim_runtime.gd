@@ -682,18 +682,49 @@ func _world_border_contains() -> bool:
 	var mid_z := sim.model.depth * 0.5
 	sim.state.position = Vector3(sim.model.width - 20.0, mid_z, 80.0)
 	sim.state.velocity = Vector3(800.0, 0.0, 0.0)
-	var wall := sim.model.width + SimTolerances.CAPSULE_RADIUS
+	var wall_x := sim.model.width + SimTolerances.CAPSULE_RADIUS
 	for _i in range(90):
 		sim.set_input(Vector2(1, 0), false, false)
 		sim.tick()
 		if not sim.state.alive:
 			push_error("border: died at world edge")
 			return false
-		if sim.state.position.x > wall + 1.0:
+		if sim.state.position.x > wall_x + 1.0:
 			push_error("border: escaped east wall x=%.1f" % sim.state.position.x)
 			return false
 		if sim.state.position.x < -SimTolerances.CAPSULE_RADIUS - 1.0:
 			push_error("border: escaped west wall")
+			return false
+	# Depth (Z): walls on the park faces — cannot leave [0, depth].
+	sim.state.mode = SimState.Mode.AIRBORNE
+	sim.state.surface_id = ""
+	sim.state.clear_hang()
+	sim.state.position = Vector3(sim.model.width * 0.5, sim.model.depth - 10.0, 80.0)
+	sim.state.velocity = Vector3(0.0, 400.0, 0.0)
+	for _j in range(90):
+		sim.set_input(Vector2(0, 1), false, false)
+		sim.tick()
+		if not sim.state.alive:
+			push_error("border: died at far Z edge")
+			return false
+		if sim.state.position.y > sim.model.depth + 0.5:
+			push_error("border: escaped far Z wall z=%.1f" % sim.state.position.y)
+			return false
+		if sim.state.position.y < -0.5:
+			push_error("border: escaped near Z wall")
+			return false
+	# Grounded depth stick must also stay inside.
+	sim.respawn()
+	sim.state.tangent_velocity = Vector2(0.0, 500.0)
+	for _k in range(120):
+		sim.set_input(Vector2(0, 1), false, false)
+		sim.tick()
+		if not sim.state.alive:
+			push_error("border: died grounded Z")
+			return false
+		if sim.state.position.y > sim.model.depth + 0.5 \
+				or sim.state.position.y < -0.5:
+			push_error("border: grounded escaped Z z=%.1f" % sim.state.position.y)
 			return false
 	return true
 
@@ -1033,8 +1064,9 @@ func _spine_deck_solid_from_floor() -> bool:
 				% [sim.state.position.z, deck.height, sim.state.position.x]
 			)
 			return false
-		# Must never land on the void floor after crossing the spine.
-		if sim.state.surface_id == "__void_floor__":
+		# Must never land on the void floor while inside the deck footprint.
+		if sim.state.surface_id == "__void_floor__" \
+				and deck.contains_xz(sim.state.position.x, sim.state.position.y):
 			push_error("deck solid: fell to void floor through deck")
 			return false
 	# Direct probe: floor-height sample inside deck is a solid blocker.

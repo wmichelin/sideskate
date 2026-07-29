@@ -212,7 +212,7 @@ func _step_pipe(
 		var old_u := state.u
 		var new_theta := th + d_theta
 		var new_z := state.position.y + state.tangent_velocity.y * remaining
-		new_z = clampf(new_z, pipe.z_min, pipe.z_max)
+		new_z = _clamp_world_depth(pipe, new_z)
 
 		# Lip exit: rolled past θ=0 onto the flat bowl floor.
 		if new_theta <= 0.0:
@@ -322,7 +322,7 @@ func _step_wall_extension(
 	state.tangent_velocity.y = _integrate_depth(wish.y, max_speed_z)
 	_apply_ollie_pipe(state, pipe, wish, delta, max_speed, ollie, ollie_accel)
 	var old_u := state.u
-	var new_z := clampf(z + state.tangent_velocity.y * delta, pipe.z_min, pipe.z_max)
+	var new_z := _clamp_world_depth(pipe, z + state.tangent_velocity.y * delta)
 	var new_h := state.position.z + state.tangent_velocity.x * delta
 	# Dropped back onto the quarter-pipe arc.
 	if new_h <= h_geom + 0.001:
@@ -458,6 +458,15 @@ func _enter_air(state: SimState, world_vel: Vector3, hang_pipe_id: String = "") 
 	state.maneuver = null
 	state.tangent_velocity = Vector2.ZERO
 	state.hang_pipe_id = hang_pipe_id
+
+
+## Keep pipe depth inside both the pipe loft and the park AABB.
+func _clamp_world_depth(pipe: PipeSurface, z: float) -> float:
+	var lo := maxf(pipe.z_min, 0.0)
+	var hi := minf(pipe.z_max, model.depth)
+	if hi < lo:
+		return clampf(z, 0.0, model.depth)
+	return clampf(z, lo, hi)
 
 
 ## Snap grounded feet onto their surface; if buried in foreign solid, remount it.

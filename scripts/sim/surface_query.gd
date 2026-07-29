@@ -178,15 +178,16 @@ func _blocker_at(p: Vector3) -> Dictionary:
 	var z := p.y
 	var h := p.z
 	var margin := SimTolerances.CAPSULE_RADIUS
-	# Invisible walls sit *outside* the park AABB so edge pipe copings (x=0 /
-	# x=width) remain rideable. Inset walls made plaza edge >>> / <<< sticky.
+	# X walls sit *outside* the AABB so edge pipe copings (x=0 / x=width) stay
+	# rideable. Z walls sit on the park faces — depth has no coping overhang, and
+	# an outside-Z band left a gap past the void floor (fall out of the map).
 	if x < -margin:
 		return {"kind": "bounds", "axis": "x", "sign": -1.0, "reason": "west wall"}
 	if x > model.width + margin:
 		return {"kind": "bounds", "axis": "x", "sign": 1.0, "reason": "east wall"}
-	if z < -margin:
+	if z < 0.0:
 		return {"kind": "bounds", "axis": "z", "sign": -1.0, "reason": "near wall"}
-	if z > model.depth + margin:
+	if z > model.depth:
 		return {"kind": "bounds", "axis": "z", "sign": 1.0, "reason": "far wall"}
 	# Non-playable footprint (space) — solid invisible wall, never fall out.
 	var cell := model.cell_at(x, z)

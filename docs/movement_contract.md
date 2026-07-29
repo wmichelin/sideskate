@@ -83,7 +83,7 @@ A transition occurs only via:
 | Airborne+plan | Grounded | Plan landing time reached on destination coping/pipe |
 | Any | Crash | Grounded lava only |
 
-Invisible world-border walls sit **outside** the park AABB (by `CAPSULE_RADIUS`) so edge pipe copings remain rideable; unplayable `space`, pipe bodies, **deck volumes** (below the ride top), and wall-extension slabs are solid containment (stop into-wall velocity). An invisible `__void_floor__` patch at `VOID_FLOOR` catches fall-through when no other support remains. `#` decks are ride-on-top only — never pass through the base.
+Invisible world-border walls: **X** sits outside the park AABB (by `CAPSULE_RADIUS`) so edge pipe copings remain rideable; **Z** sits on the park near/far faces so you cannot leave the support footprint and fall out. Unplayable `space`, pipe bodies, **deck volumes** (below the ride top), and wall-extension slabs are solid containment. An invisible `__void_floor__` patch at `VOID_FLOOR` catches fall-through when no other support remains. `#` decks are ride-on-top only — never pass through the base.
 
 ## Tolerances (`SimTolerances`)
 
