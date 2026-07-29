@@ -157,9 +157,22 @@ func try_acid(state: SimState, travel_x: float) -> Dictionary:
 	)
 	for c in cands:
 		var cope: CopingEdge = c.coping
-		# Opposite wall of a halfpipe: travel +X → right pipe; travel −X → left pipe.
-		var want := SimKinds.PipeSide.RIGHT if dir > 0.0 else SimKinds.PipeSide.LEFT
-		if int(c.side) != want:
+		var side := int(c.side)
+		# Classic opposite wall: travel +X → right pipe; travel −X → left pipe.
+		var classic := (
+			(dir > 0.0 and side == SimKinds.PipeSide.RIGHT)
+			or (dir < 0.0 and side == SimKinds.PipeSide.LEFT)
+		)
+		# Deck drop-in: traveler outward of dest, moving into the bowl
+		# (####<<< with +X onto the left pipe; >>>#### with −X onto the right).
+		var dest_cx := float(c.coping_x)
+		var out := float(cope.outward_sign)
+		var outward_of := (pos.x - dest_cx) * out >= -SimTolerances.ALIGN_EPS
+		var drop_in := outward_of and (
+			(side == SimKinds.PipeSide.LEFT and dir > 0.0)
+			or (side == SimKinds.PipeSide.RIGHT and dir < 0.0)
+		)
+		if not classic and not drop_in:
 			continue
 		var plan := _build_transfer_plan(
 			ManeuverPlan.Kind.ACID, state, cope, dir, ""

@@ -102,10 +102,13 @@ func _step_patch(
 	ollie_accel: float,
 ) -> void:
 	var patch: SupportPatch = model.patches[state.surface_id]
-	# Floor poly may cover pipe cells — if feet are already in a pipe band, ride it.
-	if _mount_pipe_at(state, state.position.x, state.position.y, state.tangent_velocity.x):
-		_update_facing_pipe(state, model.pipes[state.surface_id])
-		return
+	var on_deck := int(patch.kind) == SimKinds.SurfaceKind.DECK
+	# Floor under an embedded pipe mounts the arc. Decks never auto-stick to a
+	# pipe — ride-off falls (acid drop is the transfer button).
+	if not on_deck:
+		if _mount_pipe_at(state, state.position.x, state.position.y, state.tangent_velocity.x):
+			_update_facing_pipe(state, model.pipes[state.surface_id])
+			return
 	# Stuck under a deck volume (floor wrap / clip) → only legal pose is the top.
 	if _rescue_deck_top(state):
 		_update_facing(state)
@@ -134,10 +137,11 @@ func _step_patch(
 		_update_facing(state)
 		return
 	next = contained.pos
-	# Entering a pipe footprint from floor → mount the ride surface (no stick under arc).
-	if _mount_pipe_at(state, next.x, next.y, state.tangent_velocity.x):
-		_update_facing_pipe(state, model.pipes[state.surface_id])
-		return
+	# Entering a pipe footprint from floor → mount. From deck → fall (acid only).
+	if not on_deck:
+		if _mount_pipe_at(state, next.x, next.y, state.tangent_velocity.x):
+			_update_facing_pipe(state, model.pipes[state.surface_id])
+			return
 	if patch.contains_xz(next.x, next.y):
 		state.position = next
 		_update_facing(state)
@@ -145,6 +149,10 @@ func _step_patch(
 	# Left patch — try seam to neighboring support or air.
 	var top := query.top_support(next.x, next.y, patch.height + SimTolerances.CONTACT_EPS)
 	if not top.is_empty() and absf(float(top.height) - patch.height) <= SimTolerances.SEAM_EPS:
+		# Deck → pipe at matching lip height is not a seam; acid drop only.
+		if on_deck and int(top.kind) == SimKinds.SurfaceKind.PIPE:
+			_enter_air(state, Vector3(state.tangent_velocity.x, state.tangent_velocity.y, 0.0))
+			return
 		state.surface_id = str(top.surface_id)
 		state.position = Vector3(next.x, next.y, float(top.height))
 		if int(top.kind) == SimKinds.SurfaceKind.PIPE:
@@ -159,7 +167,7 @@ func _step_patch(
 			state.alive = false
 		_update_facing(state)
 		return
-	# Ride-off into air (holes / unsupported edges — void floor catches falls).
+	# Ride-off into air (holes / unsupported edges / deck→pipe — void floor catches).
 	_enter_air(state, Vector3(state.tangent_velocity.x, state.tangent_velocity.y, 0.0))
 
 
@@ -605,6 +613,11 @@ func _ensure_surface_contact(state: SimState) -> void:
 		# Don't steal onto a stacked/foreign pipe while riding our own arc.
 		if model.pipes.has(state.surface_id):
 			return
+		# Deck → pipe is acid drop only — fall, don't auto-stick.
+		if model.patches.has(state.surface_id):
+			var cur: SupportPatch = model.patches[state.surface_id]
+			if int(cur.kind) == SimKinds.SurfaceKind.DECK:
+				return
 		_mount_pipe_at(state, state.position.x, state.position.y, state.tangent_velocity.x)
 	elif kind == "deck":
 		_rescue_deck_top(state)
@@ -748,6 +761,12 @@ func _resolve_solid_contact(state: SimState, hit: Dictionary, at: Vector3) -> bo
 	if kind == "deck":
 		return _mount_deck_from_hit(state, hit, at)
 	if kind == "pipe":
+		# Deck never auto-mounts a pipe (acid drop only).
+		if model.patches.has(state.surface_id):
+			var cur: SupportPatch = model.patches[state.surface_id]
+			if int(cur.kind) == SimKinds.SurfaceKind.DECK:
+				_enter_air(state, Vector3(state.tangent_velocity.x, state.tangent_velocity.y, 0.0))
+				return true
 		var world_vx := state.tangent_velocity.x
 		if model.pipes.has(state.surface_id):
 			world_vx = state.tangent_velocity.x * model.pipes[state.surface_id].outward_sign()

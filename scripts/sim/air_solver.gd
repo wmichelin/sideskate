@@ -69,6 +69,13 @@ func _step_free(state: SimState, wish: Vector2, delta: float) -> void:
 		if kind == "pipe" or kind == "deck" or kind == "wall":
 			if _snap_onto_solid(state, hit):
 				return
+			# Deck-backed OPEN from outward: fall through into the bowl (acid only mounts).
+			if kind == "pipe" and _acid_drop_pass_through(state, hit):
+				state.position = to
+				_try_land(state, from.z)
+				_snap_buried_to_surface(state)
+				state.position.y = clampf(state.position.y, 0.05, maxf(model.depth - 0.05, 0.05))
+				return
 			# Remount refused (e.g. opposite hang) — depenetrate, never freeze.
 			_bounce_off_solid(state, hit, from)
 			_try_land(state, from.z)
@@ -283,6 +290,18 @@ func _pipe_proj_for_air_hit(state: SimState, pipe: PipeSurface, hit: Dictionary 
 	return {}
 
 
+## Deck-backed OPEN pipe hit from the outward side — ignore solid; acid mounts.
+func _acid_drop_pass_through(state: SimState, hit: Dictionary) -> bool:
+	var pipe: PipeSurface = model.pipes.get(str(hit.get("surface_id", "")))
+	if pipe == null:
+		return false
+	if not query.pipe_has_outward_deck(pipe, state.position.y):
+		return false
+	var cx := pipe.coping_x_at(state.position.y)
+	var out := pipe.outward_sign()
+	return not is_nan(cx) and (state.position.x - cx) * out >= -SimTolerances.CAPSULE_RADIUS
+
+
 ## True when mounting this pipe would be an ordinary land (not a spine/acid steal).
 func _pipe_snap_allowed(state: SimState, pipe: PipeSurface, proj: Dictionary) -> bool:
 	# Hang on one pipe must never auto-mount the opposite (spine = transfer button).
@@ -291,11 +310,14 @@ func _pipe_snap_allowed(state: SimState, pipe: PipeSurface, proj: Dictionary) ->
 		if pipe.side != hp.side:
 			return false
 	else:
-		# Free air: drop-in / re-entry from the outward side is ordinary land.
+		# Free air: drop-in / re-entry from the outward side is ordinary land —
+		# except deck-backed OPEN (####<<<), which needs acid.
 		# Same-facing travel still lands from the bowl; opposite from the bowl = spine.
 		var cx := pipe.coping_x_at(state.position.y)
 		var out := pipe.outward_sign()
 		var from_outward := not is_nan(cx) and (state.position.x - cx) * out >= -SimTolerances.CAPSULE_RADIUS
+		if from_outward and query.pipe_has_outward_deck(pipe, state.position.y):
+			return false
 		if not from_outward:
 			var vx := state.velocity.x
 			if absf(vx) < 1.0:
@@ -522,12 +544,15 @@ func _pick_ordinary_land(state: SimState, candidates: Array) -> Dictionary:
 		if pipe2 == null:
 			continue
 		# Free air: drop-in from outward side, or same-facing travel from the bowl.
+		# Deck-backed OPEN from outward needs acid — skip ordinary land.
 		var cx2 := pipe2.coping_x_at(state.position.y)
 		var out2 := pipe2.outward_sign()
 		var from_outward := (
 			not is_nan(cx2)
 			and (state.position.x - cx2) * out2 >= -SimTolerances.CAPSULE_RADIUS
 		)
+		if from_outward and query.pipe_has_outward_deck(pipe2, state.position.y):
+			continue
 		if not from_outward:
 			var vx := state.velocity.x
 			if absf(vx) < 1.0:

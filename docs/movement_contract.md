@@ -85,7 +85,7 @@ A transition occurs only via:
 
 Invisible world-border walls: **X** sits outside the park AABB (by `CAPSULE_RADIUS`) so edge pipe copings remain rideable; **Z** sits on the park near/far faces so you cannot leave the support footprint and fall out. Unplayable `space`, pipe bodies, **deck volumes** (below the ride top), and wall-extension slabs are solid containment. An invisible `__void_floor__` patch at `VOID_FLOOR` catches fall-through when no other support remains. `#` decks are ride-on-top only — never pass through the base.
 
-**Contact rule:** hitting a deck / pipe body / wall-extension **remounts** onto that covering ride surface (deck top, pipe project, or wall pad). Only world borders and unplayable `space` axis-stop. Never pin with zeroed velocity against a face. Outward `#` remains `OPEN` for fly-out (no auto pipe→deck seam); grounded/air contact with the deck **volume** snaps to the deck top.
+**Contact rule:** hitting a deck / pipe body / wall-extension **remounts** onto that covering ride surface (deck top, pipe project, or wall pad). Only world borders and unplayable `space` axis-stop. Never pin with zeroed velocity against a face. Outward `#` remains `OPEN` for fly-out (no auto pipe→deck seam); grounded/air contact with the deck **volume** snaps to the deck top. Riding a `#` deck off onto an abutting pipe does **not** auto-mount — fall (gravity); mount that pipe only via **acid** (transfer while descending).
 
 ## Tolerances (`SimTolerances`)
 
@@ -135,7 +135,7 @@ Outward `#` decks (any height) ⇒ `OPEN` (air/fly corridor). Matching-height `=
 | Ollie | Hold `ollie`: mild accel toward `max_speed` in **facing** direction; skipped while stick brakes opposite |
 | Fly-out / deck-out | X-dominant outward stick (−X left pipe / +X right pipe) while rising in `FLY_OUT_ABOVE` on `OPEN` / `SHARED_SPINE` or while air-out |
 | Spine | Explicit action while rising/apex; dest opposite-facing; traveler outward of dest coping |
-| Acid | Explicit action while descending |
+| Acid | Explicit action while descending; classic opposite wall, or deck drop-in onto abutting pipe from its outward side |
 | Post fly-out | Same action may acid when descending; never spine at apex |
 
 ## Tie-breaks

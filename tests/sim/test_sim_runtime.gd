@@ -32,6 +32,7 @@ func run() -> bool:
 		and _layered_hole_not_invisible_wall()
 		and _deck_hash_no_pin_from_floor()
 		and _l0_lava_gap_no_phantom_wall_climb()
+		and _deck_ride_off_falls_acid_mounts()
 	)
 
 
@@ -1535,6 +1536,117 @@ func _l0_lava_gap_no_phantom_wall_climb() -> bool:
 			push_error("lava: entered wall-climb u=%.2f h=%.1f" % [sim.state.u, sim.state.position.z])
 			return false
 	push_error("lava: never left pipe")
+	return false
+
+
+## ####<<< : ride deck toward pipe → fall (no auto-stick); acid drop mounts.
+func _deck_ride_off_falls_acid_mounts() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_deck_backed.ssk"):
+		push_error("deck drop: setup")
+		return false
+	var left := _left_pipe(sim.model)
+	if left == null:
+		return false
+	if not sim.query.pipe_has_outward_deck(left, (left.z_min + left.z_max) * 0.5):
+		push_error("deck drop: left pipe should have outward deck")
+		return false
+	var deck: SupportPatch = null
+	for pid in sim.model.patches.keys():
+		var p: SupportPatch = sim.model.patches[pid]
+		if int(p.kind) == SimKinds.SurfaceKind.DECK:
+			deck = p
+			break
+	if deck == null:
+		push_error("deck drop: no deck")
+		return false
+	var z := (deck.z_min + deck.z_max) * 0.5
+	var cx := left.coping_x_at(z)
+	# Near the deck’s pipe-facing edge, skating +X toward the ramp.
+	sim.state.mode = SimState.Mode.GROUNDED
+	sim.state.surface_id = deck.id
+	sim.state.u = 0.0
+	sim.state.v = 0.0
+	sim.state.position = Vector3(cx - sim.model.cell_w * 0.6, z, deck.height)
+	sim.state.tangent_velocity = Vector2(400.0, 0.0)
+	sim.state.velocity = Vector3.ZERO
+	sim.state.clear_hang()
+	sim.state.maneuver = null
+	var left_id := left.id
+	var saw_air := false
+	for _i in range(90):
+		sim.set_input(Vector2(1, 0), false, false)
+		sim.tick()
+		if sim.state.is_airborne():
+			saw_air = true
+			break
+		if sim.model.pipes.has(sim.state.surface_id):
+			push_error("deck drop: auto-mounted pipe while still grounded on deck ride-off")
+			return false
+	if not saw_air:
+		push_error("deck drop: never left deck into air")
+		return false
+	# Keep falling without transfer — must not stick to the abutting pipe.
+	for _j in range(120):
+		sim.set_input(Vector2(1, 0), false, false)
+		sim.tick()
+		if sim.state.is_grounded() and sim.state.surface_id == left_id:
+			push_error("deck drop: ordinary land stuck to deck-backed pipe without acid")
+			return false
+		if sim.state.is_grounded() and not sim.model.pipes.has(sim.state.surface_id):
+			break ## floor / void catch in the bowl is fine
+		if not sim.state.alive:
+			break
+	# Fresh ride-off, then acid while descending.
+	var acid := PlayerSim.new()
+	if not acid.setup_from_path("res://tests/levels/sim/sim_deck_backed.ssk"):
+		push_error("deck acid: setup")
+		return false
+	var left2 := _left_pipe(acid.model)
+	var deck2: SupportPatch = null
+	for pid2 in acid.model.patches.keys():
+		var p2: SupportPatch = acid.model.patches[pid2]
+		if int(p2.kind) == SimKinds.SurfaceKind.DECK:
+			deck2 = p2
+			break
+	var z2 := (deck2.z_min + deck2.z_max) * 0.5
+	var cx2 := left2.coping_x_at(z2)
+	acid.state.mode = SimState.Mode.GROUNDED
+	acid.state.surface_id = deck2.id
+	acid.state.position = Vector3(cx2 - acid.model.cell_w * 0.6, z2, deck2.height)
+	acid.state.tangent_velocity = Vector2(400.0, 0.0)
+	acid.state.clear_hang()
+	for _k in range(90):
+		acid.set_input(Vector2(1, 0), false, false)
+		acid.tick()
+		if acid.state.is_airborne():
+			break
+	if not acid.state.is_airborne():
+		push_error("deck acid: never airborne")
+		return false
+	# Wait until descending, then press transfer.
+	var pressed := false
+	for _m in range(90):
+		var edge := false
+		if not pressed and acid.state.velocity.z < -1.0:
+			edge = true
+			pressed = true
+		acid.set_input(Vector2(1, 0), false, edge)
+		acid.tick()
+		if acid.state.has_maneuver() and acid.state.maneuver.kind == ManeuverPlan.Kind.ACID:
+			break
+		if acid.state.is_grounded() and acid.state.surface_id == left2.id:
+			break
+	# Resolve plan / land onto left pipe.
+	for _n in range(120):
+		acid.set_input(Vector2(1, 0), false, false)
+		acid.tick()
+		if acid.state.is_grounded() and acid.state.surface_id == left2.id:
+			return true
+	push_error(
+		"deck acid: never mounted left pipe mode=%s surf=%s reject=%s"
+		% [acid.state.mode, acid.state.surface_id, acid.state.last_reject]
+	)
 	return false
 
 

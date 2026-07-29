@@ -261,6 +261,32 @@ func _blocker_at(p: Vector3) -> Dictionary:
 	return {}
 
 
+## True when this pipe’s outward lip abuts a `#` deck (OPEN air/fly corridor).
+## Deck→pipe mounts require acid drop — ordinary land / ground auto-stick do not.
+func pipe_has_outward_deck(pipe: PipeSurface, z: float) -> bool:
+	if model == null or pipe == null:
+		return false
+	var cope: CopingEdge = model.copings.get(pipe.coping_id)
+	if cope == null:
+		return false
+	var samp := cope.sample_at_z(z)
+	if samp.is_empty():
+		return false
+	var cx := float(samp.coping_x)
+	var ch := float(samp.height)
+	var out := cope.outward_sign
+	var probe_x := cx + out * maxf(model.cell_w * 0.25, 1.0)
+	for pid in model.patches.keys():
+		var patch: SupportPatch = model.patches[pid]
+		if int(patch.kind) != SimKinds.SurfaceKind.DECK:
+			continue
+		if not patch.contains_xz(probe_x, z):
+			continue
+		if absf(patch.height - ch) <= maxf(SimTolerances.SEAM_EPS, model.cell_w):
+			return true
+	return false
+
+
 ## True when a WALL_EXTENSION still has upper-story geometry at this Z.
 ## Full-depth L0 pipes classified from mid-Z must not climb/block in hole rows.
 func wall_extension_active_at(cope: CopingEdge, z: float) -> bool:
