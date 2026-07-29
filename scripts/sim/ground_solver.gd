@@ -364,7 +364,8 @@ func _mount_wall_top(state: SimState, pipe: PipeSurface, cope: CopingEdge, z: fl
 	state.clear_hang()
 
 
-## Rising into OPEN coping → hang air (X locked to coping) with along → vertical.
+## Rising into OPEN / SHARED / wall-top hang: X locked to coping.
+## Do not hang-launch at geometric lip of WALL_EXTENSION — climb first.
 func _launch_from_coping(state: SimState, pipe: PipeSurface, z: float) -> void:
 	var along := state.tangent_velocity.x
 	var th := PI * 0.5

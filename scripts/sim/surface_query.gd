@@ -176,8 +176,22 @@ func _blocker_at(p: Vector3) -> Dictionary:
 	var cell := model.cell_at(x, z)
 	if not model.is_playable_cell(cell.x, cell.y):
 		return {"kind": "oob", "reason": "outside playable footprint"}
-	# Wall extension solids: inside outward deck volume below deck top and above base
-	# while crossing through wall thickness near coping.
+	# Foreign pipe body: below the ride surface inside a pipe footprint = clipping through.
+	for pipe_id in model.pipes.keys():
+		var pipe: PipeSurface = model.pipes[pipe_id]
+		if not pipe.contains_xz(x, z):
+			continue
+		var proj := pipe.project(x, z, h)
+		if not bool(proj.get("ok", false)):
+			continue
+		var ph := float(proj.point.z)
+		if h < ph - SimTolerances.CONTACT_EPS:
+			return {
+				"kind": "pipe",
+				"surface_id": pipe.id,
+				"reason": "through pipe body",
+			}
+	# Wall extension solids: inside outward pad volume below pad top near coping.
 	for cid in model.copings.keys():
 		var cope: CopingEdge = model.copings[cid]
 		if cope.coping_class != SimKinds.CopingClass.WALL_EXTENSION:

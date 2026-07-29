@@ -17,6 +17,7 @@ func run() -> bool:
 		and _ollie_faces_direction()
 		and _coast_with_zero_friction()
 		and _wall_extension_climbs()
+		and _layered_fly_out_at_upper_lip()
 	)
 
 
@@ -501,6 +502,79 @@ func _wall_extension_climbs() -> bool:
 		saw_wall, sim.state.u, sim.state.position.z
 	])
 	return false
+
+
+func _layered_fly_out_at_upper_lip() -> bool:
+	# L0 right under L1 left: fly-out at L0 geometric must fail; after climb, fly at L1 height.
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
+		push_error("setup layered fly")
+		return false
+	var pipe: PipeSurface = null
+	for id in sim.model.pipes.keys():
+		if str(id).begins_with("pipe_1_L0"):
+			pipe = sim.model.pipes[id]
+			break
+	if pipe == null:
+		push_error("no L0 right")
+		return false
+	var cope: CopingEdge = sim.model.copings[pipe.coping_id]
+	if cope.coping_class != SimKinds.CopingClass.WALL_EXTENSION:
+		push_error("expected WALL_EXTENSION, got %s" % cope.class_name_str())
+		return false
+	# Use Z overlapping an L1 left pipe.
+	var z := 1000.0
+	z = clampf(z, pipe.z_min, pipe.z_max)
+	var h_geom := pipe.height_at_theta(z, PI * 0.5)
+	var h_eff := float(cope.sample_at_z(z).height)
+	# At geometric lip with outward stick — must not fly through L1.
+	sim.state.mode = SimState.Mode.GROUNDED
+	sim.state.surface_id = pipe.id
+	sim.state.u = 0.99
+	sim.state.v = 0.5
+	sim.state.tangent_velocity = Vector2(200.0, 0.0)
+	sim.state.position = Vector3(pipe.x_at_theta(z, PI * 0.5), z, h_geom)
+	sim.set_input(Vector2(1, 0), false, false)
+	sim.tick()
+	if sim.state.is_airborne() and not sim.state.is_hanging() and absf(sim.state.position.z - h_geom) < 30.0:
+		push_error("must not free-fly at L0 geometric height")
+		return false
+	# Climb to effective lip.
+	sim.state.mode = SimState.Mode.GROUNDED
+	sim.state.surface_id = pipe.id
+	sim.state.u = 0.95
+	sim.state.tangent_velocity = Vector2(500.0, 0.0)
+	sim.state.position = Vector3(pipe.x_at_theta(z, 0.95 * PI * 0.5), z, pipe.height_at_theta(z, 0.95 * PI * 0.5))
+	for _i in range(120):
+		sim.set_input(Vector2(1, 0), false, false)
+		sim.tick()
+		if sim.state.is_hanging() and sim.state.position.z >= h_eff - SimTolerances.CONTACT_EPS * 2.0:
+			break
+		if sim.state.is_grounded() and sim.state.u >= 1.98:
+			break
+	if sim.state.position.z < h_eff - 20.0 and not (sim.state.is_grounded() and sim.state.u >= 1.98):
+		push_error("never reached upper lip h=%.1f got %.1f" % [h_eff, sim.state.position.z])
+		return false
+	# Fly-out at upper lip.
+	sim.set_input(Vector2(1, 0), false, false)
+	sim.tick()
+	if sim.state.is_hanging():
+		# Need rising window — seed upward if we landed flat at top.
+		sim.state.velocity.z = maxf(sim.state.velocity.z, 80.0)
+		sim.set_input(Vector2(1, 0), false, false)
+		sim.tick()
+	if sim.state.is_hanging():
+		push_error("fly-out at L1 lip should unlock: reject=%s h=%.1f" % [
+			sim.state.last_reject, sim.state.position.z
+		])
+		return false
+	if not sim.state.is_airborne():
+		push_error("expected free air after upper fly-out")
+		return false
+	if sim.state.position.z < h_eff - 40.0:
+		push_error("fly-out height still near L0 (%.1f)" % sim.state.position.z)
+		return false
+	return true
 
 
 func _place_at_coping(sim: PlayerSim, pipe: PipeSurface, along: float) -> void:

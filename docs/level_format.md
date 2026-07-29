@@ -165,8 +165,8 @@ Every pipe coping edge is classified exactly once:
 |-------|------|----------|
 | `OPEN` | No outward solid at coping height | Explicit fly-out allowed |
 | `SUPPORT_SEAM` | Outward deck/floor top matches coping height (within seam eps) | Auto-roll onto pad |
-| `WALL_EXTENSION` | Outward deck top is strictly above coping | Continuous vertical climb to deck top; then mount |
-| `SHARED_SPINE` | Opposite-facing coping within tolerance (`>>>##<<<` or valid `>>><<<`) | Spine target relation |
+| `WALL_EXTENSION` | Outward floor above coping, or taller opposite pipe (cross-story) | Climb to effective lip; mount floor or air/fly |
+| `SHARED_SPINE` | Opposite-facing coping at matching height (`>>>##<<<`, `>>><<<`) | Spine target relation |
 
 An outward `#` deck abutting a coping is never simultaneously fly-out space and a
 catch wall. See [`docs/movement_contract.md`](movement_contract.md).

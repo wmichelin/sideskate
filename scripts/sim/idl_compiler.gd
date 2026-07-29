@@ -254,37 +254,82 @@ static func _classify_copings(spec: LevelSpec, model: ParkModel) -> void:
 				best_patch = patch
 		if best_patch == null:
 			cope.coping_class = SimKinds.CopingClass.OPEN
-			continue
-		var dh := best_patch.height - ch
-		# Outward decks are always air/fly corridors (never auto-mount / wall-climb).
-		# Only floors (and other non-deck pads) form seams or wall extensions.
-		if best_patch.kind == SimKinds.SurfaceKind.DECK:
-			cope.coping_class = SimKinds.CopingClass.OPEN
-		elif absf(dh) <= SimTolerances.SEAM_EPS:
-			cope.coping_class = SimKinds.CopingClass.SUPPORT_SEAM
-			cope.support_patch_id = best_patch.id
-		elif dh > SimTolerances.SEAM_EPS:
-			cope.coping_class = SimKinds.CopingClass.WALL_EXTENSION
-			cope.support_patch_id = best_patch.id
-			# Raise effective coping to pad top.
-			for s in cope.height_samples:
-				s["height"] = best_patch.height
 		else:
-			# Outward pad below coping — treat as open (can fly over drop).
-			cope.coping_class = SimKinds.CopingClass.OPEN
+			var dh := best_patch.height - ch
+			# Outward decks are air/fly corridors (never auto-mount / wall-climb).
+			# Only floors form seams or wall extensions.
+			if best_patch.kind == SimKinds.SurfaceKind.DECK:
+				cope.coping_class = SimKinds.CopingClass.OPEN
+			elif absf(dh) <= SimTolerances.SEAM_EPS:
+				cope.coping_class = SimKinds.CopingClass.SUPPORT_SEAM
+				cope.support_patch_id = best_patch.id
+			elif dh > SimTolerances.SEAM_EPS:
+				cope.coping_class = SimKinds.CopingClass.WALL_EXTENSION
+				cope.support_patch_id = best_patch.id
+				for s in cope.height_samples:
+					s["height"] = best_patch.height
+			else:
+				cope.coping_class = SimKinds.CopingClass.OPEN
+		# Cross-story opposite pipe above this lip: climb to that coping, then air/fly.
+		# (e.g. L0 >>> facing L1 <<< — not a deck wall, not L0-height SHARED air-out.)
+		_apply_upper_opposite_wall(model, cope, cx, ch, mid_z)
+
+
+## If an opposite-facing pipe sits outward within gap and taller, raise this lip
+## to that coping as WALL_EXTENSION (no pad mount — air-out/fly at the upper lip).
+static func _apply_upper_opposite_wall(
+	model: ParkModel, cope: CopingEdge, cx: float, ch: float, mid_z: float
+) -> void:
+	var max_gap := model.cell_w * 3.0 + SimTolerances.ALIGN_EPS
+	var best_h := -INF
+	var found := false
+	for pid in model.pipes.keys():
+		var other: PipeSurface = model.pipes[pid]
+		if other.side == cope.side:
+			continue
+		if mid_z < other.z_min - 0.001 or mid_z > other.z_max + 0.001:
+			continue
+		var oc: CopingEdge = model.copings.get(other.coping_id)
+		if oc == null:
+			continue
+		var ox := other.coping_x_at(mid_z)
+		var oh := other.height_at_theta(mid_z, PI * 0.5)
+		if is_nan(ox) or is_nan(oh):
+			continue
+		# Must face each other: right cope left of left cope.
+		var gap := 0.0
+		if cope.side == SimKinds.PipeSide.RIGHT and other.side == SimKinds.PipeSide.LEFT:
+			gap = ox - cx
+		elif cope.side == SimKinds.PipeSide.LEFT and other.side == SimKinds.PipeSide.RIGHT:
+			gap = cx - ox
+		else:
+			continue
+		if gap < -SimTolerances.ALIGN_EPS or gap > max_gap:
+			continue
+		if oh <= ch + SimTolerances.SEAM_EPS:
+			continue
+		if oh > best_h:
+			best_h = oh
+			found = true
+	if not found:
+		return
+	cope.coping_class = SimKinds.CopingClass.WALL_EXTENSION
+	cope.support_patch_id = "" ## upper lip is air/fly, not a floor mount
+	for s in cope.height_samples:
+		s["height"] = best_h
 
 
 static func _link_shared_spines(model: ParkModel) -> void:
 	var ids: Array = model.all_coping_ids()
 	var max_gap := model.cell_w * 3.0 + SimTolerances.ALIGN_EPS
+	## Same-story spines only — cross-story opposite pipes climb as WALL_EXTENSION.
+	var max_dh := SimTolerances.SEAM_EPS * 4.0
 	for i in range(ids.size()):
 		var a: CopingEdge = model.copings[ids[i]]
 		for j in range(i + 1, ids.size()):
 			var b: CopingEdge = model.copings[ids[j]]
 			if a.side == b.side:
 				continue
-			# Must face each other: LEFT coping outward −X, RIGHT outward +X.
-			# Facing each other means LEFT is to the right of RIGHT (>>> then <<<).
 			var z0 := maxf(a.z_min, b.z_min)
 			var z1 := minf(a.z_max, b.z_max)
 			if z1 - z0 < SimTolerances.ALIGN_EPS:
@@ -294,13 +339,11 @@ static func _link_shared_spines(model: ParkModel) -> void:
 			var sb := b.sample_at_z(mid)
 			if sa.is_empty() or sb.is_empty():
 				continue
-			var ax := float(sa.coping_x)
-			var bx := float(sb.coping_x)
 			var ah := float(sa.height)
 			var bh := float(sb.height)
-			if absf(ah - bh) > SimTolerances.SEAM_EPS * 4.0:
+			var dh := absf(ah - bh)
+			if dh > max_dh:
 				continue
-			# Order: right-pipe coping (side RIGHT) should be left of left-pipe coping.
 			var right_c: CopingEdge = a if a.side == SimKinds.PipeSide.RIGHT else b
 			var left_c: CopingEdge = b if a.side == SimKinds.PipeSide.RIGHT else a
 			var rx := float(right_c.sample_at_z(mid).coping_x)
@@ -308,13 +351,58 @@ static func _link_shared_spines(model: ParkModel) -> void:
 			var gap := lx - rx
 			if gap < -SimTolerances.ALIGN_EPS or gap > max_gap:
 				continue
-			# Optional: deck/floor between them, or near-touching >>><<<.
-			if right_c.coping_class != SimKinds.CopingClass.WALL_EXTENSION:
-				right_c.coping_class = SimKinds.CopingClass.SHARED_SPINE
-			if left_c.coping_class != SimKinds.CopingClass.WALL_EXTENSION:
-				left_c.coping_class = SimKinds.CopingClass.SHARED_SPINE
+			if not _spine_partner_better(right_c, left_c.id, dh, gap, model):
+				continue
+			if not _spine_partner_better(left_c, right_c.id, dh, gap, model):
+				continue
+			if right_c.coping_class == SimKinds.CopingClass.WALL_EXTENSION:
+				continue
+			if left_c.coping_class == SimKinds.CopingClass.WALL_EXTENSION:
+				continue
+			_clear_spine_partner(model, right_c)
+			_clear_spine_partner(model, left_c)
+			right_c.coping_class = SimKinds.CopingClass.SHARED_SPINE
+			left_c.coping_class = SimKinds.CopingClass.SHARED_SPINE
 			right_c.shared_with_id = left_c.id
 			left_c.shared_with_id = right_c.id
+
+
+static func _clear_spine_partner(model: ParkModel, cope: CopingEdge) -> void:
+	if cope.shared_with_id.is_empty():
+		return
+	var other: CopingEdge = model.copings.get(cope.shared_with_id)
+	if other != null and other.shared_with_id == cope.id:
+		other.shared_with_id = ""
+		if other.coping_class == SimKinds.CopingClass.SHARED_SPINE:
+			other.coping_class = SimKinds.CopingClass.OPEN
+	cope.shared_with_id = ""
+
+
+## True if `candidate_id` is a better shared partner than whatever `cope` has now.
+static func _spine_partner_better(
+	cope: CopingEdge, candidate_id: String, dh: float, gap: float, model: ParkModel
+) -> bool:
+	if cope.shared_with_id.is_empty():
+		return true
+	if cope.shared_with_id == candidate_id:
+		return true
+	var cur: CopingEdge = model.copings.get(cope.shared_with_id)
+	if cur == null:
+		return true
+	var z0 := maxf(cope.z_min, cur.z_min)
+	var z1 := minf(cope.z_max, cur.z_max)
+	var mid := (z0 + z1) * 0.5
+	var sa := cope.sample_at_z(mid)
+	var sb := cur.sample_at_z(mid)
+	if sa.is_empty() or sb.is_empty():
+		return true
+	var cur_dh := absf(float(sa.height) - float(sb.height))
+	var cur_gap := absf(float(sa.coping_x) - float(sb.coping_x))
+	if dh < cur_dh - 0.01:
+		return true
+	if absf(dh - cur_dh) <= 0.01 and gap < cur_gap - 0.01:
+		return true
+	return false
 
 
 static func _build_topology_edges(model: ParkModel) -> void:

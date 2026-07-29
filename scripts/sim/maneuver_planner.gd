@@ -42,9 +42,14 @@ func try_fly_out(state: SimState, input_x: float, input_z: float) -> Dictionary:
 		return _reject("fly-out unavailable")
 	if cope == null:
 		return _reject("no coping")
+	var is_wall := cope.coping_class == SimKinds.CopingClass.WALL_EXTENSION
 	if cope.coping_class != SimKinds.CopingClass.OPEN \
-			and cope.coping_class != SimKinds.CopingClass.SHARED_SPINE:
+			and cope.coping_class != SimKinds.CopingClass.SHARED_SPINE \
+			and not is_wall:
 		return _reject("coping not OPEN (%s)" % cope.class_name_str())
+	# Wall climb: fly-out only at the effective (upper) lip, never mid-face / L0 geometric.
+	if is_wall and state.is_grounded() and state.u < 1.98:
+		return _reject("still climbing wall")
 	if vel_h <= 0.0 and state.velocity.z <= 0.0:
 		# Need rising — for grounded use along toward coping (positive u speed).
 		if state.is_grounded() and state.tangent_velocity.x <= 0.0:
@@ -59,7 +64,7 @@ func try_fly_out(state: SimState, input_x: float, input_z: float) -> Dictionary:
 	if input_x * out <= 0.15:
 		return _reject("input not outward")
 	var samp := cope.sample_at_z(pos.y)
-	var cope_h := float(samp.height)
+	var cope_h := float(samp.height) ## effective lip (raised for WALL_EXTENSION)
 	var above := pos.z - cope_h
 	if above < -SimTolerances.CONTACT_EPS:
 		return _reject("below coping")
@@ -70,6 +75,13 @@ func try_fly_out(state: SimState, input_x: float, input_z: float) -> Dictionary:
 	var ahead_col := cell.x + (1 if out > 0.0 else -1)
 	if not model.is_playable_cell(ahead_col, cell.y):
 		return _reject("no outward playable cell")
+	# Must not tunnel through another pipe body at this height.
+	var ahead_x := float(samp.coping_x) + out * model.cell_w
+	var clear := query.sweep_capsule(
+		pos, Vector3(ahead_x, pos.y, pos.z)
+	)
+	if not clear.is_empty() and str(clear.get("kind", "")) in ["wall", "pipe"]:
+		return _reject("outward corridor blocked")
 	var plan := ManeuverPlan.new()
 	plan.kind = ManeuverPlan.Kind.FLY_OUT
 	plan.source_coping_id = cope.id
