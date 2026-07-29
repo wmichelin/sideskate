@@ -7,8 +7,8 @@ const MeshPartDebugScript := preload("res://scripts/mesh/mesh_part_debug.gd")
 
 @export var debug_cell_highlight: bool = false
 @export var debug_facing_cast: bool = false
-## Green edge wire + orange surface lattice on collidable solids (default on).
-@export var debug_edge_lines: bool = true
+## Green edge wire + orange surface lattice on collidable solids (default off).
+@export var debug_edge_lines: bool = false
 @export_range(1, 16, 1) var facing_cast_distance: int = 3
 @export var highlight_lift: float = 0.08
 ## World-space lift (meters) so debug wires sit above collision faces.
