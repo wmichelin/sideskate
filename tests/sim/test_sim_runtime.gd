@@ -19,7 +19,7 @@ func run() -> bool:
 		and _coast_with_zero_friction()
 		and _air_no_x_friction()
 		and _wall_extension_climbs()
-		and _layered_deck_back_releases_at_upper_lip()
+		and _layered_deck_back_air_outs_at_upper_lip()
 		and _void_floor_catches_fall()
 		and _world_border_contains()
 		and _edge_fly_out_wall_slide()
@@ -708,12 +708,12 @@ func _wall_extension_climbs() -> bool:
 	return false
 
 
-func _layered_deck_back_releases_at_upper_lip() -> bool:
-	# L0 right under the L1 deck: the geometric lip climbs the explicit wall,
-	# while the wall top is an ordinary free-air edge rather than a fake coping.
+func _layered_deck_back_air_outs_at_upper_lip() -> bool:
+	# L0 right under L1: climb the explicit wall, then retain its open top as
+	# an anchored air-out. Proximity to the deck must never auto deck-out.
 	var sim := PlayerSim.new()
 	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
-		push_error("setup layered deck back")
+		push_error("setup layered air-out")
 		return false
 	var pipe: PipeSurface = null
 	for id in sim.model.pipes.keys():
@@ -736,9 +736,6 @@ func _layered_deck_back_releases_at_upper_lip() -> bool:
 		push_error("layered wall span missing at test Z")
 		return false
 	var wall: WallSurface = sim.model.walls[span.wall_id]
-	if wall.outward_deck_id != "deck_2_L1":
-		push_error("layered deck back missing explicit outward deck ownership")
-		return false
 	var h_eff := float(wall.sample_at_z(z).top_height)
 	# At geometric lip with outward stick — must not fly through L1.
 	sim.state.mode = SimState.Mode.GROUNDED
@@ -759,23 +756,32 @@ func _layered_deck_back_releases_at_upper_lip() -> bool:
 	sim.state.v = 0.5
 	sim.state.tangent_velocity = Vector2(500.0, 0.0)
 	sim.state.position = wall.position_at(z, sim.state.u)
-	var reached_free_air := false
-	for _i in range(120):
+	var hung := false
+	for _i in range(30):
 		sim.set_input(Vector2.ZERO, false, false)
 		sim.tick()
 		if sim.state.is_airborne():
-			if sim.state.is_hanging():
-				push_error("layered deck back incorrectly created a coping air-out lock")
+			if not sim.state.is_hanging():
+				push_error("layered wall top auto decked-out instead of air-out")
 				return false
-			reached_free_air = true
+			hung = true
 			break
-	if not reached_free_air:
-		push_error("layered deck back never released into free air")
+	if not hung:
+		push_error("layered wall top never entered air-out")
 		return false
 	if sim.state.position.z < h_eff - 40.0:
-		push_error("deck-back release height still near L0 (%.1f)" % sim.state.position.z)
+		push_error("air-out height still near L0 (%.1f)" % sim.state.position.z)
 		return false
-	return true
+	for _i in range(180):
+		sim.set_input(Vector2.ZERO, false, false)
+		sim.tick()
+		if sim.state.is_grounded():
+			if sim.state.surface_id != wall.id:
+				push_error("layered air-out auto-landed on %s" % sim.state.surface_id)
+				return false
+			return true
+	push_error("layered air-out did not return to its source wall")
+	return false
 
 
 func _void_floor_catches_fall() -> bool:

@@ -11,8 +11,6 @@ var z_min: float = 0.0
 var z_max: float = 0.0
 var samples: Array = [] ## {z, x, bottom_height, top_height}
 var top_support_id: String = ""
-## Deck immediately outward of the wall top. It is an air corridor, not a seam.
-var outward_deck_id: String = ""
 var upper_partner_pipe_id: String = "" ## transfer target only
 
 

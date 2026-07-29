@@ -155,7 +155,6 @@ func _sync_from_sim() -> void:
 		"surface_id": st.surface_id,
 	}
 	var tilt := 0.0
-	var previous_tilt := depth.surface_tilt if depth != null else 0.0
 	if st.is_hanging():
 		var edge: TopologyEdge = _sim.model.edges.get(st.hang_edge_id)
 		var anchor := _sim.query.edge_anchor_sample(edge, p.y)
@@ -170,10 +169,6 @@ func _sync_from_sim() -> void:
 		var pipe: PipeSurface = _sim.model.pipes[st.surface_id]
 		var th := st.u * (PI * 0.5)
 		tilt = -pipe.outward_sign() * th
-	elif st.is_airborne() and not st.has_maneuver() and absf(st.velocity.x) <= 0.01:
-		# A deck-backed wall top releases to free air without horizontal speed.
-		# Keep its source lean while still X-aligned; level only after X motion.
-		tilt = previous_tilt
 	var support_h := p.z
 	if st.is_hanging():
 		var support_edge: TopologyEdge = _sim.model.edges.get(st.hang_edge_id)

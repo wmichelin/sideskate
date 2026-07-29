@@ -385,14 +385,6 @@ func _cross_wall_top(state: SimState, wall: WallSurface, z: float) -> void:
 		_mount_patch_from_edge(state, source, model.patches[edge.to_surface_id], z)
 		return
 	if state.tangent_velocity.x > 1.0:
-		# This is the vertical back of a deck, not a geometric coping. Carry
-		# momentum into ordinary free air so the deck cannot create an X lock.
-		if not wall.outward_deck_id.is_empty():
-			_enter_air(
-				state,
-				Vector3(0.0, state.tangent_velocity.y, state.tangent_velocity.x)
-			)
-			return
 		_launch_from_edge(state, edge, z)
 	else:
 		state.tangent_velocity.x = minf(state.tangent_velocity.x, 0.0)
