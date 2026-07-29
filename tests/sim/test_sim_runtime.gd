@@ -36,6 +36,7 @@ func run() -> bool:
 		and _l0_lava_gap_no_phantom_wall_climb()
 		and _deck_ride_off_falls_acid_mounts()
 		and _map_edge_deck_no_void_exit()
+		and _layered_outer_coping_seam_stays_anchored()
 		and _layered_hang_remounts_wall_height()
 		and _layered_l1_coping_returns_source()
 		and _wall_z_exit_consumes_motion()
@@ -1922,6 +1923,53 @@ func _map_edge_deck_no_void_exit() -> bool:
 		)
 		return false
 	return true
+
+
+## Upper-story Z boundaries must not cut a continuous L0 quarter-pipe coping.
+## Crossing one while hanging used to invalidate the anchor and drop to void.
+func _layered_outer_coping_seam_stays_anchored() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
+		push_error("coping seam: setup")
+		return false
+	var pipe: PipeSurface = sim.model.pipes.get("pipe_0_L0_S0")
+	var z := 681.406351327896
+	var edge := sim.query.edge_at(pipe.id, z, "coping") if pipe != null else null
+	if pipe == null or edge == null:
+		push_error("coping seam: missing outer quarter-pipe anchor")
+		return false
+	sim.state.mode = SimState.Mode.AIRBORNE
+	sim.state.surface_id = ""
+	sim.state.position = Vector3(
+		pipe.coping_x_at(z), z, pipe.height_at_theta(z, PI * 0.5)
+	)
+	sim.state.velocity = Vector3(0.0, -400.0, 1242.08923339844)
+	sim.state.begin_hang(edge.id)
+	for tick in range(120):
+		var wish := Vector2(0, -1)
+		if tick >= 49:
+			wish = Vector2(0, 1)
+		elif tick >= 39:
+			wish = Vector2(-1, -1)
+		elif tick >= 34:
+			wish = Vector2.ZERO
+		elif tick >= 8:
+			wish = Vector2(-1, 1)
+		sim.set_input(wish, false, false)
+		sim.tick()
+		if sim.state.surface_id == "__void_floor__":
+			push_error("coping seam: invalidated anchor dropped through the quarter pipe")
+			return false
+		if sim.state.is_grounded():
+			if sim.state.surface_id != pipe.id:
+				push_error("coping seam: returned to %s instead of source pipe" % sim.state.surface_id)
+				return false
+			return true
+	push_error(
+		"coping seam: never returned to source pipe mode=%s hang=%s pos=%s"
+		% [sim.state.mode, sim.state.hang_edge_id, sim.state.position]
+	)
+	return false
 
 
 ## L0 WALL_EXTENSION hang must remount the wall at current height — not snap to

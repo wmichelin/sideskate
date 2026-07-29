@@ -106,7 +106,10 @@ No other magic epsilons in solvers.
 
 ## Coping spans and wall surfaces
 
-Every geometric `CopingEdge` is partitioned into non-overlapping Z spans. Each span has one behavior and one topology edge:
+Every geometric `CopingEdge` is partitioned into non-overlapping Z spans. Global
+story breakpoints are classification inputs only: adjacent spans with identical
+behavior are merged so they cannot become artificial hang seams. Each remaining
+span has one behavior and one topology edge:
 
 | Class | Behavior |
 |-------|----------|

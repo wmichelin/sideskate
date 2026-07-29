@@ -22,7 +22,7 @@ See also [AGENTS.md](../AGENTS.md) and [movement_contract.md](movement_contract.
 
 ## Park model (compiled)
 
-`.ssk` → `IdlCompiler` → immutable `ParkModel`: support patches, pipe surfaces, explicit wall surfaces, Z-partitioned coping spans, and topology edges.
+`.ssk` → `IdlCompiler` → immutable `ParkModel`: support patches, pipe surfaces, explicit wall surfaces, behavior-partitioned coping spans, and topology edges. Adjacent equivalent spans are merged so unrelated story breakpoints never create physical coping seams.
 
 | Coping class | Behavior |
 |--------------|----------|
@@ -80,7 +80,7 @@ Fly-out gates on **INPUT** only.
 
 ## Presentation
 
-Physics ticks publish `_pose_prev` / `_pose_curr`. `LogicalPosePresenter3D` and `CameraRig3D` interpolate on `_process`. Hang keeps coping lean (body perpendicular to flat).
+Physics ticks publish `_pose_prev` / `_pose_curr`. `LogicalPosePresenter3D` and `CameraRig3D` interpolate on `_process`. Hang keeps coping lean (body perpendicular to flat). Z-stick input adds a subtle centered local-Y body turn toward/away from the camera, mirrored by facing.
 
 ## Debug overlays
 
@@ -90,7 +90,7 @@ Gated by autoload `DebugTools` (`OS.is_debug_build()` or export feature `debug_t
 |-------|------|
 | Head arrows | INPUT / MOMENTUM / ACTUAL |
 | Overlay | Zone / surface / next coping candidate |
-| TUNING sliders | Gravity, fly-out window, apex turn duration, spine/acid cast cells, ollie, speeds, accel, brake, friction, cell size, camera |
+| TUNING sliders | Gravity, fly-out window, apex turn duration, depth-turn angle, spine/acid cast cells, ollie, speeds, accel, brake, friction, cell size, camera |
 | Cell / facing cast / edge lattice | Presentation-only highlight |
 
 Tunable sim values sync into `SimTolerances` / `PlayerSim` each physics tick. Cast-cell highlight distance is debug draw only (not a separate gameplay path).

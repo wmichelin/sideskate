@@ -11,6 +11,8 @@ var airborne: bool = false
 var facing_h: float = 1.0
 ## Centered local-Y hang-apex turn (0 settled; ±π faces opposite).
 var facing_yaw: float = 0.0
+## Subtle local-Y steering turn from Z-stick input.
+var depth_turn_yaw: float = 0.0
 var active_layer: int = 0
 
 
@@ -23,6 +25,7 @@ func copy_from_depth(depth: PseudoDepthBody, facing: float = 1.0, layer: int = 0
 	airborne = depth.airborne
 	facing_h = facing
 	facing_yaw = 0.0
+	depth_turn_yaw = 0.0
 	active_layer = layer
 
 
@@ -36,6 +39,7 @@ func duplicate_pose() -> LogicalPose:
 	p.airborne = airborne
 	p.facing_h = facing_h
 	p.facing_yaw = facing_yaw
+	p.depth_turn_yaw = depth_turn_yaw
 	p.active_layer = active_layer
 	return p
 
@@ -68,5 +72,6 @@ static func lerp_poses(a: LogicalPose, b: LogicalPose, t: float) -> LogicalPose:
 	else:
 		out.facing_h = b.facing_h if u >= 0.5 else a.facing_h
 		out.facing_yaw = lerp_angle(a.facing_yaw, b.facing_yaw, u)
+	out.depth_turn_yaw = lerp_angle(a.depth_turn_yaw, b.depth_turn_yaw, u)
 	out.active_layer = b.active_layer if u >= 0.5 else a.active_layer
 	return out

@@ -19,6 +19,7 @@ func _lerp_midpoint() -> bool:
 	b.feet_height = 200.0
 	b.support_height = 50.0
 	b.surface_tilt = PI * 0.5
+	b.depth_turn_yaw = 0.4
 	var mid := LogicalPose.lerp_poses(a, b, 0.5)
 	if absf(mid.logical_x - 50.0) > 0.01:
 		push_error("lerp x: %s" % mid.logical_x)
@@ -28,6 +29,9 @@ func _lerp_midpoint() -> bool:
 		return false
 	if absf(mid.logical_z - 20.0) > 0.01:
 		push_error("lerp z: %s" % mid.logical_z)
+		return false
+	if absf(mid.depth_turn_yaw - 0.2) > 0.01:
+		push_error("lerp depth turn: %s" % mid.depth_turn_yaw)
 		return false
 	return true
 
@@ -77,12 +81,13 @@ func _centered_y_turn_presentation() -> bool:
 	pose.surface_tilt = PI * 0.5
 	pose.facing_h = -1.0
 	pose.facing_yaw = -PI * 0.5
+	pose.depth_turn_yaw = 0.2
 	presenter.apply_pose(pose)
 	if absf(presenter.rotation.z - pose.surface_tilt) > 0.01:
 		push_error("Y-turn presentation: turn incorrectly changed feet pivot")
 		return false
-	if absf(body.rotation.y - pose.facing_yaw) > 0.01:
-		push_error("Y-turn presentation: turn must rotate body center around local Y")
+	if absf(body.rotation.y - (pose.facing_yaw + pose.depth_turn_yaw)) > 0.01:
+		push_error("Y-turn presentation: apex and depth turns must share local Y")
 		return false
 	if absf(body.position.y - presenter.body_size.y * 0.5) > 0.001:
 		push_error("Y-turn presentation: body center moved during turn")

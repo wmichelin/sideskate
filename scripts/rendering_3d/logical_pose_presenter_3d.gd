@@ -114,7 +114,9 @@ func apply_pose(pose: LogicalPose) -> void:
 		# Facing +logical X is screen-right after WorldSpace X mirror.
 		_body.scale = Vector3(-face, 1.0, 1.0)
 		_body.position = Vector3(0.0, body_size.y * 0.5, 0.0)
-		_body.rotation = Vector3(0.0, pose.facing_yaw, 0.0)
+		_body.rotation = Vector3(
+			0.0, pose.facing_yaw + pose.depth_turn_yaw, 0.0
+		)
 
 
 func _build_live_pose() -> LogicalPose:

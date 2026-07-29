@@ -20,6 +20,7 @@ const BODY_CYLINDER_H_M := 0.22
 @export var gravity_ms2: float = -19.0
 @export var fly_out_above_coping: float = 40.0
 @export var apex_facing_delay: float = 0.05
+@export_range(0.0, 45.0, 0.5) var depth_turn_degrees: float = 18.0
 @export var facing_coping_cells: int = 3
 @export var acid_coping_cells: int = 16
 
@@ -215,6 +216,8 @@ func _capture_pose_snapshots() -> void:
 	var next = _LogicalPose.new()
 	next.copy_from_depth(depth, facing, 0)
 	next.facing_yaw = facing_yaw
+	# Mirror by facing: +Z turns either nose toward +Z, not the same screen side.
+	next.depth_turn_yaw = deg_to_rad(depth_turn_degrees) * _last_wish.y * facing
 	if _pose_curr == null:
 		_pose_prev = next
 		_pose_curr = next

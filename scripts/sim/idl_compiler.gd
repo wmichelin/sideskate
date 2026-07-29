@@ -44,6 +44,7 @@ static func compile_spec(spec: LevelSpec) -> ParkModel:
 	_compile_pipes(spec, model)
 	_classify_copings(spec, model)
 	_link_shared_spines(model)
+	_merge_equivalent_coping_spans(model)
 	_build_topology_edges(model)
 	_add_void_floor(model)
 	model.model_hash = _hash_model(model)
@@ -464,6 +465,38 @@ static func _link_shared_spines(model: ParkModel) -> void:
 				if left_c.coping_class != SimKinds.CopingClass.WALL_EXTENSION:
 					left_c.coping_class = SimKinds.CopingClass.SHARED_SPINE
 					left_c.shared_with_id = right_c.id
+
+
+## Global Z breakpoints are needed while classifying cross-story contacts, but
+## they must not become gameplay seams on an otherwise continuous coping.
+static func _merge_equivalent_coping_spans(model: ParkModel) -> void:
+	for coping_id in model.all_coping_ids():
+		var coping: CopingEdge = model.copings[coping_id]
+		var merged: Array = []
+		for span_value in coping.spans:
+			var span: CopingSpan = span_value
+			var previous: CopingSpan = merged[-1] if not merged.is_empty() else null
+			if previous == null or not _coping_spans_are_equivalent(previous, span):
+				merged.append(span)
+				continue
+			previous.z_max = span.z_max
+			for i in range(1, span.effective_height_samples.size()):
+				previous.effective_height_samples.append(span.effective_height_samples[i])
+		coping.spans = merged
+
+
+static func _coping_spans_are_equivalent(a: CopingSpan, b: CopingSpan) -> bool:
+	# Wall surfaces own their own sampled geometry and IDs, so retain their
+	# explicit spans. Non-wall spans can preserve every height sample when joined.
+	return (
+		a.wall_id.is_empty()
+		and b.wall_id.is_empty()
+		and absf(a.z_max - b.z_min) <= 0.01
+		and a.coping_class == b.coping_class
+		and a.support_patch_id == b.support_patch_id
+		and a.outward_deck_id == b.outward_deck_id
+		and a.partner_coping_id == b.partner_coping_id
+	)
 
 
 static func _build_topology_edges(model: ParkModel) -> void:

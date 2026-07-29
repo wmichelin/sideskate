@@ -10,6 +10,7 @@ func run() -> bool:
 		and _layered_cross_story_spine()
 		and _cross_story_spans_are_explicit()
 		and _cross_story_contact_ownership()
+		and _unrelated_story_breaks_do_not_split_coping()
 		and _open_coping()
 		and _playable_levels_compile()
 	)
@@ -192,6 +193,25 @@ func _cross_story_contact_ownership() -> bool:
 	)
 	if not source_side.is_empty():
 		push_error("source side of wall should remain ride-space: %s" % source_side)
+		return false
+	return true
+
+
+func _unrelated_story_breaks_do_not_split_coping() -> bool:
+	var m := IdlCompiler.compile_path("res://levels/layered_demo.ssk")
+	var pipe: PipeSurface = m.pipes.get("pipe_0_L0_S0")
+	if pipe == null:
+		push_error("coping seam: missing layered outer quarter pipe")
+		return false
+	var coping: CopingEdge = m.copings.get(pipe.coping_id)
+	if coping == null or coping.spans.size() != 1:
+		push_error(
+			"coping seam: unrelated upper-story Z breaks split continuous outer coping"
+		)
+		return false
+	var span: CopingSpan = coping.spans[0]
+	if absf(span.z_min - pipe.z_min) > 0.01 or absf(span.z_max - pipe.z_max) > 0.01:
+		push_error("coping seam: merged span does not cover the full quarter pipe")
 		return false
 	return true
 

@@ -14,6 +14,8 @@ extends CanvasLayer
 @export var fly_out_above_max: float = 300.0
 @export var apex_facing_delay_min: float = 0.0
 @export var apex_facing_delay_max: float = 0.5
+@export var depth_turn_min: float = 0.0
+@export var depth_turn_max: float = 45.0
 @export var ollie_accel_min: float = 0.0
 @export var ollie_accel_max: float = 3000.0
 @export var max_speed_x_min: float = 50.0
@@ -118,6 +120,7 @@ var _cam_pitch_value: Label
 var _cam_yaw_value: Label
 var _cam_fov_value: Label
 var _apex_facing_value: Label
+var _depth_turn_value: Label
 
 
 func _ready() -> void:
@@ -164,6 +167,7 @@ func _ready() -> void:
 		_refresh_fly_out_label
 	)
 	_setup_apex_facing_slider()
+	_setup_depth_turn_slider()
 	_bind_float_slider(_ollie_slider, ollie_accel_min, ollie_accel_max, 10.0, _player, "ollie_accel", 650.0, _on_ollie_accel_changed, _refresh_ollie_label)
 	_bind_float_slider(_max_speed_x_slider, max_speed_x_min, max_speed_x_max, 10.0, _player, "max_speed_x", 880.0, _on_max_speed_x_changed, _refresh_max_speed_x_label)
 	_bind_float_slider(_max_speed_z_slider, max_speed_z_min, max_speed_z_max, 5.0, _player, "max_speed_z", 400.0, _on_max_speed_z_changed, _refresh_max_speed_z_label)
@@ -272,6 +276,29 @@ func _setup_apex_facing_slider() -> void:
 		0.05,
 		_on_apex_facing_delay_changed,
 		_refresh_apex_facing_delay_label
+	)
+	row["slider"].focus_mode = Control.FOCUS_NONE
+
+
+func _setup_depth_turn_slider() -> void:
+	if _body == null:
+		return
+	var insert_at := 0
+	var apex_row := _body.get_node_or_null("ApexFacingDelayRow")
+	if apex_row != null:
+		insert_at = apex_row.get_index() + 1
+	var row := _make_slider_row("DepthTurnRow", "depth turn", insert_at)
+	_depth_turn_value = row["value"]
+	_bind_float_slider(
+		row["slider"],
+		depth_turn_min,
+		depth_turn_max,
+		1.0,
+		_player,
+		"depth_turn_degrees",
+		18.0,
+		_on_depth_turn_changed,
+		_refresh_depth_turn_label
 	)
 	row["slider"].focus_mode = Control.FOCUS_NONE
 
@@ -576,6 +603,17 @@ func _on_apex_facing_delay_changed(v: float) -> void:
 func _refresh_apex_facing_delay_label(v: float) -> void:
 	if _apex_facing_value != null:
 		_apex_facing_value.text = "%.2f s" % v
+
+
+func _on_depth_turn_changed(v: float) -> void:
+	if _player != null:
+		_player.set("depth_turn_degrees", v)
+	_refresh_depth_turn_label(v)
+
+
+func _refresh_depth_turn_label(v: float) -> void:
+	if _depth_turn_value != null:
+		_depth_turn_value.text = "%.0f°" % v
 
 
 func _on_ollie_accel_changed(v: float) -> void:
