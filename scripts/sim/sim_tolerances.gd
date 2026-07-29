@@ -21,3 +21,5 @@ static var FLY_OUT_ABOVE: float = 40.0
 static var FACING_COPING_CELLS: int = 3
 static var ACID_COPING_CELLS: int = 16
 static var GRAVITY: float = -1900.0
+## Seconds after hang apex before facing flips into the source pipe.
+static var APEX_FACING_DELAY: float = 0.05

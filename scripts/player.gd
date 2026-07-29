@@ -19,6 +19,7 @@ const BODY_CYLINDER_H_M := 0.22
 @export var ramp_friction: float = 0.0
 @export var gravity_ms2: float = -19.0
 @export var fly_out_above_coping: float = 40.0
+@export var apex_facing_delay: float = 0.05
 @export var facing_coping_cells: int = 3
 @export var acid_coping_cells: int = 16
 
@@ -133,6 +134,7 @@ func _sync_tuning_to_sim() -> void:
 	_sim.ramp_friction = ramp_friction
 	SimTolerances.GRAVITY = gravity_ms2 * SimTolerances.LOGIC_PER_METER
 	SimTolerances.FLY_OUT_ABOVE = fly_out_above_coping
+	SimTolerances.APEX_FACING_DELAY = apex_facing_delay
 	SimTolerances.FACING_COPING_CELLS = facing_coping_cells
 	SimTolerances.ACID_COPING_CELLS = acid_coping_cells
 

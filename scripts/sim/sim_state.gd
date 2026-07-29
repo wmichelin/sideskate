@@ -22,6 +22,10 @@ var facing: String = "r"
 var maneuver = null ## ManeuverPlan or null
 ## Non-empty while air-out is anchored to a compiled OPEN edge.
 var hang_edge_id: String = ""
+## Once per hang: face into the source pipe after apex (+ delay).
+var hang_apex_facing_done: bool = false
+## Elapsed time since hang apex; < 0 until apex is reached.
+var hang_apex_timer: float = -1.0
 var alive: bool = true
 var tick: int = 0
 ## Debug: last rejection reasons.
@@ -46,6 +50,14 @@ func has_maneuver() -> bool:
 
 func clear_hang() -> void:
 	hang_edge_id = ""
+	hang_apex_facing_done = false
+	hang_apex_timer = -1.0
+
+
+func begin_hang(edge_id: String) -> void:
+	hang_edge_id = edge_id
+	hang_apex_facing_done = false
+	hang_apex_timer = -1.0
 
 
 func to_dict() -> Dictionary:

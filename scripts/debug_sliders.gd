@@ -12,6 +12,8 @@ extends CanvasLayer
 @export var gravity_max: float = 0.0
 @export var fly_out_above_min: float = 0.0
 @export var fly_out_above_max: float = 300.0
+@export var apex_facing_delay_min: float = 0.0
+@export var apex_facing_delay_max: float = 0.5
 @export var ollie_accel_min: float = 0.0
 @export var ollie_accel_max: float = 3000.0
 @export var max_speed_x_min: float = 50.0
@@ -115,6 +117,7 @@ var _cam_dist_value: Label
 var _cam_pitch_value: Label
 var _cam_yaw_value: Label
 var _cam_fov_value: Label
+var _apex_facing_value: Label
 
 
 func _ready() -> void:
@@ -160,6 +163,7 @@ func _ready() -> void:
 		_on_fly_out_changed,
 		_refresh_fly_out_label
 	)
+	_setup_apex_facing_slider()
 	_bind_float_slider(_ollie_slider, ollie_accel_min, ollie_accel_max, 10.0, _player, "ollie_accel", 650.0, _on_ollie_accel_changed, _refresh_ollie_label)
 	_bind_float_slider(_max_speed_x_slider, max_speed_x_min, max_speed_x_max, 10.0, _player, "max_speed_x", 880.0, _on_max_speed_x_changed, _refresh_max_speed_x_label)
 	_bind_float_slider(_max_speed_z_slider, max_speed_z_min, max_speed_z_max, 5.0, _player, "max_speed_z", 400.0, _on_max_speed_z_changed, _refresh_max_speed_z_label)
@@ -247,6 +251,29 @@ func _ready() -> void:
 			row.focus_mode = Control.FOCUS_NONE
 
 	_set_collapsed(start_collapsed)
+
+
+func _setup_apex_facing_slider() -> void:
+	if _body == null:
+		return
+	var insert_at := 0
+	var fly_row := _body.get_node_or_null("FlyOutRow")
+	if fly_row != null:
+		insert_at = fly_row.get_index() + 1
+	var row := _make_slider_row("ApexFacingDelayRow", "apex face delay", insert_at)
+	_apex_facing_value = row["value"]
+	_bind_float_slider(
+		row["slider"],
+		apex_facing_delay_min,
+		apex_facing_delay_max,
+		0.01,
+		_player,
+		"apex_facing_delay",
+		0.05,
+		_on_apex_facing_delay_changed,
+		_refresh_apex_facing_delay_label
+	)
+	row["slider"].focus_mode = Control.FOCUS_NONE
 
 
 func _apply_3d_panel_visibility() -> void:
@@ -538,6 +565,17 @@ func _on_fly_out_changed(v: float) -> void:
 
 func _refresh_fly_out_label(v: float) -> void:
 	_fly_out_value.text = "≤%.0f u" % v
+
+
+func _on_apex_facing_delay_changed(v: float) -> void:
+	if _player != null:
+		_player.set("apex_facing_delay", v)
+	_refresh_apex_facing_delay_label(v)
+
+
+func _refresh_apex_facing_delay_label(v: float) -> void:
+	if _apex_facing_value != null:
+		_apex_facing_value.text = "%.2f s" % v
 
 
 func _on_ollie_accel_changed(v: float) -> void:

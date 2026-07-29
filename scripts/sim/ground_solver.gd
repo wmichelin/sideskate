@@ -476,7 +476,10 @@ func _enter_air(state: SimState, world_vel: Vector3, hang_edge_id: String = "") 
 	state.velocity = world_vel
 	state.maneuver = null
 	state.tangent_velocity = Vector2.ZERO
-	state.hang_edge_id = hang_edge_id
+	if hang_edge_id.is_empty():
+		state.clear_hang()
+	else:
+		state.begin_hang(hang_edge_id)
 
 
 ## Keep pipe depth inside both the pipe loft and the park AABB (inset from faces).

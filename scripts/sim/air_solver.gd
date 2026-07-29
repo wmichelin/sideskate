@@ -49,6 +49,8 @@ func _step_free(state: SimState, wish: Vector2, delta: float) -> void:
 			# else: same direction, already faster than wish cap — keep ballistic vx
 		state.velocity.y = 0.0 if absf(w.y) < 0.15 else w.y * 200.0
 	state.velocity.z += SimTolerances.GRAVITY * delta
+	if state.is_hanging():
+		_update_hang_apex_facing(state, delta)
 	var from := state.position
 	if state.is_hanging():
 		var from_anchor := _hang_anchor(state, from.y)
@@ -99,6 +101,27 @@ func _step_free(state: SimState, wish: Vector2, delta: float) -> void:
 func _hang_anchor(state: SimState, z: float) -> Dictionary:
 	var edge: TopologyEdge = model.edges.get(state.hang_edge_id)
 	return query.edge_anchor_sample(edge, z)
+
+
+## Once per air-out: after vertical apex (+ delay), face back into the source pipe.
+func _update_hang_apex_facing(state: SimState, delta: float) -> void:
+	if state.hang_apex_facing_done:
+		return
+	if state.hang_apex_timer < 0.0:
+		if state.velocity.z > 0.0:
+			return
+		state.hang_apex_timer = 0.0
+	else:
+		state.hang_apex_timer += delta
+	if state.hang_apex_timer < SimTolerances.APEX_FACING_DELAY:
+		return
+	state.hang_apex_facing_done = true
+	var anchor := _hang_anchor(state, state.position.y)
+	var pipe: PipeSurface = model.pipes.get(str(anchor.get("source_pipe_id", "")))
+	if pipe == null:
+		return
+	# Into the bowl: opposite the pipe's outward (coping) direction.
+	state.facing = "l" if pipe.outward_sign() > 0.0 else "r"
 
 
 func _anchor_crossing_time(state: SimState, from: Vector3, to: Vector3) -> float:
