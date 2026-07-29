@@ -34,7 +34,7 @@ Logical axes in this document: **X** left/right, **Z** near/far, **height** up. 
 While air-out (hang) or perched on an `OPEN` / `SHARED_SPINE` coping, and height above coping is within `FLY_OUT_ABOVE`:
 
 - Stick must be **X-dominant** and **outward** (into the lip / toward leaving the pipe): −X on left pipes, +X on right pipes.
-- Accepting fly-out clears hang, seeds outward free-air velocity, and ends X-lock.
+- Accepting fly-out clears hang, seeds outward free-air velocity from climb/air speed, and ends X-lock.
 
 Same-height outward `#` decks are fly/air corridor — they do **not** auto-mount from the pipe.
 
@@ -97,6 +97,7 @@ Invisible world-border walls sit on the park AABB faces (X and Z) so you cannot 
 | `ALIGN_EPS` | `2.0` | Target coping alignment / Z overlap slack |
 | `MAX_EDGE_CROSSINGS` | `8` | Per-tick seam chain bound |
 | `FLY_OUT_ABOVE` | `40` | Max height above coping for fly-out window |
+| `DECK_LAND_MIN_ABOVE` | `20` | Air-bout peak must exceed pad by this before free-air deck land |
 | `APEX_FACING_DELAY` | `0.05` s | Centered local-Y hang turn duration into the source pipe |
 | `FACING_COPING_CELLS` | `3` | Spine cast range in cells |
 | `ACID_COPING_CELLS` | `16` | Acid cast range in cells |
@@ -130,7 +131,7 @@ Wall faces are one-sided. Riding off a deck through its backing wall enters ordi
 - Seam crossing: transport world tangent speed onto the destination surface; no dead-stop.
 - Pipe→wall and wall→pipe seams preserve tangent speed and consume the crossing once.
 - Air-out leave: seed vertical from wall/pipe tangent; `vx = 0`; retain and lock to the exact edge anchor until fly-out / spine / acid / return. Once per hang, after vertical apex, facing turns around the character's centered local Y axis into the source pipe over `APEX_FACING_DELAY` (0 = instant).
-- Fly-out / deck-out: clear hang; seed free-air velocity with outward X. Rising or apex (`vz≈0`) contact with a `#` deck solid does **not** ground or kill height — decks mount only while clearly descending onto the pad top.
+- Fly-out / deck-out: clear hang, keep rising height, and seed outward free-air X from climb/air speed. Deck grounding from free air requires a descending pad crossing **and** that this air bout peaked at least `DECK_LAND_MIN_ABOVE` above the pad. A wall face sharing a rear `#` X owns the full climb band (including the bottom `CONTACT_EPS` seam) — never deck-rescue mid-climb.
 - Ordinary land: require descending support crossing; pipes only same-facing (air-out: also coping-X aligned, any height); never opposite-facing. Air-out never ordinary-lands a deck.
 - Spine/acid land: convert descending vertical into destination pipe along-arc with travel sign preserved; never reverse travel.
 - Maneuver plans once accepted never retarget.

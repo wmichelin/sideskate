@@ -25,12 +25,13 @@ func step(state: SimState, wish: Vector2, delta: float) -> void:
 	if not state.is_airborne() or not state.alive:
 		return
 	if state.has_maneuver():
-		_step_maneuver(state, delta)
+		_step_maneuver(state, wish, delta)
 		return
 	_step_free(state, wish, delta)
 
 
 func _step_free(state: SimState, wish: Vector2, delta: float) -> void:
+	state.note_air_height(state.position.z)
 	var w := wish
 	if state.is_hanging():
 		# Pipe hang: X locked to source coping only; height free; depth stick-kinematic.
@@ -39,6 +40,7 @@ func _step_free(state: SimState, wish: Vector2, delta: float) -> void:
 	else:
 		# Free air: X is ballistic (no friction). Stick steers without bleeding
 		# existing speed — aligned wish below |vx| conserves; opposite can brake.
+		# Release conserves vx (fly-out climb seed keeps coasting).
 		if absf(w.x) >= 0.15:
 			var target := w.x * 400.0
 			var vx := state.velocity.x
@@ -206,6 +208,7 @@ func _snap_onto_solid(state: SimState, hit: Dictionary, from_height: float = NAN
 		state.tangent_velocity = Vector2(-maxf(impact, 80.0), vz)
 		state.velocity = Vector3.ZERO
 		state.clear_hang()
+		state.clear_air_peak()
 		return true
 	if kind == "deck":
 		if not _deck_descending_cross_ok(state, hit, from_height):
@@ -227,6 +230,7 @@ func _snap_onto_solid(state: SimState, hit: Dictionary, from_height: float = NAN
 		state.tangent_velocity = Vector2(state.velocity.x, vz)
 		state.velocity = Vector3.ZERO
 		state.clear_hang()
+		state.clear_air_peak()
 		return true
 	if kind == "wall":
 		if ground == null:
@@ -256,6 +260,7 @@ func _snap_onto_solid(state: SimState, hit: Dictionary, from_height: float = NAN
 					state.tangent_velocity = Vector2(-maxf(impact, 80.0), vz)
 					state.velocity = Vector3.ZERO
 					state.clear_hang()
+					state.clear_air_peak()
 					return true
 		# Ordinary free air never acquires wall ownership. Walls are entered from
 		# their source pipe seam or by returning through an anchored air-out.
@@ -402,14 +407,15 @@ func _depenetrate(state: SimState, from: Vector3) -> void:
 		state.position = from
 
 
-func _step_maneuver(state: SimState, delta: float) -> void:
+func _step_maneuver(state: SimState, wish: Vector2, delta: float) -> void:
 	var plan: ManeuverPlan = state.maneuver
 	if plan.kind == ManeuverPlan.Kind.FLY_OUT:
-		# Instant unlock into free air.
+		# Unlock into free air with the plan's outward seed; stick may steer after.
 		state.velocity = plan.start_velocity
 		state.maneuver = null
 		state.clear_hang()
-		_step_free(state, Vector2.ZERO, delta)
+		state.note_air_height(state.position.z)
+		_step_free(state, wish, delta)
 		return
 	plan.elapsed = minf(plan.elapsed + delta, plan.land_time)
 	var t := plan.elapsed
@@ -448,6 +454,7 @@ func _land_maneuver(state: SimState, plan: ManeuverPlan) -> void:
 	state.velocity = Vector3.ZERO
 	state.maneuver = null
 	state.clear_hang()
+	state.clear_air_peak()
 
 
 func _try_land(state: SimState, from_height: float = NAN) -> void:
@@ -471,12 +478,14 @@ func _try_land(state: SimState, from_height: float = NAN) -> void:
 	# Require a descending crossing (or already penetrating) of this pad.
 	if not is_nan(from_height) and from_height < sh - SimTolerances.CONTACT_EPS:
 		return
-	# Decks: only a clear descending drop from above the pad. Apex over the lip
-	# (from_h ≈ pad height, or vz≈0 before gravity accumulates) must stay free.
+	# Decks: must be descending onto the pad, and this air bout must have peaked
+	# well above it — lip/apex skims (peak ≈ pad) must not sticky-mount.
 	if int(top.kind) == SimKinds.SurfaceKind.DECK:
 		if state.velocity.z >= -SimTolerances.CONTACT_EPS:
 			return
 		if is_nan(from_height) or from_height <= sh + SimTolerances.CONTACT_EPS:
+			return
+		if state.air_peak_height <= sh + SimTolerances.DECK_LAND_MIN_ABOVE:
 			return
 	var impact := maxf(absf(state.velocity.z), absf(state.velocity.x))
 	var vz := state.velocity.y
@@ -507,12 +516,13 @@ func _try_land(state: SimState, from_height: float = NAN) -> void:
 		state.tangent_velocity = Vector2(state.velocity.x, state.velocity.y)
 	state.velocity = Vector3.ZERO
 	state.clear_hang()
+	state.clear_air_peak()
 	if top.get("lethal", false):
 		state.alive = false
 
 
-## True when free air may ground on this deck hit: not hang, clearly descending,
-## and this step started clearly above the ride top (not apex skim / in-volume).
+## True when free air may ground on this deck hit: not hang, clearly descending
+## across the ride top, and this air bout peaked well above the pad.
 func _deck_descending_cross_ok(state: SimState, hit: Dictionary, from_height: float) -> bool:
 	if state.is_hanging():
 		return false
@@ -522,6 +532,8 @@ func _deck_descending_cross_ok(state: SimState, hit: Dictionary, from_height: fl
 	if deck == null or int(deck.kind) != SimKinds.SurfaceKind.DECK:
 		return false
 	if is_nan(from_height) or from_height <= deck.height + SimTolerances.CONTACT_EPS:
+		return false
+	if state.air_peak_height <= deck.height + SimTolerances.DECK_LAND_MIN_ABOVE:
 		return false
 	return true
 
@@ -563,10 +575,8 @@ func _try_return_to_anchor(state: SimState, from_height: float) -> bool:
 	state.tangent_velocity = Vector2(-maxf(impact, 80.0), vz)
 	state.velocity = Vector3.ZERO
 	state.clear_hang()
+	state.clear_air_peak()
 	return true
-
-
-## Ordinary aerial land filter: never opposite-facing pipes (spine only).
 ## Air-out may land same-facing pipes with coping X on the lock (any height).
 func _pick_ordinary_land(state: SimState, candidates: Array) -> Dictionary:
 	var hang_side := -1

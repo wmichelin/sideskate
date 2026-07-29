@@ -312,6 +312,9 @@ func _blocker_at(p: Vector3) -> Dictionary:
 		# Below the platform base — open (story below).
 		if h < patch.base_height - SimTolerances.CONTACT_EPS:
 			continue
+		# Wall face owns its full climb band — including the CONTACT_EPS seam
+		# above the bottom. A rear-abutting `#` must not steal that band into a
+		# deck-body rescue (mid-climb snap onto the pad instead of air-out).
 		var wall_owns_boundary := false
 		for wall_id in model.all_wall_ids():
 			var owner: WallSurface = model.walls[wall_id]
@@ -319,7 +322,7 @@ func _blocker_at(p: Vector3) -> Dictionary:
 				continue
 			var owner_sample := owner.sample_at_z(z)
 			if absf(x - float(owner_sample.x)) <= 0.001 \
-					and h > float(owner_sample.bottom_height) + SimTolerances.CONTACT_EPS \
+					and h >= float(owner_sample.bottom_height) - SimTolerances.CONTACT_EPS \
 					and h <= float(owner_sample.top_height) + SimTolerances.CONTACT_EPS:
 				wall_owns_boundary = true
 				break

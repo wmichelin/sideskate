@@ -27,6 +27,9 @@ var facing_yaw: float = 0.0
 var maneuver = null ## ManeuverPlan or null
 ## Non-empty while air-out is anchored to a compiled OPEN edge.
 var hang_edge_id: String = ""
+## Max height reached this airborne bout (hang / free / fly-out). Used so deck
+## lands require a real arc above the pad, not a lip/apex skim.
+var air_peak_height: float = -INF
 ## Once per hang: face into the source pipe after apex (+ delay).
 var hang_apex_facing_done: bool = false
 ## Elapsed time since hang apex; < 0 until apex is reached.
@@ -78,6 +81,15 @@ func begin_hang(edge_id: String) -> void:
 	visual_facing = facing
 	hang_apex_from_yaw = 0.0
 	hang_apex_to_yaw = 0.0
+	note_air_height(position.z)
+
+
+func note_air_height(height: float) -> void:
+	air_peak_height = maxf(air_peak_height, height)
+
+
+func clear_air_peak() -> void:
+	air_peak_height = -INF
 
 
 func to_dict() -> Dictionary:

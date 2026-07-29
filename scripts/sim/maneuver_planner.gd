@@ -104,8 +104,15 @@ func try_fly_out(state: SimState, input_x: float, input_z: float) -> Dictionary:
 	plan.kind = ManeuverPlan.Kind.FLY_OUT
 	plan.source_coping_id = cope.id
 	plan.start_position = pos
+	# Unlock with outward X from climb/air speed so fly-out carries lateral
+	# momentum into free air (stick still required to accept the unlock).
+	var depth_v := state.velocity.y if state.is_airborne() else state.tangent_velocity.y
 	var speed := maxf(absf(state.tangent_velocity.x), absf(state.velocity.length()))
-	plan.start_velocity = Vector3(out * maxf(speed, 120.0), state.velocity.y if state.is_airborne() else state.tangent_velocity.y, maxf(vel_h, state.velocity.z))
+	plan.start_velocity = Vector3(
+		out * maxf(speed, 120.0),
+		depth_v,
+		maxf(vel_h, state.velocity.z)
+	)
 	plan.land_time = 0.0 ## immediate free-air unlock
 	plan.travel_sign = out
 	return {"ok": true, "plan": plan}

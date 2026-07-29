@@ -476,6 +476,7 @@ func _enter_air(state: SimState, world_vel: Vector3, hang_edge_id: String = "") 
 	state.velocity = world_vel
 	state.maneuver = null
 	state.tangent_velocity = Vector2.ZERO
+	state.air_peak_height = state.position.z
 	if hang_edge_id.is_empty():
 		state.clear_hang()
 	else:
@@ -582,6 +583,10 @@ func _ensure_surface_contact(state: SimState) -> void:
 				return
 		_mount_pipe_at(state, state.position.x, state.position.y, state.tangent_velocity.x)
 	elif kind == "deck":
+		# Grounded wall/pipe owns the climb — never deck-rescue through an
+		# overhanging pad that shares the wall-face X.
+		if model.walls.has(state.surface_id) or model.pipes.has(state.surface_id):
+			return
 		_rescue_deck_top(state)
 	elif kind == "wall":
 		# Own explicit wall is already the grounded contact owner.

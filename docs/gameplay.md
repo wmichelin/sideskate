@@ -56,11 +56,11 @@ Stick → wish. Per axis:
 | **Free** (fly-out / deck-out) | Outward X-dominant stick in `FLY_OUT_ABOVE`, or ride-off | Unlocked; ballistic (no friction — stick steers only while held) | Gravity only |
 | **Maneuver** | Accepted spine / acid / fly-out plan | Plan owns pose | Plan owns pose |
 
-**Fly-out / deck-out:** unlock X and travel away from the pipe (left on left / right on right). Stick into the lip (outward), X-dominant, within the height window. Cross-story walls gate that window on the connected upper lip height, while outward stick remains the source-pipe climb direction so held input can deck-out onto a rear pad.
+**Fly-out / deck-out:** unlock X-lock, keep rising height, and seed outward free-air X from climb/air speed. Stick must be outward to accept; after unlock X is ballistic. Cross-story walls gate the height window on the connected upper lip; outward stick stays with the source-pipe climb direction.
 
 **Air-out land:** descending through the retained edge returns to its exact source pipe/wall with speed preserved. Never auto-land the opposite-facing transfer target. Decks under the hang lock are ignored — they cannot steal air-out.
 
-**Deck contact in free air:** rising or apex (`vz≈0`) through a `#` volume keeps height; grounding requires a clear descending step onto the pad top. Only stick-gated fly-out unlocks onto a rear deck from a wall top.
+**Deck contact in free air:** rising or apex through a `#` volume keeps height. Grounding needs a descending pad crossing and an air-bout peak ≥ `DECK_LAND_MIN_ABOVE` above the pad, so lip/apex skims cannot sticky-mount. Only stick-gated fly-out unlocks onto a rear deck from a wall top. A wall face that shares the deck’s rear X owns the full climb band — the overhanging pad must not mid-climb rescue onto the deck.
 
 **Deck back ride-off:** crosses the one-sided backing wall into ordinary free air. It never mounts the wall or creates an implicit acid drop.
 

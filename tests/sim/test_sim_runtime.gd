@@ -25,6 +25,7 @@ func run() -> bool:
 		and _upper_deck_2_hold_right_keeps_rise()
 		and _upper_deck_2_hang_return_past_deck_rear()
 		and _upper_deck_2_apex_no_deck_snap()
+		and _upper_deck_2_wall_bottom_no_deck_steal()
 		and _void_floor_catches_fall()
 		and _world_border_contains()
 		and _edge_fly_out_wall_slide()
@@ -1026,41 +1027,133 @@ func _upper_deck_2_hang_return_past_deck_rear() -> bool:
 
 
 ## Apex / lip skim over the L1 rear deck with leftover outward vx must not
-## sticky-snap (zero height, keep x). Mount needs a clear drop from above the pad.
+## sticky-snap. Peak-near-pad bouts (including the old ~2-unit hover) stay free;
+## a high arc that actually peaked well above the pad may still land later.
 func _upper_deck_2_apex_no_deck_snap() -> bool:
+	var deck: SupportPatch = null
+	var mid_x := 0.0
+	var mid_z := 0.0
+	# Low apex / skim offsets: must never sticky-mount.
+	for offset in [0.0, 1.0, 2.0, 3.0, 5.0, 10.0, SimTolerances.DECK_LAND_MIN_ABOVE]:
+		var sim := _upper_deck_2_setup()
+		if sim == null:
+			return false
+		if deck == null:
+			for id in sim.model.patches.keys():
+				var p: SupportPatch = sim.model.patches[id]
+				if int(p.kind) == SimKinds.SurfaceKind.DECK:
+					deck = p
+					break
+			if deck == null:
+				push_error("upper_deck_2 apex: no deck")
+				return false
+			mid_x = (deck.x_min + deck.x_max) * 0.5
+			mid_z = (deck.z_min + deck.z_max) * 0.5
+		sim.state.mode = SimState.Mode.AIRBORNE
+		sim.state.surface_id = ""
+		sim.state.clear_hang()
+		sim.state.maneuver = null
+		sim.state.air_peak_height = deck.height + float(offset)
+		sim.state.position = Vector3(mid_x, mid_z, deck.height + float(offset))
+		sim.state.velocity = Vector3(400.0, 0.0, 0.0)
+		for _i in range(20):
+			sim.set_input(Vector2.ZERO, false, false)
+			sim.tick()
+			if _upper_deck_2_is_deck(sim):
+				push_error(
+					"upper_deck_2 apex: snapped at peak_offset=%.1f with vx=%.1f"
+					% [float(offset), sim.state.tangent_velocity.x]
+				)
+				return false
+	# Control: a bout that peaked well above the pad may land while descending.
+	var land := _upper_deck_2_setup()
+	if land == null:
+		return false
+	land.state.mode = SimState.Mode.AIRBORNE
+	land.state.surface_id = ""
+	land.state.clear_hang()
+	land.state.maneuver = null
+	land.state.air_peak_height = deck.height + SimTolerances.DECK_LAND_MIN_ABOVE + 40.0
+	land.state.position = Vector3(mid_x, mid_z, deck.height + 8.0)
+	land.state.velocity = Vector3(50.0, 0.0, -200.0)
+	var mounted := false
+	for _j in range(30):
+		land.set_input(Vector2.ZERO, false, false)
+		land.tick()
+		if _upper_deck_2_is_deck(land):
+			mounted = true
+			break
+	if not mounted:
+		push_error("upper_deck_2 apex: high-peak descending bout never landed deck")
+		return false
+	return true
+
+
+## Wall entry just above the bottom seam (inside CONTACT_EPS of deck base) must
+## keep climbing / air-out — never deck-rescue through the overhanging pad.
+func _upper_deck_2_wall_bottom_no_deck_steal() -> bool:
 	var sim := _upper_deck_2_setup()
 	if sim == null:
 		return false
-	var deck: SupportPatch = null
-	for id in sim.model.patches.keys():
-		var p: SupportPatch = sim.model.patches[id]
-		if int(p.kind) == SimKinds.SurfaceKind.DECK:
-			deck = p
-			break
-	if deck == null:
-		push_error("upper_deck_2 apex: no deck")
+	var wall := _upper_deck_2_right_wall(sim)
+	if wall == null:
+		push_error("upper_deck_2 bottom: missing wall")
 		return false
-	var mid_x := (deck.x_min + deck.x_max) * 0.5
-	var mid_z := (deck.z_min + deck.z_max) * 0.5
-	sim.state.mode = SimState.Mode.AIRBORNE
-	sim.state.surface_id = ""
+	var z := sim.state.position.y
+	var samp := wall.sample_at_z(z)
+	var bottom := float(samp.bottom_height)
+	var top := float(samp.top_height)
+	# Place in the old dead band: above deck base, within CONTACT_EPS of bottom.
+	sim.state.mode = SimState.Mode.GROUNDED
+	sim.state.surface_id = wall.id
+	sim.state.u = wall.u_at_height(z, bottom + 0.25)
+	sim.state.v = 0.5
+	sim.state.tangent_velocity = Vector2(600.0, 0.0)
+	sim.state.position = wall.position_at(z, sim.state.u)
 	sim.state.clear_hang()
 	sim.state.maneuver = null
-	# Skim at the ride top with outward free-air X (post fly-out apex).
-	sim.state.position = Vector3(mid_x, mid_z, deck.height)
-	sim.state.velocity = Vector3(400.0, 0.0, 0.0)
-	for _i in range(6):
-		sim.set_input(Vector2.ZERO, false, false)
+	if sim.state.position.z > bottom + SimTolerances.CONTACT_EPS:
+		push_error(
+			"upper_deck_2 bottom: setup not in seam band h=%.2f bottom=%.2f"
+			% [sim.state.position.z, bottom]
+		)
+		return false
+	var hung := false
+	for _i in range(90):
+		# Hold climb input — same stick that would have triggered the old steal.
+		sim.set_input(Vector2(1, 0), false, false)
 		sim.tick()
 		if _upper_deck_2_is_deck(sim):
 			push_error(
-				"upper_deck_2 apex: snapped to deck with vx=%.1f h=%.1f"
-				% [sim.state.tangent_velocity.x, sim.state.position.z]
+				"upper_deck_2 bottom: deck stole wall climb at h=%.1f"
+				% sim.state.position.z
 			)
 			return false
-		if not sim.state.is_airborne():
-			push_error("upper_deck_2 apex: left air unexpectedly on %s" % sim.state.surface_id)
+		if sim.state.is_hanging():
+			hung = true
+			break
+		if sim.state.is_grounded() and sim.state.surface_id != wall.id \
+				and sim.state.surface_id != wall.source_pipe_id:
+			push_error("upper_deck_2 bottom: left wall onto %s" % sim.state.surface_id)
 			return false
+	if not hung:
+		push_error("upper_deck_2 bottom: never aired out (top=%.1f h=%.1f mode=%s surf=%s)" % [
+			top, sim.state.position.z, sim.state.mode, sim.state.surface_id
+		])
+		return false
+	# After hang, release — must not sticky-mount the rear deck on the way down.
+	for _j in range(180):
+		sim.set_input(Vector2.ZERO, false, false)
+		sim.tick()
+		if _upper_deck_2_is_deck(sim):
+			push_error("upper_deck_2 bottom: deck stole hang return")
+			return false
+		if sim.state.is_grounded():
+			if sim.state.surface_id != wall.id and sim.state.surface_id != wall.source_pipe_id:
+				push_error("upper_deck_2 bottom: remounted %s" % sim.state.surface_id)
+				return false
+			return true
+	push_error("upper_deck_2 bottom: never remounted source after hang")
 	return true
 
 
@@ -1614,12 +1707,14 @@ func _land_snaps_out_of_pipe_solid() -> bool:
 	sim.state.clear_hang()
 	sim.state.maneuver = null
 	# Start above the pipe and drop into the solid volume with travel matching side.
-	# Same-facing land: left pipe wants −X travel.
+	# Same-facing land: left pipe wants −X travel. Hold outward so vx stays
+	# present for the mount (ballistic seed alone is fine too).
 	sim.state.position = Vector3(mid_x, z, mid_h + 80.0)
 	sim.state.velocity = Vector3(left.outward_sign() * 200.0, 0.0, -400.0)
+	var land_stick := Vector2(left.outward_sign(), 0.0)
 	var snapped := false
 	for _i in range(90):
-		sim.set_input(Vector2.ZERO, false, false)
+		sim.set_input(land_stick, false, false)
 		sim.tick()
 		if not sim.state.alive:
 			push_error("land snap: died")
