@@ -34,6 +34,10 @@ func run() -> bool:
 		and _l0_lava_gap_no_phantom_wall_climb()
 		and _deck_ride_off_falls_acid_mounts()
 		and _map_edge_deck_no_void_exit()
+		and _layered_hang_remounts_wall_height()
+		and _layered_l1_coping_returns_source()
+		and _wall_z_exit_consumes_motion()
+		and _cross_story_spine_is_action_only()
 	)
 
 
@@ -525,7 +529,12 @@ func _wall_extension_climbs() -> bool:
 	var cope: CopingEdge = sim.model.copings[wall_pipe.coping_id]
 	var z := (wall_pipe.z_min + wall_pipe.z_max) * 0.5
 	var h_geom := wall_pipe.height_at_theta(z, PI * 0.5)
-	var h_eff := float(cope.sample_at_z(z).height)
+	var span := cope.span_at_z(z)
+	if span == null or not sim.model.walls.has(span.wall_id):
+		push_error("wall extension has no explicit wall span")
+		return false
+	var wall: WallSurface = sim.model.walls[span.wall_id]
+	var h_eff := float(wall.sample_at_z(z).top_height)
 	if h_eff <= h_geom + 10.0:
 		push_error("expected tall wall extension")
 		return false
@@ -548,7 +557,7 @@ func _wall_extension_climbs() -> bool:
 		if not sim.state.is_grounded():
 			push_error("left ground mid wall-climb")
 			return false
-		if sim.model.pipes.has(sim.state.surface_id) and sim.state.u > 1.05 and sim.state.u < 1.95:
+		if sim.model.walls.has(sim.state.surface_id):
 			saw_wall = true
 			heights.append(sim.state.position.z)
 			# Must not teleport to pad top in one step from geometric.
@@ -558,7 +567,7 @@ func _wall_extension_climbs() -> bool:
 		if sim.model.patches.has(sim.state.surface_id):
 			# Mounted floor after climb.
 			if not saw_wall:
-				push_error("mounted pad without climbing wall u-range")
+				push_error("mounted pad without explicit wall ownership")
 				return false
 			if absf(sim.state.position.z - h_eff) > SimTolerances.SEAM_EPS * 2.0:
 				push_error("pad mount height %.1f want ~%.1f" % [sim.state.position.z, h_eff])
@@ -597,7 +606,12 @@ func _layered_fly_out_at_upper_lip() -> bool:
 	var z := 1000.0
 	z = clampf(z, pipe.z_min, pipe.z_max)
 	var h_geom := pipe.height_at_theta(z, PI * 0.5)
-	var h_eff := float(cope.sample_at_z(z).height)
+	var span := cope.span_at_z(z)
+	if span == null or not sim.model.walls.has(span.wall_id):
+		push_error("layered wall span missing at test Z")
+		return false
+	var wall: WallSurface = sim.model.walls[span.wall_id]
+	var h_eff := float(wall.sample_at_z(z).top_height)
 	# At geometric lip with outward stick — must not fly through L1.
 	sim.state.mode = SimState.Mode.GROUNDED
 	sim.state.surface_id = pipe.id
@@ -621,9 +635,7 @@ func _layered_fly_out_at_upper_lip() -> bool:
 		sim.tick()
 		if sim.state.is_hanging() and sim.state.position.z >= h_eff - SimTolerances.CONTACT_EPS * 2.0:
 			break
-		if sim.state.is_grounded() and sim.state.u >= 1.98:
-			break
-	if sim.state.position.z < h_eff - 20.0 and not (sim.state.is_grounded() and sim.state.u >= 1.98):
+	if sim.state.position.z < h_eff - 20.0:
 		push_error("never reached upper lip h=%.1f got %.1f" % [h_eff, sim.state.position.z])
 		return false
 	# Fly-out at upper lip.
@@ -1191,9 +1203,13 @@ func _no_auto_opposite_pipe_snap() -> bool:
 	var z := (left.z_min + left.z_max) * 0.5
 	var lx := left.x_at_theta(z, PI * 0.4)
 	var lh := left.height_at_theta(z, PI * 0.4)
+	var hang_edge := sim.query.edge_at(right.id, z, "coping")
+	if hang_edge == null:
+		push_error("auto: missing right air-out edge")
+		return false
 	sim.state.mode = SimState.Mode.AIRBORNE
 	sim.state.surface_id = ""
-	sim.state.hang_pipe_id = right.id
+	sim.state.hang_edge_id = hang_edge.id
 	sim.state.maneuver = null
 	sim.state.facing = "r"
 	# Still hanging on the right; drift into the left pipe body without transfer.
@@ -1504,8 +1520,13 @@ func _l0_lava_gap_no_phantom_wall_climb() -> bool:
 	# L1 hole band (ASCII rows ~9–14).
 	var hole_z := (float(H - 1 - 11) + 0.5) * cell_h
 	var z := clampf(hole_z, right.z_min + 1.0, right.z_max - 1.0)
-	if sim.query.wall_extension_active_at(cope, z):
-		push_error("lava: wall should be inactive in L1 hole rows")
+	var hole_span := cope.span_at_z(z)
+	if hole_span == null or not hole_span.wall_id.is_empty():
+		push_error("lava: hole span should compile without a wall")
+		return false
+	var hole_edge := sim.query.edge_at(right.id, z, "coping")
+	if hole_edge == null or hole_edge.kind != SimKinds.EdgeKind.OPEN_COPING:
+		push_error("lava: hole span should compile an OPEN edge")
 		return false
 	var h_geom := right.height_at_theta(z, PI * 0.5)
 	sim.state.mode = SimState.Mode.GROUNDED
@@ -1529,12 +1550,9 @@ func _l0_lava_gap_no_phantom_wall_climb() -> bool:
 					% [sim.state.position.z, h_geom]
 				)
 				return false
-			if sim.state.u > 1.05:
-				push_error("lava: airborne with wall-climb u=%.2f" % sim.state.u)
-				return false
 			return true
-		if sim.state.u > 1.05:
-			push_error("lava: entered wall-climb u=%.2f h=%.1f" % [sim.state.u, sim.state.position.z])
+		if sim.model.walls.has(sim.state.surface_id):
+			push_error("lava: entered explicit wall in hole span h=%.1f" % sim.state.position.z)
 			return false
 	push_error("lava: never left pipe")
 	return false
@@ -1549,7 +1567,9 @@ func _deck_ride_off_falls_acid_mounts() -> bool:
 	var left := _left_pipe(sim.model)
 	if left == null:
 		return false
-	if not sim.query.pipe_has_outward_deck(left, (left.z_min + left.z_max) * 0.5):
+	var left_cope: CopingEdge = sim.model.copings[left.coping_id]
+	var deck_span := left_cope.span_at_z((left.z_min + left.z_max) * 0.5)
+	if deck_span == null or deck_span.outward_deck_id.is_empty():
 		push_error("deck drop: left pipe should have outward deck")
 		return false
 	var deck: SupportPatch = null
@@ -1700,6 +1720,269 @@ func _map_edge_deck_no_void_exit() -> bool:
 		)
 		return false
 	return true
+
+
+## L0 WALL_EXTENSION hang must remount the wall at current height — not snap to
+## the geometric lip, and not auto-mount the opposite L1 ramp (spine = transfer).
+func _layered_hang_remounts_wall_height() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
+		push_error("wall remount: setup")
+		return false
+	var l0r: PipeSurface = sim.model.pipes.get("pipe_1_L0_S1")
+	var l1l: PipeSurface = sim.model.pipes.get("pipe_4_L1_S0")
+	if l0r == null or l1l == null:
+		push_error("wall remount: missing pipes")
+		return false
+	var z := clampf(1800.0, l1l.z_min + 5.0, l1l.z_max - 5.0)
+	var cope: CopingEdge = sim.model.copings[l0r.coping_id]
+	if cope.coping_class != SimKinds.CopingClass.WALL_EXTENSION:
+		push_error("wall remount: expected WALL_EXTENSION")
+		return false
+	var span := cope.span_at_z(z)
+	if span == null or not sim.model.walls.has(span.wall_id):
+		push_error("wall remount: explicit wall missing")
+		return false
+	var wall: WallSurface = sim.model.walls[span.wall_id]
+	var h_eff := float(wall.sample_at_z(z).top_height)
+	var h_geom := l0r.height_at_theta(z, PI * 0.5)
+	sim.state.mode = SimState.Mode.GROUNDED
+	sim.state.surface_id = l0r.id
+	sim.state.u = 0.9
+	sim.state.v = 0.5
+	sim.state.tangent_velocity = Vector2(500.0, 0.0)
+	sim.state.position = Vector3(
+		l0r.x_at_theta(z, 0.9 * PI * 0.5), z, l0r.height_at_theta(z, 0.9 * PI * 0.5)
+	)
+	sim.state.clear_hang()
+	var hung := false
+	for _i in range(60):
+		if sim.state.is_grounded():
+			sim.set_input(Vector2(1, 0), false, false)
+		else:
+			sim.set_input(Vector2.ZERO, false, false)
+		sim.tick()
+		if sim.state.is_hanging():
+			hung = true
+			break
+	if not hung:
+		push_error("wall remount: never hung")
+		return false
+	for _j in range(120):
+		sim.set_input(Vector2.ZERO, false, false)
+		sim.tick()
+		if sim.state.has_maneuver():
+			push_error("wall remount: auto maneuver %s" % sim.state.maneuver.kind)
+			return false
+		if sim.state.is_grounded():
+			if sim.state.surface_id == l1l.id:
+				push_error("wall remount: auto-mounted opposite L1 (spine steal)")
+				return false
+			if sim.state.surface_id != wall.id:
+				push_error("wall remount: landed on %s" % sim.state.surface_id)
+				return false
+			if sim.state.position.z <= h_geom + 5.0:
+				push_error(
+					"wall remount: snapped to geometric lip h=%.1f u=%.2f"
+					% [sim.state.position.z, sim.state.u]
+				)
+				return false
+			if sim.state.position.z < h_eff - 40.0:
+				push_error(
+					"wall remount: too low on wall h=%.1f u=%.2f"
+					% [sim.state.position.z, sim.state.u]
+				)
+				return false
+			if absf(sim.state.tangent_velocity.x) < 200.0:
+				push_error(
+					"wall remount: fall speed eaten (L1 bounce?) tv=%.1f"
+					% sim.state.tangent_velocity.x
+				)
+				return false
+			if sim.state.u < 0.0 or sim.state.u > 1.0:
+				push_error("wall remount: invalid explicit wall u=%.2f" % sim.state.u)
+				return false
+			sim.set_input(Vector2.ZERO, false, false)
+			sim.tick()
+			if sim.state.surface_id != wall.id or sim.state.u >= 0.999:
+				push_error("wall remount: did not descend from anchor u=%.3f" % sim.state.u)
+				return false
+			return true
+	push_error(
+		"wall remount: never grounded mode=%s surf=%s h=%.1f vz=%.1f hang=%s block=%s"
+		% [
+			sim.state.mode,
+			sim.state.surface_id,
+			sim.state.position.z,
+			sim.state.velocity.z,
+			sim.state.hang_edge_id,
+			sim.query.blocker_at(sim.state.position),
+		]
+	)
+	return false
+
+
+func _layered_l1_coping_returns_source() -> bool:
+	var model := IdlCompiler.compile_path("res://levels/layered_demo.ssk")
+	for pipe_id in model.all_pipe_ids():
+		var pipe: PipeSurface = model.pipes[pipe_id]
+		var sample := pipe.sample_at_z((pipe.z_min + pipe.z_max) * 0.5)
+		if float(sample.base_height) < 100.0:
+			continue
+		var sim := PlayerSim.new()
+		if not sim.setup_from_path("res://levels/layered_demo.ssk"):
+			return false
+		var z := (pipe.z_min + pipe.z_max) * 0.5
+		var theta := 0.9 * PI * 0.5
+		sim.state.mode = SimState.Mode.GROUNDED
+		sim.state.surface_id = pipe.id
+		sim.state.u = 0.9
+		sim.state.v = 0.5
+		sim.state.position = Vector3(
+			pipe.x_at_theta(z, theta), z, pipe.height_at_theta(z, theta)
+		)
+		sim.state.tangent_velocity = Vector2(500.0, 0.0)
+		sim.state.velocity = Vector3.ZERO
+		sim.state.clear_hang()
+		var blocker := sim.query.blocker_at(sim.state.position)
+		if not blocker.is_empty() and str(blocker.get("surface_id", "")) != pipe.id:
+			push_error("L1 coping starts inside foreign feature: %s" % blocker)
+			return false
+		var hung := false
+		for _tick in range(180):
+			var wish := Vector2(pipe.outward_sign(), 0.0) if not hung else Vector2.ZERO
+			sim.set_input(wish, false, false)
+			sim.tick()
+			if not sim.state.alive:
+				push_error("L1 coping caused death on %s" % pipe.id)
+				return false
+			if sim.state.is_hanging():
+				hung = true
+			elif hung and sim.state.is_grounded():
+				if sim.state.surface_id != pipe.id:
+					push_error(
+						"L1 air-out returned to %s instead of %s"
+						% [sim.state.surface_id, pipe.id]
+					)
+					return false
+				break
+		if not hung or not sim.state.is_grounded() or sim.state.surface_id != pipe.id:
+			push_error("L1 coping cycle incomplete on %s" % pipe.id)
+			return false
+	return true
+
+
+func _wall_z_exit_consumes_motion() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
+		return false
+	var wall: WallSurface = null
+	for id in sim.model.all_wall_ids():
+		var candidate: WallSurface = sim.model.walls[id]
+		var source: PipeSurface = sim.model.pipes[candidate.source_pipe_id]
+		if source.side == SimKinds.PipeSide.LEFT and candidate.contains_z(1057.5):
+			wall = candidate
+			break
+	if wall == null:
+		push_error("wall Z exit: fixture wall missing")
+		return false
+	var pipe: PipeSurface = sim.model.pipes[wall.source_pipe_id]
+	var z := (wall.z_min + wall.z_max) * 0.5
+	var theta := 0.9 * PI * 0.5
+	sim.state.mode = SimState.Mode.GROUNDED
+	sim.state.surface_id = pipe.id
+	sim.state.u = 0.9
+	sim.state.v = 0.5
+	sim.state.position = Vector3(
+		pipe.x_at_theta(z, theta), z, pipe.height_at_theta(z, theta)
+	)
+	sim.state.tangent_velocity = Vector2(500.0, 0.0)
+	sim.state.velocity = Vector3.ZERO
+	sim.state.clear_hang()
+	var saw_wall := false
+	var exited_z := false
+	for _tick in range(180):
+		var previous_surface := sim.state.surface_id
+		sim.set_input(Vector2(-1.0, 1.0), false, false)
+		sim.tick()
+		if sim.state.surface_id == wall.id:
+			saw_wall = true
+		if previous_surface == wall.id and sim.state.is_airborne() \
+				and not sim.state.is_hanging():
+			exited_z = true
+			if sim.state.position.y <= wall.z_max + SimTolerances.ALIGN_EPS:
+				push_error(
+					"wall Z exit did not consume crossing: z=%.2f edge=%.2f"
+					% [sim.state.position.y, wall.z_max]
+				)
+				return false
+		elif exited_z and sim.state.surface_id == wall.id:
+			push_error("wall Z exit remounted the departed wall")
+			return false
+		if absf(sim.state.velocity.z) > 1500.0:
+			push_error("wall Z exit pumped vertical speed: %.1f" % sim.state.velocity.z)
+			return false
+	if not saw_wall or not exited_z:
+		push_error("wall Z exit path was not exercised")
+		return false
+	return true
+
+
+func _cross_story_spine_is_action_only() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_cross_story.ssk"):
+		push_error("cross-story spine: setup")
+		return false
+	var wall: WallSurface = null
+	for id in sim.model.all_wall_ids():
+		wall = sim.model.walls[id]
+		break
+	if wall == null or wall.upper_partner_pipe_id.is_empty():
+		push_error("cross-story spine: missing wall/partner")
+		return false
+	var source: PipeSurface = sim.model.pipes[wall.source_pipe_id]
+	var target: PipeSurface = sim.model.pipes[wall.upper_partner_pipe_id]
+	var z := (wall.z_min + wall.z_max) * 0.5
+	var edge := sim.query.edge_at(wall.id, z, "top")
+	var anchor := sim.query.edge_anchor_sample(edge, z)
+	if edge == null or edge.transfer_target_id != target.coping_id or anchor.is_empty():
+		push_error("cross-story spine: invalid action edge")
+		return false
+	# No transfer input: remain anchored/return to the source wall.
+	sim.state.mode = SimState.Mode.AIRBORNE
+	sim.state.surface_id = ""
+	sim.state.hang_edge_id = edge.id
+	sim.state.maneuver = null
+	sim.state.position = Vector3(float(anchor.x), z, float(anchor.height) + 5.0)
+	sim.state.velocity = Vector3(0.0, 0.0, 80.0)
+	sim.set_input(Vector2.ZERO, false, false)
+	sim.tick()
+	if sim.state.has_maneuver() or sim.state.surface_id == target.id:
+		push_error("cross-story spine: transferred without action")
+		return false
+	# Transfer input: the compiled target is reachable only through a spine plan.
+	sim.state.mode = SimState.Mode.AIRBORNE
+	sim.state.surface_id = ""
+	sim.state.hang_edge_id = edge.id
+	sim.state.maneuver = null
+	sim.state.position = Vector3(float(anchor.x), z, float(anchor.height) + 5.0)
+	sim.state.velocity = Vector3(0.0, 0.0, 80.0)
+	sim.set_input(Vector2(source.outward_sign(), 0.0), false, true)
+	sim.tick()
+	if not sim.state.has_maneuver() \
+			or sim.state.maneuver.kind != ManeuverPlan.Kind.SPINE:
+		push_error("cross-story spine: action rejected: %s" % sim.state.last_reject)
+		return false
+	for _i in range(180):
+		sim.set_input(Vector2.ZERO, false, false)
+		sim.tick()
+		if sim.state.is_grounded():
+			if sim.state.surface_id != target.id:
+				push_error("cross-story spine: landed on %s" % sim.state.surface_id)
+				return false
+			return true
+	push_error("cross-story spine: plan never landed")
+	return false
 
 
 func _place_at_coping(sim: PlayerSim, pipe: PipeSurface, along: float) -> void:

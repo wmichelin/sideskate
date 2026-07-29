@@ -22,16 +22,16 @@ See also [AGENTS.md](../AGENTS.md) and [movement_contract.md](movement_contract.
 
 ## Park model (compiled)
 
-`.ssk` → `IdlCompiler` → immutable `ParkModel`: support patches, pipe surfaces, coping edges, topology edges.
+`.ssk` → `IdlCompiler` → immutable `ParkModel`: support patches, pipe surfaces, explicit wall surfaces, Z-partitioned coping spans, and topology edges.
 
 | Coping class | Behavior |
 |--------------|----------|
 | `OPEN` | Air-out on rise; stick fly-out / deck-out in window |
 | `SUPPORT_SEAM` | Auto-roll onto abutting **floor** at matching height |
-| `WALL_EXTENSION` | Climb to taller outward floor **or** taller opposite pipe lip; then mount / air / fly |
-| `SHARED_SPINE` | Opposite-facing pair (incl. cross-story); spine target; air/fly like `OPEN` |
+| `WALL_EXTENSION` | Pipe seam to an explicit vertical wall; wall top then mounts or opens to air |
+| `SHARED_SPINE` | Same-height opposite-facing pair; action target; air/fly like `OPEN` |
 
-Same-height outward `#` is an air/fly corridor (`OPEN`), not an auto-mount.
+Classification is per Z span. Cross-story upper copings are action-only targets, not automatic seams. Same-height outward `#` is an air/fly corridor (`OPEN`), not an auto-mount.
 
 Glyphs: `=` / `#` / `x` solid; `.` hole (fall to lower support or invisible void floor); space = solid invisible wall. World AABB has invisible border walls. Lava (`x`): airborne OK; grounded contact kills and respawns. You cannot fall out of the park.
 
@@ -46,25 +46,25 @@ Stick → wish. Per axis:
 
 **Ollie** (hold Space): mild accel toward max speed in facing direction; skipped while stick brakes opposite.
 
-**Pipe:** UV along-arc (+along = toward coping). Gravity projects onto the tangent. `WALL_EXTENSION` continues as a vertical face after θ=π/2.
+**Pipe:** UV along-arc (+along = toward coping), always `u∈[0,1]`; gravity projects onto the tangent. A compiled seam enters a separate `WallSurface`, whose own `u∈[0,1]` runs bottom→top.
 
 ## Air
 
 | Mode | Enter | X | Height |
 |------|-------|---|--------|
-| **Air-out** | Leave `OPEN`/`SHARED_SPINE` with along | Locked to exit coping X | Ballistic |
+| **Air-out** | Leave a compiled open pipe/wall edge with along | Locked to that edge anchor | Ballistic |
 | **Free** (fly-out / deck-out) | Outward X-dominant stick in `FLY_OUT_ABOVE`, or ride-off | Unlocked; ballistic (no friction — stick steers only while held) | Gravity only |
 | **Maneuver** | Accepted spine / acid / fly-out plan | Plan owns pose | Plan owns pose |
 
 **Fly-out / deck-out:** unlock X and travel away from the pipe (left on left / right on right). Stick into the lip (outward), X-dominant, within the height window.
 
-**Air-out land:** same-facing pipe whose coping X matches the lock (any layer/height), or floor/deck under the lock. Never auto-land opposite-facing.
+**Air-out land:** descending through the retained edge returns to its exact source pipe/wall with speed preserved. Never auto-land the opposite-facing transfer target.
 
 **Spine:** transfer button while rising/apex → opposite-facing pipe from its outward side (left of left / right of right).
 
-**Acid:** transfer button while descending → along travel to an opposite wall.
+**Acid:** transfer button while descending → along travel to an opposite wall, or explicit deck drop-in onto an abutting pipe.
 
-Hang clears on fly-out, spine, acid, or land. Return onto the exit pipe seeds into-bowl along. Plans never retarget mid-flight.
+Hang stores `hang_edge_id`; it clears on fly-out, spine, acid, return, or leaving the edge’s Z span. Plans never retarget mid-flight.
 
 ## Motion vectors
 
@@ -103,7 +103,7 @@ Tunable sim values sync into `SimTolerances` / `PlayerSim` each physics tick. Ca
 |--------|------|
 | [`sim/player_sim.gd`](../scripts/sim/player_sim.gd) | Orchestrator |
 | [`sim/idl_compiler.gd`](../scripts/sim/idl_compiler.gd) | `.ssk` → `ParkModel` |
-| [`sim/surface_query.gd`](../scripts/sim/surface_query.gd) | Support, edges, coping search, capsule sweep |
+| [`sim/surface_query.gd`](../scripts/sim/surface_query.gd) | Separate support projection, edge lookup, and deterministic swept solid contact |
 | [`sim/ground_solver.gd`](../scripts/sim/ground_solver.gd) | Grounded + wall climb + seams |
 | [`sim/air_solver.gd`](../scripts/sim/air_solver.gd) | Free air + maneuvers |
 | [`sim/maneuver_planner.gd`](../scripts/sim/maneuver_planner.gd) | Fly-out / spine / acid plans |
@@ -119,7 +119,8 @@ Analytical suites: [`tests/sim/`](../tests/sim/).
 
 1. Sim only on physics ticks.
 2. No gameplay state depends on layer index, collider order, scene-tree order, render FPS, or depenetration.
-3. Continuous seams auto-roll; `WALL_EXTENSION` climbs; `OPEN` permits stick fly-out.
+3. Every grounded pose has one surface owner; pipe/wall `u` always stays in `[0,1]`.
 4. Spine while rising/apex; acid while descending; plans never retarget.
-5. Ordinary landing requires descending support crossing.
-6. Presentation + collision stamp the same `ParkModel.model_hash` as `PlayerSim`.
+5. Ordinary contact cannot switch to an opposite-facing transfer target; only an accepted plan can.
+6. Shared boundaries have one compiled owner and every crossing consumes motion once.
+7. Presentation + collision stamp the same full-geometry `ParkModel.model_hash` as `PlayerSim`.

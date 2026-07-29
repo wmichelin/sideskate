@@ -18,6 +18,7 @@ func try_fly_out(state: SimState, input_x: float, input_z: float) -> Dictionary:
 	# Fly-out from grounded pipe near open coping OR hang air over that pipe.
 	var pipe: PipeSurface = null
 	var cope: CopingEdge = null
+	var anchor_edge: TopologyEdge = null
 	var pos := state.position
 	var vel_h := 0.0
 	if state.is_grounded() and model.pipes.has(state.surface_id):
@@ -25,9 +26,26 @@ func try_fly_out(state: SimState, input_x: float, input_z: float) -> Dictionary:
 		cope = model.copings.get(pipe.coping_id)
 		if state.u < 0.98:
 			return _reject("not at coping")
+		anchor_edge = query.edge_at(pipe.id, pos.y, "coping")
+		if anchor_edge == null or anchor_edge.kind != SimKinds.EdgeKind.OPEN_COPING:
+			return _reject("coping is not open")
 		vel_h = state.tangent_velocity.x ## along-arc
-	elif state.is_hanging() and model.pipes.has(state.hang_pipe_id):
-		pipe = model.pipes[state.hang_pipe_id]
+	elif state.is_grounded() and model.walls.has(state.surface_id):
+		var wall: WallSurface = model.walls[state.surface_id]
+		if state.u < 0.98:
+			return _reject("still climbing wall")
+		pipe = model.pipes[wall.source_pipe_id]
+		cope = model.copings.get(pipe.coping_id)
+		anchor_edge = query.edge_at(wall.id, pos.y, "top")
+		if anchor_edge == null or anchor_edge.kind != SimKinds.EdgeKind.OPEN_COPING:
+			return _reject("wall top is not open")
+		vel_h = state.tangent_velocity.x
+	elif state.is_hanging():
+		anchor_edge = model.edges.get(state.hang_edge_id)
+		var anchor := query.edge_anchor_sample(anchor_edge, pos.y)
+		pipe = model.pipes.get(str(anchor.get("source_pipe_id", "")))
+		if pipe == null:
+			return _reject("invalid air-out anchor")
 		cope = model.copings.get(pipe.coping_id)
 		vel_h = state.velocity.z
 	elif state.is_airborne() and not state.has_maneuver():
@@ -42,21 +60,6 @@ func try_fly_out(state: SimState, input_x: float, input_z: float) -> Dictionary:
 		return _reject("fly-out unavailable")
 	if cope == null:
 		return _reject("no coping")
-	var wall_live := (
-		cope.coping_class == SimKinds.CopingClass.WALL_EXTENSION
-		and query.wall_extension_active_at(cope, pos.y)
-	)
-	var is_wall := wall_live
-	if cope.coping_class != SimKinds.CopingClass.OPEN \
-			and cope.coping_class != SimKinds.CopingClass.SHARED_SPINE \
-			and cope.coping_class != SimKinds.CopingClass.WALL_EXTENSION:
-		return _reject("coping not OPEN (%s)" % cope.class_name_str())
-	# Inactive WALL_EXTENSION (hole / lava gap under empty upper story) = OPEN lip.
-	if cope.coping_class == SimKinds.CopingClass.WALL_EXTENSION and not wall_live:
-		is_wall = false
-	# Wall climb: fly-out only at the effective (upper) lip, never mid-face / L0 geometric.
-	if is_wall and state.is_grounded() and state.u < 1.98:
-		return _reject("still climbing wall")
 	if vel_h <= 0.0 and state.velocity.z <= 0.0:
 		# Need rising — for grounded use along toward coping (positive u speed).
 		if state.is_grounded() and state.tangent_velocity.x <= 0.0:
@@ -70,11 +73,13 @@ func try_fly_out(state: SimState, input_x: float, input_z: float) -> Dictionary:
 		return _reject("input not X-dominant")
 	if input_x * out <= 0.15:
 		return _reject("input not outward")
+	if anchor_edge == null:
+		anchor_edge = query.edge_at(pipe.id, pos.y, "coping")
+	var anchor := query.edge_anchor_sample(anchor_edge, pos.y)
+	if anchor.is_empty():
+		return _reject("no open anchor")
 	var samp := cope.sample_at_z(pos.y)
-	# Effective lip only while the wall is live; otherwise geometric coping.
-	var cope_h := (
-		float(samp.height) if is_wall else pipe.height_at_theta(pos.y, PI * 0.5)
-	)
+	var cope_h := float(anchor.height)
 	var above := pos.z - cope_h
 	if above < -SimTolerances.CONTACT_EPS:
 		return _reject("below coping")
@@ -114,6 +119,17 @@ func try_spine(state: SimState, facing_dir: float) -> Dictionary:
 	var dir := signf(facing_dir)
 	if absf(dir) < 0.001:
 		dir = 1.0 if state.facing == "r" else -1.0
+	var action_edge: TopologyEdge = null
+	if state.is_hanging():
+		action_edge = model.edges.get(state.hang_edge_id)
+	elif state.is_grounded() and model.walls.has(state.surface_id):
+		action_edge = query.edge_at(state.surface_id, pos.y, "top")
+	if action_edge != null and not action_edge.transfer_target_id.is_empty():
+		var direct: CopingEdge = model.copings.get(action_edge.transfer_target_id)
+		if direct != null:
+			return _build_transfer_plan(
+				ManeuverPlan.Kind.SPINE, state, direct, dir, action_edge.coping_id
+			)
 	var cands := query.copings_in_direction(pos.x, pos.y, pos.z, dir)
 	var source_id := ""
 	if state.is_grounded() and model.pipes.has(state.surface_id):
@@ -193,7 +209,7 @@ func _build_transfer_plan(
 	var land_x := float(samp.coping_x)
 	var land_h := float(samp.height)
 	var dx := land_x - pos.x
-	if dx * travel_sign <= 0.0:
+	if dx * travel_sign < -SimTolerances.ALIGN_EPS:
 		return _reject("target behind travel")
 	# Landing time on descending ballistic branch: land_h = h0 + v0 t + 0.5 g t^2
 	var h0 := pos.z
@@ -220,7 +236,8 @@ func _build_transfer_plan(
 					var hit := query.sweep_capsule(
 						Vector3(pos.x, pos.y, h0), Vector3(xi, zi, hi)
 					)
-					if not hit.is_empty() and str(hit.get("kind", "")) == "wall":
+					if not hit.is_empty() and str(hit.get("kind", "")) == "wall" \
+							and str(hit.get("coping_id", "")) != source_id:
 						return _reject("clearance blocked")
 	var plan := ManeuverPlan.new()
 	plan.kind = kind
@@ -248,7 +265,8 @@ func _build_transfer_plan(
 	var corridor := query.sweep_capsule(
 		pos, Vector3(land_x, pos.y, land_h + SimTolerances.CONTACT_EPS)
 	)
-	if not corridor.is_empty() and str(corridor.get("kind", "")) == "wall":
+	if not corridor.is_empty() and str(corridor.get("kind", "")) == "wall" \
+			and str(corridor.get("coping_id", "")) != source_id:
 		return _reject("corridor wall")
 	return {"ok": true, "plan": plan}
 

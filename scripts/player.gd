@@ -148,22 +148,26 @@ func _sync_from_sim() -> void:
 		"surface_id": st.surface_id,
 	}
 	var tilt := 0.0
-	if st.is_hanging() and _sim.model.pipes.has(st.hang_pipe_id):
-		# Stay at coping lean (body perpendicular to flat ground) while X-locked.
-		var hang_pipe: PipeSurface = _sim.model.pipes[st.hang_pipe_id]
-		tilt = -hang_pipe.outward_sign() * (PI * 0.5)
+	if st.is_hanging():
+		var edge: TopologyEdge = _sim.model.edges.get(st.hang_edge_id)
+		var anchor := _sim.query.edge_anchor_sample(edge, p.y)
+		var hang_pipe: PipeSurface = _sim.model.pipes.get(str(anchor.get("source_pipe_id", "")))
+		if hang_pipe != null:
+			tilt = -hang_pipe.outward_sign() * (PI * 0.5)
+	elif st.is_grounded() and _sim.model.walls.has(st.surface_id):
+		var wall: WallSurface = _sim.model.walls[st.surface_id]
+		var wall_pipe: PipeSurface = _sim.model.pipes[wall.source_pipe_id]
+		tilt = -wall_pipe.outward_sign() * (PI * 0.5)
 	elif st.is_grounded() and _sim.model.pipes.has(st.surface_id):
 		var pipe: PipeSurface = _sim.model.pipes[st.surface_id]
-		# Wall climb (u>1) stays at full coping lean; arc uses θ = u·π/2 clamped.
-		var th := minf(st.u, 1.0) * (PI * 0.5)
-		if st.u > 1.0:
-			th = PI * 0.5
-		# Match legacy lean: −coping_sign(side) × θ so the skater leans into the wall.
+		var th := st.u * (PI * 0.5)
 		tilt = -pipe.outward_sign() * th
 	var support_h := p.z
-	if st.is_hanging() and _sim.model.pipes.has(st.hang_pipe_id):
-		var hp: PipeSurface = _sim.model.pipes[st.hang_pipe_id]
-		support_h = hp.height_at_theta(p.y, PI * 0.5)
+	if st.is_hanging():
+		var support_edge: TopologyEdge = _sim.model.edges.get(st.hang_edge_id)
+		var support_anchor := _sim.query.edge_anchor_sample(support_edge, p.y)
+		if not support_anchor.is_empty():
+			support_h = float(support_anchor.height)
 	if depth:
 		depth.logical_x = p.x
 		depth.logical_z = p.y
@@ -184,6 +188,10 @@ func _zone_from_state(st: SimState) -> String:
 	if _sim.model.pipes.has(st.surface_id):
 		var pipe: PipeSurface = _sim.model.pipes[st.surface_id]
 		return "left_pipe" if pipe.side == SimKinds.PipeSide.LEFT else "right_pipe"
+	if _sim.model.walls.has(st.surface_id):
+		var wall: WallSurface = _sim.model.walls[st.surface_id]
+		var source: PipeSurface = _sim.model.pipes[wall.source_pipe_id]
+		return "left_pipe" if source.side == SimKinds.PipeSide.LEFT else "right_pipe"
 	if _sim.model.patches.has(st.surface_id):
 		var patch: SupportPatch = _sim.model.patches[st.surface_id]
 		if patch.lethal:

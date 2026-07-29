@@ -1,6 +1,6 @@
 class_name CopingEdge
 extends RefCounted
-## Compiled coping with exactly one classification.
+## Geometric coping partitioned into deterministic Z-local behavior spans.
 
 
 var id: String = ""
@@ -9,11 +9,12 @@ var side: int = 0
 var coping_class: int = 0 ## SimKinds.CopingClass
 var z_min: float = 0.0
 var z_max: float = 0.0
-## Effective height along Z (deck top for WALL_EXTENSION).
+## Geometric height only; wall tops live on CopingSpan/WallSurface.
 var height_samples: Array = [] ## {z, height, coping_x}
-var support_patch_id: String = "" ## for SUPPORT_SEAM / WALL_EXTENSION
+var support_patch_id: String = "" ## aggregate compatibility/debug metadata only
 var shared_with_id: String = "" ## opposite coping for SHARED_SPINE
 var outward_sign: float = 1.0
+var spans: Array = [] ## CopingSpan[]; complete non-overlapping Z partition
 
 
 func sample_at_z(z: float) -> Dictionary:
@@ -43,6 +44,18 @@ func contains_z(z: float) -> bool:
 
 func midpoint_z() -> float:
 	return (z_min + z_max) * 0.5
+
+
+func span_at_z(z: float) -> CopingSpan:
+	if spans.is_empty():
+		return null
+	var zc := clampf(z, z_min, z_max)
+	for i in range(spans.size()):
+		var span: CopingSpan = spans[i]
+		var is_last := i == spans.size() - 1
+		if zc >= span.z_min - 0.001 and (zc < span.z_max - 0.001 or is_last):
+			return span
+	return spans[-1] as CopingSpan
 
 
 func class_name_str() -> String:

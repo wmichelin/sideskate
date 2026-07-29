@@ -8,6 +8,8 @@ func run() -> bool:
 		and _deck_backed_is_open()
 		and _spine_shared()
 		and _layered_cross_story_spine()
+		and _cross_story_spans_are_explicit()
+		and _cross_story_contact_ownership()
 		and _open_coping()
 		and _playable_levels_compile()
 	)
@@ -104,9 +106,92 @@ func _layered_cross_story_spine() -> bool:
 		z = clampf((p2.z_min + p2.z_max) * 0.5, l0_pipe.z_min, l0_pipe.z_max)
 		break
 	var h_geom := l0_pipe.height_at_theta(z, PI * 0.5)
-	var h_eff := float(l0_right.sample_at_z(z).height)
+	var span := l0_right.span_at_z(z)
+	if span == null or span.wall_id.is_empty() or not m.walls.has(span.wall_id):
+		push_error("cross-story span should own an explicit wall")
+		return false
+	var wall: WallSurface = m.walls[span.wall_id]
+	var h_eff := float(wall.sample_at_z(z).top_height)
 	if h_eff <= h_geom + 10.0:
 		push_error("effective lip should be L1 height (%.1f vs geom %.1f)" % [h_eff, h_geom])
+		return false
+	if absf(float(l0_right.sample_at_z(z).height) - h_geom) > 0.01:
+		push_error("geometric coping height was mutated by cross-story compilation")
+		return false
+	return true
+
+
+func _cross_story_spans_are_explicit() -> bool:
+	var m := IdlCompiler.compile_path("res://tests/levels/sim/sim_cross_story.ssk")
+	if not m.is_valid():
+		push_error("cross-story fixture compile fail")
+		return false
+	var source: PipeSurface = null
+	for id in m.all_pipe_ids():
+		var pipe: PipeSurface = m.pipes[id]
+		if str(id).contains("L0") and pipe.side == SimKinds.PipeSide.RIGHT:
+			source = pipe
+			break
+	if source == null:
+		push_error("cross-story fixture missing source pipe")
+		return false
+	var cope: CopingEdge = m.copings[source.coping_id]
+	var wall_spans := 0
+	var open_spans := 0
+	for span_value in cope.spans:
+		var span: CopingSpan = span_value
+		if not span.wall_id.is_empty():
+			wall_spans += 1
+			var wall: WallSurface = m.walls.get(span.wall_id)
+			if wall == null or wall.upper_partner_pipe_id.is_empty():
+				push_error("wall span missing action-only upper partner")
+				return false
+		else:
+			open_spans += 1
+	if wall_spans != 2 or open_spans < 1:
+		push_error("expected 2 wall Z spans plus a hole span, got %d/%d" % [wall_spans, open_spans])
+		return false
+	var hash_again := IdlCompiler.compile_path(
+		"res://tests/levels/sim/sim_cross_story.ssk"
+	).model_hash
+	if m.model_hash != hash_again:
+		push_error("canonical topology hash is not deterministic")
+		return false
+	return true
+
+
+func _cross_story_contact_ownership() -> bool:
+	var m := IdlCompiler.compile_path("res://tests/levels/sim/sim_cross_story.ssk")
+	var query := SurfaceQuery.new(m)
+	var wall: WallSurface = null
+	for id in m.all_wall_ids():
+		wall = m.walls[id]
+		break
+	if wall == null:
+		push_error("contact ownership fixture has no wall")
+		return false
+	var z := (wall.z_min + wall.z_max) * 0.5
+	var sample := wall.sample_at_z(z)
+	var x := float(sample.x)
+	var h := (float(sample.bottom_height) + float(sample.top_height)) * 0.5
+	var edge := query.edge_at(wall.source_pipe_id, z, "coping")
+	if edge == null or edge.to_surface_id != wall.id:
+		push_error("source coping does not resolve uniquely to wall")
+		return false
+	var boundary_hit := query.blocker_at(Vector3(x, z, h))
+	if str(boundary_hit.get("feature_id", "")) != wall.id:
+		push_error("shared boundary owner should be wall, got %s" % boundary_hit)
+		return false
+	var sweep := query.sweep_capsule(Vector3(x - 1.0, z, h), Vector3(x + 1.0, z, h))
+	if str(sweep.get("feature_id", "")) != wall.id \
+			or not sweep.has("projection") or not sweep.has("normal") or not sweep.has("t"):
+		push_error("uniform swept contact should select wall first: %s" % sweep)
+		return false
+	var source_side := query.blocker_at(
+		Vector3(x - SimTolerances.CONTACT_EPS * 2.0, z, h)
+	)
+	if not source_side.is_empty():
+		push_error("source side of wall should remain ride-space: %s" % source_side)
 		return false
 	return true
 
@@ -135,6 +220,7 @@ func _playable_levels_compile() -> bool:
 		"res://levels/layered_demo.ssk",
 		"res://levels/variable_height_ramps.ssk",
 		"res://tests/levels/test_halfpipe.ssk",
+		"res://tests/levels/sim/sim_cross_story.ssk",
 	]:
 		var m: ParkModel = IdlCompiler.compile_path(path)
 		if not m.is_valid():

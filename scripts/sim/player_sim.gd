@@ -61,8 +61,10 @@ func set_input(wish: Vector2, _action_down: bool, action_edge: bool, ollie_down:
 func tick(delta: float = SimTolerances.FIXED_DT) -> void:
 	if state == null or not state.alive:
 		return
+	var previous_surface_id := state.surface_id
 	state.tick += 1
 	_try_actions()
+	var planned_surface_change := state.has_maneuver()
 	if state.is_grounded():
 		ground.step(
 			state,
@@ -80,6 +82,7 @@ func tick(delta: float = SimTolerances.FIXED_DT) -> void:
 	else:
 		air.step(state, last_wish, delta)
 	_assert_finite()
+	_assert_invariants(previous_surface_id, planned_surface_change)
 	debug.capture(state, model, query)
 	trace.record(state, last_wish, action_just)
 	action_just = false
@@ -87,8 +90,22 @@ func tick(delta: float = SimTolerances.FIXED_DT) -> void:
 
 func _try_actions() -> void:
 	# Fly-out: stick-only at OPEN coping while grounded OR hang-airing above it.
-	var fly_eligible := not state.has_maneuver() and (
-		(state.is_grounded() and model.pipes.has(state.surface_id) and state.u >= 0.98)
+	var transfer_edge: TopologyEdge = null
+	if state.is_hanging():
+		transfer_edge = model.edges.get(state.hang_edge_id)
+	elif state.is_grounded() and model.walls.has(state.surface_id):
+		transfer_edge = query.edge_at(state.surface_id, state.position.y, "top")
+	var action_targets_transfer := (
+		action_just
+		and transfer_edge != null
+		and not transfer_edge.transfer_target_id.is_empty()
+	)
+	var fly_eligible := not action_targets_transfer and not state.has_maneuver() and (
+		(
+			state.is_grounded()
+			and (model.pipes.has(state.surface_id) or model.walls.has(state.surface_id))
+			and state.u >= 0.98
+		)
 		or state.is_hanging()
 	)
 	if fly_eligible:
@@ -136,7 +153,44 @@ func _assert_finite() -> void:
 	var v := state.velocity
 	if is_nan(p.x) or is_nan(p.y) or is_nan(p.z) or is_nan(v.x) or is_nan(v.y) or is_nan(v.z):
 		push_error("PlayerSim NaN at tick %d" % state.tick)
-		state.alive = false
+
+
+func _assert_invariants(previous_surface_id: String, planned_surface_change: bool) -> void:
+	if not state.alive:
+		return
+	if state.is_grounded():
+		var owners := int(model.patches.has(state.surface_id)) \
+			+ int(model.pipes.has(state.surface_id)) \
+			+ int(model.walls.has(state.surface_id))
+		if owners != 1:
+			push_error(
+				"PlayerSim grounded owner invariant at tick %d: %s"
+				% [state.tick, state.surface_id]
+			)
+			return
+		if (model.pipes.has(state.surface_id) or model.walls.has(state.surface_id)) \
+				and (state.u < -0.001 or state.u > 1.001):
+			push_error(
+				"PlayerSim surface coordinate invariant at tick %d: %s u=%.4f"
+				% [state.tick, state.surface_id, state.u]
+			)
+			return
+		var blocker := query.blocker_at(state.position)
+		if not blocker.is_empty() \
+				and str(blocker.get("surface_id", "")) != state.surface_id:
+			push_error(
+				"PlayerSim solid penetration at tick %d: owner=%s hit=%s"
+				% [state.tick, state.surface_id, blocker]
+			)
+			return
+	if model.pipes.has(previous_surface_id) and model.pipes.has(state.surface_id):
+		var before: PipeSurface = model.pipes[previous_surface_id]
+		var after: PipeSurface = model.pipes[state.surface_id]
+		if before.side != after.side and not planned_surface_change:
+			push_error(
+				"PlayerSim unplanned opposite surface change at tick %d: %s -> %s"
+				% [state.tick, previous_surface_id, state.surface_id]
+			)
 
 
 func respawn() -> void:

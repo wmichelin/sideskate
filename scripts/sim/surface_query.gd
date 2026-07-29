@@ -77,25 +77,48 @@ func project_to_surface(surface_id: String, x: float, z: float, h: float) -> Dic
 	if model.pipes.has(surface_id):
 		var pipe: PipeSurface = model.pipes[surface_id]
 		return pipe.project(x, z, h)
+	if model.walls.has(surface_id):
+		var wall: WallSurface = model.walls[surface_id]
+		return wall.project(x, z, h)
 	return {"ok": false}
 
 
-## First topological edge crossed when advancing pipe u toward its gate.
-## WALL_EXTENSION uses u_gate=2 (wall top); others typically gate at 1 (geometric coping).
-func crossed_edge(surface_id: String, old_u: float, new_u: float) -> Dictionary:
+## Unique compiled edge for one surface boundary at this Z.
+func edge_at(surface_id: String, z: float, boundary: String) -> TopologyEdge:
 	if model == null:
-		return {}
-	for eid in model.edges.keys():
+		return null
+	for eid in model.all_edge_ids():
 		var edge: TopologyEdge = model.edges[eid]
-		if edge.from_surface_id != surface_id:
+		if edge.from_surface_id != surface_id or edge.boundary != boundary:
 			continue
-		var gate := edge.u_gate
-		if old_u < gate - 0.0001 and new_u >= gate - 0.0001:
-			return {
-				"edge": edge,
-				"edge_id": edge.id,
-				"remainder_u": new_u - gate,
-			}
+		if edge.contains_z(z):
+			return edge
+	return null
+
+
+func edge_anchor_sample(edge: TopologyEdge, z: float) -> Dictionary:
+	if edge == null or not edge.contains_z(z):
+		return {}
+	if model.walls.has(edge.from_surface_id):
+		var wall: WallSurface = model.walls[edge.from_surface_id]
+		var ws := wall.sample_at_z(z)
+		var cope: CopingEdge = model.copings.get(wall.source_coping_id)
+		return {
+			"x": float(ws.x),
+			"height": float(ws.top_height) if edge.boundary == "top" else float(ws.bottom_height),
+			"outward_sign": cope.outward_sign if cope != null else 0.0,
+			"source_pipe_id": wall.source_pipe_id,
+			"source_surface_id": wall.id,
+		}
+	if model.pipes.has(edge.from_surface_id):
+		var pipe: PipeSurface = model.pipes[edge.from_surface_id]
+		return {
+			"x": pipe.coping_x_at(z),
+			"height": pipe.height_at_theta(z, PI * 0.5),
+			"outward_sign": pipe.outward_sign(),
+			"source_pipe_id": pipe.id,
+			"source_surface_id": pipe.id,
+		}
 	return {}
 
 
@@ -117,6 +140,7 @@ func copings_in_direction(
 		var samp := cope.sample_at_z(z)
 		if samp.is_empty():
 			continue
+		var span := cope.span_at_z(z)
 		var cx := float(samp.coping_x)
 		var dx := cx - x
 		if dx * dir <= 0.0:
@@ -134,7 +158,7 @@ func copings_in_direction(
 			"coping_x": cx,
 			"height": float(samp.height),
 			"side": cope.side,
-			"class": cope.coping_class,
+			"class": span.coping_class if span != null else cope.coping_class,
 		})
 	out.sort_custom(func(a, b):
 		var dd := float(a.distance) - float(b.distance)
@@ -159,8 +183,8 @@ func sweep_capsule(from: Vector3, to: Vector3) -> Dictionary:
 	# from/to = Vector3(x, z, height)
 	var motion := to - from
 	var steps := maxi(1, int(ceil(motion.length() / maxf(SimTolerances.CAPSULE_RADIUS * 0.5, 1.0))))
-	var earliest := {}
-	var earliest_t := INF
+	var earliest := _wall_sweep_contact(from, to)
+	var earliest_t := float(earliest.get("t", INF))
 	for i in range(1, steps + 1):
 		var t := float(i) / float(steps)
 		var p := from.lerp(to, t)
@@ -173,6 +197,54 @@ func sweep_capsule(from: Vector3, to: Vector3) -> Dictionary:
 	return earliest
 
 
+func _wall_sweep_contact(from: Vector3, to: Vector3) -> Dictionary:
+	var best := {}
+	var best_t := INF
+	for wall_id in model.all_wall_ids():
+		var wall: WallSurface = model.walls[wall_id]
+		var mid_z := (from.y + to.y) * 0.5
+		if not wall.contains_z(mid_z):
+			continue
+		var ws := wall.sample_at_z(mid_z)
+		var wx := float(ws.x)
+		var t := INF
+		var dx0 := from.x - wx
+		var dx1 := to.x - wx
+		if dx0 * dx1 <= 0.0 and absf(to.x - from.x) > 0.0001:
+			t = clampf((wx - from.x) / (to.x - from.x), 0.0, 1.0)
+		elif absf(dx0) <= SimTolerances.CONTACT_EPS \
+				and from.z > float(ws.top_height) \
+				and to.z <= float(ws.top_height):
+			t = clampf(
+				(from.z - float(ws.top_height)) / maxf(from.z - to.z, 0.0001),
+				0.0,
+				1.0
+			)
+		if t >= best_t:
+			continue
+		var point := from.lerp(to, t)
+		if not wall.contains_z(point.y):
+			continue
+		ws = wall.sample_at_z(point.y)
+		if point.z < float(ws.bottom_height) - SimTolerances.CONTACT_EPS \
+				or point.z > float(ws.top_height) + SimTolerances.CONTACT_EPS:
+			continue
+		var cope: CopingEdge = model.copings[wall.source_coping_id]
+		best_t = t
+		best = {
+			"kind": "wall",
+			"feature_id": wall.id,
+			"surface_id": wall.id,
+			"coping_id": wall.source_coping_id,
+			"projection": wall.position_at(point.y, wall.u_at_height(point.y, point.z)),
+			"normal": Vector3(-cope.outward_sign, 0.0, 0.0),
+			"point": point,
+			"t": t,
+			"reason": "wall surface crossing",
+		}
+	return best
+
+
 func _blocker_at(p: Vector3) -> Dictionary:
 	var x := p.x
 	var z := p.y
@@ -181,21 +253,36 @@ func _blocker_at(p: Vector3) -> Dictionary:
 	# Edge pipe copings sit on x=0 / x=width (and z faces for depth); those poses
 	# remain free. Past the face is solid.
 	if x < 0.0:
-		return {"kind": "bounds", "axis": "x", "sign": -1.0, "reason": "west wall"}
+		return {
+			"kind": "bounds", "feature_id": "__west__", "axis": "x",
+			"sign": -1.0, "normal": Vector3(1, 0, 0), "reason": "west wall",
+		}
 	if x > model.width:
-		return {"kind": "bounds", "axis": "x", "sign": 1.0, "reason": "east wall"}
+		return {
+			"kind": "bounds", "feature_id": "__east__", "axis": "x",
+			"sign": 1.0, "normal": Vector3(-1, 0, 0), "reason": "east wall",
+		}
 	if z <= 0.0:
-		return {"kind": "bounds", "axis": "z", "sign": -1.0, "reason": "near wall"}
+		return {
+			"kind": "bounds", "feature_id": "__near__", "axis": "z",
+			"sign": -1.0, "normal": Vector3(0, 1, 0), "reason": "near wall",
+		}
 	if z >= model.depth:
-		return {"kind": "bounds", "axis": "z", "sign": 1.0, "reason": "far wall"}
+		return {
+			"kind": "bounds", "feature_id": "__far__", "axis": "z",
+			"sign": 1.0, "normal": Vector3(0, -1, 0), "reason": "far wall",
+		}
 	# Non-playable footprint (space) — solid invisible wall, never fall out.
 	var cell := model.cell_at(x, z)
 	if not model.is_playable_cell(cell.x, cell.y):
-		return {"kind": "bounds", "axis": "", "sign": 0.0, "reason": "unplayable cell"}
-	# Foreign pipe body: below the ride surface inside a pipe footprint = clipping through.
-	for pipe_id in model.pipes.keys():
+		return {
+			"kind": "bounds", "feature_id": "__space__", "axis": "",
+			"sign": 0.0, "normal": Vector3.ZERO, "reason": "unplayable cell",
+		}
+	# Pipe solid interiors are one-sided and exclude the coping boundary.
+	for pipe_id in model.all_pipe_ids():
 		var pipe: PipeSurface = model.pipes[pipe_id]
-		if not pipe.contains_xz(x, z):
+		if not pipe.contains_solid_xz(x, z):
 			continue
 		var proj := pipe.project(x, z, h)
 		if not bool(proj.get("ok", false)):
@@ -204,11 +291,16 @@ func _blocker_at(p: Vector3) -> Dictionary:
 		if h < ph - SimTolerances.CONTACT_EPS:
 			return {
 				"kind": "pipe",
+				"feature_id": pipe.id,
 				"surface_id": pipe.id,
+				"projection": proj.point,
+				"normal": proj.normal,
 				"reason": "through pipe body",
 			}
 	# Deck platforms: solid below the top — ride on top only, never through the base.
-	for patch_id in model.patches.keys():
+	var patch_ids: Array = model.patches.keys()
+	patch_ids.sort()
+	for patch_id in patch_ids:
 		var patch: SupportPatch = model.patches[patch_id]
 		if int(patch.kind) != SimKinds.SurfaceKind.DECK:
 			continue
@@ -220,112 +312,57 @@ func _blocker_at(p: Vector3) -> Dictionary:
 		# Below the platform base — open (story below).
 		if h < patch.base_height - SimTolerances.CONTACT_EPS:
 			continue
+		var wall_owns_boundary := false
+		for wall_id in model.all_wall_ids():
+			var owner: WallSurface = model.walls[wall_id]
+			if not owner.contains_z(z):
+				continue
+			var owner_sample := owner.sample_at_z(z)
+			if absf(x - float(owner_sample.x)) <= 0.001 \
+					and h > float(owner_sample.bottom_height) + SimTolerances.CONTACT_EPS \
+					and h <= float(owner_sample.top_height) + SimTolerances.CONTACT_EPS:
+				wall_owns_boundary = true
+				break
+		if wall_owns_boundary:
+			continue
 		return {
 			"kind": "deck",
+			"feature_id": patch.id,
 			"surface_id": patch.id,
+			"projection": Vector3(x, z, patch.height),
+			"normal": Vector3(0, 0, 1),
 			"reason": "through deck body",
 		}
-	# Wall extension solids: inside outward pad volume below pad top near coping.
-	# Only where the upper story that created the wall actually exists — a full-
-	# depth L0 pipe classified from mid-Z must not wall off L1 hole rows.
-	for cid in model.copings.keys():
-		var cope: CopingEdge = model.copings[cid]
-		if cope.coping_class != SimKinds.CopingClass.WALL_EXTENSION:
+	# Floor-backed wall solids use the exact compiled wall Z span and support
+	# patch extent. Cross-story walls are bounded by the upper pipe solid.
+	for wall_id in model.all_wall_ids():
+		var wall: WallSurface = model.walls[wall_id]
+		if not wall.contains_z(z):
 			continue
-		if not cope.contains_z(z):
+		var ws := wall.sample_at_z(z)
+		var wx := float(ws.x)
+		var cope: CopingEdge = model.copings[wall.source_coping_id]
+		if h >= float(ws.top_height) - SimTolerances.CONTACT_EPS:
 			continue
-		if not wall_extension_active_at(cope, z):
+		if h <= float(ws.bottom_height) + SimTolerances.CONTACT_EPS:
 			continue
-		var samp := cope.sample_at_z(z)
-		var cx := float(samp.coping_x)
-		var top := float(samp.height)
-		var out := cope.outward_sign
-		# Thin slab outward from coping.
-		var depth := model.cell_w * 0.5
-		var x0 := cx
-		var x1 := cx + out * depth
-		var lo := minf(x0, x1)
-		var hi := maxf(x0, x1)
-		if x < lo - SimTolerances.CAPSULE_RADIUS or x > hi + SimTolerances.CAPSULE_RADIUS:
-			continue
-		if h >= top + SimTolerances.CONTACT_EPS:
-			continue
-		# Below deck top inside wall slab → blocked.
-		if h < top:
+		var on_face := absf(x - wx) <= 0.001
+		var in_backing := false
+		if not wall.top_support_id.is_empty():
+			var patch: SupportPatch = model.patches.get(wall.top_support_id)
+			in_backing = (
+				patch != null
+				and (x - wx) * cope.outward_sign >= -SimTolerances.CONTACT_EPS
+				and patch.contains_xz(x, z)
+			)
+		if on_face or in_backing:
 			return {
 				"kind": "wall",
-				"coping_id": cid,
+				"feature_id": wall.id,
+				"surface_id": wall.id,
+				"coping_id": wall.source_coping_id,
+				"projection": wall.position_at(z, wall.u_at_height(z, h)),
+				"normal": Vector3(-cope.outward_sign, 0.0, 0.0),
 				"reason": "wall extension",
 			}
 	return {}
-
-
-## True when this pipe’s outward lip abuts a `#` deck (OPEN air/fly corridor).
-## Deck→pipe mounts require acid drop — ordinary land / ground auto-stick do not.
-func pipe_has_outward_deck(pipe: PipeSurface, z: float) -> bool:
-	if model == null or pipe == null:
-		return false
-	var cope: CopingEdge = model.copings.get(pipe.coping_id)
-	if cope == null:
-		return false
-	var samp := cope.sample_at_z(z)
-	if samp.is_empty():
-		return false
-	var cx := float(samp.coping_x)
-	var ch := float(samp.height)
-	var out := cope.outward_sign
-	var probe_x := cx + out * maxf(model.cell_w * 0.25, 1.0)
-	for pid in model.patches.keys():
-		var patch: SupportPatch = model.patches[pid]
-		if int(patch.kind) != SimKinds.SurfaceKind.DECK:
-			continue
-		if not patch.contains_xz(probe_x, z):
-			continue
-		if absf(patch.height - ch) <= maxf(SimTolerances.SEAM_EPS, model.cell_w):
-			return true
-	return false
-
-
-## True when a WALL_EXTENSION still has upper-story geometry at this Z.
-## Full-depth L0 pipes classified from mid-Z must not climb/block in hole rows.
-func wall_extension_active_at(cope: CopingEdge, z: float) -> bool:
-	if not cope.support_patch_id.is_empty():
-		var pad: SupportPatch = model.patches.get(cope.support_patch_id)
-		if pad == null:
-			return false
-		return z >= pad.z_min - SimTolerances.ALIGN_EPS and z <= pad.z_max + SimTolerances.ALIGN_EPS
-	# Cross-story opposite-pipe climb (no pad): only solid where a taller
-	# opposite pipe still overlaps this Z.
-	var max_gap := model.cell_w * 3.0 + SimTolerances.ALIGN_EPS
-	var samp := cope.sample_at_z(z)
-	if samp.is_empty():
-		return false
-	var cx := float(samp.coping_x)
-	for pid in model.pipes.keys():
-		var other: PipeSurface = model.pipes[pid]
-		if other.side == cope.side:
-			continue
-		if z < other.z_min - 0.001 or z > other.z_max + 0.001:
-			continue
-		var ox := other.coping_x_at(z)
-		var oh := other.height_at_theta(z, PI * 0.5)
-		if is_nan(ox) or is_nan(oh):
-			continue
-		var gap := 0.0
-		if cope.side == SimKinds.PipeSide.RIGHT and other.side == SimKinds.PipeSide.LEFT:
-			gap = ox - cx
-		elif cope.side == SimKinds.PipeSide.LEFT and other.side == SimKinds.PipeSide.RIGHT:
-			gap = cx - ox
-		else:
-			continue
-		if gap < -SimTolerances.ALIGN_EPS or gap > max_gap:
-			continue
-		# Geometric coping of `cope`'s pipe at this Z (before raise) ≈ base+radius.
-		if model.pipes.has(cope.pipe_id):
-			var src: PipeSurface = model.pipes[cope.pipe_id]
-			var geom := src.height_at_theta(z, PI * 0.5)
-			if not is_nan(geom) and oh > geom + SimTolerances.SEAM_EPS:
-				return true
-		elif oh > 0.0:
-			return true
-	return false

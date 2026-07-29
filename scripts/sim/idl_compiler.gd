@@ -43,8 +43,8 @@ static func compile_spec(spec: LevelSpec) -> ParkModel:
 	_compile_decks(spec, model)
 	_compile_pipes(spec, model)
 	_classify_copings(spec, model)
-	_build_topology_edges(model)
 	_link_shared_spines(model)
+	_build_topology_edges(model)
 	_add_void_floor(model)
 	model.model_hash = _hash_model(model)
 	return model
@@ -255,97 +255,171 @@ static func _pipe_run_on_row(line: String, glyph: String, pipe: PipeSurface, spe
 static func _classify_copings(spec: LevelSpec, model: ParkModel) -> void:
 	for cope_id in model.copings.keys():
 		var cope: CopingEdge = model.copings[cope_id]
-		var mid_z := cope.midpoint_z()
-		var samp := cope.sample_at_z(mid_z)
-		if samp.is_empty():
-			continue
-		var cx := float(samp.coping_x)
-		var ch := float(samp.height)
-		var out := cope.outward_sign
-		# Probe a point just outward of coping at mid Z.
-		var probe_x := cx + out * maxf(spec.cell_w * 0.25, 1.0)
-		var best_patch: SupportPatch = null
-		var best_h := -INF
+		var breaks: Array[float] = [cope.z_min, cope.z_max]
 		for pid in model.patches.keys():
 			var patch: SupportPatch = model.patches[pid]
-			if patch.lethal:
+			if patch.z_max <= cope.z_min + 0.001 or patch.z_min >= cope.z_max - 0.001:
 				continue
-			if not patch.contains_xz(probe_x, mid_z):
+			breaks.append(clampf(patch.z_min, cope.z_min, cope.z_max))
+			breaks.append(clampf(patch.z_max, cope.z_min, cope.z_max))
+		for pipe_id in model.pipes.keys():
+			var other: PipeSurface = model.pipes[pipe_id]
+			if other.id == cope.pipe_id:
 				continue
-			if patch.height > best_h:
-				best_h = patch.height
-				best_patch = patch
-		if best_patch == null:
-			cope.coping_class = SimKinds.CopingClass.OPEN
+			if other.z_max <= cope.z_min + 0.001 or other.z_min >= cope.z_max - 0.001:
+				continue
+			breaks.append(clampf(other.z_min, cope.z_min, cope.z_max))
+			breaks.append(clampf(other.z_max, cope.z_min, cope.z_max))
+		breaks.sort()
+		var unique: Array[float] = []
+		for value in breaks:
+			if unique.is_empty() or absf(value - unique[-1]) > 0.01:
+				unique.append(value)
+		cope.spans.clear()
+		cope.support_patch_id = ""
+		cope.shared_with_id = ""
+		cope.coping_class = SimKinds.CopingClass.OPEN
+		for i in range(unique.size() - 1):
+			var z0 := unique[i]
+			var z1 := unique[i + 1]
+			if z1 - z0 <= 0.01:
+				continue
+			var mid := (z0 + z1) * 0.5
+			var desc := _classify_coping_at(spec, model, cope, mid)
+			var span := CopingSpan.new()
+			span.id = "span_%s_%d" % [cope.id, cope.spans.size()]
+			span.coping_id = cope.id
+			span.z_min = z0
+			span.z_max = z1
+			span.coping_class = int(desc.class)
+			span.support_patch_id = str(desc.get("support_patch_id", ""))
+			span.outward_deck_id = str(desc.get("outward_deck_id", ""))
+			span.partner_coping_id = str(desc.get("partner_coping_id", ""))
+			var h0 := _effective_height_for_desc(model, cope, desc, z0)
+			var h1 := _effective_height_for_desc(model, cope, desc, z1)
+			span.effective_height_samples = [
+				{"z": z0, "height": h0},
+				{"z": z1, "height": h1},
+			]
+			if span.coping_class == SimKinds.CopingClass.WALL_EXTENSION:
+				var wall := _build_wall_surface(model, cope, span, desc)
+				span.wall_id = wall.id
+				model.walls[wall.id] = wall
+				cope.coping_class = SimKinds.CopingClass.WALL_EXTENSION
+				if not span.support_patch_id.is_empty():
+					cope.support_patch_id = span.support_patch_id
+			elif cope.coping_class != SimKinds.CopingClass.WALL_EXTENSION:
+				cope.coping_class = span.coping_class
+			cope.spans.append(span)
+
+
+static func _classify_coping_at(
+	spec: LevelSpec, model: ParkModel, cope: CopingEdge, z: float
+) -> Dictionary:
+	var samp := cope.sample_at_z(z)
+	if samp.is_empty():
+		return {"class": SimKinds.CopingClass.OPEN}
+	var cx := float(samp.coping_x)
+	var ch := float(samp.height)
+	var out := cope.outward_sign
+	var desc := {"class": SimKinds.CopingClass.OPEN}
+	var probe_x := cx + out * maxf(spec.cell_w * 0.25, 1.0)
+	var best_patch: SupportPatch = null
+	for pid in model.patches.keys():
+		var patch: SupportPatch = model.patches[pid]
+		if patch.lethal or not patch.contains_xz(probe_x, z):
+			continue
+		if best_patch == null or patch.height > best_patch.height:
+			best_patch = patch
+	if best_patch != null:
+		if best_patch.kind == SimKinds.SurfaceKind.DECK:
+			desc = {
+				"class": SimKinds.CopingClass.OPEN,
+				"outward_deck_id": best_patch.id,
+			}
 		else:
 			var dh := best_patch.height - ch
-			# Outward decks are air/fly corridors (never auto-mount / wall-climb).
-			# Only floors form seams or wall extensions.
-			if best_patch.kind == SimKinds.SurfaceKind.DECK:
-				cope.coping_class = SimKinds.CopingClass.OPEN
-			elif absf(dh) <= SimTolerances.SEAM_EPS:
-				cope.coping_class = SimKinds.CopingClass.SUPPORT_SEAM
-				cope.support_patch_id = best_patch.id
+			if absf(dh) <= SimTolerances.SEAM_EPS:
+				desc = {
+					"class": SimKinds.CopingClass.SUPPORT_SEAM,
+					"support_patch_id": best_patch.id,
+				}
 			elif dh > SimTolerances.SEAM_EPS:
-				cope.coping_class = SimKinds.CopingClass.WALL_EXTENSION
-				cope.support_patch_id = best_patch.id
-				for s in cope.height_samples:
-					s["height"] = best_patch.height
-			else:
-				cope.coping_class = SimKinds.CopingClass.OPEN
-		# Cross-story opposite pipe above this lip: climb to that coping, then air/fly.
-		# (e.g. L0 >>> facing L1 <<< — not a deck wall, not L0-height SHARED air-out.)
-		_apply_upper_opposite_wall(model, cope, cx, ch, mid_z)
-
-
-## If an opposite-facing pipe sits outward within gap and taller, raise this lip
-## to that coping as WALL_EXTENSION (no pad mount — air-out/fly at the upper lip).
-static func _apply_upper_opposite_wall(
-	model: ParkModel, cope: CopingEdge, cx: float, ch: float, mid_z: float
-) -> void:
+				desc = {
+					"class": SimKinds.CopingClass.WALL_EXTENSION,
+					"support_patch_id": best_patch.id,
+				}
+	# A taller opposite pipe creates a story wall and is action-only at the top.
 	var max_gap := model.cell_w * 3.0 + SimTolerances.ALIGN_EPS
+	var best_other: PipeSurface = null
 	var best_h := -INF
-	var found := false
-	for pid in model.pipes.keys():
-		var other: PipeSurface = model.pipes[pid]
-		if other.side == cope.side:
+	for pipe_id in model.pipes.keys():
+		var other: PipeSurface = model.pipes[pipe_id]
+		if other.id == cope.pipe_id or other.side == cope.side or not other.contains_xz(
+			other.coping_x_at(z), z
+		):
 			continue
-		if mid_z < other.z_min - 0.001 or mid_z > other.z_max + 0.001:
+		if z < other.z_min - 0.001 or z > other.z_max + 0.001:
 			continue
-		var oc: CopingEdge = model.copings.get(other.coping_id)
-		if oc == null:
-			continue
-		var ox := other.coping_x_at(mid_z)
-		var oh := other.height_at_theta(mid_z, PI * 0.5)
+		var ox := other.coping_x_at(z)
+		var oh := other.height_at_theta(z, PI * 0.5)
 		if is_nan(ox) or is_nan(oh):
 			continue
-		# Must face each other: right cope left of left cope.
-		var gap := 0.0
-		if cope.side == SimKinds.PipeSide.RIGHT and other.side == SimKinds.PipeSide.LEFT:
-			gap = ox - cx
-		elif cope.side == SimKinds.PipeSide.LEFT and other.side == SimKinds.PipeSide.RIGHT:
-			gap = cx - ox
-		else:
-			continue
+		var gap := ox - cx if cope.side == SimKinds.PipeSide.RIGHT else cx - ox
 		if gap < -SimTolerances.ALIGN_EPS or gap > max_gap:
 			continue
-		if oh <= ch + SimTolerances.SEAM_EPS:
+		if oh <= ch + SimTolerances.SEAM_EPS or oh <= best_h:
 			continue
-		if oh > best_h:
-			best_h = oh
-			found = true
-	if not found:
-		return
-	cope.coping_class = SimKinds.CopingClass.WALL_EXTENSION
-	cope.support_patch_id = "" ## upper lip is air/fly, not a floor mount
-	for s in cope.height_samples:
-		s["height"] = best_h
+		best_h = oh
+		best_other = other
+	if best_other != null:
+		desc = {
+			"class": SimKinds.CopingClass.WALL_EXTENSION,
+			"partner_pipe_id": best_other.id,
+			"partner_coping_id": best_other.coping_id,
+		}
+	return desc
+
+
+static func _effective_height_for_desc(
+	model: ParkModel, cope: CopingEdge, desc: Dictionary, z: float
+) -> float:
+	var support_id := str(desc.get("support_patch_id", ""))
+	if model.patches.has(support_id):
+		return model.patches[support_id].height
+	var partner_id := str(desc.get("partner_pipe_id", ""))
+	if model.pipes.has(partner_id):
+		var partner: PipeSurface = model.pipes[partner_id]
+		return partner.height_at_theta(z, PI * 0.5)
+	return float(cope.sample_at_z(z).height)
+
+
+static func _build_wall_surface(
+	model: ParkModel, cope: CopingEdge, span: CopingSpan, desc: Dictionary
+) -> WallSurface:
+	var wall := WallSurface.new()
+	wall.id = "wall_%s" % span.id
+	wall.source_pipe_id = cope.pipe_id
+	wall.source_coping_id = cope.id
+	wall.coping_span_id = span.id
+	wall.z_min = span.z_min
+	wall.z_max = span.z_max
+	wall.top_support_id = span.support_patch_id
+	wall.upper_partner_pipe_id = str(desc.get("partner_pipe_id", ""))
+	for z in [span.z_min, span.z_max]:
+		var geom := cope.sample_at_z(z)
+		wall.samples.append({
+			"z": z,
+			"x": float(geom.coping_x),
+			"bottom_height": float(geom.height),
+			"top_height": span.effective_height_at(z),
+		})
+	return wall
 
 
 static func _link_shared_spines(model: ParkModel) -> void:
 	var ids: Array = model.all_coping_ids()
 	var max_gap := model.cell_w * 3.0 + SimTolerances.ALIGN_EPS
-	## Same-story spines only — cross-story opposite pipes climb as WALL_EXTENSION.
 	var max_dh := SimTolerances.SEAM_EPS * 4.0
 	for i in range(ids.size()):
 		var a: CopingEdge = model.copings[ids[i]]
@@ -353,107 +427,103 @@ static func _link_shared_spines(model: ParkModel) -> void:
 			var b: CopingEdge = model.copings[ids[j]]
 			if a.side == b.side:
 				continue
-			var z0 := maxf(a.z_min, b.z_min)
-			var z1 := minf(a.z_max, b.z_max)
-			if z1 - z0 < SimTolerances.ALIGN_EPS:
-				continue
-			var mid := (z0 + z1) * 0.5
-			var sa := a.sample_at_z(mid)
-			var sb := b.sample_at_z(mid)
-			if sa.is_empty() or sb.is_empty():
-				continue
-			var ah := float(sa.height)
-			var bh := float(sb.height)
-			var dh := absf(ah - bh)
-			if dh > max_dh:
-				continue
 			var right_c: CopingEdge = a if a.side == SimKinds.PipeSide.RIGHT else b
 			var left_c: CopingEdge = b if a.side == SimKinds.PipeSide.RIGHT else a
-			var rx := float(right_c.sample_at_z(mid).coping_x)
-			var lx := float(left_c.sample_at_z(mid).coping_x)
-			var gap := lx - rx
-			if gap < -SimTolerances.ALIGN_EPS or gap > max_gap:
-				continue
-			if not _spine_partner_better(right_c, left_c.id, dh, gap, model):
-				continue
-			if not _spine_partner_better(left_c, right_c.id, dh, gap, model):
-				continue
-			if right_c.coping_class == SimKinds.CopingClass.WALL_EXTENSION:
-				continue
-			if left_c.coping_class == SimKinds.CopingClass.WALL_EXTENSION:
-				continue
-			_clear_spine_partner(model, right_c)
-			_clear_spine_partner(model, left_c)
-			right_c.coping_class = SimKinds.CopingClass.SHARED_SPINE
-			left_c.coping_class = SimKinds.CopingClass.SHARED_SPINE
-			right_c.shared_with_id = left_c.id
-			left_c.shared_with_id = right_c.id
-
-
-static func _clear_spine_partner(model: ParkModel, cope: CopingEdge) -> void:
-	if cope.shared_with_id.is_empty():
-		return
-	var other: CopingEdge = model.copings.get(cope.shared_with_id)
-	if other != null and other.shared_with_id == cope.id:
-		other.shared_with_id = ""
-		if other.coping_class == SimKinds.CopingClass.SHARED_SPINE:
-			other.coping_class = SimKinds.CopingClass.OPEN
-	cope.shared_with_id = ""
-
-
-## True if `candidate_id` is a better shared partner than whatever `cope` has now.
-static func _spine_partner_better(
-	cope: CopingEdge, candidate_id: String, dh: float, gap: float, model: ParkModel
-) -> bool:
-	if cope.shared_with_id.is_empty():
-		return true
-	if cope.shared_with_id == candidate_id:
-		return true
-	var cur: CopingEdge = model.copings.get(cope.shared_with_id)
-	if cur == null:
-		return true
-	var z0 := maxf(cope.z_min, cur.z_min)
-	var z1 := minf(cope.z_max, cur.z_max)
-	var mid := (z0 + z1) * 0.5
-	var sa := cope.sample_at_z(mid)
-	var sb := cur.sample_at_z(mid)
-	if sa.is_empty() or sb.is_empty():
-		return true
-	var cur_dh := absf(float(sa.height) - float(sb.height))
-	var cur_gap := absf(float(sa.coping_x) - float(sb.coping_x))
-	if dh < cur_dh - 0.01:
-		return true
-	if absf(dh - cur_dh) <= 0.01 and gap < cur_gap - 0.01:
-		return true
-	return false
+			var linked := false
+			for span_value in right_c.spans:
+				var right_span: CopingSpan = span_value
+				if right_span.coping_class != SimKinds.CopingClass.OPEN \
+						or not right_span.partner_coping_id.is_empty():
+					continue
+				for left_value in left_c.spans:
+					var left_span: CopingSpan = left_value
+					if left_span.coping_class != SimKinds.CopingClass.OPEN \
+							or not left_span.partner_coping_id.is_empty():
+						continue
+					var z0 := maxf(right_span.z_min, left_span.z_min)
+					var z1 := minf(right_span.z_max, left_span.z_max)
+					if z1 - z0 < SimTolerances.ALIGN_EPS:
+						continue
+					var mid := (z0 + z1) * 0.5
+					var rs := right_c.sample_at_z(mid)
+					var ls := left_c.sample_at_z(mid)
+					var dh := absf(float(rs.height) - float(ls.height))
+					var gap := float(ls.coping_x) - float(rs.coping_x)
+					if dh > max_dh or gap < -SimTolerances.ALIGN_EPS or gap > max_gap:
+						continue
+					right_span.coping_class = SimKinds.CopingClass.SHARED_SPINE
+					right_span.partner_coping_id = left_c.id
+					left_span.coping_class = SimKinds.CopingClass.SHARED_SPINE
+					left_span.partner_coping_id = right_c.id
+					linked = true
+					break
+			if linked:
+				if right_c.coping_class != SimKinds.CopingClass.WALL_EXTENSION:
+					right_c.coping_class = SimKinds.CopingClass.SHARED_SPINE
+					right_c.shared_with_id = left_c.id
+				if left_c.coping_class != SimKinds.CopingClass.WALL_EXTENSION:
+					left_c.coping_class = SimKinds.CopingClass.SHARED_SPINE
+					left_c.shared_with_id = right_c.id
 
 
 static func _build_topology_edges(model: ParkModel) -> void:
+	model.edges.clear()
 	for pipe_id in model.pipes.keys():
 		var pipe: PipeSurface = model.pipes[pipe_id]
 		var cope: CopingEdge = model.copings.get(pipe.coping_id)
 		if cope == null:
 			continue
-		var edge := TopologyEdge.new()
-		edge.id = "edge_%s" % cope.id
-		edge.from_surface_id = pipe.id
-		edge.coping_id = cope.id
-		edge.u_gate = 1.0
-		match cope.coping_class:
-			SimKinds.CopingClass.SUPPORT_SEAM:
+		for span_value in cope.spans:
+			var span: CopingSpan = span_value
+			var edge := TopologyEdge.new()
+			edge.id = "edge_%s_coping" % span.id
+			edge.from_surface_id = pipe.id
+			edge.coping_id = cope.id
+			edge.z_min = span.z_min
+			edge.z_max = span.z_max
+			edge.boundary = "coping"
+			edge.u_gate = 1.0
+			edge.transfer_target_id = span.partner_coping_id
+			if not span.wall_id.is_empty():
 				edge.kind = SimKinds.EdgeKind.SEAM
-				edge.to_surface_id = cope.support_patch_id
-				edge.u_gate = 1.0
-			SimKinds.CopingClass.WALL_EXTENSION:
-				# u∈[0,1] quarter-pipe; u∈(1,2] vertical wall to deck top.
-				edge.kind = SimKinds.EdgeKind.WALL_TOP
-				edge.to_surface_id = cope.support_patch_id
-				edge.u_gate = 2.0
-			SimKinds.CopingClass.OPEN, SimKinds.CopingClass.SHARED_SPINE:
+				edge.to_surface_id = span.wall_id
+			elif span.coping_class == SimKinds.CopingClass.SUPPORT_SEAM:
+				edge.kind = SimKinds.EdgeKind.SEAM
+				edge.to_surface_id = span.support_patch_id
+			else:
 				edge.kind = SimKinds.EdgeKind.OPEN_COPING
 				edge.to_surface_id = ""
-				edge.u_gate = 1.0
-		model.edges[edge.id] = edge
+			model.edges[edge.id] = edge
+	for wall_id in model.walls.keys():
+		var wall: WallSurface = model.walls[wall_id]
+		var bottom := TopologyEdge.new()
+		bottom.id = "edge_%s_bottom" % wall.id
+		bottom.from_surface_id = wall.id
+		bottom.to_surface_id = wall.source_pipe_id
+		bottom.coping_id = wall.source_coping_id
+		bottom.kind = SimKinds.EdgeKind.SEAM
+		bottom.boundary = "bottom"
+		bottom.u_gate = 0.0
+		bottom.z_min = wall.z_min
+		bottom.z_max = wall.z_max
+		model.edges[bottom.id] = bottom
+		var top := TopologyEdge.new()
+		top.id = "edge_%s_top" % wall.id
+		top.from_surface_id = wall.id
+		top.to_surface_id = wall.top_support_id
+		top.coping_id = wall.source_coping_id
+		top.boundary = "top"
+		top.u_gate = 1.0
+		top.z_min = wall.z_min
+		top.z_max = wall.z_max
+		if wall.top_support_id.is_empty():
+			top.kind = SimKinds.EdgeKind.OPEN_COPING
+		else:
+			top.kind = SimKinds.EdgeKind.SEAM
+		if not wall.upper_partner_pipe_id.is_empty():
+			var partner: PipeSurface = model.pipes[wall.upper_partner_pipe_id]
+			top.transfer_target_id = partner.coping_id
+		model.edges[top.id] = top
 
 
 static func _bounds_from_poly(patch: SupportPatch) -> void:
@@ -517,14 +587,78 @@ static func _outline_poly(comp: Array, cw: float, ch: float, grid_h: int) -> Pac
 static func _hash_model(model: ParkModel) -> String:
 	var ctx := HashingContext.new()
 	ctx.start(HashingContext.HASH_SHA256)
-	var buf := PackedByteArray()
-	buf.append_array(model.name.to_utf8_buffer())
+	var lines: PackedStringArray = PackedStringArray()
+	lines.append("name:%s" % model.name)
 	for id in model.all_pipe_ids():
-		buf.append_array(str(id).to_utf8_buffer())
+		var pipe: PipeSurface = model.pipes[id]
+		lines.append("pipe:%s:%d:%.4f:%.4f" % [id, pipe.side, pipe.z_min, pipe.z_max])
+		for sample_value in pipe.samples:
+			var sample: Dictionary = sample_value
+			lines.append(
+				"ps:%.4f:%.4f:%.4f:%.4f"
+				% [sample.z, sample.lip_x, sample.radius, sample.base_height]
+			)
+	for id in model.all_wall_ids():
+		var wall: WallSurface = model.walls[id]
+		lines.append(
+			"wall:%s:%s:%s:%s:%.4f:%.4f"
+			% [
+				id,
+				wall.source_pipe_id,
+				wall.top_support_id,
+				wall.upper_partner_pipe_id,
+				wall.z_min,
+				wall.z_max,
+			]
+		)
+		for sample_value in wall.samples:
+			var sample: Dictionary = sample_value
+			lines.append(
+				"ws:%.4f:%.4f:%.4f:%.4f"
+				% [sample.z, sample.x, sample.bottom_height, sample.top_height]
+			)
 	for id in model.all_coping_ids():
 		var c: CopingEdge = model.copings[id]
-		buf.append_array(("%s:%d" % [id, c.coping_class]).to_utf8_buffer())
-	for id in model.all_patch_ids():
-		buf.append_array(str(id).to_utf8_buffer())
-	ctx.update(buf)
+		lines.append("cope:%s:%d:%s" % [id, c.coping_class, c.shared_with_id])
+		for span_value in c.spans:
+			var span: CopingSpan = span_value
+			lines.append(
+				"span:%s:%d:%.4f:%.4f:%s:%s:%s:%s"
+				% [
+					span.id,
+					span.coping_class,
+					span.z_min,
+					span.z_max,
+					span.support_patch_id,
+					span.outward_deck_id,
+					span.wall_id,
+					span.partner_coping_id,
+				]
+			)
+	var patch_ids: Array = model.all_patch_ids()
+	patch_ids.sort()
+	for id in patch_ids:
+		var patch: SupportPatch = model.patches[id]
+		lines.append(
+			"patch:%s:%d:%.4f:%.4f:%s"
+			% [id, patch.kind, patch.height, patch.base_height, patch.lethal]
+		)
+		for point in patch.poly:
+			lines.append("pp:%.4f:%.4f" % [point.x, point.y])
+	for id in model.all_edge_ids():
+		var edge: TopologyEdge = model.edges[id]
+		lines.append(
+			"edge:%s:%d:%s:%s:%s:%.4f:%.4f:%s"
+			% [
+				id,
+				edge.kind,
+				edge.from_surface_id,
+				edge.to_surface_id,
+				edge.boundary,
+				edge.z_min,
+				edge.z_max,
+				edge.transfer_target_id,
+			]
+		)
+	ctx.update("\n".join(lines).to_utf8_buffer())
 	return ctx.finish().hex_encode()

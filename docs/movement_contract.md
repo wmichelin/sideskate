@@ -25,7 +25,7 @@ Logical axes in this document: **X** left/right, **Z** near/far, **height** up. 
 
 | Term | Alias | Meaning |
 |------|-------|---------|
-| **Air-out** | hang | Leave coping with **X locked** to that pipe’s coping X. Motion is height (+ optionally Z) only. Stick does **not** unlock X. |
+| **Air-out** | hang | Leave a compiled open edge with **X locked** to its anchor. Motion is height (+ optionally Z) only. Stick does **not** unlock X. |
 | **Fly-out** | deck-out | Exit X-lock and travel **away** from the pipe: left on a left pipe, right on a right pipe (world outward). Free-air XZ control after unlock. |
 | **Spine** | — | Explicit transfer onto an **opposite-facing** pipe. Never an automatic ordinary land. |
 
@@ -42,9 +42,10 @@ Same-height outward `#` decks are fly/air corridor — they do **not** auto-moun
 
 While air-out (X-locked):
 
-- Z travel may leave the source pipe’s Z span.
-- Ordinary land may enter **any** pipe that faces the **same** direction and whose coping X aligns with the lock (`ALIGN_EPS`), regardless of layer / absolute height.
-- Ordinary land must **never** accept an opposite-facing pipe (that requires spine).
+- The state retains the exact source edge and surface.
+- Descending through that edge returns to its source pipe or explicit wall with fall speed preserved.
+- Z travel leaving the edge’s compiled span clears the anchor and becomes free air.
+- Ordinary contact must **never** accept the edge’s opposite-facing transfer target (that requires spine).
 - Floors / decks under the locked X remain valid ordinary lands.
 
 ### Spine landing
@@ -56,9 +57,9 @@ Spine is an accepted `ManeuverPlan` only (transfer button while rising/apex). De
 Exactly one of:
 
 1. **Grounded** — `{ surface_id, u, v, tangent_velocity (Vector2 in surface UV speed), facing }`
-2. **Airborne** — `{ position (Vector3: x,z,height), velocity (Vector3), maneuver: ManeuverPlan|null, hang_pipe_id: String }`
+2. **Airborne** — `{ position (Vector3: x,z,height), velocity (Vector3), maneuver: ManeuverPlan|null, hang_edge_id: String }`
 
-`hang_pipe_id` empty ⇒ free air (XZ control). Non-empty ⇒ **air-out**: **X only** locked to that pipe’s coping X at current Z (depth stick still applies; height ballistic). Hang clears on fly-out, spine, acid, or land.
+`hang_edge_id` empty ⇒ free air (XZ control). Non-empty ⇒ **air-out**: X is locked to that edge’s anchor at current Z (depth stick still applies; height ballistic). Hang clears on fly-out, spine, acid, land, or leaving the edge’s Z span.
 
 Crash / death is a terminal grounded→overlay path after **lava** contact only; it is not a third motion state. World borders, unplayable space, and solid geometry are **containment** (invisible walls / void floor) — never crash.
 
@@ -66,16 +67,16 @@ Crash / death is a terminal grounded→overlay path after **lava** contact only;
 
 A transition occurs only via:
 
-- a compiled topology edge (seam / wall extension / open coping), or
+- a compiled topology edge (seam / explicit wall / open anchor), or
 - an accepted immutable `ManeuverPlan`, or
 - the earliest swept blocker/hazard along a proposed free-air segment.
 
 | From | To | Gate |
 |------|----|------|
-| Grounded | Grounded | Continuous `SUPPORT_SEAM`, `WALL_EXTENSION` climb, or same surface UV advance |
+| Grounded | Grounded | Continuous support seam, pipe→wall/wall→pipe seam, or same surface UV advance |
 | Grounded | Airborne (air-out) | Leave `OPEN` / `SHARED_SPINE` coping with rising along (no fly-out) |
 | Grounded | Airborne (free) | Leave unsupported edge / ride-off, or **fly-out** from `OPEN` / `SHARED_SPINE` |
-| Airborne (air-out) | Grounded | Ordinary land: same-facing X-aligned pipe (any height), or floor/deck under lock |
+| Airborne (air-out) | Grounded | Descend through the retained anchor to its source pipe/wall; floor/deck contact under lock may land first |
 | Airborne (air-out) | Airborne (free) | **Fly-out** (X-dominant outward stick in `FLY_OUT_ABOVE` window) |
 | Airborne (air-out) | Airborne+plan | Explicit spine (rising/apex) or acid (descending) |
 | Airborne (free) | Grounded | Ordinary descending land; pipes only if same-facing as travel (never opposite) |
@@ -83,9 +84,9 @@ A transition occurs only via:
 | Airborne+plan | Grounded | Plan landing time reached on destination coping/pipe |
 | Any | Crash | Grounded lava only |
 
-Invisible world-border walls sit on the park AABB faces (X and Z) so you cannot leave the support footprint and fall out. Edge pipe copings on `x=0` / `x=width` remain rideable (they sit on the face, not past it). Unplayable `space`, pipe bodies, **deck volumes** (below the ride top), and wall-extension slabs are solid containment. An invisible `__void_floor__` patch at `VOID_FLOOR` catches fall-through when no other support remains. `#` decks are ride-on-top only — never pass through the base. Map-edge decks/floors are walls — riding off the rim does not enter air into the void.
+Invisible world-border walls sit on the park AABB faces (X and Z) so you cannot leave the support footprint and fall out. Edge pipe copings on `x=0` / `x=width` remain rideable. Unplayable `space`, one-sided pipe interiors, **deck volumes** (below the ride top), and compiled wall/backing volumes are solid containment. An invisible `__void_floor__` patch at `VOID_FLOOR` catches fall-through when no other support remains. `#` decks are ride-on-top only. Map-edge decks/floors are walls.
 
-**Contact rule:** hitting a deck / pipe body / wall-extension **remounts** onto that covering ride surface (deck top, pipe project, or wall pad). Only world borders and unplayable `space` axis-stop. Never pin with zeroed velocity against a face. Outward `#` remains `OPEN` for fly-out (no auto pipe→deck seam); grounded/air contact with the deck **volume** snaps to the deck top. Riding a `#` deck off onto an abutting pipe does **not** auto-mount — fall (gravity); mount that pipe only via **acid** (transfer while descending).
+**Contact ownership:** support projection, edge lookup, and swept solid contact are separate queries. A shared coping boundary has one compiled owner; the exact pipe coping is not inside either pipe solid. Contact returns a stable feature ID, surface, projection, normal, and time. Outward `#` remains `OPEN`; riding its deck off onto an abutting pipe does **not** auto-mount — fall, and mount only via **acid** while descending.
 
 ## Tolerances (`SimTolerances`)
 
@@ -102,18 +103,18 @@ Invisible world-border walls sit on the park AABB faces (X and Z) so you cannot 
 
 No other magic epsilons in solvers.
 
-## Coping classifications
+## Coping spans and wall surfaces
 
-Every compiled `CopingEdge` has exactly one class:
+Every geometric `CopingEdge` is partitioned into non-overlapping Z spans. Each span has one behavior and one topology edge:
 
 | Class | Behavior |
 |-------|----------|
 | `OPEN` | Air-out on rise; fly-out when stick-outward in window |
 | `SUPPORT_SEAM` | Auto-roll onto abutting **floor** at matching height only |
-| `WALL_EXTENSION` | Outward **floor** above coping, **or** taller opposite-facing pipe within gap | Climb `u` 1→2 to effective lip; then mount floor or air/fly |
+| `WALL_EXTENSION` | Seam from pipe `u=1` to an explicit `WallSurface`; wall `u` independently remains in `[0,1]` |
 | `SHARED_SPINE` | Opposite-facing pair at matching height within gap | Spine target; air-out / fly-out like `OPEN` |
 
-Outward `#` decks (any height) ⇒ `OPEN` (air/fly corridor). Matching-height `=` floor ⇒ `SUPPORT_SEAM`. Strictly taller outward floor ⇒ `WALL_EXTENSION`.
+Outward `#` decks (any height) ⇒ `OPEN` (air/fly corridor). Matching-height `=` floor ⇒ `SUPPORT_SEAM`. A taller outward floor or cross-story opposite pipe compiles an explicit wall only for the occupied Z spans. The upper opposite coping is stored as an action-only transfer target, never an ordinary seam.
 
 ## Velocity rules
 
@@ -121,7 +122,8 @@ Outward `#` decks (any height) ⇒ `OPEN` (air/fly corridor). Matching-height `=
 - Grounded / air **depth (Z)**: zero momentum — velocity is stick × max speed; release snaps to 0.
 - Free-air **X**: ballistic — no friction/coast decay; stick steers only while held (accelerate toward wish or brake when opposite). Aligned stick must **not** slow existing `|vx|` toward a lower wish cap. Release conserves vx. Height integrates gravity only.
 - Seam crossing: transport world tangent speed onto the destination surface; no dead-stop.
-- Air-out leave: seed vertical from along at coping; `vx = 0`; lock X to coping until fly-out / spine / acid / land.
+- Pipe→wall and wall→pipe seams preserve tangent speed and consume the crossing once.
+- Air-out leave: seed vertical from wall/pipe tangent; `vx = 0`; retain and lock to the exact edge anchor until fly-out / spine / acid / return.
 - Fly-out / deck-out: clear hang; seed free-air velocity with outward X.
 - Ordinary land: require descending support crossing; pipes only same-facing (air-out: also coping-X aligned, any height); never opposite-facing.
 - Spine/acid land: convert descending vertical into destination pipe along-arc with travel sign preserved; never reverse travel.
@@ -144,4 +146,4 @@ Sort by: directional distance, then absolute height delta, then stable compiled 
 
 ## Assertions (must fail loudly)
 
-NaN pose/velocity, penetration beyond `CONTACT_EPS`, unknown `surface_id`, unconsumed motion after `MAX_EDGE_CROSSINGS`, mid-plan retarget, grounded/airborne disagreement with pose, layer-index branches in solvers.
+NaN pose/velocity, multiple or unknown grounded owners, surface `u` outside `[0,1]`, foreign solid penetration, unplanned opposite-facing surface change, mid-plan retarget, grounded/airborne disagreement with pose, layer-index branches in solvers, or deterministic replay/hash mismatch.

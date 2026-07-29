@@ -19,6 +19,7 @@ var compile_errors: PackedStringArray = PackedStringArray()
 
 var patches: Dictionary = {} ## id -> SupportPatch
 var pipes: Dictionary = {} ## id -> PipeSurface
+var walls: Dictionary = {} ## id -> WallSurface
 var copings: Dictionary = {} ## id -> CopingEdge
 var edges: Dictionary = {} ## id -> TopologyEdge
 var playable_mask: PackedByteArray = PackedByteArray()
@@ -36,6 +37,10 @@ func get_pipe(id: String) -> PipeSurface:
 	return pipes.get(id) as PipeSurface
 
 
+func get_wall(id: String) -> WallSurface:
+	return walls.get(id) as WallSurface
+
+
 func get_coping(id: String) -> CopingEdge:
 	return copings.get(id) as CopingEdge
 
@@ -45,11 +50,25 @@ func all_patch_ids() -> Array:
 
 
 func all_pipe_ids() -> Array:
-	return pipes.keys()
+	var keys: Array = pipes.keys()
+	keys.sort()
+	return keys
+
+
+func all_wall_ids() -> Array:
+	var keys: Array = walls.keys()
+	keys.sort()
+	return keys
 
 
 func all_coping_ids() -> Array:
 	var keys: Array = copings.keys()
+	keys.sort()
+	return keys
+
+
+func all_edge_ids() -> Array:
+	var keys: Array = edges.keys()
 	keys.sort()
 	return keys
 

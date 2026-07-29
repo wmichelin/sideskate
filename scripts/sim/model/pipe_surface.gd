@@ -90,6 +90,19 @@ func contains_xz(x: float, z: float) -> bool:
 	return not is_nan(theta_from_xz(x, z))
 
 
+## Solid interior excludes the coping boundary. The boundary belongs to the
+## coping/wall topology, so stacked pipes cannot both own the same contact.
+func contains_solid_xz(x: float, z: float) -> bool:
+	if not contains_xz(x, z):
+		return false
+	var coping_x := coping_x_at(z)
+	if is_nan(coping_x):
+		return false
+	if side == SimKinds.PipeSide.LEFT:
+		return x > coping_x + 0.001
+	return x < coping_x - 0.001
+
+
 func project(x: float, z: float, h: float) -> Dictionary:
 	var th := theta_from_xz(x, z)
 	if is_nan(th):

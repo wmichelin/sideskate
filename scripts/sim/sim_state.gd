@@ -20,8 +20,8 @@ var position: Vector3 = Vector3.ZERO
 var velocity: Vector3 = Vector3.ZERO
 var facing: String = "r"
 var maneuver = null ## ManeuverPlan or null
-## Non-empty while hang-airing above a pipe coping (X locked until fly-out/spine/acid/land).
-var hang_pipe_id: String = ""
+## Non-empty while air-out is anchored to a compiled OPEN edge.
+var hang_edge_id: String = ""
 var alive: bool = true
 var tick: int = 0
 ## Debug: last rejection reasons.
@@ -37,7 +37,7 @@ func is_airborne() -> bool:
 
 
 func is_hanging() -> bool:
-	return is_airborne() and not hang_pipe_id.is_empty() and maneuver == null
+	return is_airborne() and not hang_edge_id.is_empty() and maneuver == null
 
 
 func has_maneuver() -> bool:
@@ -45,7 +45,7 @@ func has_maneuver() -> bool:
 
 
 func clear_hang() -> void:
-	hang_pipe_id = ""
+	hang_edge_id = ""
 
 
 func to_dict() -> Dictionary:
@@ -61,7 +61,7 @@ func to_dict() -> Dictionary:
 		"alive": alive,
 		"tick": tick,
 		"has_maneuver": has_maneuver(),
-		"hang_pipe_id": hang_pipe_id,
+		"hang_edge_id": hang_edge_id,
 		"last_reject": last_reject,
 	}
 
@@ -73,7 +73,7 @@ func state_hash() -> String:
 		mode, surface_id, u, v,
 		position.x, position.y, position.z,
 		velocity.x, velocity.y, velocity.z,
-		facing, hang_pipe_id, tick,
+		facing, hang_edge_id, tick,
 	]
 	ctx.update(s.to_utf8_buffer())
 	return ctx.finish().hex_encode()

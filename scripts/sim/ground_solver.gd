@@ -79,6 +79,11 @@ func step(
 			state, wish, delta, accel, max_speed, max_speed_z,
 			brake, friction, ramp_friction, ollie, ollie_accel
 		)
+	elif model.walls.has(state.surface_id):
+		_step_wall(
+			state, wish, delta, accel, max_speed, max_speed_z,
+			brake, ramp_friction, ollie, ollie_accel
+		)
 	elif model.patches.has(state.surface_id):
 		_step_patch(
 			state, wish, delta, accel, max_speed, max_speed_z,
@@ -224,256 +229,176 @@ func _step_pipe(
 	ollie_accel: float,
 ) -> void:
 	var pipe: PipeSurface = model.pipes[state.surface_id]
-	var cope: CopingEdge = model.copings.get(pipe.coping_id)
-	# Wall climb only where the upper story that created WALL_EXTENSION exists.
-	# Over L1 holes / lava gaps, treat the lip as OPEN (fly-out at geometric).
-	var wall_live := (
-		cope != null
-		and cope.coping_class == SimKinds.CopingClass.WALL_EXTENSION
-		and query.wall_extension_active_at(cope, state.position.y)
-	)
-	if state.u > 1.0 + 0.0001 and cope != null \
-			and cope.coping_class == SimKinds.CopingClass.WALL_EXTENSION:
-		if wall_live:
-			_step_wall_extension(
-				state, pipe, cope, wish, delta, accel, max_speed, max_speed_z,
-				brake, friction, ramp_friction, ollie, ollie_accel
-			)
-			return
-		# Phantom wall band — drop back to geometric lip as OPEN.
-		state.u = 1.0
-		state.position = Vector3(
-			pipe.x_at_theta(state.position.y, PI * 0.5),
-			state.position.y,
-			pipe.height_at_theta(state.position.y, PI * 0.5)
-		)
-	# Already perched on OPEN coping with leftover along: hang-launch before control/gravity eat it.
-	if state.u >= 0.999 and state.u <= 1.0 + 0.0001 and state.tangent_velocity.x > 1.0:
-		if cope != null and (
-			cope.coping_class == SimKinds.CopingClass.OPEN
-			or cope.coping_class == SimKinds.CopingClass.SHARED_SPINE
-			or (
-				cope.coping_class == SimKinds.CopingClass.WALL_EXTENSION
-				and not query.wall_extension_active_at(cope, state.position.y)
-			)
-		):
-			_launch_from_coping(state, pipe, state.position.y)
-			return
-	var crossings := 0
-	var remaining := delta
-	while remaining > 1e-6 and crossings < SimTolerances.MAX_EDGE_CROSSINGS:
-		crossings += 1
-		# +along = toward coping. Map world wish X by outward so left/right pipes match.
-		var along_wish := wish.x * pipe.outward_sign()
-		var arc_u := minf(state.u, 1.0)
-		var th := arc_u * PI * 0.5
-		# Gravity pulls toward lip (negative along); GRAVITY is negative.
-		var g_along := SimTolerances.GRAVITY * sin(th)
-		state.tangent_velocity.x = _integrate_axis(
-			state.tangent_velocity.x, along_wish, max_speed, accel, brake, ramp_friction, remaining
-		)
-		state.tangent_velocity.x += g_along * remaining
-		state.tangent_velocity.y = _integrate_depth(wish.y, max_speed_z)
-		_apply_ollie_pipe(state, pipe, wish, remaining, max_speed, ollie, ollie_accel)
-		var s := pipe.sample_at_z(state.position.y)
-		var radius := float(s.radius)
-		if radius <= 0.001:
-			break
-		var d_theta := (state.tangent_velocity.x * remaining) / radius
-		var old_u := state.u
-		var new_theta := th + d_theta
-		var raw_z := state.position.y + state.tangent_velocity.y * remaining
-		# Park faces only — pipe Z ends may open into holes / other supports.
-		var new_z := _clamp_park_depth(raw_z)
-		if _pipe_z_out_of_span(pipe, new_z):
-			if _leave_pipe_at_z_end(state, pipe, new_z):
-				remaining = 0.0
-				break
-			new_z = _clamp_world_depth(pipe, new_z)
-			state.tangent_velocity.y = 0.0
-
-		# Lip exit: rolled past θ=0 onto the flat bowl floor.
-		if new_theta <= 0.0:
-			_leave_pipe_at_lip(state, pipe, new_z)
-			remaining = 0.0
-			break
-
-		# WALL_EXTENSION: past geometric coping → climb vertical wall (u 1→2)
-		# only where the upper story exists. Otherwise OPEN air-out at the lip.
-		if new_theta > PI * 0.5 and cope != null \
-				and cope.coping_class == SimKinds.CopingClass.WALL_EXTENSION \
-				and query.wall_extension_active_at(cope, new_z):
-			var excess_arc := (new_theta - PI * 0.5) * radius
-			var h_geom := pipe.height_at_theta(new_z, PI * 0.5)
-			var h_eff := float(cope.sample_at_z(new_z).height)
-			var span := maxf(h_eff - h_geom, 0.001)
-			var h_wall := h_geom + excess_arc
-			state.position = Vector3(pipe.coping_x_at(new_z), new_z, minf(h_wall, h_eff))
-			state.v = clampf((new_z - pipe.z_min) / maxf(pipe.z_max - pipe.z_min, 0.001), 0.0, 1.0)
-			if h_wall >= h_eff - 0.001:
-				state.u = 2.0
-				_mount_wall_top(state, pipe, cope, new_z)
-				remaining = 0.0
-				break
-			state.u = 1.0 + (state.position.z - h_geom) / span
-			remaining = 0.0
-			break
-		# Inactive WALL_EXTENSION past lip → clamp to geometric and launch like OPEN.
-		if new_theta > PI * 0.5 and cope != null \
-				and cope.coping_class == SimKinds.CopingClass.WALL_EXTENSION \
-				and not query.wall_extension_active_at(cope, new_z):
-			state.u = 1.0
-			state.position = Vector3(
-				pipe.x_at_theta(new_z, PI * 0.5),
-				new_z,
-				pipe.height_at_theta(new_z, PI * 0.5)
-			)
-			if state.tangent_velocity.x > 1.0:
-				_launch_from_coping(state, pipe, new_z)
-			remaining = 0.0
-			break
-
-		new_theta = minf(new_theta, PI * 0.5)
-		var new_u := new_theta / (PI * 0.5)
-		var edge := query.crossed_edge(pipe.id, old_u, new_u)
-		if edge.is_empty():
-			state.u = new_u
-			state.v = clampf((new_z - pipe.z_min) / maxf(pipe.z_max - pipe.z_min, 0.001), 0.0, 1.0)
-			state.position = Vector3(
-				pipe.x_at_theta(new_z, new_theta),
-				new_z,
-				pipe.height_at_theta(new_z, new_theta)
-			)
-			remaining = 0.0
-			break
-		# Hit gate (SUPPORT_SEAM / OPEN at u=1, or WALL_TOP at u=2).
-		var te: TopologyEdge = edge.edge
-		var edge_cope: CopingEdge = model.copings.get(te.coping_id)
-		if te.kind == SimKinds.EdgeKind.WALL_TOP and edge_cope != null:
-			_mount_wall_top(state, pipe, edge_cope, new_z)
-			remaining = 0.0
-			break
-		state.u = 1.0
-		state.position = Vector3(
-			pipe.x_at_theta(new_z, PI * 0.5),
-			new_z,
-			pipe.height_at_theta(new_z, PI * 0.5)
-		)
-		if edge_cope != null and edge_cope.coping_class == SimKinds.CopingClass.SUPPORT_SEAM:
-			var dest_id := te.to_surface_id
-			if model.patches.has(dest_id):
-				var patch: SupportPatch = model.patches[dest_id]
-				var out := pipe.outward_sign()
-				var onto := state.position.x + out * SimTolerances.CAPSULE_RADIUS
-				state.surface_id = dest_id
-				state.position = Vector3(onto, new_z, patch.height)
-				state.u = 0.0
-				state.v = 0.0
-				state.tangent_velocity = Vector2(
-					out * absf(state.tangent_velocity.x), state.tangent_velocity.y
-				)
-				remaining = 0.0
-				break
-		# OPEN / SHARED_SPINE: launch into air when rising into coping; else hang.
-		if state.tangent_velocity.x > 1.0:
-			_launch_from_coping(state, pipe, new_z)
-			remaining = 0.0
-			break
-		state.tangent_velocity.x = minf(state.tangent_velocity.x, 0.0)
-		remaining = 0.0
-	if crossings >= SimTolerances.MAX_EDGE_CROSSINGS:
-		push_error("GroundSolver: edge crossing bound exceeded on %s" % pipe.id)
-	if state.is_grounded() and model.pipes.has(state.surface_id):
-		_update_facing_pipe(state, pipe)
-
-
-## Vertical wall face from geometric pipe coping up to deck-top effective coping.
-func _step_wall_extension(
-	state: SimState,
-	pipe: PipeSurface,
-	cope: CopingEdge,
-	wish: Vector2,
-	delta: float,
-	accel: float,
-	max_speed: float,
-	max_speed_z: float,
-	brake: float,
-	friction: float,
-	ramp_friction: float,
-	ollie: bool,
-	ollie_accel: float,
-) -> void:
-	var z := state.position.y
-	var h_geom := pipe.height_at_theta(z, PI * 0.5)
-	var h_eff := float(cope.sample_at_z(z).height)
-	var span := maxf(h_eff - h_geom, 0.001)
-	# +along = up the wall. Gravity pulls down fully on a vertical face.
+	# +along = toward coping. Map world wish X by outward so both sides match.
 	var along_wish := wish.x * pipe.outward_sign()
+	var th := clampf(state.u, 0.0, 1.0) * PI * 0.5
+	var g_along := SimTolerances.GRAVITY * sin(th)
 	state.tangent_velocity.x = _integrate_axis(
 		state.tangent_velocity.x, along_wish, max_speed, accel, brake, ramp_friction, delta
 	)
-	state.tangent_velocity.x += SimTolerances.GRAVITY * delta
+	state.tangent_velocity.x += g_along * delta
 	state.tangent_velocity.y = _integrate_depth(wish.y, max_speed_z)
 	_apply_ollie_pipe(state, pipe, wish, delta, max_speed, ollie, ollie_accel)
-	var old_u := state.u
-	var raw_z := z + state.tangent_velocity.y * delta
+	var sample := pipe.sample_at_z(state.position.y)
+	var radius := float(sample.radius)
+	if radius <= 0.001:
+		return
+	var new_theta := th + state.tangent_velocity.x * delta / radius
+	var raw_z := state.position.y + state.tangent_velocity.y * delta
 	var new_z := _clamp_park_depth(raw_z)
 	if _pipe_z_out_of_span(pipe, new_z):
 		if _leave_pipe_at_z_end(state, pipe, new_z):
 			return
 		new_z = _clamp_world_depth(pipe, new_z)
 		state.tangent_velocity.y = 0.0
-	var new_h := state.position.z + state.tangent_velocity.x * delta
-	# Dropped back onto the quarter-pipe arc.
-	if new_h <= h_geom + 0.001:
-		state.u = 1.0
-		state.position = Vector3(pipe.x_at_theta(new_z, PI * 0.5), new_z, h_geom)
+	if new_theta <= 0.0:
+		_leave_pipe_at_lip(state, pipe, new_z)
+		return
+	if new_theta < PI * 0.5:
+		state.u = new_theta / (PI * 0.5)
 		state.v = clampf((new_z - pipe.z_min) / maxf(pipe.z_max - pipe.z_min, 0.001), 0.0, 1.0)
+		state.position = Vector3(
+			pipe.x_at_theta(new_z, new_theta),
+			new_z,
+			pipe.height_at_theta(new_z, new_theta)
+		)
 		_update_facing_pipe(state, pipe)
 		return
-	# Reached deck-top effective coping.
-	if new_h >= h_eff - 0.001:
-		state.u = 2.0
-		state.position = Vector3(pipe.coping_x_at(new_z), new_z, h_eff)
-		_mount_wall_top(state, pipe, cope, new_z)
-		return
-	state.position = Vector3(pipe.coping_x_at(new_z), new_z, new_h)
-	state.u = 1.0 + (new_h - h_geom) / span
+	state.u = 1.0
 	state.v = clampf((new_z - pipe.z_min) / maxf(pipe.z_max - pipe.z_min, 0.001), 0.0, 1.0)
-	var edge := query.crossed_edge(pipe.id, old_u, state.u)
-	if not edge.is_empty():
-		_mount_wall_top(state, pipe, cope, new_z)
+	state.position = Vector3(
+		pipe.x_at_theta(new_z, PI * 0.5),
+		new_z,
+		pipe.height_at_theta(new_z, PI * 0.5)
+	)
+	var edge := query.edge_at(pipe.id, new_z, "coping")
+	if edge == null:
+		push_error("GroundSolver: missing coping edge for %s at z=%.2f" % [pipe.id, new_z])
+		state.tangent_velocity.x = minf(state.tangent_velocity.x, 0.0)
 		return
-	_update_facing_pipe(state, pipe)
+	if model.walls.has(edge.to_surface_id):
+		var wall: WallSurface = model.walls[edge.to_surface_id]
+		var excess := maxf((new_theta - PI * 0.5) * radius, 0.0)
+		_enter_wall_from_pipe(state, wall, new_z, excess)
+		return
+	if model.patches.has(edge.to_surface_id):
+		_mount_patch_from_edge(state, pipe, model.patches[edge.to_surface_id], new_z)
+		return
+	if state.tangent_velocity.x > 1.0:
+		_launch_from_edge(state, edge, new_z)
+	else:
+		state.tangent_velocity.x = minf(state.tangent_velocity.x, 0.0)
 
 
-## Mount abutting deck/floor at WALL_EXTENSION / SUPPORT effective coping.
-func _mount_wall_top(state: SimState, pipe: PipeSurface, cope: CopingEdge, z: float) -> void:
-	var dest_id := cope.support_patch_id
-	if not model.patches.has(dest_id):
-		# No pad — hang at effective coping.
+func _enter_wall_from_pipe(
+	state: SimState, wall: WallSurface, z: float, excess_height: float
+) -> void:
+	var sample := wall.sample_at_z(z)
+	var bottom := float(sample.bottom_height)
+	var top := float(sample.top_height)
+	var height := bottom + excess_height
+	state.surface_id = wall.id
+	state.v = clampf((z - wall.z_min) / maxf(wall.z_max - wall.z_min, 0.001), 0.0, 1.0)
+	if height >= top - 0.001:
 		state.u = 1.0
-		state.position = Vector3(
-			pipe.coping_x_at(z), z, float(cope.sample_at_z(z).height)
-		)
-		if state.tangent_velocity.x > 1.0:
+		state.position = wall.position_at(z, 1.0)
+		_cross_wall_top(state, wall, z)
+		return
+	state.u = wall.u_at_height(z, height)
+	state.position = wall.position_at(z, state.u)
+
+
+func _step_wall(
+	state: SimState,
+	wish: Vector2,
+	delta: float,
+	accel: float,
+	max_speed: float,
+	max_speed_z: float,
+	brake: float,
+	ramp_friction: float,
+	ollie: bool,
+	ollie_accel: float,
+) -> void:
+	var wall: WallSurface = model.walls[state.surface_id]
+	var source: PipeSurface = model.pipes[wall.source_pipe_id]
+	var along_wish := wish.x * source.outward_sign()
+	state.tangent_velocity.x = _integrate_axis(
+		state.tangent_velocity.x, along_wish, max_speed, accel, brake, ramp_friction, delta
+	)
+	state.tangent_velocity.x += SimTolerances.GRAVITY * delta
+	state.tangent_velocity.y = _integrate_depth(wish.y, max_speed_z)
+	_apply_ollie_pipe(state, source, wish, delta, max_speed, ollie, ollie_accel)
+	var new_z := _clamp_park_depth(state.position.y + state.tangent_velocity.y * delta)
+	if not wall.contains_z(new_z):
+		var source_edge := query.edge_at(source.id, new_z, "coping")
+		if source_edge != null and model.walls.has(source_edge.to_surface_id):
+			wall = model.walls[source_edge.to_surface_id]
+			state.surface_id = wall.id
+		else:
+			# Consume the Z crossing before entering air. Leaving the position on
+			# the old wall face remounts it next tick and pumps vertical speed.
+			state.position = Vector3(state.position.x, new_z, state.position.z)
 			_enter_air(
 				state,
-				Vector3(0.0, state.tangent_velocity.y, state.tangent_velocity.x),
-				pipe.id
+				Vector3(0.0, state.tangent_velocity.y, state.tangent_velocity.x)
 			)
-		else:
-			state.tangent_velocity.x = minf(state.tangent_velocity.x, 0.0)
+			return
+	var sample := wall.sample_at_z(new_z)
+	var bottom := float(sample.bottom_height)
+	var top := float(sample.top_height)
+	var new_height := state.position.z + state.tangent_velocity.x * delta
+	if new_height <= bottom:
+		var radius := float(source.sample_at_z(new_z).radius)
+		var overshoot := bottom - new_height
+		var theta := maxf(PI * 0.5 - overshoot / maxf(radius, 0.001), 0.0)
+		state.surface_id = source.id
+		state.u = theta / (PI * 0.5)
+		state.v = clampf((new_z - source.z_min) / maxf(source.z_max - source.z_min, 0.001), 0.0, 1.0)
+		state.position = Vector3(
+			source.x_at_theta(new_z, theta),
+			new_z,
+			source.height_at_theta(new_z, theta)
+		)
+		_update_facing_pipe(state, source)
 		return
-	var patch: SupportPatch = model.patches[dest_id]
-	var out := pipe.outward_sign()
-	var onto := pipe.coping_x_at(z) + out * SimTolerances.CAPSULE_RADIUS
-	state.mode = SimState.Mode.GROUNDED
-	state.surface_id = dest_id
-	state.position = Vector3(onto, z, patch.height)
+	if new_height >= top:
+		state.u = 1.0
+		state.v = clampf((new_z - wall.z_min) / maxf(wall.z_max - wall.z_min, 0.001), 0.0, 1.0)
+		state.position = wall.position_at(new_z, 1.0)
+		_cross_wall_top(state, wall, new_z)
+		return
+	state.u = wall.u_at_height(new_z, new_height)
+	state.v = clampf((new_z - wall.z_min) / maxf(wall.z_max - wall.z_min, 0.001), 0.0, 1.0)
+	state.position = wall.position_at(new_z, state.u)
+	_update_facing_pipe(state, source)
+
+
+func _cross_wall_top(state: SimState, wall: WallSurface, z: float) -> void:
+	var edge := query.edge_at(wall.id, z, "top")
+	if edge == null:
+		push_error("GroundSolver: missing wall top edge for %s" % wall.id)
+		state.tangent_velocity.x = minf(state.tangent_velocity.x, 0.0)
+		return
+	if model.patches.has(edge.to_surface_id):
+		var source: PipeSurface = model.pipes[wall.source_pipe_id]
+		_mount_patch_from_edge(state, source, model.patches[edge.to_surface_id], z)
+		return
+	if state.tangent_velocity.x > 1.0:
+		_launch_from_edge(state, edge, z)
+	else:
+		state.tangent_velocity.x = minf(state.tangent_velocity.x, 0.0)
+
+
+func _mount_patch_from_edge(
+	state: SimState, source: PipeSurface, patch: SupportPatch, z: float
+) -> void:
+	var out := source.outward_sign()
+	var anchor_x := source.coping_x_at(z)
+	state.surface_id = patch.id
+	state.position = Vector3(anchor_x + out * SimTolerances.CAPSULE_RADIUS, z, patch.height)
 	state.u = 0.0
 	state.v = 0.0
-	# Climb speed → outward onto the deck.
 	state.tangent_velocity = Vector2(
 		out * absf(state.tangent_velocity.x), state.tangent_velocity.y
 	)
@@ -481,21 +406,15 @@ func _mount_wall_top(state: SimState, pipe: PipeSurface, cope: CopingEdge, z: fl
 	state.clear_hang()
 
 
-## Rising into OPEN / SHARED / wall-top hang: X locked to coping.
-## Do not hang-launch at geometric lip of WALL_EXTENSION — climb first.
-func _launch_from_coping(state: SimState, pipe: PipeSurface, z: float) -> void:
-	var along := state.tangent_velocity.x
-	var th := PI * 0.5
-	# Hang remnant: no world X; vh = along·sinθ ≈ along at coping.
-	var world_vh := along * sin(th)
+func _launch_from_edge(state: SimState, edge: TopologyEdge, z: float) -> void:
+	var anchor := query.edge_anchor_sample(edge, z)
+	if anchor.is_empty():
+		push_error("GroundSolver: invalid air-out edge %s" % edge.id)
+		return
+	var world_vh := state.tangent_velocity.x
 	var world_vz := state.tangent_velocity.y
-	state.u = 1.0
-	state.position = Vector3(
-		pipe.x_at_theta(z, th),
-		z,
-		pipe.height_at_theta(z, th)
-	)
-	_enter_air(state, Vector3(0.0, world_vz, world_vh), pipe.id)
+	state.position = Vector3(float(anchor.x), z, float(anchor.height))
+	_enter_air(state, Vector3(0.0, world_vz, world_vh), edge.id)
 
 
 ## Exit pipe at the lip onto abutting floor/deck, or free-air if unsupported.
@@ -551,13 +470,13 @@ func try_mount_surface(state: SimState, x: float, z: float, h: float) -> bool:
 	return true
 
 
-func _enter_air(state: SimState, world_vel: Vector3, hang_pipe_id: String = "") -> void:
+func _enter_air(state: SimState, world_vel: Vector3, hang_edge_id: String = "") -> void:
 	state.mode = SimState.Mode.AIRBORNE
 	state.surface_id = ""
 	state.velocity = world_vel
 	state.maneuver = null
 	state.tangent_velocity = Vector2.ZERO
-	state.hang_pipe_id = hang_pipe_id
+	state.hang_edge_id = hang_edge_id
 
 
 ## Keep pipe depth inside both the pipe loft and the park AABB (inset from faces).
@@ -589,9 +508,6 @@ func _leave_pipe_at_z_end(state: SimState, pipe: PipeSurface, proposed_z: float)
 	var end_z := clampf(proposed_z, pipe.z_min, pipe.z_max)
 	var x := pipe.x_at_theta(end_z, theta)
 	var h := pipe.height_at_theta(end_z, theta)
-	if state.u > 1.0 + 0.0001:
-		x = pipe.coping_x_at(end_z)
-		h = state.position.z
 	var world_vx := state.tangent_velocity.x * pipe.outward_sign()
 	var world_vz := state.tangent_velocity.y
 	# Prefer a continuous support beyond the end at this height.
@@ -619,7 +535,6 @@ func _leave_pipe_at_z_end(state: SimState, pipe: PipeSurface, proposed_z: float)
 		return false
 	var probe := Vector3(x, proposed_z, h)
 	var hit := query.blocker_at(probe)
-	# Phantom wall-extensions in hole rows should not trap a Z ride-off.
 	if not hit.is_empty() and str(hit.get("kind", "")) == "pipe":
 		# Still inside another pipe body — let that mount path claim next tick.
 		pass
@@ -630,9 +545,6 @@ func _leave_pipe_at_z_end(state: SimState, pipe: PipeSurface, proposed_z: float)
 
 ## Snap grounded feet onto their surface; if buried in foreign solid, remount it.
 func _ensure_surface_contact(state: SimState) -> void:
-	# Wall-climb pose is off the quarter-pipe project band — do not remount.
-	if model.pipes.has(state.surface_id) and state.u > 1.0 + 0.0001:
-		return
 	if model.pipes.has(state.surface_id):
 		var pipe: PipeSurface = model.pipes[state.surface_id]
 		var proj := pipe.project(state.position.x, state.position.y, state.position.z)
@@ -640,6 +552,14 @@ func _ensure_surface_contact(state: SimState) -> void:
 			state.position = proj.point
 			state.u = float(proj.u)
 			state.v = float(proj.v)
+	elif model.walls.has(state.surface_id):
+		var wall: WallSurface = model.walls[state.surface_id]
+		state.position = wall.position_at(state.position.y, state.u)
+		state.v = clampf(
+			(state.position.y - wall.z_min) / maxf(wall.z_max - wall.z_min, 0.001),
+			0.0,
+			1.0
+		)
 	elif model.patches.has(state.surface_id):
 		var patch: SupportPatch = model.patches[state.surface_id]
 		state.position.z = patch.height
@@ -661,7 +581,7 @@ func _ensure_surface_contact(state: SimState) -> void:
 	elif kind == "deck":
 		_rescue_deck_top(state)
 	elif kind == "wall":
-		# Own pipe's wall-extension is climbed via u∈(1,2] — do not teleport to pad.
+		# Own explicit wall is already the grounded contact owner.
 		if _wall_hit_is_own_pipe(state, hit):
 			return
 		_mount_wall_from_hit(state, hit, state.position)
@@ -725,70 +645,48 @@ func _mount_deck_from_hit(state: SimState, hit: Dictionary, at: Vector3) -> bool
 	return true
 
 
-## Wall-extension contact while grounded: pad, else pipe at coping, never pin.
+## Floor-backed wall contact mounts its compiled top support. Cross-story walls
+## have no auto destination; the opposite pipe remains maneuver-only.
 func _mount_wall_from_hit(state: SimState, hit: Dictionary, at: Vector3) -> bool:
-	var cid := str(hit.get("coping_id", ""))
-	var cope: CopingEdge = model.copings.get(cid)
-	if cope == null:
+	var wall_id := str(hit.get("surface_id", ""))
+	var wall: WallSurface = model.walls.get(wall_id)
+	if wall == null:
 		return false
-	var samp := cope.sample_at_z(at.y)
+	if wall.top_support_id.is_empty():
+		var projection := wall.project(at.x, at.y, at.z)
+		if not bool(projection.get("ok", false)):
+			return false
+		var along := state.velocity.z if state.is_airborne() else state.tangent_velocity.x
+		var depth_speed := state.velocity.y if state.is_airborne() else state.tangent_velocity.y
+		state.mode = SimState.Mode.GROUNDED
+		state.surface_id = wall.id
+		state.u = float(projection.u)
+		state.v = float(projection.v)
+		state.position = projection.point
+		state.tangent_velocity = Vector2(along, depth_speed)
+		state.velocity = Vector3.ZERO
+		state.clear_hang()
+		return true
+	var patch: SupportPatch = model.patches.get(wall.top_support_id)
+	if patch == null:
+		return false
+	var cope: CopingEdge = model.copings[wall.source_coping_id]
+	var samp := wall.sample_at_z(at.y)
 	var world_vx := state.tangent_velocity.x
 	var world_vz := state.tangent_velocity.y
 	if model.pipes.has(state.surface_id):
 		var cur: PipeSurface = model.pipes[state.surface_id]
 		world_vx = state.tangent_velocity.x * cur.outward_sign()
-	if model.patches.has(cope.support_patch_id):
-		var pad: SupportPatch = model.patches[cope.support_patch_id]
-		var out := cope.outward_sign
-		state.mode = SimState.Mode.GROUNDED
-		state.surface_id = pad.id
-		state.u = 0.0
-		state.v = 0.0
-		state.position = Vector3(
-			float(samp.coping_x) + out * SimTolerances.CAPSULE_RADIUS,
-			at.y,
-			pad.height
-		)
-		state.tangent_velocity = Vector2(world_vx, world_vz)
-		state.velocity = Vector3.ZERO
-		state.clear_hang()
-		return true
-	# No pad — mount the nearest pipe whose coping matches (story by height).
-	var cx := float(samp.get("coping_x", at.x))
-	var best: PipeSurface = null
-	var best_proj: Dictionary = {}
-	var best_dh := INF
-	for id in model.pipes.keys():
-		var pipe: PipeSurface = model.pipes[id]
-		if at.y < pipe.z_min - 0.001 or at.y > pipe.z_max + 0.001:
-			continue
-		var pcx := pipe.coping_x_at(at.y)
-		if is_nan(pcx) or absf(pcx - cx) > model.cell_w:
-			continue
-		var proj := pipe.project(at.x, at.y, at.z)
-		if not bool(proj.get("ok", false)):
-			var lip_h := pipe.height_at_theta(at.y, PI * 0.5)
-			if not is_nan(lip_h):
-				proj = pipe.project(pcx, at.y, lip_h)
-		if not bool(proj.get("ok", false)):
-			continue
-		var dh := absf(float(proj.point.z) - at.z)
-		var max_dh := maxf(float(proj.get("radius", 40.0)), 40.0)
-		if dh > max_dh:
-			continue
-		if dh < best_dh:
-			best_dh = dh
-			best = pipe
-			best_proj = proj
-	if best == null:
-		return false
 	state.mode = SimState.Mode.GROUNDED
-	state.surface_id = best.id
-	state.u = float(best_proj.u)
-	state.v = float(best_proj.v)
-	state.position = best_proj.point
-	state.tangent_velocity.x = world_vx * best.outward_sign()
-	state.tangent_velocity.y = world_vz
+	state.surface_id = patch.id
+	state.u = 0.0
+	state.v = 0.0
+	state.position = Vector3(
+		float(samp.x) + cope.outward_sign * SimTolerances.CAPSULE_RADIUS,
+		at.y,
+		patch.height
+	)
+	state.tangent_velocity = Vector2(world_vx, world_vz)
 	state.velocity = Vector3.ZERO
 	state.clear_hang()
 	return true
@@ -825,16 +723,10 @@ func _resolve_solid_contact(state: SimState, hit: Dictionary, at: Vector3) -> bo
 
 
 func _wall_hit_is_own_pipe(state: SimState, hit: Dictionary) -> bool:
-	if not model.pipes.has(state.surface_id):
+	var wall: WallSurface = model.walls.get(str(hit.get("surface_id", "")))
+	if wall == null:
 		return false
-	var cid := str(hit.get("coping_id", ""))
-	var cope: CopingEdge = model.copings.get(cid)
-	if cope == null:
-		return false
-	return cope.pipe_id == state.surface_id or (
-		model.pipes.has(cope.pipe_id)
-		and model.pipes[state.surface_id].coping_id == cid
-	)
+	return state.surface_id == wall.id or state.surface_id == wall.source_pipe_id
 
 
 ## Keep grounded XZ inside world + playable cells. Axis-slide on borders/space.
