@@ -563,6 +563,8 @@ func try_mount_surface(state: SimState, x: float, z: float, h: float) -> bool:
 
 
 func _enter_air(state: SimState, world_vel: Vector3, hang_edge_id: String = "") -> void:
+	if state.is_grounded() and not state.surface_id.is_empty():
+		state.air_launch_surface_id = state.surface_id
 	state.mode = SimState.Mode.AIRBORNE
 	state.surface_id = ""
 	state.velocity = world_vel

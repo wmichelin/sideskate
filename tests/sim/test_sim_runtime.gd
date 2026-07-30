@@ -23,6 +23,8 @@ func run() -> bool:
 		and _ollie_single_charge_replenishes_on_ground()
 		and _ollie_on_pipe_pops_world_up_not_along_tangent()
 		and _ollie_on_pipe_lip_enters_hang()
+		and _ollie_short_deck_return_no_tunnel()
+		and _ollie_pipe_low_vx_descending_remounts()
 		and _coast_with_zero_friction()
 		and _air_no_x_friction()
 		and _wall_extension_climbs()
@@ -948,6 +950,111 @@ func _ollie_on_pipe_lip_enters_hang() -> bool:
 		push_error(
 			"lip hang should sit on coping x=%s got %s" % [lock_x, sim.state.position.x]
 		)
+		return false
+	return true
+
+
+func _ollie_short_deck_return_no_tunnel() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_ramp_deck.ssk"):
+		push_error("setup short deck ollie")
+		return false
+	# Stand on the center deck pad.
+	var deck_id := ""
+	for sid in sim.model.patches.keys():
+		var patch: SupportPatch = sim.model.patches[sid]
+		if patch.kind == SimKinds.SurfaceKind.DECK:
+			deck_id = sid
+			sim.state.mode = SimState.Mode.GROUNDED
+			sim.state.surface_id = sid
+			sim.state.position = Vector3(
+				(patch.x_min + patch.x_max) * 0.5,
+				(patch.z_min + patch.z_max) * 0.5,
+				patch.height
+			)
+			sim.state.tangent_velocity = Vector2.ZERO
+			break
+	if deck_id.is_empty():
+		push_error("no deck in sim_ramp_deck")
+		return false
+	var deck_h := sim.state.position.z
+	sim.ollie_accel = 0.0
+	sim.ollie_charge_ms = 0.0
+	# Peak ~10u — below DECK_LAND_MIN_ABOVE (20) but a real same-pad return.
+	sim.ollie_height = 10.0
+	sim.ollie_available = true
+	sim.ollie_charge = 1.0
+	sim.set_input(Vector2.ZERO, false, false, false, true)
+	sim.tick()
+	if not sim.state.is_airborne():
+		push_error("short deck ollie should leave the pad")
+		return false
+	if sim.state.air_launch_surface_id != deck_id:
+		push_error("air bout should remember launch deck")
+		return false
+	# Fall back onto the same deck.
+	for _i in range(120):
+		sim.set_input(Vector2.ZERO, false, false, false, false)
+		sim.tick()
+		if sim.state.is_grounded():
+			break
+	if not sim.state.is_grounded():
+		push_error("short deck ollie should remount, still air h=%s" % sim.state.position.z)
+		return false
+	if sim.state.surface_id != deck_id:
+		push_error(
+			"short deck ollie tunneled to %s (want %s) h=%s"
+			% [sim.state.surface_id, deck_id, sim.state.position.z]
+		)
+		return false
+	if absf(sim.state.position.z - deck_h) > 1.0:
+		push_error("remount height drifted: %s vs %s" % [sim.state.position.z, deck_h])
+		return false
+	return true
+
+
+func _ollie_pipe_low_vx_descending_remounts() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_halfpipe.ssk"):
+		push_error("setup low-vx pipe remount")
+		return false
+	sim.ollie_accel = 0.0
+	sim.ollie_charge_ms = 0.0
+	sim.ollie_height = 30.0
+	sim.ollie_lip_frac = 0.0 ## force free-air pop, not hang
+	var pipe := _left_pipe(sim.model)
+	if pipe == null:
+		push_error("missing left pipe")
+		return false
+	var z := (pipe.z_min + pipe.z_max) * 0.5
+	var u := 0.35
+	var th := u * PI * 0.5
+	sim.state.mode = SimState.Mode.GROUNDED
+	sim.state.surface_id = pipe.id
+	sim.state.u = u
+	sim.state.v = 0.5
+	sim.state.tangent_velocity = Vector2(20.0, 0.0) ## tiny along → tiny free-air vx
+	sim.state.position = Vector3(pipe.x_at_theta(z, th), z, pipe.height_at_theta(z, th))
+	sim.ollie_available = true
+	sim.ollie_charge = 1.0
+	sim.set_input(Vector2.ZERO, false, false, false, true)
+	sim.tick()
+	if not sim.state.is_airborne():
+		push_error("pipe ollie should leave")
+		return false
+	for _i in range(120):
+		sim.set_input(Vector2.ZERO, false, false, false, false)
+		sim.tick()
+		if sim.state.is_grounded():
+			break
+	if not sim.state.is_grounded():
+		push_error(
+			"low-vx descending pipe remount failed; air h=%s vx=%s"
+			% [sim.state.position.z, sim.state.velocity.x]
+		)
+		return false
+	if sim.state.surface_id != pipe.id:
+		push_error("expected remount on %s got %s" % [pipe.id, sim.state.surface_id])
 		return false
 	return true
 

@@ -33,6 +33,9 @@ var hang_launch_edge_id: String = ""
 ## Max height reached this airborne bout (hang / free / fly-out). Used so deck
 ## lands require a real arc above the pad, not a lip/apex skim.
 var air_peak_height: float = -INF
+## Surface left when this air bout began (ollie / ride-off). Same-pad returns
+## skip the tall DECK_LAND_MIN_ABOVE skim gate so short ollies remount.
+var air_launch_surface_id: String = ""
 ## Once per hang: face into the source pipe after apex (+ delay).
 var hang_apex_facing_done: bool = false
 ## Elapsed time since hang apex; < 0 until apex is reached.
@@ -95,6 +98,7 @@ func note_air_height(height: float) -> void:
 
 func clear_air_peak() -> void:
 	air_peak_height = -INF
+	air_launch_surface_id = ""
 
 
 func to_dict() -> Dictionary:

@@ -88,9 +88,18 @@ func _step_free(state: SimState, wish: Vector2, delta: float) -> void:
 				_try_land(state, from.z)
 				state.position.y = clampf(state.position.y, 0.05, maxf(model.depth - 0.05, 0.05))
 				return
-			# Hang exclusivity / non-descending or already-at-pad: never trip on a deck.
+			# Hang / rising / skim: pass through decks. Descending free-air that only
+			# fails the tall skim gate must NOT teleport through the pad (short ollie
+			# fall-through) — bounce and try a same-pad remount instead.
 			if kind == "deck" and not _deck_descending_cross_ok(state, hit, from.z):
-				state.position = to
+				if state.is_hanging() or state.velocity.z >= -SimTolerances.CONTACT_EPS:
+					state.position = to
+					_try_land(state, from.z)
+					state.position.y = clampf(
+						state.position.y, 0.05, maxf(model.depth - 0.05, 0.05)
+					)
+					return
+				_bounce_off_solid(state, hit, from)
 				_try_land(state, from.z)
 				state.position.y = clampf(
 					state.position.y, 0.05, maxf(model.depth - 0.05, 0.05)
@@ -445,12 +454,15 @@ func _pipe_snap_allowed(state: SimState, pipe: PipeSurface, proj: Dictionary) ->
 		if from_outward and span != null and not span.outward_deck_id.is_empty():
 			return false
 		if not from_outward:
-			var vx := state.velocity.x
-			if absf(vx) < 1.0:
-				return false
-			var want := SimKinds.PipeSide.LEFT if vx < 0.0 else SimKinds.PipeSide.RIGHT
-			if pipe.side != want:
-				return false
+			# Rising / lateral entry still needs clear travel facing. Descending
+			# remounts (short ollie, low |vx|) must not reject the contact surface.
+			if state.velocity.z > 0.0:
+				var vx := state.velocity.x
+				if absf(vx) < 1.0:
+					return false
+				var want := SimKinds.PipeSide.LEFT if vx < 0.0 else SimKinds.PipeSide.RIGHT
+				if pipe.side != want:
+					return false
 	var cand := {
 		"surface_id": pipe.id,
 		"kind": SimKinds.SurfaceKind.PIPE,
@@ -682,12 +694,13 @@ func _try_land(state: SimState, from_height: float = NAN) -> void:
 		return
 	# Decks: must be descending onto the pad, and this air bout must have peaked
 	# well above it — lip/apex skims (peak ≈ pad) must not sticky-mount.
+	# Same-pad ollie returns only need to have cleared the pad (CONTACT_EPS).
 	if int(top.kind) == SimKinds.SurfaceKind.DECK:
 		if state.velocity.z >= -SimTolerances.CONTACT_EPS:
 			return
 		if is_nan(from_height) or from_height <= sh + SimTolerances.CONTACT_EPS:
 			return
-		if state.air_peak_height <= sh + SimTolerances.DECK_LAND_MIN_ABOVE:
+		if state.air_peak_height <= sh + _deck_land_min_above(state, str(top.surface_id)):
 			return
 	var impact := maxf(absf(state.velocity.z), absf(state.velocity.x))
 	var vz := state.velocity.y
@@ -746,9 +759,16 @@ func _deck_descending_cross_ok(state: SimState, hit: Dictionary, from_height: fl
 		return false
 	if is_nan(from_height) or from_height <= deck.height + SimTolerances.CONTACT_EPS:
 		return false
-	if state.air_peak_height <= deck.height + SimTolerances.DECK_LAND_MIN_ABOVE:
+	if state.air_peak_height <= deck.height + _deck_land_min_above(state, deck.id):
 		return false
 	return true
+
+
+## Lip skims need a tall peak gate; same-pad ollie returns only need to clear CONTACT_EPS.
+func _deck_land_min_above(state: SimState, deck_id: String) -> float:
+	if not deck_id.is_empty() and state.air_launch_surface_id == deck_id:
+		return SimTolerances.CONTACT_EPS
+	return SimTolerances.DECK_LAND_MIN_ABOVE
 
 
 ## Descending through the current hang edge (launch or depth-retargeted) returns
@@ -853,7 +873,7 @@ func _pick_ordinary_land(state: SimState, candidates: Array) -> Dictionary:
 			var span: CopingSpan = cope.span_at_z(state.position.y) if cope != null else null
 			if span != null and not span.outward_deck_id.is_empty():
 				continue
-		if not from_outward:
+		if not from_outward and state.velocity.z > 0.0:
 			var vx := state.velocity.x
 			if absf(vx) < 1.0:
 				continue ## no clear travel — skip pipes, prefer flats below
