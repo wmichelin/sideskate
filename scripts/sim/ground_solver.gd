@@ -577,10 +577,10 @@ func _enter_air(state: SimState, world_vel: Vector3, hang_edge_id: String = "") 
 
 ## Leave grounded contact into free air with an upward ollie pop.
 ## Flats / walls: world-up impulse. Pipes / ramps below the lip band: carry ride X
-## only + world-up pop. In the upper `lip_frac` of a pipe/ramp (default top 15%),
+## only + world-up pop. In the upper `lip_frac` of a pipe/ramp (default top 35%),
 ## enter X-locked hang air like a normal air-out, with ollie providing vertical.
 func launch_height_impulse(
-	state: SimState, height_impulse: float, lip_frac: float = 0.15
+	state: SimState, height_impulse: float, lip_frac: float = 0.35
 ) -> void:
 	if state == null or not state.alive or not state.is_grounded():
 		return

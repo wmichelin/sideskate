@@ -44,7 +44,7 @@ Stick → wish. Per axis:
 
 **Facing** `l`/`r`: follows world X speed when X-dominant. Spawn from `spawn_facing`.
 
-**Ollie** (Space): hold for mild facing accel (skipped while stick brakes opposite) and to charge a jump **while grounded**; release pops up to charge% × `ollie_height` level units (tunable charge time / height). One jump charge — spent on release, restored when grounded on any surface. Upper pipe/ramp band (`ollie lip` slider, default top 15%) X-locks into hang air. Air keeps pre-takeoff pipe/ramp lean (no upright snap).
+**Ollie** (Space): hold for mild facing accel (skipped while stick brakes opposite) and to charge a jump **while grounded**; release pops up to charge% × `ollie_height` level units (tunable charge time / height). One jump charge — spent on release, restored when grounded on any surface. Upper pipe/ramp band (`ollie lip` slider, default top 35%) X-locks into hang air. Air keeps pre-takeoff pipe/ramp lean (no upright snap).
 
 **Pipe:** UV along-arc (+along = toward coping), always `u∈[0,1]`; gravity projects onto the tangent. A compiled seam enters a separate `WallSurface`, whose own `u∈[0,1]` runs bottom→top.
 
