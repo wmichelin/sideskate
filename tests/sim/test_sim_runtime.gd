@@ -3810,6 +3810,8 @@ func _hang_depth_transfer_lands_edge_lava() -> bool:
 
 
 ## ####((( : ride deck toward pipe → fall (no auto-stick); acid drop mounts.
+## Slow coast off the ledge is the regression — a fast approach can overshoot the
+## lip onto the bowl floor and miss the sticky Mount window.
 func _deck_ride_off_falls_acid_mounts() -> bool:
 	var sim := PlayerSim.new()
 	if not sim.setup_from_path("res://tests/levels/sim/sim_deck_backed.ssk"):
@@ -3834,39 +3836,45 @@ func _deck_ride_off_falls_acid_mounts() -> bool:
 		return false
 	var z := (deck.z_min + deck.z_max) * 0.5
 	var cx := left.coping_x_at(z)
-	# Near the deck’s pipe-facing edge, skating +X toward the ramp.
+	var left_id := left.id
+	# Slow coast from just outside the coping — the sticky path that fast +X missed.
 	sim.state.mode = SimState.Mode.GROUNDED
 	sim.state.surface_id = deck.id
 	sim.state.u = 0.0
 	sim.state.v = 0.0
-	sim.state.position = Vector3(cx - sim.model.cell_w * 0.6, z, deck.height)
-	sim.state.tangent_velocity = Vector2(400.0, 0.0)
+	sim.state.position = Vector3(cx - 5.0, z, deck.height)
+	sim.state.tangent_velocity = Vector2(200.0, 0.0)
 	sim.state.velocity = Vector3.ZERO
 	sim.state.clear_hang()
 	sim.state.maneuver = null
-	var left_id := left.id
 	var saw_air := false
 	for _i in range(90):
-		sim.set_input(Vector2(1, 0), false, false)
+		sim.set_input(Vector2.ZERO, false, false)
 		sim.tick()
 		if sim.state.is_airborne():
 			saw_air = true
-			break
-		if sim.model.pipes.has(sim.state.surface_id):
-			push_error("deck drop: auto-mounted pipe while still grounded on deck ride-off")
+		if sim.state.is_grounded() and sim.state.surface_id == left_id:
+			push_error(
+				"deck drop: stuck to pipe without acid (launch=%s u=%.2f)"
+				% [sim.state.air_launch_surface_id, sim.state.u]
+			)
 			return false
+		if saw_air and sim.state.is_grounded() and not sim.model.pipes.has(sim.state.surface_id):
+			break ## floor / void in the bowl
+		if not sim.state.alive:
+			break
 	if not saw_air:
 		push_error("deck drop: never left deck into air")
 		return false
 	# Keep falling without transfer — must not stick to the abutting pipe.
 	for _j in range(120):
-		sim.set_input(Vector2(1, 0), false, false)
+		sim.set_input(Vector2.ZERO, false, false)
 		sim.tick()
 		if sim.state.is_grounded() and sim.state.surface_id == left_id:
 			push_error("deck drop: ordinary land stuck to deck-backed pipe without acid")
 			return false
 		if sim.state.is_grounded() and not sim.model.pipes.has(sim.state.surface_id):
-			break ## floor / void catch in the bowl is fine
+			break
 		if not sim.state.alive:
 			break
 	# Fresh ride-off, then acid while descending.
@@ -3885,11 +3893,11 @@ func _deck_ride_off_falls_acid_mounts() -> bool:
 	var cx2 := left2.coping_x_at(z2)
 	acid.state.mode = SimState.Mode.GROUNDED
 	acid.state.surface_id = deck2.id
-	acid.state.position = Vector3(cx2 - acid.model.cell_w * 0.6, z2, deck2.height)
-	acid.state.tangent_velocity = Vector2(400.0, 0.0)
+	acid.state.position = Vector3(cx2 - 5.0, z2, deck2.height)
+	acid.state.tangent_velocity = Vector2(200.0, 0.0)
 	acid.state.clear_hang()
 	for _k in range(90):
-		acid.set_input(Vector2(1, 0), false, false)
+		acid.set_input(Vector2.ZERO, false, false)
 		acid.tick()
 		if acid.state.is_airborne():
 			break

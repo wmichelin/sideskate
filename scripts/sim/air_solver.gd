@@ -175,6 +175,10 @@ func _disposition_for_contact(
 		if reason == "slope outer back" and _can_land_slope_back(state, contact):
 			return SimKinds.ContactDisposition.MOUNT
 		return SimKinds.ContactDisposition.REJECT
+	# Deck ride-off onto an abutting pipe/ramp/wall: ledge fall / acid only —
+	# never ordinary Mount (including lip column after a slow coast off the pad).
+	if _deck_ride_off_blocks_slope_contact(state, contact):
+		return SimKinds.ContactDisposition.CORRIDOR
 	# OPEN corridor from outward — acid only, never ordinary mount.
 	if role == SimKinds.ContactRole.OPEN_CORRIDOR:
 		return SimKinds.ContactDisposition.CORRIDOR
@@ -226,6 +230,49 @@ func _disposition_for_contact(
 			return SimKinds.ContactDisposition.CORRIDOR
 		return SimKinds.ContactDisposition.MOUNT
 	return SimKinds.ContactDisposition.REJECT
+
+
+## This air bout left an outward `#` deck onto its abutting slope — ordinary
+## pipe/ramp/wall Mount is illegal (acid transfer only).
+func _deck_ride_off_blocks_slope_contact(state: SimState, contact: Dictionary) -> bool:
+	var launch := state.air_launch_surface_id
+	if launch.is_empty() or not model.patches.has(launch):
+		return false
+	var pad: SupportPatch = model.patches[launch]
+	if int(pad.kind) != SimKinds.SurfaceKind.DECK:
+		return false
+	var owner := str(contact.get("owner_id", contact.get("surface_id", "")))
+	if owner.is_empty():
+		return false
+	var z := state.position.y
+	if model.pipes.has(owner):
+		return _slope_span_has_outward_deck(model.pipes[owner].coping_id, launch, z)
+	if model.ramps.has(owner):
+		return _slope_span_has_outward_deck(model.ramps[owner].coping_id, launch, z)
+	if model.walls.has(owner):
+		var wall: WallSurface = model.walls[owner]
+		var pipe: PipeSurface = model.pipes.get(wall.source_pipe_id)
+		if pipe == null:
+			return false
+		return _slope_span_has_outward_deck(pipe.coping_id, launch, z)
+	# support_top may still name the slope via support_kind + surface_id.
+	if str(contact.get("kind", "")) == "support_top":
+		var sk := int(contact.get("support_kind", -1))
+		if sk == SimKinds.SurfaceKind.PIPE and model.pipes.has(owner):
+			return _slope_span_has_outward_deck(model.pipes[owner].coping_id, launch, z)
+		if sk == SimKinds.SurfaceKind.RAMP and model.ramps.has(owner):
+			return _slope_span_has_outward_deck(model.ramps[owner].coping_id, launch, z)
+	return false
+
+
+func _slope_span_has_outward_deck(coping_id: String, deck_id: String, z: float) -> bool:
+	if coping_id.is_empty() or deck_id.is_empty():
+		return false
+	var cope: CopingEdge = model.copings.get(coping_id)
+	if cope == null:
+		return false
+	var span: CopingSpan = cope.span_at_z(z)
+	return span != null and span.outward_deck_id == deck_id
 
 
 func _can_land_slope_back(state: SimState, contact: Dictionary) -> bool:
@@ -849,11 +896,16 @@ func _pipe_snap_allowed(state: SimState, pipe: PipeSurface, proj: Dictionary) ->
 		if source != null and pipe.side != source.side:
 			return false
 	else:
+		# Deck ledge leave onto this pipe's outward `#` — acid only, even on lip.
+		if _slope_span_has_outward_deck(
+			pipe.coping_id, state.air_launch_surface_id, state.position.y
+		):
+			return false
 		var cx := pipe.coping_x_at(state.position.y)
 		var out := pipe.outward_sign()
 		var from_outward := not is_nan(cx) and (state.position.x - cx) * out >= -SimTolerances.CAPSULE_RADIUS
 		# Past the coping into an outward deck needs acid — the coping column itself
-		# remains a legal ordinary pipe land (lip owner).
+		# remains a legal ordinary pipe land (lip owner) for non-deck launches.
 		var clearly_outward := (
 			not is_nan(cx)
 			and (state.position.x - cx) * out > SimTolerances.CAPSULE_RADIUS
