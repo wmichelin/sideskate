@@ -803,7 +803,7 @@ func collect_air_contacts(
 		out.append(annotated)
 	# 2) Support-top crossings along the segment (ride surfaces).
 	_append_support_top_crossings(from, to, out)
-	# 3) Hang anchor lip crossing.
+	# 3) Hang anchor lip crossing (real remount edge only — not synthetic gaps).
 	if not hang_edge_id.is_empty():
 		var edge: TopologyEdge = model.edges.get(hang_edge_id)
 		if edge != null:
@@ -811,7 +811,9 @@ func collect_air_contacts(
 			var sample := edge_anchor_sample(edge, mid_z)
 			if sample.is_empty() and edge.contains_z(from.y):
 				sample = edge_anchor_sample(edge, from.y)
-			if not sample.is_empty() and to.z < from.z:
+			# Gap / off-span synthetic locks have no remount surface.
+			if not sample.is_empty() and not bool(sample.get("gap", false)) \
+					and to.z < from.z and edge.contains_z(mid_z):
 				var height := float(sample.height)
 				if from.z >= height - SimTolerances.CONTACT_EPS \
 						and to.z <= height + SimTolerances.CONTACT_EPS:

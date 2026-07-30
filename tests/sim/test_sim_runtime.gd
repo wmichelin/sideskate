@@ -63,6 +63,8 @@ func run() -> bool:
 		and _lava_grounded_contact_kills()
 		and _respawn_at_prior_floor_or_deck()
 		and _hang_persists_off_edge_z_span()
+		and _hang_depth_transfer_lands_edge_floor()
+		and _hang_depth_transfer_lands_edge_lava()
 		and _deck_ride_off_falls_acid_mounts()
 		and _layered_deck_back_ride_off_stays_free()
 		and _map_edge_deck_no_void_exit()
@@ -3697,6 +3699,114 @@ func _hang_persists_off_edge_z_span() -> bool:
 		push_error("hang off-z fly: fly-out must clear hang")
 		return false
 	return true
+
+
+## Air-out at a right-edge coping, depth-transfer onto floor rows, then descend:
+## must land the floor at lock X (map edge) — not fall through to the void.
+func _hang_depth_transfer_lands_edge_floor() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://levels/air_transfer.ssk"):
+		push_error("hang edge floor: setup")
+		return false
+	var hung := false
+	for _i in range(400):
+		sim.set_input(Vector2(1, 0), false, false)
+		sim.tick()
+		if sim.state.is_hanging():
+			hung = true
+			break
+	if not hung:
+		push_error("hang edge floor: never hung")
+		return false
+	var lock_x := sim.state.position.x
+	# Depth toward the top ==== floor band (increasing Y on this map).
+	for _j in range(120):
+		sim.set_input(Vector2(0, 1), false, false)
+		sim.tick()
+		if sim.state.position.y >= sim.model.depth * 0.78:
+			break
+	if sim.state.position.y < sim.model.depth * 0.7:
+		push_error("hang edge floor: never reached floor band z=%.1f" % sim.state.position.y)
+		return false
+	# Descend onto the pad under the lock.
+	for _k in range(180):
+		sim.set_input(Vector2.ZERO, false, false)
+		sim.tick()
+		if sim.state.position.z < -20.0:
+			push_error(
+				"hang edge floor: fell through (pos=%s hang=%s)"
+				% [sim.state.position, sim.state.is_hanging()]
+			)
+			return false
+		if sim.state.is_grounded() and sim.model.patches.has(sim.state.surface_id):
+			var patch: SupportPatch = sim.model.patches[sim.state.surface_id]
+			if int(patch.kind) != SimKinds.SurfaceKind.FLOOR:
+				push_error("hang edge floor: landed %s kind=%s" % [
+					sim.state.surface_id, patch.kind
+				])
+				return false
+			if absf(sim.state.position.x - lock_x) > SimTolerances.ALIGN_EPS + 0.5:
+				push_error("hang edge floor: lost lock on land")
+				return false
+			if absf(sim.state.position.z - patch.height) > SimTolerances.CONTACT_EPS * 2.0:
+				push_error("hang edge floor: not seated on pad h=%.2f" % sim.state.position.z)
+				return false
+			return true
+	push_error(
+		"hang edge floor: never landed mode=%s sid=%s pos=%s"
+		% [sim.state.mode, sim.state.surface_id, sim.state.position]
+	)
+	return false
+
+
+## Same air-out lock parked over the lava gap row must land lava (and die) — not
+## phase through the lethal pad into the void below the park.
+func _hang_depth_transfer_lands_edge_lava() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://levels/air_transfer.ssk"):
+		push_error("hang edge lava: setup")
+		return false
+	var hung := false
+	for _i in range(400):
+		sim.set_input(Vector2(1, 0), false, false)
+		sim.tick()
+		if sim.state.is_hanging():
+			hung = true
+			break
+	if not hung:
+		push_error("hang edge lava: never hung")
+		return false
+	var lock_x := sim.state.position.x
+	# Park mid-lava under the synthetic gap lock, then drop (no depth stick so
+	# we don't retarget onto the far pipe).
+	var lava_z := 117.5
+	sim.state.position = Vector3(lock_x, lava_z, 80.0)
+	sim.state.velocity = Vector3(0.0, 0.0, -120.0)
+	for _k in range(120):
+		sim.set_input(Vector2.ZERO, false, false)
+		sim.tick()
+		if sim.state.position.z < -20.0 and sim.state.alive:
+			push_error(
+				"hang edge lava: fell through alive pos=%s"
+				% sim.state.position
+			)
+			return false
+		if not sim.state.alive:
+			return true
+		if sim.state.is_grounded() and sim.model.patches.has(sim.state.surface_id):
+			var patch: SupportPatch = sim.model.patches[sim.state.surface_id]
+			if int(patch.kind) == SimKinds.SurfaceKind.LAVA:
+				return true
+			push_error(
+				"hang edge lava: expected lava, got %s kind=%s"
+				% [sim.state.surface_id, patch.kind]
+			)
+			return false
+	push_error(
+		"hang edge lava: never landed lava mode=%s sid=%s alive=%s pos=%s"
+		% [sim.state.mode, sim.state.surface_id, sim.state.alive, sim.state.position]
+	)
+	return false
 
 
 ## ####((( : ride deck toward pipe → fall (no auto-stick); acid drop mounts.

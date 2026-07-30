@@ -20,7 +20,18 @@ func contains_xz(x: float, z: float) -> bool:
 		return false
 	if z < z_min - 0.001 or z > z_max + 0.001:
 		return false
-	return _point_in_poly(x, z)
+	if _point_in_poly(x, z):
+		return true
+	# Even-odd ray cast treats the max-X vertical edge as outside. Hang lock X
+	# for a right-edge coping is exactly x_max — must still count as on-pad so
+	# air-out depth transfer can land floor/lava instead of falling through.
+	var cx := (x_min + x_max) * 0.5
+	var cz := (z_min + z_max) * 0.5
+	var ix := x + clampf(cx - x, -0.05, 0.05)
+	var iz := z + clampf(cz - z, -0.05, 0.05)
+	if absf(ix - x) < 0.0001 and absf(iz - z) < 0.0001:
+		return false
+	return _point_in_poly(ix, iz)
 
 
 func height_at(_x: float, _z: float) -> float:
