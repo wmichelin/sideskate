@@ -156,9 +156,22 @@ func _sync_from_sim() -> void:
 	}
 	var tilt := 0.0
 	if st.is_hanging():
+		# Prefer live anchor; off-span hang still leans from the launch pipe.
+		var hang_pipe: PipeSurface = null
 		var edge: TopologyEdge = _sim.model.edges.get(st.hang_edge_id)
-		var anchor := _sim.query.edge_anchor_sample(edge, p.y)
-		var hang_pipe: PipeSurface = _sim.model.pipes.get(str(anchor.get("source_pipe_id", "")))
+		var anchor := _sim.query.edge_anchor_sample(edge, p.y) if edge != null else {}
+		if not anchor.is_empty():
+			hang_pipe = _sim.model.pipes.get(str(anchor.get("source_pipe_id", ""))) as PipeSurface
+		if hang_pipe == null:
+			var launch_id := st.hang_launch_edge_id if not st.hang_launch_edge_id.is_empty() \
+					else st.hang_edge_id
+			var launch: TopologyEdge = _sim.model.edges.get(launch_id)
+			if launch != null:
+				if _sim.model.pipes.has(launch.from_surface_id):
+					hang_pipe = _sim.model.pipes[launch.from_surface_id] as PipeSurface
+				elif _sim.model.walls.has(launch.from_surface_id):
+					var hang_wall: WallSurface = _sim.model.walls[launch.from_surface_id]
+					hang_pipe = _sim.model.pipes.get(hang_wall.source_pipe_id) as PipeSurface
 		if hang_pipe != null:
 			tilt = -hang_pipe.outward_sign() * (PI * 0.5)
 	elif st.is_grounded() and _sim.model.walls.has(st.surface_id):
@@ -172,7 +185,13 @@ func _sync_from_sim() -> void:
 	var support_h := p.z
 	if st.is_hanging():
 		var support_edge: TopologyEdge = _sim.model.edges.get(st.hang_edge_id)
-		var support_anchor := _sim.query.edge_anchor_sample(support_edge, p.y)
+		var support_anchor := _sim.query.edge_anchor_sample(support_edge, p.y) \
+				if support_edge != null else {}
+		if support_anchor.is_empty() and not st.hang_launch_edge_id.is_empty():
+			var launch_edge: TopologyEdge = _sim.model.edges.get(st.hang_launch_edge_id)
+			if launch_edge != null:
+				var z_ref := clampf(p.y, launch_edge.z_min, launch_edge.z_max - 0.001)
+				support_anchor = _sim.query.edge_anchor_sample(launch_edge, z_ref)
 		if not support_anchor.is_empty():
 			support_h = float(support_anchor.height)
 	if depth:

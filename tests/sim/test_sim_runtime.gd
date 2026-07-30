@@ -28,6 +28,7 @@ func run() -> bool:
 		and _upper_deck_2_apex_no_deck_snap()
 		and _upper_deck_2_wall_bottom_no_deck_steal()
 		and _void_floor_catches_fall()
+		and _hang_flat_land_clears_lock()
 		and _world_border_contains()
 		and _edge_fly_out_wall_slide()
 		and _edge_pipe_coping_not_in_wall()
@@ -43,6 +44,7 @@ func run() -> bool:
 		and _l0_lava_gap_no_phantom_wall_climb()
 		and _lava_grounded_contact_kills()
 		and _respawn_at_prior_floor_or_deck()
+		and _hang_persists_off_edge_z_span()
 		and _deck_ride_off_falls_acid_mounts()
 		and _layered_deck_back_ride_off_stays_free()
 		and _map_edge_deck_no_void_exit()
@@ -1295,6 +1297,64 @@ func _void_floor_catches_fall() -> bool:
 	return true
 
 
+## Hang with no remountable pipe under the lock must land the nearest flat
+## (void/floor) and clear X-lock / lip lean — not fall through the park.
+func _hang_flat_land_clears_lock() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_open_fly.ssk"):
+		push_error("hang flat: setup")
+		return false
+	var left := _left_pipe(sim.model)
+	if left == null:
+		return false
+	var z := (left.z_min + left.z_max) * 0.5
+	var edge := sim.query.edge_at(left.id, z, "coping")
+	if edge == null:
+		push_error("hang flat: missing open coping")
+		return false
+	# Hang X-locked, but depth parked where this pipe has no loft — only flats below.
+	var off_z := left.z_min - 20.0
+	if off_z < 1.0:
+		off_z = left.z_max + 20.0
+	sim.state.mode = SimState.Mode.AIRBORNE
+	sim.state.surface_id = ""
+	sim.state.begin_hang(edge.id)
+	sim.state.set_facing_side("l")
+	sim.state.facing_yaw = 0.4 ## pretend mid-lean; flat land must clear it
+	sim.state.position = Vector3(left.coping_x_at(z), off_z, 80.0)
+	sim.state.velocity = Vector3(0.0, 0.0, -100.0)
+	sim.state.maneuver = null
+	var landed := false
+	for _i in range(180):
+		sim.set_input(Vector2.ZERO, false, false)
+		sim.tick()
+		if sim.state.is_grounded():
+			landed = true
+			break
+	if not landed:
+		push_error(
+			"hang flat: never landed (mode=%s h=%.1f hang=%s)"
+			% [sim.state.mode, sim.state.position.z, sim.state.hang_edge_id]
+		)
+		return false
+	if sim.model.pipes.has(sim.state.surface_id):
+		push_error("hang flat: remounted pipe %s — expected flat" % sim.state.surface_id)
+		return false
+	if sim.state.is_hanging() or not sim.state.hang_edge_id.is_empty():
+		push_error("hang flat: hang/X-lock must clear on flat land")
+		return false
+	if absf(sim.state.facing_yaw) > 0.01:
+		push_error("hang flat: lip lean yaw must reset, got %.3f" % sim.state.facing_yaw)
+		return false
+	if not sim.state.alive and sim.state.surface_id != "__void_floor__":
+		# Lethal flat is fine; void must stay alive.
+		pass
+	if sim.state.surface_id == "__void_floor__" and not sim.state.alive:
+		push_error("hang flat: void land must stay alive")
+		return false
+	return true
+
+
 func _world_border_contains() -> bool:
 	var sim := PlayerSim.new()
 	if not sim.setup_from_path("res://tests/levels/sim/sim_open_fly.ssk"):
@@ -2421,6 +2481,112 @@ func _respawn_at_prior_floor_or_deck() -> bool:
 			"respawn cp: floor pose want ~%s got %s"
 			% [spawn_floor_pos, deck_sim.state.position]
 		)
+		return false
+	return true
+
+
+## Leaving a hang edge's Z span must keep X-lock + hang (no free-air level-out)
+## unless the player flys out. Also remounts the far same-facing pipe on air_transfer.
+func _hang_persists_off_edge_z_span() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/air_transfer.ssk"):
+		push_error("hang off-z: setup")
+		return false
+	var spawn_z := sim.state.position.y
+	var source: PipeSurface = null
+	for id in sim.model.pipes.keys():
+		var p: PipeSurface = sim.model.pipes[id]
+		if p.side != SimKinds.PipeSide.RIGHT:
+			continue
+		if spawn_z < p.z_min - 1.0 or spawn_z > p.z_max + 1.0:
+			continue
+		source = p
+		break
+	if source == null:
+		push_error("hang off-z: no right pipe at spawn depth")
+		return false
+	_place_at_coping(sim, source, 400.0)
+	sim.state.set_facing_side("r")
+	SimTolerances.APEX_FACING_DELAY = 0.05
+	sim.set_input(Vector2.ZERO, false, false)
+	sim.tick()
+	if not sim.state.is_hanging():
+		push_error("hang off-z: expected hang after coping leave")
+		return false
+	var lock_x := source.coping_x_at(sim.state.position.y)
+	var takeoff_facing := sim.state.facing
+	var saw_gap_air := false
+	var remounted := false
+	for _i in range(240):
+		sim.set_input(Vector2(0, -1), false, false)
+		sim.tick()
+		if not sim.state.alive:
+			push_error("hang off-z: died at z=%.1f h=%.1f" % [
+				sim.state.position.y, sim.state.position.z
+			])
+			return false
+		if absf(sim.state.position.x - lock_x) > SimTolerances.ALIGN_EPS + 0.5:
+			push_error(
+				"hang off-z: lost X lock got %.2f want %.2f"
+				% [sim.state.position.x, lock_x]
+			)
+			return false
+		# Mid-lava band (well clear of either pipe's ALIGN_EPS soft edge).
+		var mid_gap := (
+			sim.state.position.y < source.z_min - SimTolerances.ALIGN_EPS - 1.0
+			and sim.state.position.y > 94.0 + SimTolerances.ALIGN_EPS + 1.0
+		)
+		if mid_gap:
+			saw_gap_air = true
+			if not sim.state.is_hanging():
+				push_error(
+					"hang off-z: cleared hang over lava without fly-out (reject=%s)"
+					% sim.state.last_reject
+				)
+				return false
+			if absf(sim.state.velocity.x) > 0.01:
+				push_error("hang off-z: hang over gap must keep vx=0")
+				return false
+			if absf(sim.state.facing_yaw) > 0.05:
+				push_error("hang off-z: yaw changed during depth transfer")
+				return false
+			if sim.state.facing != takeoff_facing:
+				push_error("hang off-z: facing flipped during depth transfer")
+				return false
+		if sim.state.is_grounded() and sim.model.pipes.has(sim.state.surface_id):
+			var landed: PipeSurface = sim.model.pipes[sim.state.surface_id]
+			if landed.side != SimKinds.PipeSide.RIGHT:
+				push_error("hang off-z: landed wrong-facing pipe")
+				return false
+			if landed.id == source.id:
+				continue
+			remounted = true
+			break
+	if not saw_gap_air:
+		push_error("hang off-z: never airborne over lava mid-gap")
+		return false
+	if not remounted:
+		push_error(
+			"hang off-z: never remounted far pipe (mode=%s z=%.1f hang=%s)"
+			% [sim.state.mode, sim.state.position.y, sim.state.hang_edge_id]
+		)
+		return false
+	# Fly-out still clears hang on the launch span.
+	var fly := PlayerSim.new()
+	if not fly.setup_from_path("res://tests/levels/sim/sim_open_fly.ssk"):
+		push_error("hang off-z fly: setup")
+		return false
+	var left := _left_pipe(fly.model)
+	_place_at_coping(fly, left, 200.0)
+	fly.set_input(Vector2.ZERO, false, false)
+	fly.tick()
+	if not fly.state.is_hanging():
+		push_error("hang off-z fly: expected hang")
+		return false
+	fly.set_input(Vector2(-1, 0), false, false)
+	fly.tick()
+	if fly.state.is_hanging():
+		push_error("hang off-z fly: fly-out must clear hang")
 		return false
 	return true
 

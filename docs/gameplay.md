@@ -58,7 +58,7 @@ Stick → wish. Per axis:
 
 **Fly-out / deck-out:** unlock X-lock, keep rising height, and seed outward free-air X from climb/air speed. Stick must be outward to accept; after unlock X is ballistic. Cross-story walls gate the height window on the connected upper lip; outward stick stays with the source-pipe climb direction.
 
-**Air-out land:** descending through the retained edge returns to its exact source pipe/wall with speed preserved. Never auto-land the opposite-facing transfer target. Decks under the hang lock are ignored — they cannot steal air-out.
+**Air-out land:** descending through the retained edge returns to its exact source pipe/wall with speed preserved. Never auto-land the opposite-facing transfer target. Same-facing X-aligned pipes still win over flats under the lock. If nothing remountable is under the lock (outside the pipe), land the nearest floor/deck/void and clear hang (drop lip lean / X-lock).
 
 **Deck contact in free air:** rising or apex through a `#` volume keeps height. Grounding needs a descending pad crossing and an air-bout peak ≥ `DECK_LAND_MIN_ABOVE` above the pad, so lip/apex skims cannot sticky-mount. Only stick-gated fly-out unlocks onto a rear deck from a wall top. A wall face that shares the deck’s rear X owns the full climb band — the overhanging pad must not mid-climb rescue onto the deck.
 
@@ -68,7 +68,7 @@ Stick → wish. Per axis:
 
 **Acid:** transfer button while descending → along travel to an opposite wall, or explicit deck drop-in onto an abutting pipe.
 
-Hang stores `hang_edge_id`; it clears on fly-out, spine, acid, return, or leaving the edge’s Z span. Plans never retarget mid-flight. At hang apex, facing turns around the character's centered local Y axis into the source pipe over `APEX_FACING_DELAY`.
+Hang stores `hang_edge_id` (and launch id for lock/apex); it clears on fly-out, spine, acid, or return. Leaving the launch Z span retargets onto a colinear same-side OPEN edge or keeps a synthetic X-lock across the gap — it does not free-air / level out. Depth-transfer before apex keeps takeoff orientation. Plans never retarget mid-flight. At hang apex on the launch span, facing turns around the character's centered local Y axis into the source pipe over `APEX_FACING_DELAY`.
 
 ## Motion vectors
 
