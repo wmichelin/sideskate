@@ -20,6 +20,7 @@ func run() -> bool:
 		and _ollie_jump_charge_scales_impulse()
 		and _ollie_jump_caps_at_full_charge()
 		and _ollie_jump_airborne_adds_impulse()
+		and _ollie_single_charge_replenishes_on_ground()
 		and _coast_with_zero_friction()
 		and _air_no_x_friction()
 		and _wall_extension_climbs()
@@ -741,18 +742,20 @@ func _ollie_jump_airborne_adds_impulse() -> bool:
 	sim.ollie_accel = 0.0
 	sim.ollie_charge_ms = 0.0
 	sim.ollie_height = 40.0
-	# Seed free air with zero vertical, high enough not to remount.
-	sim.state.mode = SimState.Mode.AIRBORNE
-	sim.state.surface_id = ""
 	sim.state.tangent_velocity = Vector2.ZERO
-	sim.state.velocity = Vector3(0.0, 0.0, 0.0)
-	sim.state.clear_hang()
-	sim.state.position.z = 80.0
+	# Charge must start on ground.
 	sim.set_input(Vector2.ZERO, false, false, true, false)
 	sim.tick()
 	if sim.ollie_charge < 0.999:
-		push_error("0ms charge should be instantly full while held")
+		push_error("0ms charge should be instantly full while grounded")
 		return false
+	# Carry the hold meter into free air (still held) without rebuilding there.
+	sim.state.mode = SimState.Mode.AIRBORNE
+	sim.state.surface_id = ""
+	sim.state.velocity = Vector3(0.0, 0.0, 0.0)
+	sim.state.clear_hang()
+	sim.state.position.z = 80.0
+	sim.ollie_available = true
 	var before := sim.state.velocity.z
 	sim.set_input(Vector2.ZERO, false, false, false, true)
 	sim.tick()
@@ -763,6 +766,78 @@ func _ollie_jump_airborne_adds_impulse() -> bool:
 			"air ollie vh expected ~%s got %s (before=%s)"
 			% [expected, sim.state.velocity.z, before]
 		)
+		return false
+	if sim.ollie_available:
+		push_error("air ollie should spend the single charge")
+		return false
+	# Cannot start a new charge meter while airborne.
+	sim.ollie_available = true
+	sim.set_input(Vector2.ZERO, false, false, true, false)
+	sim.tick()
+	if sim.ollie_charge > 0.001:
+		push_error("must not start ollie charge while airborne")
+		return false
+	return true
+
+
+func _ollie_single_charge_replenishes_on_ground() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_halfpipe.ssk"):
+		push_error("setup ollie single charge")
+		return false
+	sim.ollie_accel = 0.0
+	sim.ollie_charge_ms = 0.0
+	sim.ollie_height = 40.0
+	sim.state.tangent_velocity = Vector2.ZERO
+	var pad_id := sim.state.surface_id
+	var pad_h := sim.state.position.z
+	var pad_x := sim.state.position.x
+	var pad_z := sim.state.position.y
+	if not sim.ollie_available:
+		push_error("spawn should have an ollie charge")
+		return false
+	# First ollie from ground.
+	sim.set_input(Vector2.ZERO, false, false, true, false)
+	sim.tick()
+	sim.set_input(Vector2.ZERO, false, false, false, true)
+	sim.tick()
+	if not sim.state.is_airborne():
+		push_error("first ollie should leave ground")
+		return false
+	if sim.ollie_available:
+		push_error("first ollie should spend the charge")
+		return false
+	var vh_after_first := sim.state.velocity.z
+	# Second release mid-air must not rebuild or kick again.
+	sim.set_input(Vector2.ZERO, false, false, true, false)
+	sim.tick()
+	if sim.ollie_charge > 0.001:
+		push_error("spent charge must not rebuild the hold meter")
+		return false
+	sim.set_input(Vector2.ZERO, false, false, false, true)
+	sim.tick()
+	var min_second_kick := sqrt(2.0 * absf(SimTolerances.GRAVITY) * 40.0) * 0.5
+	if sim.state.velocity.z > vh_after_first + min_second_kick:
+		push_error(
+			"second air ollie should not add height kick (vh0=%s vh=%s)"
+			% [vh_after_first, sim.state.velocity.z]
+		)
+		return false
+	# Touch ground again → charge restored.
+	sim.state.mode = SimState.Mode.GROUNDED
+	sim.state.surface_id = pad_id
+	sim.state.position = Vector3(pad_x, pad_z, pad_h)
+	sim.state.velocity = Vector3.ZERO
+	sim.state.tangent_velocity = Vector2.ZERO
+	sim.state.clear_hang()
+	sim.state.clear_air_peak()
+	sim.set_input(Vector2.ZERO, false, false, false, false)
+	sim.tick()
+	if not sim.state.is_grounded():
+		push_error("forced ground contact should stay grounded")
+		return false
+	if not sim.ollie_available:
+		push_error("ground contact should replenish ollie charge")
 		return false
 	return true
 

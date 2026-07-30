@@ -24,8 +24,10 @@ var last_wish: Vector2 = Vector2.ZERO
 var action_just: bool = false
 var ollie_pressed: bool = false
 var ollie_just_released: bool = false
-## Current charge fraction in [0, 1], updated on physics ticks.
+## Hold meter in [0, 1] while charging an available ollie.
 var ollie_charge: float = 0.0
+## Single jump charge — spent on release jump, restored on any grounded contact.
+var ollie_available: bool = true
 var debug: SimDebugSnapshot
 var trace: SimTrace
 ## Safe floor/deck pose history for lava respawn. Oldest sample in the window
@@ -61,6 +63,8 @@ func _finish_setup() -> bool:
 	air = AirSolver.new(model, query, planner, ground)
 	state = ground.spawn_state()
 	_seed_checkpoint_from_state()
+	ollie_available = state != null and state.is_grounded()
+	ollie_charge = 0.0
 	debug = SimDebugSnapshot.new()
 	trace = SimTrace.new(model.model_hash)
 	trace.record(state, Vector2.ZERO, false)
@@ -105,6 +109,7 @@ func tick(delta: float = SimTolerances.FIXED_DT) -> void:
 		)
 	else:
 		air.step(state, last_wish, delta)
+	_replenish_ollie_on_ground()
 	_apply_lava_kill()
 	_note_checkpoint()
 	_assert_finite()
@@ -118,8 +123,11 @@ func tick(delta: float = SimTolerances.FIXED_DT) -> void:
 func _update_ollie_charge(delta: float) -> void:
 	if ollie_just_released:
 		return
-	if not ollie_pressed:
+	if not ollie_pressed or not ollie_available:
 		ollie_charge = 0.0
+		return
+	# Hold meter only builds while grounded — cannot start charging in air.
+	if state == null or not state.is_grounded():
 		return
 	if ollie_charge_ms <= 0.0:
 		ollie_charge = 1.0
@@ -132,10 +140,18 @@ func _try_ollie_jump() -> void:
 		return
 	var frac := ollie_charge
 	ollie_charge = 0.0
+	if not ollie_available:
+		return
 	var height := frac * ollie_height
 	if height <= 0.0:
 		return
+	ollie_available = false
 	_apply_height_impulse(_up_speed_for_height(height))
+
+
+func _replenish_ollie_on_ground() -> void:
+	if state != null and state.alive and state.is_grounded():
+		ollie_available = true
 
 
 ## Ballistic peak height → initial up-speed under current gravity: v = √(2|g|h).
@@ -409,6 +425,8 @@ func respawn() -> void:
 		debug.capture(state, model, query)
 	if trace != null:
 		trace.record(state, Vector2.ZERO, false)
+	ollie_available = state != null and state.is_grounded()
+	ollie_charge = 0.0
 
 
 func pose_dict() -> Dictionary:

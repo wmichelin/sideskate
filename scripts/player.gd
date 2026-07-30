@@ -316,6 +316,8 @@ func zone_debug_label() -> String:
 func ollie_charge_frac() -> float:
 	if _sim == null:
 		return 0.0
+	if not _sim.ollie_available:
+		return 0.0
 	return clampf(_sim.ollie_charge, 0.0, 1.0)
 
 
