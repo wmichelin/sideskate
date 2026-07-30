@@ -18,8 +18,8 @@ var ollie_charge_ms: float = 250.0
 ## Peak ollie height at 100% charge (level units). Converted to up-speed via gravity.
 var ollie_height: float = 100.0
 ## Upper pipe/ramp band (fraction of u from the lip) where ollie enters X-locked hang air.
-## 0.35 = top 35% of the transition (u ≥ 0.65).
-var ollie_lip_frac: float = 0.35
+## 0.50 = top 50% of the transition (u ≥ 0.50).
+var ollie_lip_frac: float = 0.50
 var brake: float = 1250.0
 var friction: float = 0.0
 var ramp_friction: float = 0.0

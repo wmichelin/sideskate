@@ -302,7 +302,7 @@ func _setup_ollie_jump_sliders() -> void:
 	lip_slider.min_value = 0.0
 	lip_slider.max_value = 100.0
 	lip_slider.step = 1.0
-	var lip_pct := 35.0
+	var lip_pct := 50.0
 	if _player != null and _player.get("ollie_lip_frac") != null:
 		lip_pct = float(_player.get("ollie_lip_frac")) * 100.0
 	lip_slider.value = lip_pct
