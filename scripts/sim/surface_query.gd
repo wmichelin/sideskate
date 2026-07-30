@@ -337,6 +337,10 @@ func _blocker_at(p: Vector3) -> Dictionary:
 			"kind": "bounds", "feature_id": "__space__", "axis": "",
 			"sign": 0.0, "normal": Vector3.ZERO, "reason": "unplayable cell",
 		}
+	# Vertical faces of pipes / ramps / decks — stop like world borders (do not remount).
+	var face := _feature_wall_at(x, z, h)
+	if not face.is_empty():
+		return face
 	# Pipe solid interiors are one-sided and exclude the coping boundary.
 	for pipe_id in model.all_pipe_ids():
 		var pipe: PipeSurface = model.pipes[pipe_id]
@@ -444,3 +448,234 @@ func _blocker_at(p: Vector3) -> Dictionary:
 				"reason": "wall extension",
 			}
 	return {}
+
+
+## Exterior vertical faces of slopes/decks: endcaps, outer backs, open deck sides.
+## Returned hits use kind "feature_wall" and must stop motion like "bounds".
+func _feature_wall_at(x: float, z: float, h: float) -> Dictionary:
+	var thick := SimTolerances.CAPSULE_RADIUS
+	for pipe_id in model.all_pipe_ids():
+		var hit := _slope_feature_wall(model.pipes[pipe_id], pipe_id, x, z, h, thick)
+		if not hit.is_empty():
+			return hit
+	for ramp_id in model.all_ramp_ids():
+		var rhit := _slope_feature_wall(model.ramps[ramp_id], ramp_id, x, z, h, thick)
+		if not rhit.is_empty():
+			return rhit
+	for patch_id in model.patches.keys():
+		var patch: SupportPatch = model.patches[patch_id]
+		if int(patch.kind) != SimKinds.SurfaceKind.DECK:
+			continue
+		var dhit := _deck_feature_wall(patch, x, z, h, thick)
+		if not dhit.is_empty():
+			return dhit
+	return {}
+
+
+## Pipe/ramp: outer back + Z endcaps up to peak height. Lip stays open for mount.
+func _slope_feature_wall(surf, surface_id: String, x: float, z: float, h: float, thick: float) -> Dictionary:
+	var sample: Dictionary = surf.sample_at_z(clampf(z, float(surf.z_min), float(surf.z_max)))
+	if sample.is_empty():
+		return {}
+	var base := float(sample.base_height)
+	var radius := float(sample.radius)
+	var peak := base + radius
+	if h < base - SimTolerances.CONTACT_EPS or h > peak + SimTolerances.CONTACT_EPS:
+		return {}
+	var lip := float(sample.lip_x)
+	var cope := float(surf.coping_x_at(clampf(z, float(surf.z_min), float(surf.z_max))))
+	if is_nan(cope):
+		return {}
+	var x_lo := minf(lip, cope)
+	var x_hi := maxf(lip, cope)
+	var out := float(surf.outward_sign())
+	# Outer back wall (beyond coping). Skip when a climbable WallSurface owns the face
+	# or an outward deck backs the coping (deck ride / drop corridor).
+	if z >= float(surf.z_min) - 0.001 and z <= float(surf.z_max) + 0.001:
+		if not _climbable_wall_owns(surface_id, cope, z, h) and not _outward_deck_backs(
+			surface_id, z
+		):
+			if out > 0.0:
+				if x > cope and x <= cope + thick:
+					return _feature_wall_hit(
+						surface_id, "x", 1.0, Vector3(1, 0, 0), "slope outer back"
+					)
+			else:
+				if x < cope and x >= cope - thick:
+					return _feature_wall_hit(
+						surface_id, "x", -1.0, Vector3(-1, 0, 0), "slope outer back"
+					)
+	# Z endcaps — exterior slabs just outside the loft span.
+	# Leave a coping-X corridor open so hang / coping-height Z transfers clear
+	# the top edge (same idea as open coping backs). Mid-face endcaps still stop
+	# run-ins that would otherwise remount / ride up the slope.
+	if (
+		absf(x - cope) > SimTolerances.ALIGN_EPS
+		and x >= x_lo - 0.001
+		and x <= x_hi + 0.001
+	):
+		if z < float(surf.z_min) and z >= float(surf.z_min) - thick:
+			return _feature_wall_hit(
+				surface_id, "z", -1.0, Vector3(0, -1, 0), "slope near endcap"
+			)
+		if z > float(surf.z_max) and z <= float(surf.z_max) + thick:
+			return _feature_wall_hit(
+				surface_id, "z", 1.0, Vector3(0, 1, 0), "slope far endcap"
+			)
+	return {}
+
+
+func _climbable_wall_owns(_source_surface_id: String, cope_x: float, z: float, h: float) -> bool:
+	# Any compiled wall on this coping X owns the exterior climb band — no duplicate
+	# outer-back feature wall (keeps wall-adjacent ride-space probes free).
+	for wall_id in model.all_wall_ids():
+		var wall: WallSurface = model.walls[wall_id]
+		if not wall.contains_z(z):
+			continue
+		var ws := wall.sample_at_z(z)
+		if absf(float(ws.x) - cope_x) > SimTolerances.ALIGN_EPS:
+			continue
+		if h < float(ws.bottom_height) - SimTolerances.CONTACT_EPS:
+			continue
+		if h > float(ws.top_height) + SimTolerances.CONTACT_EPS:
+			continue
+		return true
+	return false
+
+
+func _outward_deck_backs(surface_id: String, z: float) -> bool:
+	var surf = null
+	if model.pipes.has(surface_id):
+		surf = model.pipes[surface_id]
+	elif model.ramps.has(surface_id):
+		surf = model.ramps[surface_id]
+	else:
+		return false
+	var coping_id := str(surf.coping_id)
+	if coping_id.is_empty() or not model.copings.has(coping_id):
+		return false
+	var coping: CopingEdge = model.copings[coping_id]
+	var span := coping.span_at_z(z)
+	return span != null and not span.outward_deck_id.is_empty()
+
+
+## Open (non-coping) deck side walls from base → top.
+func _deck_feature_wall(patch: SupportPatch, x: float, z: float, h: float, thick: float) -> Dictionary:
+	if h < patch.base_height - SimTolerances.CONTACT_EPS:
+		return {}
+	if h >= patch.height - SimTolerances.CONTACT_EPS:
+		return {}
+	# Coping / wall climb corridor stays clear — Z-side deck walls must not clip
+	# riders leaving a wall or hanging along the coping X.
+	if _near_any_coping_x(x, z):
+		return {}
+	var n := patch.poly.size()
+	if n < 3:
+		return {}
+	# Already deep inside the pad — body remount / land handles that.
+	if patch.contains_xz(x, z):
+		return {}
+	var best := {}
+	var best_d := thick + 1.0
+	for i in range(n):
+		var a: Vector2 = patch.poly[i]
+		var b: Vector2 = patch.poly[(i + 1) % n]
+		if a.distance_squared_to(b) < 0.01:
+			continue
+		if _deck_edge_is_coping_aligned(a, b):
+			continue
+		var closest := _closest_on_segment(Vector2(x, z), a, b)
+		var d := Vector2(x, z).distance_to(closest)
+		if d > thick or d >= best_d:
+			continue
+		# Outward normal (away from poly interior).
+		var edge := b - a
+		var nrm := Vector2(-edge.y, edge.x)
+		if nrm.length_squared() < 0.0001:
+			continue
+		nrm = nrm.normalized()
+		var mid := (a + b) * 0.5
+		var inward := mid - nrm * 0.5
+		if patch.contains_xz(inward.x, inward.y):
+			pass ## nrm already points outward
+		else:
+			nrm = -nrm
+		# Only hit when standing on the exterior side of the edge.
+		var side := Vector2(x - mid.x, z - mid.y).dot(nrm)
+		if side < -0.001:
+			continue
+		best_d = d
+		var axis := "x" if absf(nrm.x) >= absf(nrm.y) else "z"
+		var sign := nrm.x if axis == "x" else nrm.y
+		best = _feature_wall_hit(
+			patch.id,
+			axis,
+			sign,
+			Vector3(nrm.x, nrm.y, 0.0),
+			"deck open side"
+		)
+	return best
+
+
+func _near_any_coping_x(x: float, z: float) -> bool:
+	for pipe_id in model.all_pipe_ids():
+		var pipe: PipeSurface = model.pipes[pipe_id]
+		if z < pipe.z_min - 0.01 or z > pipe.z_max + 0.01:
+			continue
+		var cx := pipe.coping_x_at(z)
+		if not is_nan(cx) and absf(x - cx) <= SimTolerances.ALIGN_EPS:
+			return true
+	for ramp_id in model.all_ramp_ids():
+		var ramp: RampSurface = model.ramps[ramp_id]
+		if z < ramp.z_min - 0.01 or z > ramp.z_max + 0.01:
+			continue
+		var rcx := ramp.coping_x_at(z)
+		if not is_nan(rcx) and absf(x - rcx) <= SimTolerances.ALIGN_EPS:
+			return true
+	return false
+
+
+func _deck_edge_is_coping_aligned(a: Vector2, b: Vector2, eps: float = 0.75) -> bool:
+	# Vertical edges that sit on a pipe/ramp coping stay open (slope back owns them).
+	if absf(a.x - b.x) > eps:
+		return false
+	var cx := (a.x + b.x) * 0.5
+	var z0 := minf(a.y, b.y)
+	var z1 := maxf(a.y, b.y)
+	var mid_z := (z0 + z1) * 0.5
+	for pipe_id in model.all_pipe_ids():
+		var pipe: PipeSurface = model.pipes[pipe_id]
+		if mid_z < pipe.z_min - 0.01 or mid_z > pipe.z_max + 0.01:
+			continue
+		if absf(pipe.coping_x_at(mid_z) - cx) <= eps:
+			return true
+	for ramp_id in model.all_ramp_ids():
+		var ramp: RampSurface = model.ramps[ramp_id]
+		if mid_z < ramp.z_min - 0.01 or mid_z > ramp.z_max + 0.01:
+			continue
+		if absf(ramp.coping_x_at(mid_z) - cx) <= eps:
+			return true
+	return false
+
+
+func _closest_on_segment(p: Vector2, a: Vector2, b: Vector2) -> Vector2:
+	var ab := b - a
+	var len_sq := ab.length_squared()
+	if len_sq < 0.0001:
+		return a
+	var t := clampf((p - a).dot(ab) / len_sq, 0.0, 1.0)
+	return a + ab * t
+
+
+func _feature_wall_hit(
+	feature_id: String, axis: String, sign: float, normal: Vector3, reason: String
+) -> Dictionary:
+	return {
+		"kind": "feature_wall",
+		"feature_id": feature_id,
+		"surface_id": feature_id,
+		"axis": axis,
+		"sign": sign,
+		"normal": normal.normalized(),
+		"reason": reason,
+	}

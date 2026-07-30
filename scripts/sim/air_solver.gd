@@ -107,7 +107,16 @@ func _step_free(state: SimState, wish: Vector2, delta: float) -> void:
 				return
 			_bounce_off_solid(state, hit, from)
 			_try_land(state, from.z)
+		elif kind == "feature_wall":
+			# Outer backs still allow ordinary air land onto the slope; endcaps /
+			# deck sides stop like world borders.
+			if str(hit.get("reason", "")) == "slope outer back":
+				if _try_land_through_slope_back(state, hit, from.z):
+					return
+			_resolve_bounds_hit(state, hit, from)
+			_try_land(state, from.z)
 		else:
+			# bounds: stop into-normal motion.
 			_resolve_bounds_hit(state, hit, from)
 			_try_land(state, from.z)
 		state.position.y = clampf(state.position.y, 0.05, maxf(model.depth - 0.05, 0.05))
@@ -508,9 +517,58 @@ func _wall_contact_is_outward_exit(state: SimState, hit: Dictionary) -> bool:
 	return absf(normal.x) > 0.001 and state.velocity.x * normal.x > 0.0
 
 
-## Bounds / space only — stop into-wall motion; never crash.
+## Air crossing a slope outer-back face may still ordinary-land onto that slope.
+func _try_land_through_slope_back(state: SimState, hit: Dictionary, from_height: float) -> bool:
+	# Only descending approaches — rising fly-outs / hangs must clear the back.
+	if state.velocity.z >= -SimTolerances.CONTACT_EPS:
+		return false
+	if state.is_hanging():
+		return false
+	var sid := str(hit.get("surface_id", ""))
+	var z := state.position.y
+	var impact := maxf(absf(state.velocity.z), absf(state.velocity.x))
+	var vz := state.velocity.y
+	if model.pipes.has(sid):
+		var pipe: PipeSurface = model.pipes[sid]
+		var inward_x := pipe.coping_x_at(z) - pipe.outward_sign() * SimTolerances.CONTACT_EPS
+		var proj := pipe.project(inward_x, z, state.position.z)
+		if not bool(proj.get("ok", false)):
+			return false
+		if not _pipe_snap_allowed(state, pipe, proj):
+			return false
+		state.mode = SimState.Mode.GROUNDED
+		state.surface_id = pipe.id
+		state.u = float(proj.u)
+		state.v = float(proj.v)
+		state.position = proj.point
+		state.tangent_velocity = Vector2(-maxf(impact, 80.0), vz)
+		state.velocity = Vector3.ZERO
+		state.clear_hang()
+		state.clear_air_peak()
+		return true
+	if model.ramps.has(sid):
+		var ramp: RampSurface = model.ramps[sid]
+		var rin := ramp.coping_x_at(z) - ramp.outward_sign() * SimTolerances.CONTACT_EPS
+		var rproj := ramp.project(rin, z, state.position.z)
+		if not bool(rproj.get("ok", false)):
+			return false
+		state.mode = SimState.Mode.GROUNDED
+		state.surface_id = ramp.id
+		state.u = float(rproj.u)
+		state.v = float(rproj.v)
+		state.position = rproj.point
+		state.tangent_velocity = Vector2(-maxf(impact, 80.0), vz)
+		state.velocity = Vector3.ZERO
+		state.clear_hang()
+		state.clear_air_peak()
+		return true
+	return false
+
+
+## Bounds / space / feature walls — stop into-wall motion; never crash.
 func _resolve_bounds_hit(state: SimState, hit: Dictionary, from: Vector3) -> void:
 	var axis := str(hit.get("axis", ""))
+	var kind := str(hit.get("kind", ""))
 	if axis == "x":
 		state.velocity.x = 0.0
 	elif axis == "z":
@@ -518,6 +576,14 @@ func _resolve_bounds_hit(state: SimState, hit: Dictionary, from: Vector3) -> voi
 	else:
 		state.velocity.x = 0.0
 		state.velocity.y = 0.0
+	if kind == "feature_wall":
+		# Push back along the motion; do not snap to park AABB faces.
+		_depenetrate(state, from)
+		var clamped_fw := model.clamp_xz(state.position.x, state.position.y)
+		state.position.x = clamped_fw.x
+		state.position.y = clamped_fw.y
+		state.position.z = maxf(state.position.z, SimTolerances.VOID_FLOOR)
+		return
 	var clamped := model.clamp_xz(state.position.x, state.position.y)
 	state.position.x = clamped.x
 	state.position.y = clamped.y

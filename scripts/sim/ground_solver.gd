@@ -638,7 +638,15 @@ func _leave_slope_at_z_end(state: SimState, surf, proposed_z: float) -> bool:
 		return true
 	if not model.is_traversable_xz(x, proposed_z):
 		return false
-	var probe := Vector3(x, proposed_z, h)
+	# Step past endcap wall thickness so leave-into-air is not immediately bounced.
+	var past_z := proposed_z
+	var thick := SimTolerances.CAPSULE_RADIUS + 1.0
+	if proposed_z > float(surf.z_max):
+		past_z = float(surf.z_max) + thick
+	elif proposed_z < float(surf.z_min):
+		past_z = float(surf.z_min) - thick
+	past_z = _clamp_park_depth(past_z)
+	var probe := Vector3(x, past_z, h)
 	var hit := query.blocker_at(probe)
 	if not hit.is_empty() and str(hit.get("kind", "")) in ["pipe", "ramp"]:
 		pass
@@ -901,8 +909,9 @@ func _contain_ground_xz(state: SimState, proposed: Vector3) -> Dictionary:
 				state.tangent_velocity.y = 0.0
 			return {"ok": true, "pos": c}
 		var kind := str(hit.get("kind", ""))
-		if kind == "bounds":
-			# World border / unplayable space — try other axis slide.
+		if kind == "bounds" or kind == "feature_wall":
+			# World border / unplayable space / feature endcaps & open sides —
+			# try other axis slide (never remount onto the wall face).
 			continue
 		# Deck / pipe / wall: remount instead of freezing.
 		if _resolve_solid_contact(state, hit, Vector3(c.x, c.y, c.z)):

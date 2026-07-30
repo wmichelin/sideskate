@@ -55,6 +55,7 @@ func run() -> bool:
 		and _cross_story_spine_is_action_only()
 		and _ramp_peak_free_air_launch()
 		and _ramp_deck_seam_and_launch()
+		and _feature_walls_block_endcaps_and_sides()
 	)
 
 
@@ -3248,4 +3249,129 @@ func _ramp_deck_seam_and_launch() -> bool:
 			if int(pad.kind) == SimKinds.SurfaceKind.DECK and sim.state.velocity.z > -1.0:
 				push_error("ramp deck: remounted deck while still rising")
 				return false
+	return true
+
+
+## Endcaps / outer backs / open deck sides stop like world borders — no ride-up remount.
+func _feature_walls_block_endcaps_and_sides() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_feature_walls.ssk"):
+		push_error("feature walls: setup")
+		return false
+	var right: RampSurface = null
+	for id in sim.model.all_ramp_ids():
+		var r: RampSurface = sim.model.ramps[id]
+		if r.side == SimKinds.PipeSide.RIGHT:
+			right = r
+			break
+	if right == null:
+		push_error("feature walls: missing right ramp")
+		return false
+	var z_mid := (right.z_min + right.z_max) * 0.5
+	var sample := right.sample_at_z(z_mid)
+	var lip := float(sample.lip_x)
+	var cope := right.coping_x_at(z_mid)
+	var peak := float(sample.base_height) + float(sample.radius)
+	var thick := SimTolerances.CAPSULE_RADIUS
+	# 1) Walk into the far endcap from outside Z — must not remount / ride up.
+	var approach_z := right.z_max + maxf(thick * 2.0, sim.model.cell_h * 0.35)
+	var floor_x := (lip + cope) * 0.5
+	var floor_top := sim.query.top_support(floor_x, approach_z, 5.0)
+	if floor_top.is_empty() or float(floor_top.height) < -100.0:
+		push_error("feature walls: no floor outside endcap")
+		return false
+	sim.state.mode = SimState.Mode.GROUNDED
+	sim.state.surface_id = str(floor_top.surface_id)
+	sim.state.position = Vector3(floor_x, approach_z, float(floor_top.height))
+	sim.state.u = 0.0
+	sim.state.v = 0.0
+	sim.state.tangent_velocity = Vector2(0.0, -500.0)
+	sim.state.clear_hang()
+	for _i in range(90):
+		sim.set_input(Vector2(0, -1), false, false)
+		sim.tick()
+		if sim.model.ramps.has(sim.state.surface_id):
+			push_error("feature walls: remounted ramp via endcap")
+			return false
+		if sim.state.position.y < right.z_max - 1.0:
+			push_error("feature walls: tunneled through far endcap z=%.1f" % sim.state.position.y)
+			return false
+	if sim.state.position.y < right.z_max:
+		push_error("feature walls: crossed into ramp Z span via endcap")
+		return false
+	# 2) Open pipe outer back (no outward deck) — stop, do not remount.
+	var open_pipe: PipeSurface = null
+	for pid in sim.model.all_pipe_ids():
+		var p: PipeSurface = sim.model.pipes[pid]
+		var coping: CopingEdge = sim.model.copings[p.coping_id]
+		var span := coping.span_at_z((p.z_min + p.z_max) * 0.5)
+		if span != null and span.outward_deck_id.is_empty():
+			open_pipe = p
+			break
+	if open_pipe == null:
+		push_error("feature walls: missing open pipe")
+		return false
+	var pz := (open_pipe.z_min + open_pipe.z_max) * 0.5
+	var pc := open_pipe.coping_x_at(pz)
+	var back_x := pc + open_pipe.outward_sign() * maxf(thick * 3.0, sim.model.cell_w * 0.6)
+	var floor2 := sim.query.top_support(back_x, pz, 5.0)
+	if floor2.is_empty() or float(floor2.height) < -100.0:
+		push_error("feature walls: no floor outside outer back")
+		return false
+	sim.state.mode = SimState.Mode.GROUNDED
+	sim.state.surface_id = str(floor2.surface_id)
+	sim.state.position = Vector3(back_x, pz, float(floor2.height))
+	sim.state.tangent_velocity = Vector2(-open_pipe.outward_sign() * 600.0, 0.0)
+	sim.state.clear_hang()
+	for _j in range(90):
+		sim.set_input(Vector2(-open_pipe.outward_sign(), 0), false, false)
+		sim.tick()
+		if sim.model.pipes.has(sim.state.surface_id):
+			push_error("feature walls: remounted pipe via outer back")
+			return false
+		if open_pipe.outward_sign() > 0.0:
+			if sim.state.position.x < pc - 1.0:
+				push_error("feature walls: tunneled past outer back x=%.1f" % sim.state.position.x)
+				return false
+		elif sim.state.position.x > pc + 1.0:
+			push_error("feature walls: tunneled past outer back x=%.1f" % sim.state.position.x)
+			return false
+	# 3) Deck open Z side — stop, no sticky top mount from below.
+	var deck: SupportPatch = null
+	for patch_id in sim.model.patches.keys():
+		var patch: SupportPatch = sim.model.patches[patch_id]
+		if int(patch.kind) == SimKinds.SurfaceKind.DECK:
+			deck = patch
+			break
+	if deck == null:
+		push_error("feature walls: missing deck")
+		return false
+	var mid_x := (deck.x_min + deck.x_max) * 0.5
+	var deck_approach := deck.z_max + maxf(thick * 2.0, sim.model.cell_h * 0.35)
+	var floor3 := sim.query.top_support(mid_x, deck_approach, 5.0)
+	if floor3.is_empty() or float(floor3.height) < -100.0:
+		push_error("feature walls: no floor outside deck")
+		return false
+	sim.state.mode = SimState.Mode.GROUNDED
+	sim.state.surface_id = str(floor3.surface_id)
+	sim.state.position = Vector3(mid_x, deck_approach, float(floor3.height))
+	sim.state.tangent_velocity = Vector2(0.0, -500.0)
+	sim.state.clear_hang()
+	for _k in range(120):
+		sim.set_input(Vector2(0, -1), false, false)
+		sim.tick()
+		if sim.state.is_grounded() and sim.model.patches.has(sim.state.surface_id):
+			var landed: SupportPatch = sim.model.patches[sim.state.surface_id]
+			if int(landed.kind) == SimKinds.SurfaceKind.DECK \
+					and absf(sim.state.position.z - deck.height) <= SimTolerances.SEAM_EPS \
+					and float(floor3.height) < deck.height - SimTolerances.SEAM_EPS:
+				push_error("feature walls: sticky-mounted deck top from open side")
+				return false
+		if sim.state.position.y < deck.z_max - 1.0 and float(floor3.height) < deck.height - 5.0:
+			if sim.state.position.z < deck.height - SimTolerances.CONTACT_EPS:
+				push_error("feature walls: entered deck volume through open side")
+				return false
+	if absf(deck.height - peak) > SimTolerances.SEAM_EPS:
+		push_error("feature walls: deck/peak mismatch")
+		return false
 	return true
