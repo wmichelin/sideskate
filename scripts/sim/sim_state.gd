@@ -27,9 +27,6 @@ var facing_yaw: float = 0.0
 var maneuver = null ## ManeuverPlan or null
 ## Non-empty while air-out is anchored to a compiled OPEN edge.
 var hang_edge_id: String = ""
-## Launch edge for this hang bout (unchanged by depth retarget). Apex facing
-## and lock-X continuity use this even when hang_edge_id retargets across a gap.
-var hang_launch_edge_id: String = ""
 ## Max height reached this airborne bout (hang / free / fly-out). Used so deck
 ## lands require a real arc above the pad, not a lip/apex skim.
 var air_peak_height: float = -INF
@@ -70,7 +67,6 @@ func set_facing_side(side: String) -> void:
 
 func clear_hang() -> void:
 	hang_edge_id = ""
-	hang_launch_edge_id = ""
 	hang_apex_facing_done = false
 	hang_apex_timer = -1.0
 	facing_yaw = 0.0
@@ -79,7 +75,6 @@ func clear_hang() -> void:
 
 func begin_hang(edge_id: String) -> void:
 	hang_edge_id = edge_id
-	hang_launch_edge_id = edge_id
 	hang_apex_facing_done = false
 	hang_apex_timer = -1.0
 	facing_yaw = 0.0

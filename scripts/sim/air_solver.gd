@@ -52,7 +52,7 @@ func _step_free(state: SimState, wish: Vector2, delta: float) -> void:
 		state.velocity.y = 0.0 if absf(w.y) < 0.15 else w.y * 200.0
 	state.velocity.z += SimTolerances.GRAVITY * delta
 	if state.is_hanging():
-		_update_hang_apex_facing(state, delta, w)
+		_update_hang_apex_facing(state, delta)
 	var from := state.position
 	if state.is_hanging():
 		var from_anchor := _hang_anchor(state, from.y)
@@ -117,113 +117,17 @@ func _step_free(state: SimState, wish: Vector2, delta: float) -> void:
 	state.position.y = clampf(state.position.y, 0.05, maxf(model.depth - 0.05, 0.05))
 
 
-func _hang_launch_edge(state: SimState) -> TopologyEdge:
-	if not state.hang_launch_edge_id.is_empty():
-		var launch: TopologyEdge = model.edges.get(state.hang_launch_edge_id)
-		if launch != null:
-			return launch
-	return model.edges.get(state.hang_edge_id) as TopologyEdge
-
-
-func _hang_launch_pipe(state: SimState) -> PipeSurface:
-	var edge := _hang_launch_edge(state)
-	if edge == null:
-		return null
-	if model.pipes.has(edge.from_surface_id):
-		return model.pipes[edge.from_surface_id] as PipeSurface
-	if model.walls.has(edge.from_surface_id):
-		var wall: WallSurface = model.walls[edge.from_surface_id]
-		return model.pipes.get(wall.source_pipe_id) as PipeSurface
-	return null
-
-
-func _hang_lock_x(state: SimState) -> float:
-	var launch := _hang_launch_edge(state)
-	if launch == null:
-		return state.position.x
-	var pipe := _hang_launch_pipe(state)
-	if pipe != null:
-		var z_ref := clampf(state.position.y, pipe.z_min, pipe.z_max - 0.001)
-		var cx := pipe.coping_x_at(z_ref)
-		return state.position.x if is_nan(cx) else cx
-	var sample := query.edge_anchor_sample(
-		launch, clampf(state.position.y, launch.z_min, launch.z_max - 0.001)
-	)
-	return float(sample.x) if not sample.is_empty() else state.position.x
-
-
-## Hang may leave the launch edge's Z span (depth transfer across a gap). Prefer
-## a same-side OPEN coping whose lock X matches; otherwise keep a synthetic
-## X-lock so hang does not clear over void / lava between colinear pipes.
 func _hang_anchor(state: SimState, z: float) -> Dictionary:
-	if not state.is_hanging():
-		return {}
 	var edge: TopologyEdge = model.edges.get(state.hang_edge_id)
-	if edge != null:
-		var sample := query.edge_anchor_sample(edge, z)
-		if not sample.is_empty():
-			return sample
-	var launch_pipe := _hang_launch_pipe(state)
-	if launch_pipe == null:
-		return {}
-	var lock_x := _hang_lock_x(state)
-	var cont := _hang_continuation_edge(z, launch_pipe.side, lock_x)
-	if cont != null:
-		state.hang_edge_id = cont.id
-		var retargeted := query.edge_anchor_sample(cont, z)
-		if not retargeted.is_empty():
-			return retargeted
-	# Gap: no coping at this depth — hold launch lock X and lip height.
-	var z_ref := clampf(z, launch_pipe.z_min, launch_pipe.z_max - 0.001)
-	return {
-		"x": lock_x,
-		"height": launch_pipe.height_at_theta(z_ref, PI * 0.5),
-		"outward_sign": launch_pipe.outward_sign(),
-		"source_pipe_id": launch_pipe.id,
-		"source_surface_id": launch_pipe.id,
-		"gap": true,
-	}
-
-
-func _hang_continuation_edge(z: float, side: int, lock_x: float) -> TopologyEdge:
-	for eid in model.all_edge_ids():
-		var edge: TopologyEdge = model.edges[eid]
-		if edge == null or edge.kind != SimKinds.EdgeKind.OPEN_COPING:
-			continue
-		if not edge.contains_z(z):
-			continue
-		var sample := query.edge_anchor_sample(edge, z)
-		if sample.is_empty():
-			continue
-		var pipe: PipeSurface = model.pipes.get(str(sample.get("source_pipe_id", "")))
-		if pipe == null or pipe.side != side:
-			continue
-		if absf(float(sample.x) - lock_x) > SimTolerances.ALIGN_EPS:
-			continue
-		return edge
-	return null
+	return query.edge_anchor_sample(edge, z)
 
 
 ## Once per air-out: after vertical apex, turn around the body's local Y axis
 ## into the source pipe over APEX_FACING_DELAY (0 = instant).
-func _update_hang_apex_facing(state: SimState, delta: float, wish: Vector2) -> void:
+func _update_hang_apex_facing(state: SimState, delta: float) -> void:
 	if state.hang_apex_facing_done:
 		return
-	var launch := _hang_launch_edge(state)
-	# Off the launch edge Z span (depth transfer): keep takeoff orientation —
-	# no apex bowl-face turn.
-	if launch == null or not launch.contains_z(state.position.y):
-		state.hang_apex_facing_done = true
-		state.hang_apex_timer = -1.0
-		state.facing_yaw = 0.0
-		return
-	# Depth stick held: transferring along Z — freeze takeoff lean; apex may
-	# still fire later if they release while remaining on the launch span.
-	if absf(wish.y) >= 0.15:
-		state.hang_apex_timer = -1.0
-		state.facing_yaw = 0.0
-		return
-	var anchor := query.edge_anchor_sample(launch, state.position.y)
+	var anchor := _hang_anchor(state, state.position.y)
 	var pipe: PipeSurface = model.pipes.get(str(anchor.get("source_pipe_id", "")))
 	if pipe == null:
 		return
@@ -257,9 +161,7 @@ func _anchor_crossing_time(state: SimState, from: Vector3, to: Vector3) -> float
 	if not state.is_hanging() or to.z >= from.z:
 		return INF
 	var anchor := _hang_anchor(state, to.y)
-	# Synthetic gap locks have no remount surface — don't treat lip height as a
-	# return crossing while depth-transferring over void / lava.
-	if anchor.is_empty() or bool(anchor.get("gap", false)):
+	if anchor.is_empty():
 		return INF
 	var height := float(anchor.height)
 	if from.z < height - SimTolerances.CONTACT_EPS \
@@ -636,30 +538,19 @@ func _deck_descending_cross_ok(state: SimState, hit: Dictionary, from_height: fl
 	return true
 
 
-## Descending through the current hang edge (launch or depth-retargeted) returns
-## to its source surface. Opposite-facing pipes are never considered here.
+## Descending through the same compiled air-out edge returns to its source
+## surface. Opposite-facing pipes are never considered here.
 func _try_return_to_anchor(state: SimState, from_height: float) -> bool:
-	# May retarget hang_edge_id onto a colinear same-side OPEN edge at this Z.
-	var anchor := _hang_anchor(state, state.position.y)
-	if anchor.is_empty() or bool(anchor.get("gap", false)):
-		return false
 	var edge: TopologyEdge = model.edges.get(state.hang_edge_id)
 	if edge == null or not edge.contains_z(state.position.y):
+		return false
+	var anchor := query.edge_anchor_sample(edge, state.position.y)
+	if anchor.is_empty():
 		return false
 	var height := float(anchor.height)
 	if state.position.z > height + SimTolerances.CONTACT_EPS:
 		return false
-	# Classic remount: descending crossing of the lip this tick.
-	var crossed := is_nan(from_height) or from_height >= height - SimTolerances.CONTACT_EPS
-	# Depth-transfer recovery: entered the far span already below the lip while
-	# still hanging — remount without requiring a fresh above→below crossing.
-	var retargeted := (
-		not state.hang_launch_edge_id.is_empty()
-		and state.hang_edge_id != state.hang_launch_edge_id
-	)
-	if not crossed and not retargeted:
-		return false
-	if not crossed and state.velocity.z > 0.0:
+	if not is_nan(from_height) and from_height < height - SimTolerances.CONTACT_EPS:
 		return false
 	var impact := maxf(absf(state.velocity.z), absf(state.velocity.x))
 	var vz := state.velocity.y

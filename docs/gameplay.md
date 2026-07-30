@@ -68,7 +68,7 @@ Stick → wish. Per axis:
 
 **Acid:** transfer button while descending → along travel to an opposite wall, or explicit deck drop-in onto an abutting pipe.
 
-Hang stores `hang_edge_id` (and launch id for lock/apex); it clears on fly-out, spine, acid, or return. Leaving the launch Z span retargets onto a colinear same-side OPEN edge or keeps a synthetic X-lock across the gap — it does not free-air. Depth-transfer before apex keeps takeoff orientation (skips the into-bowl turn). Plans never retarget mid-flight. At hang apex on the launch span, facing turns around the character's centered local Y axis into the source pipe over `APEX_FACING_DELAY`.
+Hang stores `hang_edge_id`; it clears on fly-out, spine, acid, return, or leaving the edge’s Z span. Plans never retarget mid-flight. At hang apex, facing turns around the character's centered local Y axis into the source pipe over `APEX_FACING_DELAY`.
 
 ## Motion vectors
 
