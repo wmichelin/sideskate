@@ -41,6 +41,8 @@ func run() -> bool:
 		and _layered_hole_not_invisible_wall()
 		and _deck_hash_no_pin_from_floor()
 		and _l0_lava_gap_no_phantom_wall_climb()
+		and _lava_grounded_contact_kills()
+		and _respawn_at_prior_floor_or_deck()
 		and _deck_ride_off_falls_acid_mounts()
 		and _layered_deck_back_ride_off_stays_free()
 		and _map_edge_deck_no_void_exit()
@@ -2226,6 +2228,201 @@ func _l0_lava_gap_no_phantom_wall_climb() -> bool:
 			return false
 	push_error("lava: never left pipe")
 	return false
+
+
+## Grounded feet on an `x` pad kill; airborne over lava does not.
+func _lava_grounded_contact_kills() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/test_lava.ssk"):
+		push_error("lava kill: setup")
+		return false
+	var lava: SupportPatch = null
+	for id in sim.model.patches.keys():
+		var p: SupportPatch = sim.model.patches[id]
+		if p.lethal:
+			lava = p
+			break
+	if lava == null:
+		push_error("lava kill: no lethal patch")
+		return false
+	var mx := (lava.x_min + lava.x_max) * 0.5
+	var mz := (lava.z_min + lava.z_max) * 0.5
+	# Airborne over lava: stay alive.
+	sim.state.mode = SimState.Mode.AIRBORNE
+	sim.state.surface_id = ""
+	sim.state.clear_hang()
+	sim.state.maneuver = null
+	sim.state.alive = true
+	sim.state.position = Vector3(mx, mz, lava.height + 80.0)
+	sim.state.velocity = Vector3(0.0, 0.0, 0.0)
+	sim.state.air_peak_height = sim.state.position.z
+	sim.set_input(Vector2.ZERO, false, false)
+	sim.tick()
+	if not sim.state.alive:
+		push_error("lava kill: airborne over lava must not kill")
+		return false
+	# Skate from spawn floor into the lava footprint (floor poly may overlap).
+	sim.respawn()
+	if not sim.state.alive or not sim.state.is_grounded():
+		push_error("lava kill: respawn failed")
+		return false
+	var died := false
+	for _i in range(180):
+		# Move toward lava in +Z (fixture: @ south of x row).
+		sim.set_input(Vector2(0, 1), false, false)
+		sim.tick()
+		if not sim.state.alive:
+			died = true
+			if not str(sim.state.surface_id).begins_with("lava"):
+				push_error("lava kill: died on %s, want lava" % sim.state.surface_id)
+				return false
+			break
+	if not died:
+		push_error(
+			"lava kill: skating into lava never died surf=%s pos=%s"
+			% [sim.state.surface_id, sim.state.position]
+		)
+		return false
+	# Direct mount / land onto lava also kills.
+	sim.respawn()
+	sim.state.mode = SimState.Mode.GROUNDED
+	sim.state.surface_id = lava.id
+	sim.state.position = Vector3(mx, mz, lava.height)
+	sim.state.tangent_velocity = Vector2.ZERO
+	sim.state.alive = true
+	sim.set_input(Vector2.ZERO, false, false)
+	sim.tick()
+	if sim.state.alive:
+		push_error("lava kill: grounded on lethal patch must die")
+		return false
+	# Descending land onto lava footprint.
+	sim.respawn()
+	sim.state.mode = SimState.Mode.AIRBORNE
+	sim.state.surface_id = ""
+	sim.state.clear_hang()
+	sim.state.maneuver = null
+	sim.state.alive = true
+	sim.state.position = Vector3(mx, mz, lava.height + 60.0)
+	sim.state.velocity = Vector3(0.0, 0.0, -400.0)
+	sim.state.air_peak_height = sim.state.position.z
+	var landed_dead := false
+	for _j in range(40):
+		sim.set_input(Vector2.ZERO, false, false)
+		sim.tick()
+		if not sim.state.alive:
+			landed_dead = true
+			break
+	if not landed_dead:
+		push_error(
+			"lava kill: air land on lava never died mode=%s surf=%s alive=%s"
+			% [sim.state.mode, sim.state.surface_id, sim.state.alive]
+		)
+		return false
+	return true
+
+
+## After lava death, respawn ~CHECKPOINT_HISTORY_SEC back on floor/deck — not
+## the lethal edge and not a one-tick nudge.
+func _respawn_at_prior_floor_or_deck() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/test_lava.ssk"):
+		push_error("respawn cp: setup")
+		return false
+	var spawn_pos := sim.state.position
+	# Build a full history window by skating along the floor (away from lava).
+	# Keep going until the oldest sample is no longer the IDL spawn pose.
+	var mark := Vector3.ZERO
+	var marked := false
+	for _i in range(sim._checkpoint_history_limit() * 2 + 10):
+		sim.set_input(Vector2(0, -1), false, false)
+		sim.tick()
+		if not sim.state.alive:
+			push_error("respawn cp: died while filling history")
+			return false
+		if sim.checkpoint_history.size() >= sim._checkpoint_history_limit() \
+				and sim.checkpoint_position.distance_to(spawn_pos) > 20.0:
+			mark = sim.checkpoint_position
+			marked = true
+			break
+	if not marked:
+		push_error(
+			"respawn cp: oldest sample never left spawn (cp=%s hist=%d)"
+			% [sim.checkpoint_position, sim.checkpoint_history.size()]
+		)
+		return false
+	# Now skate into lava and die.
+	var died := false
+	for _j in range(180):
+		sim.set_input(Vector2(0, 1), false, false)
+		sim.tick()
+		if not sim.state.alive:
+			died = true
+			break
+	if not died:
+		push_error("respawn cp: never died on lava")
+		return false
+	var want := sim.checkpoint_position
+	sim.respawn()
+	if not sim.state.alive or not sim.state.is_grounded():
+		push_error("respawn cp: bad respawn state")
+		return false
+	if sim.state.position.distance_to(want) > 5.0:
+		push_error(
+			"respawn cp: should restore oldest history sample %s got %s"
+			% [want, sim.state.position]
+		)
+		return false
+	if sim.state.position.distance_to(spawn_pos) < 10.0:
+		push_error("respawn cp: collapsed to IDL spawn")
+		return false
+	# Pad switch: floor history then deck — oldest should still be floor.
+	var deck_sim := PlayerSim.new()
+	if not deck_sim.setup_from_path("res://tests/levels/sim/sim_deck_backed.ssk"):
+		push_error("respawn cp: deck setup")
+		return false
+	var spawn_floor_id := deck_sim.state.surface_id
+	var spawn_floor_pos := deck_sim.state.position
+	if not deck_sim._is_checkpoint_surface(spawn_floor_id):
+		push_error("respawn cp: spawn should be floor")
+		return false
+	var deck: SupportPatch = null
+	for id in deck_sim.model.patches.keys():
+		var p: SupportPatch = deck_sim.model.patches[id]
+		if int(p.kind) == SimKinds.SurfaceKind.DECK:
+			deck = p
+			break
+	if deck == null:
+		push_error("respawn cp: no deck")
+		return false
+	var dx := (deck.x_min + deck.x_max) * 0.5
+	var dz := (deck.z_min + deck.z_max) * 0.5
+	deck_sim.state.mode = SimState.Mode.GROUNDED
+	deck_sim.state.surface_id = deck.id
+	deck_sim.state.position = Vector3(dx, dz, deck.height)
+	deck_sim.state.tangent_velocity = Vector2.ZERO
+	deck_sim.set_input(Vector2.ZERO, false, false)
+	deck_sim.tick()
+	if deck_sim.checkpoint_surface_id != spawn_floor_id:
+		push_error(
+			"respawn cp: oldest should still be spawn floor %s got %s"
+			% [spawn_floor_id, deck_sim.checkpoint_surface_id]
+		)
+		return false
+	deck_sim.state.alive = false
+	deck_sim.respawn()
+	if deck_sim.state.surface_id != spawn_floor_id:
+		push_error(
+			"respawn cp: should restore floor %s got %s"
+			% [spawn_floor_id, deck_sim.state.surface_id]
+		)
+		return false
+	if deck_sim.state.position.distance_to(spawn_floor_pos) > 5.0:
+		push_error(
+			"respawn cp: floor pose want ~%s got %s"
+			% [spawn_floor_pos, deck_sim.state.position]
+		)
+		return false
+	return true
 
 
 ## ####<<< : ride deck toward pipe → fall (no auto-stick); acid drop mounts.

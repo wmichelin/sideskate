@@ -61,7 +61,7 @@ Exactly one of:
 
 `hang_edge_id` empty ⇒ free air (XZ control). Non-empty ⇒ **air-out**: X is locked to that edge’s anchor at current Z (depth stick still applies; height ballistic). Hang clears on fly-out, spine, acid, land, or leaving the edge’s Z span.
 
-Crash / death is a terminal grounded→overlay path after **lava** contact only; it is not a third motion state. World borders, unplayable space, and solid geometry are **containment** (invisible walls / void floor) — never crash.
+Crash / death is a terminal grounded→overlay path after **lava** contact only; it is not a third motion state. World borders, unplayable space, and solid geometry are **containment** (invisible walls / void floor) — never crash. Respawn restores the oldest sample in a rolling `CHECKPOINT_HISTORY_SEC` window of grounded floor/deck poses (~1.5s back). Lava / pipe / wall / void never count.
 
 ## Transitions
 
@@ -98,6 +98,7 @@ Invisible world-border walls sit on the park AABB faces (X and Z) so you cannot 
 | `MAX_EDGE_CROSSINGS` | `8` | Per-tick seam chain bound |
 | `FLY_OUT_ABOVE` | `40` | Max height above coping for fly-out window |
 | `DECK_LAND_MIN_ABOVE` | `20` | Air-bout peak must exceed pad by this before free-air deck land |
+| `CHECKPOINT_HISTORY_SEC` | `1.5` | Lava respawn restores this many seconds back on floor/deck |
 | `APEX_FACING_DELAY` | `0.05` s | Centered local-Y hang turn duration into the source pipe |
 | `FACING_COPING_CELLS` | `3` | Spine cast range in cells |
 | `ACID_COPING_CELLS` | `16` | Acid cast range in cells |

@@ -21,6 +21,8 @@ static var FLY_OUT_ABOVE: float = 40.0
 ## Free-air deck land must start this far above the pad. Lip/apex skims within
 ## a couple units used to sticky-mount (keep vx, kill height) on the next gravity tick.
 const DECK_LAND_MIN_ABOVE := 20.0
+## How far back (seconds of safe floor/deck time) lava respawn restores.
+static var CHECKPOINT_HISTORY_SEC: float = 1.5
 static var FACING_COPING_CELLS: int = 3
 static var ACID_COPING_CELLS: int = 16
 static var GRAVITY: float = -1900.0

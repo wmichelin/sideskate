@@ -51,11 +51,11 @@ func supports_below(x: float, z: float, feet_y: float) -> Array:
 		var dh := float(a.height) - float(b.height)
 		if absf(dh) > 0.0001:
 			return dh > 0.0
-		# Prefer non-lethal when heights tie (floor over lava).
+		# Prefer lethal when heights tie so lava footprints beat overlapping floor.
 		var la := bool(a.get("lethal", false))
 		var lb := bool(b.get("lethal", false))
 		if la != lb:
-			return not la
+			return la
 		return str(a.surface_id) < str(b.surface_id)
 	)
 	return out
@@ -66,6 +66,33 @@ func top_support(x: float, z: float, feet_y: float) -> Dictionary:
 	if all.is_empty():
 		return {}
 	return all[0]
+
+
+## Lethal pad covering (x,z) at feet height, or {}. Floor polys may overlap lava
+## cells; grounded contact with any lethal pad still kills.
+func lethal_at(x: float, z: float, feet_h: float) -> Dictionary:
+	if model == null:
+		return {}
+	var best := {}
+	var best_h := -INF
+	for pid in model.patches.keys():
+		var patch: SupportPatch = model.patches[pid]
+		if not patch.lethal:
+			continue
+		if not patch.contains_xz(x, z):
+			continue
+		if absf(patch.height - feet_h) > SimTolerances.CONTACT_EPS:
+			continue
+		if patch.height >= best_h:
+			best_h = patch.height
+			best = {
+				"surface_id": patch.id,
+				"kind": patch.kind,
+				"height": patch.height,
+				"lethal": true,
+				"patch": patch,
+			}
+	return best
 
 
 func project_to_surface(surface_id: String, x: float, z: float, h: float) -> Dictionary:

@@ -21,6 +21,13 @@ var action_just: bool = false
 var ollie_pressed: bool = false
 var debug: SimDebugSnapshot
 var trace: SimTrace
+## Safe floor/deck pose history for lava respawn. Oldest sample in the window
+## (~CHECKPOINT_HISTORY_SEC of grounded floor/deck time) is the restore point.
+var checkpoint_history: Array = []
+## Convenience mirror of history[0] for tests / debug.
+var checkpoint_surface_id: String = ""
+var checkpoint_position: Vector3 = Vector3.ZERO
+var checkpoint_facing: String = "r"
 
 
 func setup_from_path(path: String) -> bool:
@@ -46,6 +53,7 @@ func _finish_setup() -> bool:
 	planner = ManeuverPlanner.new(model, query)
 	air = AirSolver.new(model, query, planner, ground)
 	state = ground.spawn_state()
+	_seed_checkpoint_from_state()
 	debug = SimDebugSnapshot.new()
 	trace = SimTrace.new(model.model_hash)
 	trace.record(state, Vector2.ZERO, false)
@@ -81,11 +89,114 @@ func tick(delta: float = SimTolerances.FIXED_DT) -> void:
 		)
 	else:
 		air.step(state, last_wish, delta)
+	_apply_lava_kill()
+	_note_checkpoint()
 	_assert_finite()
 	_assert_invariants(previous_surface_id, planned_surface_change)
 	debug.capture(state, model, query)
 	trace.record(state, last_wish, action_just)
 	action_just = false
+
+
+## Grounded contact with any lethal pad kills (floor polys may still cover the
+## same XZ as lava — touch is authoritative, not surface_id ownership).
+func _apply_lava_kill() -> void:
+	if state == null or not state.alive or not state.is_grounded():
+		return
+	var hit := query.lethal_at(state.position.x, state.position.y, state.position.z)
+	if hit.is_empty():
+		# Also die if already mounted on a lethal patch (spawn / seam).
+		if model.patches.has(state.surface_id):
+			var patch: SupportPatch = model.patches[state.surface_id]
+			if patch.lethal:
+				state.alive = false
+		return
+	state.surface_id = str(hit.surface_id)
+	state.u = 0.0
+	state.v = 0.0
+	state.position.z = float(hit.height)
+	state.tangent_velocity = Vector2.ZERO
+	state.velocity = Vector3.ZERO
+	state.clear_hang()
+	state.alive = false
+
+
+func _is_checkpoint_surface(surface_id: String) -> bool:
+	if surface_id.is_empty() or surface_id == "__void_floor__":
+		return false
+	if not model.patches.has(surface_id):
+		return false
+	var patch: SupportPatch = model.patches[surface_id]
+	if patch.lethal:
+		return false
+	var kind := int(patch.kind)
+	return kind == SimKinds.SurfaceKind.FLOOR or kind == SimKinds.SurfaceKind.DECK
+
+
+func _seed_checkpoint_from_state() -> void:
+	checkpoint_history.clear()
+	checkpoint_surface_id = ""
+	checkpoint_position = Vector3.ZERO
+	checkpoint_facing = model.spawn_facing if model != null else "r"
+	if state == null:
+		return
+	var sid := ""
+	var pos := Vector3(model.spawn_x, model.spawn_z, model.spawn_height)
+	var facing := model.spawn_facing
+	if state.is_grounded() and _is_checkpoint_surface(state.surface_id):
+		sid = state.surface_id
+		pos = state.position
+		facing = state.facing
+	else:
+		var top := query.top_support(
+			model.spawn_x, model.spawn_z, model.spawn_height + SimTolerances.CONTACT_EPS * 4.0
+		)
+		if not top.is_empty() and _is_checkpoint_surface(str(top.surface_id)):
+			sid = str(top.surface_id)
+			pos.z = float(top.height)
+	_push_checkpoint_sample(sid, pos, facing)
+
+
+func _checkpoint_history_limit() -> int:
+	return maxi(
+		int(ceil(SimTolerances.CHECKPOINT_HISTORY_SEC / SimTolerances.FIXED_DT)),
+		2
+	)
+
+
+func _push_checkpoint_sample(surface_id: String, pos: Vector3, facing: String) -> void:
+	if surface_id.is_empty() or not _is_checkpoint_surface(surface_id):
+		return
+	var face := facing if facing in ["l", "r"] else "r"
+	checkpoint_history.append({
+		"surface_id": surface_id,
+		"position": pos,
+		"facing": face,
+	})
+	var limit := _checkpoint_history_limit()
+	while checkpoint_history.size() > limit:
+		checkpoint_history.pop_front()
+	_sync_checkpoint_mirror()
+
+
+func _sync_checkpoint_mirror() -> void:
+	if checkpoint_history.is_empty():
+		checkpoint_surface_id = ""
+		checkpoint_position = Vector3.ZERO
+		checkpoint_facing = model.spawn_facing if model != null else "r"
+		return
+	var oldest: Dictionary = checkpoint_history[0]
+	checkpoint_surface_id = str(oldest.get("surface_id", ""))
+	checkpoint_position = oldest.get("position", Vector3.ZERO)
+	checkpoint_facing = str(oldest.get("facing", "r"))
+
+
+func _note_checkpoint() -> void:
+	if state == null or not state.alive or not state.is_grounded():
+		return
+	if not _is_checkpoint_surface(state.surface_id):
+		return
+	_push_checkpoint_sample(state.surface_id, state.position, state.facing)
 
 
 func _try_actions() -> void:
@@ -196,11 +307,38 @@ func _assert_invariants(previous_surface_id: String, planned_surface_change: boo
 func respawn() -> void:
 	if model == null or query == null or ground == null:
 		return
-	state = ground.spawn_state()
-	state.alive = true
-	state.maneuver = null
-	state.clear_hang()
-	state.last_reject = ""
+	_sync_checkpoint_mirror()
+	var sid := checkpoint_surface_id
+	var pos := checkpoint_position
+	var face := checkpoint_facing
+	if not sid.is_empty() and model.patches.has(sid) and _is_checkpoint_surface(sid):
+		var patch: SupportPatch = model.patches[sid]
+		state = SimState.new()
+		state.alive = true
+		state.mode = SimState.Mode.GROUNDED
+		state.surface_id = sid
+		state.u = 0.0
+		state.v = 0.0
+		state.tangent_velocity = Vector2.ZERO
+		state.velocity = Vector3.ZERO
+		state.maneuver = null
+		state.clear_hang()
+		state.clear_air_peak()
+		state.last_reject = ""
+		state.set_facing_side(face)
+		var px := clampf(pos.x, patch.x_min + 0.05, patch.x_max - 0.05)
+		var pz := clampf(pos.y, patch.z_min + 0.05, patch.z_max - 0.05)
+		if not patch.contains_xz(px, pz):
+			px = clampf((patch.x_min + patch.x_max) * 0.5, 0.05, maxf(model.width - 0.05, 0.05))
+			pz = clampf((patch.z_min + patch.z_max) * 0.5, 0.05, maxf(model.depth - 0.05, 0.05))
+		state.position = Vector3(px, pz, patch.height)
+	else:
+		state = ground.spawn_state()
+		state.alive = true
+		state.maneuver = null
+		state.clear_hang()
+		state.last_reject = ""
+		_seed_checkpoint_from_state()
 	if debug != null:
 		debug.capture(state, model, query)
 	if trace != null:

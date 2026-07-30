@@ -107,6 +107,9 @@ func _step_patch(
 	ollie_accel: float,
 ) -> void:
 	var patch: SupportPatch = model.patches[state.surface_id]
+	if patch.lethal:
+		state.alive = false
+		return
 	var on_deck := int(patch.kind) == SimKinds.SurfaceKind.DECK
 	# Floor under an embedded pipe mounts the arc. Decks never auto-stick to a
 	# pipe — ride-off falls (acid drop is the transfer button).

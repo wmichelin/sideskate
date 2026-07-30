@@ -33,7 +33,7 @@ See also [AGENTS.md](../AGENTS.md) and [movement_contract.md](movement_contract.
 
 Classification is per Z span. Cross-story upper copings are action-only targets, not automatic seams. Same-height outward `#` is an air/fly corridor (`OPEN`), not an auto-mount.
 
-Glyphs: `=` / `#` / `x` solid; `.` hole (fall to lower support or invisible void floor); space = solid invisible wall. World AABB has invisible border walls. Lava (`x`): airborne OK; grounded contact kills and respawns. You cannot fall out of the park.
+Glyphs: `=` / `#` / `x` solid; `.` hole (fall to lower support or invisible void floor); space = solid invisible wall. World AABB has invisible border walls. Lava (`x`): airborne OK; **any grounded contact** kills (`alive = false`) and the death overlay plays then respawns ~1.5s back on the floor/deck history. You cannot fall out of the park.
 
 ## Grounded motion
 
