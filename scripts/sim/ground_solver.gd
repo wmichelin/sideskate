@@ -619,9 +619,14 @@ func launch_height_impulse(
 		if bool(proj.get("ok", false)):
 			var t: Vector3 = proj.tangent_along
 			var n: Vector3 = proj.normal
-			# Carry ride speed only in X (and depth). World-up is the ollie alone —
-			# including t.z*along recreated a slope-exit launch.
-			world = Vector3(t.x * along, depth, height_impulse)
+			# World-up is the ollie alone — do not add t.z*along (that was a
+			# slope-exit launch). Carry lip-ward / bowl-ward X only: peak-ward
+			# ride speed drills under a rising incline even after a tall pop.
+			var wx := t.x * along
+			if absf(n.x) > 0.001 and wx * n.x < 0.0:
+				wx = 0.0
+			world = Vector3(wx, depth, height_impulse)
+			world = _reject_into_normal(world, n)
 			if n.length_squared() > 0.0001:
 				nudge = n.normalized() * SimTolerances.CONTACT_EPS
 		else:
@@ -634,6 +639,17 @@ func launch_height_impulse(
 	if nudge.length_squared() > 0.0:
 		state.position += nudge
 	_enter_air(state, world, "")
+
+
+## Drop velocity into a surface normal so free-air never launches underground.
+func _reject_into_normal(world: Vector3, normal: Vector3) -> Vector3:
+	if normal.length_squared() < 0.0001:
+		return world
+	var n := normal.normalized()
+	var vn := world.dot(n)
+	if vn < 0.0:
+		return world - n * vn
+	return world
 
 
 ## Upper pipe/ramp ollie → coping-anchored hang (vx locked, height free).

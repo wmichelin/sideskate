@@ -62,6 +62,16 @@ func _step_free(state: SimState, wish: Vector2, delta: float) -> void:
 		else:
 			from.x = float(from_anchor.x)
 			state.position.x = from.x
+	# Already inside a solid (slope ollie drilled in): remount or push out before
+	# integrating — sweep only samples the segment after `from`.
+	var embedded := query.blocker_at(from)
+	if not embedded.is_empty():
+		var ek := str(embedded.get("kind", ""))
+		if ek == "pipe" or ek == "ramp" or ek == "deck" or ek == "wall":
+			if _snap_onto_solid(state, embedded, from.z):
+				return
+			_bounce_off_solid(state, embedded, from)
+			from = state.position
 	var to := from + Vector3(state.velocity.x, state.velocity.y, state.velocity.z) * delta
 	to.x = clampf(to.x, 0.05, maxf(model.width - 0.05, 0.05))
 	to.y = clampf(to.y, 0.05, maxf(model.depth - 0.05, 0.05))
@@ -483,13 +493,19 @@ func _bounce_off_solid(state: SimState, hit: Dictionary, from: Vector3) -> void:
 		if pipe != null:
 			var proj := _pipe_proj_for_air_hit(state, pipe, hit)
 			if not proj.is_empty():
-				# Sit just above the ride surface; keep horizontal travel for a real land.
-				state.position.z = maxf(
-					state.position.z, float(proj.point.z) + SimTolerances.CONTACT_EPS
-				)
-				# Kill only downward into the surface; keep vx so try_land / next tick can settle.
-				if state.velocity.z < 0.0:
-					state.velocity.z = 0.0
+				# Sit on the ride surface along the normal — Z-only lift still leaves
+				# peak-ward X under a rising slope.
+				var n: Vector3 = proj.normal
+				var pt: Vector3 = proj.point
+				if n.length_squared() > 0.0001:
+					state.position = pt + n.normalized() * SimTolerances.CONTACT_EPS
+					state.velocity = _reject_into_normal(state.velocity, n)
+				else:
+					state.position.z = maxf(
+						state.position.z, float(pt.z) + SimTolerances.CONTACT_EPS
+					)
+					if state.velocity.z < 0.0:
+						state.velocity.z = 0.0
 				_depenetrate(state, from)
 				return
 	if kind == "ramp":
@@ -500,11 +516,17 @@ func _bounce_off_solid(state: SimState, hit: Dictionary, from: Vector3) -> void:
 				var rpt: Vector3 = hit.get("projection", state.position)
 				rproj = ramp.project(rpt.x, rpt.y, rpt.z)
 			if bool(rproj.get("ok", false)):
-				state.position.z = maxf(
-					state.position.z, float(rproj.point.z) + SimTolerances.CONTACT_EPS
-				)
-				if state.velocity.z < 0.0:
-					state.velocity.z = 0.0
+				var rn: Vector3 = rproj.normal
+				var rpt2: Vector3 = rproj.point
+				if rn.length_squared() > 0.0001:
+					state.position = rpt2 + rn.normalized() * SimTolerances.CONTACT_EPS
+					state.velocity = _reject_into_normal(state.velocity, rn)
+				else:
+					state.position.z = maxf(
+						state.position.z, float(rpt2.z) + SimTolerances.CONTACT_EPS
+					)
+					if state.velocity.z < 0.0:
+						state.velocity.z = 0.0
 				_depenetrate(state, from)
 				return
 	if kind == "wall":
@@ -522,6 +544,17 @@ func _bounce_off_solid(state: SimState, hit: Dictionary, from: Vector3) -> void:
 	var clamped := model.clamp_xz(state.position.x, state.position.y)
 	state.position.x = clamped.x
 	state.position.y = clamped.y
+
+
+## Drop velocity into a surface normal so free-air never keeps drilling underground.
+func _reject_into_normal(world: Vector3, normal: Vector3) -> Vector3:
+	if normal.length_squared() < 0.0001:
+		return world
+	var n := normal.normalized()
+	var vn := world.dot(n)
+	if vn < 0.0:
+		return world - n * vn
+	return world
 
 
 func _wall_contact_is_outward_exit(state: SimState, hit: Dictionary) -> bool:

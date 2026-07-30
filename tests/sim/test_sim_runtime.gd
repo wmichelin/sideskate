@@ -25,6 +25,7 @@ func run() -> bool:
 		and _ollie_on_pipe_lip_enters_hang()
 		and _ollie_short_deck_return_no_tunnel()
 		and _ollie_pipe_low_vx_descending_remounts()
+		and _ollie_climbing_ramp_stays_above_solid()
 		and _coast_with_zero_friction()
 		and _air_no_x_friction()
 		and _wall_extension_climbs()
@@ -892,10 +893,11 @@ func _ollie_on_pipe_pops_world_up_not_along_tangent() -> bool:
 			% [expected_vh, old_launch_vh + SimTolerances.GRAVITY * SimTolerances.FIXED_DT, sim.state.velocity.z]
 		)
 		return false
-	# Horizontal carry may keep t.x*along (air step can nudge slightly).
-	if absf(sim.state.velocity.x - t.x * along) > 20.0:
+	# Climbing (peak-ward) X is dropped — it drills under the pipe body.
+	# Lip-ward carry still keeps t.x*along.
+	if absf(sim.state.velocity.x) > 20.0:
 		push_error(
-			"pipe ollie vx should be ride X carry only, got %s vs t.x*along %s"
+			"climbing pipe ollie should drop peak-ward X, got vx=%s (t.x*along=%s)"
 			% [sim.state.velocity.x, t.x * along]
 		)
 		return false
@@ -1055,6 +1057,68 @@ func _ollie_pipe_low_vx_descending_remounts() -> bool:
 		return false
 	if sim.state.surface_id != pipe.id:
 		push_error("expected remount on %s got %s" % [pipe.id, sim.state.surface_id])
+		return false
+	return true
+
+
+func _ollie_climbing_ramp_stays_above_solid() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_ramp.ssk"):
+		push_error("setup climbing ramp ollie")
+		return false
+	sim.ollie_accel = 0.0
+	sim.ollie_charge_ms = 0.0
+	# Short pop + max climb — old launch drilled under the rising incline.
+	sim.ollie_height = 40.0
+	sim.ollie_lip_frac = 0.0
+	var ramp: RampSurface = null
+	for rid in sim.model.ramps.keys():
+		ramp = sim.model.ramps[rid]
+		break
+	if ramp == null:
+		push_error("missing ramp")
+		return false
+	var z := (ramp.z_min + ramp.z_max) * 0.5
+	var u := 0.45
+	var th := u * PI * 0.5
+	var along := 880.0
+	sim.state.mode = SimState.Mode.GROUNDED
+	sim.state.surface_id = ramp.id
+	sim.state.u = u
+	sim.state.v = 0.5
+	sim.state.tangent_velocity = Vector2(along, 0.0)
+	sim.state.position = Vector3(ramp.x_at_theta(z, th), z, ramp.height_at_theta(z, th))
+	sim.ollie_available = true
+	sim.ollie_charge = 1.0
+	var proj0 := ramp.project(sim.state.position.x, sim.state.position.y, sim.state.position.z)
+	if not bool(proj0.get("ok", false)):
+		push_error("ramp project failed")
+		return false
+	sim.set_input(Vector2.ZERO, false, false, false, true)
+	sim.tick()
+	if not sim.state.is_airborne():
+		push_error("climbing ramp ollie should leave")
+		return false
+	# Peak-ward carry must be dropped; leftover into-normal is rejected.
+	if absf(sim.state.velocity.x) > 30.0:
+		push_error("climbing ramp ollie should not keep peak-ward X, vx=%s" % sim.state.velocity.x)
+		return false
+	# Stay free of the ramp body for the whole bout (or remount cleanly).
+	for _i in range(90):
+		sim.set_input(Vector2.ZERO, false, false, false, false)
+		sim.tick()
+		var hit := sim.query.blocker_at(sim.state.position)
+		if not hit.is_empty() and str(hit.get("kind", "")) == "ramp":
+			push_error(
+				"buried in ramp solid at tick %s pos=%s hit=%s"
+				% [sim.state.tick, sim.state.position, hit]
+			)
+			return false
+		if sim.state.is_grounded():
+			break
+	if sim.state.is_grounded() and sim.model.ramps.has(sim.state.surface_id) \
+			and sim.state.surface_id != ramp.id:
+		push_error("landed wrong ramp %s" % sim.state.surface_id)
 		return false
 	return true
 
