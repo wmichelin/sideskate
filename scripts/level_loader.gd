@@ -182,7 +182,7 @@ static func _is_map_row(stripped: String) -> bool:
 		return false
 	# Must contain at least one map glyph (not only spaces)
 	for glyph in stripped:
-		if glyph in ["<", ">", "=", ".", "#", "@", "x", "X", " "]:
+		if glyph in ["(", ")", "=", ".", "#", "@", "x", "X", " "]:
 			continue
 		return false
 	for glyph2 in stripped:
@@ -358,7 +358,7 @@ static func _append_layer_geometry(
 					spawn.layer = layer_index
 				"#":
 					deck_cells.append(Vector2i(c, r))
-				"<", ">":
+				"(", ")":
 					pass
 				" ":
 					pass
@@ -400,9 +400,9 @@ static func _append_layer_geometry(
 		var neighbors := _deck_neighbor_pipes(comp, grid, W, H, layer_pipes, cw, ch)
 		if neighbors.is_empty() and spec.deck_height_override < 0.0:
 			return (
-				"layer %d: deck component has no neighboring pipe (set deck_height or place next to <> )"
-				% layer_index
-			)
+				"layer %d: deck component has no neighboring pipe (set deck_height or place next to () )"
+					% layer_index
+				)
 		var rise := spec.deck_height_override
 		if rise < 0.0:
 			rise = float(neighbors[0].radius)
@@ -410,7 +410,7 @@ static func _append_layer_geometry(
 				var rh := float(neighbors[i].radius)
 				if not is_equal_approx(rh, rise):
 					push_warning(
-						"LevelLoader: layer %d deck neighbors have unequal pipe radii (%.1f vs %.1f); spine coping will gap. Use matching <> run widths."
+						"LevelLoader: layer %d deck neighbors have unequal pipe radii (%.1f vs %.1f); spine coping will gap. Use matching () run widths."
 						% [layer_index, rise, rh]
 					)
 				rise = maxf(rise, rh)
@@ -491,21 +491,21 @@ static func _pipes_from_aligned_runs(
 	grid: Array, W: int, H: int, cw: float, ch: float, radius_override: float,
 	base_height: float = 0.0
 ) -> Array:
-	# Collect per-row horizontal <> runs, then merge only identical column spans
+	# Collect per-row horizontal () runs, then merge only identical column spans
 	# that are contiguous in row — so stepped layouts don't fatten into one AABB.
 	var runs: Array = []
 	for r in range(H):
 		var c := 0
 		while c < W:
 			var glyph: String = grid[r][c]
-			if glyph != "<" and glyph != ">":
+			if glyph != "(" and glyph != ")":
 				c += 1
 				continue
 			var c0 := c
 			while c < W and grid[r][c] == glyph:
 				c += 1
 			runs.append({
-				"is_left": glyph == "<",
+				"is_left": glyph == "(",
 				"c0": c0,
 				"c1": c - 1,
 				"r0": r,
@@ -619,7 +619,7 @@ static func _deck_neighbor_pipes(
 			if n.x < 0 or n.y < 0 or n.x >= W or n.y >= H:
 				continue
 			var chv: String = grid[n.y][n.x]
-			if chv != "<" and chv != ">":
+			if chv != "(" and chv != ")":
 				continue
 			var nx := (float(n.x) + 0.5) * cw
 			var nz := (float(H - 1 - n.y) + 0.5) * ch

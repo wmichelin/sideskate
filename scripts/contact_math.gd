@@ -226,7 +226,7 @@ static func zone_from_glyph(glyph: String) -> String:
 			return "lava"
 		"#", "^", "v", "V":
 			return "deck"
-		"<", ">":
+		"(", ")":
 			return "pipe"
 		" ":
 			return "oob"

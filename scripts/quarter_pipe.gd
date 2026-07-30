@@ -5,7 +5,7 @@ extends Node
 ## Logical profile — true quarter circle (θ = 0 at the lip, θ = PI/2 at coping):
 ##   x_offset from lip into the pipe = radius * sin(θ)
 ##   height = base_height + radius * (1 - cos(θ))
-## Radius = glyph-run width (N × cell_x), so `<<<<` is 4× as tall as `<`.
+## Radius = glyph-run width (N × cell_x), so `((((` is 4× as tall as `(`.
 ## Draw code (`RampLevel.pipe_screen_point_for`) re-rounds the profile in screen
 ## space so perspective cannot squash it into an ellipse.
 ## Given x: θ = asin(clamp(x_offset / radius))

@@ -192,7 +192,7 @@ static func _resolve_cell(
 	var gzone := _ContactMath.zone_from_glyph(glyph)
 	match gzone:
 		"pipe":
-			var want_side := 0 if glyph == "<" else 1
+			var want_side := 0 if glyph == "(" else 1
 			var pipe_info: Dictionary = _pipe_info_on_layer(
 				spec, pipes, logical_x, logical_z, want_side, layer, col, row
 			)

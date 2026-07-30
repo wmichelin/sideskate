@@ -1497,7 +1497,7 @@ func _edge_fly_out_wall_slide() -> bool:
 
 
 func _edge_pipe_coping_not_in_wall() -> bool:
-	# Plaza-style edge >>> must hang at coping without immediately hitting bounds.
+	# Plaza-style edge ))) must hang at coping without immediately hitting bounds.
 	var sim := PlayerSim.new()
 	if not sim.setup_from_path("res://levels/plaza_default.ssk"):
 		push_error("edge: setup plaza")
@@ -2132,7 +2132,7 @@ func _layered_hole_not_invisible_wall() -> bool:
 
 
 func _deck_hash_no_pin_from_floor() -> bool:
-	# `#<<<===` — contact with the `#` prism remounts onto the deck top,
+	# `#(((===` — contact with the `#` prism remounts onto the deck top,
 	# never freezes with zero velocity against the vertical face.
 	var sim := PlayerSim.new()
 	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
@@ -2591,7 +2591,7 @@ func _hang_persists_off_edge_z_span() -> bool:
 	return true
 
 
-## ####<<< : ride deck toward pipe → fall (no auto-stick); acid drop mounts.
+## ####((( : ride deck toward pipe → fall (no auto-stick); acid drop mounts.
 func _deck_ride_off_falls_acid_mounts() -> bool:
 	var sim := PlayerSim.new()
 	if not sim.setup_from_path("res://tests/levels/sim/sim_deck_backed.ssk"):
@@ -2748,7 +2748,7 @@ func _layered_deck_back_ride_off_stays_free() -> bool:
 	return true
 
 
-## >>>#### at the map edge: skating off the deck must not fall into the void.
+## )))#### at the map edge: skating off the deck must not fall into the void.
 func _map_edge_deck_no_void_exit() -> bool:
 	var sim := PlayerSim.new()
 	if not sim.setup_from_path("res://levels/layered_demo.ssk"):

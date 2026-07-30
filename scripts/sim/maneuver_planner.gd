@@ -190,7 +190,7 @@ func try_acid(state: SimState, travel_x: float) -> Dictionary:
 			or (dir < 0.0 and side == SimKinds.PipeSide.LEFT)
 		)
 		# Deck drop-in: traveler outward of dest, moving into the bowl
-		# (####<<< with +X onto the left pipe; >>>#### with −X onto the right).
+		# (####((( with +X onto the left pipe; )))#### with −X onto the right).
 		var dest_cx := float(c.coping_x)
 		var out := float(cope.outward_sign)
 		var outward_of := (pos.x - dest_cx) * out >= -SimTolerances.ALIGN_EPS

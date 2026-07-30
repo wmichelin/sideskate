@@ -98,16 +98,16 @@ func _halfpipe_geometry() -> bool:
 	return true
 
 
-## `<` → 1×cell radius; `<<<<` → 4×cell (height rise = radius for a quarter circle).
+## `(` → 1×cell radius; `((((` → 4×cell (height rise = radius for a quarter circle).
 func _pipe_radius_scales_with_glyphs() -> bool:
 	var text := """ssk 2
 name glyph_radius
 ---
 layer 0
 height 0
-<<<<====================>>>>
-<<<<=========@==========>>>>
-<<<<====================>>>>
+((((====================))))
+((((=========@==========))))
+((((====================))))
 """
 	var spec := LevelLoader.parse_text(text, "glyph_radius")
 	if spec == null:
@@ -123,16 +123,16 @@ height 0
 			right_r = float(p.radius)
 	var want := 4.0 * cx
 	if not is_equal_approx(left_r, want) or not is_equal_approx(right_r, want):
-		push_error("<<<< radius want %s got L=%s R=%s" % [want, left_r, right_r])
+		push_error("(((( radius want %s got L=%s R=%s" % [want, left_r, right_r])
 		return false
 	var one := """ssk 2
 name one_glyph
 ---
 layer 0
 height 0
-<========================>
-<===========@============>
-<========================>
+(========================)
+(===========@============)
+(========================)
 """
 	var spec1 := LevelLoader.parse_text(one, "one_glyph")
 	if spec1 == null:
@@ -146,10 +146,10 @@ height 0
 	if r1 < 0.0:
 		r1 = float(spec1.pipes[0].radius)
 	if not is_equal_approx(r1, cx):
-		push_error("< radius want %s got %s" % [cx, r1])
+		push_error("( radius want %s got %s" % [cx, r1])
 		return false
 	if not is_equal_approx(left_r, 4.0 * r1):
-		push_error("<<<< should be 4× < radius (%s vs %s)" % [left_r, r1])
+		push_error("(((( should be 4× ( radius (%s vs %s)" % [left_r, r1])
 		return false
 	return true
 
@@ -255,8 +255,8 @@ name bad_uneven
 ---
 layer 0
 height 0
-<<<=====@==>>>
-<<<=======>>>
+(((=====@==)))
+(((=======)))
 """
 	var spec := LevelLoader.parse_text(text, "bad_uneven")
 	if spec != null:
@@ -273,8 +273,8 @@ func _ssk1_rejected() -> bool:
 	var text := """ssk 1
 name old
 ---
-<<<=====@==>>>
-<<<==========>>>
+(((=====@==)))
+(((==========)))
 """
 	var spec := LevelLoader.parse_text(text, "old")
 	if spec != null:
@@ -307,7 +307,7 @@ func _layered_upper_floor() -> bool:
 	var r := 3.0 * LevelLoader.cell_size_x
 	var text := (
 		"ssk 2\nname layered_unit\n---\nlayer 0\nheight 0\n"
-		+ "<<<==========>>>\n<<<=====@====>>>\n<<<==========>>>\n"
+		+ "(((==========)))\n(((=====@====)))\n(((==========)))\n"
 		+ "---\nlayer 1\nheight %s\n" % r
 		+ "....========....\n....========....\n....========....\n"
 	)
@@ -332,7 +332,7 @@ func _spawn_on_upper_layer() -> bool:
 	var r := 3.0 * LevelLoader.cell_size_x
 	var text := (
 		"ssk 2\nname spawn_l1\n---\nlayer 0\nheight 0\n"
-		+ "<<<==========>>>\n<<<==========>>>\n<<<==========>>>\n"
+		+ "(((==========)))\n(((==========)))\n(((==========)))\n"
 		+ "---\nlayer 1\nheight %s\n" % r
 		+ "....========....\n....===@====....\n....========....\n"
 	)
@@ -355,16 +355,16 @@ name holes
 ---
 layer 0
 height 0
-<<<======>>>
-<<<=@=...>>>
-<<<======>>>
+(((======)))
+(((=@=...)))
+(((======)))
 """
 	var spec := LevelLoader.parse_text(text, "holes")
 	if spec == null:
 		push_error("holes parse failed: %s" % LevelLoader.last_error)
 		return false
 	# Center of a '.' cell should not be inside any floor poly.
-	# Map: <<< = 3, =@=... = 6, >>> = 3 → 12. Holes at cols 6-8 (against right pipe).
+	# Map: ((( = 3, =@=... = 6, ))) = 3 → 12. Holes at cols 6-8 (against right pipe).
 	var cx := LevelLoader.cell_size_x
 	var cz := LevelLoader.cell_size_z
 	var dot_x := (7.0 + 0.5) * cx
@@ -385,15 +385,15 @@ name bad_space
 ---
 layer 0
 height 0
-<<<======>>>
-<<<==@===>>>
-<<<======>>>
+(((======)))
+(((==@===)))
+(((======)))
 ---
 layer 1
 height 100
-<<<======>>>
-<<<=  ===>>>
-<<<======>>>
+(((======)))
+(((=  ===)))
+(((======)))
 """
 	var spec := LevelLoader.parse_text(text, "bad_space")
 	if spec != null:
@@ -488,7 +488,7 @@ func _lava_glyph_samples() -> bool:
 	# Row with xxxx: grid row 1 (0-based from top). Cell centers.
 	var cw := spec.cell_w
 	var ch := spec.cell_h
-	var lava_c := 6  # first x in <<<===xxxx===>>>
+	var lava_c := 6  # first x in (((===xxxx===)))
 	var lava_r := 1
 	var lx := (float(lava_c) + 0.5) * cw
 	var lz := (float(spec.grid_h - 1 - lava_r) + 0.5) * ch

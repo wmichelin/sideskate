@@ -549,7 +549,7 @@ func project_screen(logical_x: float, logical_z: float, surface_height: float = 
 
 
 ## Screen-space quarter circle (θ=0 lip → θ=π/2 coping).
-## Radius = projected glyph run width so magnitude tracks `<<<` / `<<<<`;
+## Radius = projected glyph run width so magnitude tracks `(((` / `((((`;
 ## decks lower their draw height to meet this coping (not the reverse).
 func pipe_screen_point_for(pipe: QuarterPipe, logical_z: float, u: float) -> Vector2:
 	var frame := pipe_arc_frame(pipe, logical_z)

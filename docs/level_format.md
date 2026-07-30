@@ -14,9 +14,9 @@ name my_level
 ---
 layer 0
 height 0
-<<<==========================>>>
-<<<=============@============>>>
-<<<==========================>>>
+(((==========================)))
+(((=============@============)))
+(((==========================)))
 ```
 
 1. **Header** — `ssk 2`, keys, `#` comments, blank lines  
@@ -38,7 +38,7 @@ Level extents are automatic:
 
 Add glyphs to grow the plaza; do not set `width` / `depth` in the header (ignored if present). Cell sizes are game-wide (RampLevel exports + TUNING sliders `cell x` / `cell z`).
 
-Pipe radius follows run width in cells (`<<<` → 3 × cell_x, `<<<<` → 4 × cell_x), so
+Pipe radius follows run width in cells (`(((` → 3 × cell_x, `((((` → 4 × cell_x), so
 glyph count sets the quarter-circle size. Draw code builds a **screen-space** 90°
 circle from that projected width; deck tops/walls use `deck_visual_height` so the
 pad lowers/raises to meet those pipe copings (physics still uses logical `base + radius`).
@@ -51,7 +51,7 @@ Perspective (`perspective_inset`, `far_geometry_scale`, `reference_depth`, `refe
 |-----|----------|---------|
 | `ssk 2` | yes (first line) | Format version |
 | `name` | no | Level id (default: filename) |
-| `pipe_radius` | no | Default pipe radius; else from `<>` run width |
+| `pipe_radius` | no | Default pipe radius; else from `()` run width |
 | `deck_height` | no | Override **rise** for all `#` decks (added to layer height) |
 | `spawn_facing` | no | Spawn horizontal facing: `l` or `r` (default `r`) |
 
@@ -65,9 +65,9 @@ Deprecated (ignored with a warning): `width`, `depth`, `perspective_inset`, `far
 ---
 layer 0
 height 0
-<<<======>>>
-<<<==@==>>>
-<<<======>>>
+(((======)))
+(((==@==)))
+(((======)))
 ---
 layer 1
 height 141
@@ -94,15 +94,15 @@ height 141
 | `.` | Hole (nil) on this layer — fall through | — |
 | `#` | Deck (spine / coping flat) | `layer.height + pipe rise` |
 | `@` | Spawn + floor | `layer.height` |
-| `<` | Left-facing pipe (lip on **right** edge of run) | `base + R(1−cosθ)` |
-| `>` | Right-facing pipe (lip on **left** edge of run) | `base + R(1−cosθ)` |
+| `(` | Left-facing pipe (lip on **right** edge of run) | `base + R(1−cosθ)` |
+| `)` | Right-facing pipe (lip on **left** edge of run) | `base + R(1−cosθ)` |
 | space | Solid invisible wall (never enter; not a kill) | — |
 
 ## Deck height
 
 For each connected `#` component on a layer:
 
-1. Find 4-neighbor pipe tiles (`<` or `>`) on that layer  
+1. Find 4-neighbor pipe tiles (`(` or `)`) on that layer  
 2. `rise = max(radius)` of those pipes (or header `deck_height`)  
 3. Deck absolute height = `layer.height + rise`  
 4. Error if no neighboring pipe and no header override  
@@ -115,14 +115,14 @@ name spine_demo
 ---
 layer 0
 height 0
-<<<=========>>>##<<<=========>>>
-<<<=========>>>##<<<=========>>>
-<<<=============@============>>>
-<<<==========================>>>
-<<<==========================>>>
+(((=========)))##(((=========)))
+(((=========)))##(((=========)))
+(((=============@============)))
+(((==========================)))
+(((==========================)))
 ```
 
-`>>>##<<<` = right-pipe → elevated deck spine → left-pipe.  
+`)))##(((` = right-pipe → elevated deck spine → left-pipe.  
 Both pipe runs must be the same width so coping height matches on both sides.
 
 ## Multi-story example
@@ -151,7 +151,7 @@ derives an immutable park model from the grid:
 
 ### Pipe lofts
 
-Same-side contiguous `<` / `>` cells form a pipe component. Per ASCII row, radius =
+Same-side contiguous `(` / `)` cells form a pipe component. Per ASCII row, radius =
 run width × `cell_w` (or header `pipe_radius`). Across Z, `lip(z)`, `radius(z)`, and
 `base(z)` are joined with monotone interpolation that does not overshoot. Runtime
 logic never branches on layer index — layers only contribute absolute heights at
@@ -166,7 +166,7 @@ Every pipe coping edge is classified exactly once:
 | `OPEN` | No outward solid at coping height | Explicit fly-out allowed |
 | `SUPPORT_SEAM` | Outward deck/floor top matches coping height (within seam eps) | Auto-roll onto pad |
 | `WALL_EXTENSION` | Outward floor above coping, or taller opposite pipe (cross-story) | Climb to effective lip; mount floor or air/fly |
-| `SHARED_SPINE` | Opposite-facing coping at matching height (`>>>##<<<`, `>>><<<`) | Spine target relation |
+| `SHARED_SPINE` | Opposite-facing coping at matching height (`)))##(((`, `)))(((`) | Spine target relation |
 
 An outward `#` deck abutting a coping is never simultaneously fly-out space and a
 catch wall. See [`docs/movement_contract.md`](movement_contract.md).

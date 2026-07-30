@@ -189,7 +189,7 @@ static func _refine_pipe_lofts_from_glyphs(spec: LevelSpec, model: ParkModel) ->
 			if absf(base0 - lh) > 0.5:
 				continue
 			var rows: PackedStringArray = L.get("rows", PackedStringArray())
-			var glyph := "<" if pipe.side == SimKinds.PipeSide.LEFT else ">"
+			var glyph := "(" if pipe.side == SimKinds.PipeSide.LEFT else ")"
 			for r in range(rows.size()):
 				var z0 := float(spec.grid_h - 1 - r) * spec.cell_h
 				var z1 := float(spec.grid_h - r) * spec.cell_h
