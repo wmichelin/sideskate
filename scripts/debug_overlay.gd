@@ -76,7 +76,7 @@ func _process(_delta: float) -> void:
 		+ "Pipe angle: %.1f deg\n" % pipe_angle
 		+ _cell_debug_line()
 		+ _next_coping_debug_line()
-		+ "WASD — Up = farther | Space = ollie | P/T = transfer↑ / acid↓ | G = god (j/k vert)"
+		+ "WASD — Up = farther | Space = ollie | G = god (j/k vert)"
 	)
 	_body.text = text
 	_fit_panel()

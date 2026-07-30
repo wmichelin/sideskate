@@ -54,7 +54,7 @@ Stick → wish. Per axis:
 |------|-------|---|--------|
 | **Air-out** | Leave a compiled open pipe/wall edge with along | Locked to that edge anchor | Ballistic |
 | **Free** (fly-out / deck-out) | Outward X-dominant stick in `FLY_OUT_ABOVE`, or ride-off | Unlocked; ballistic (no friction — stick steers only while held) | Gravity only |
-| **Maneuver** | Accepted spine / acid / fly-out plan | Plan owns pose | Plan owns pose |
+| **Maneuver** | Accepted fly-out plan (spine/acid removed) | Plan owns pose | Plan owns pose |
 
 **Fly-out / deck-out:** same unlock — clear X-lock, keep rising height, seed outward free-air X from climb/air speed, and **reset surface lean upright**. Stick must be outward to accept; after unlock X is ballistic. Cross-story walls gate the height window on the connected upper lip; outward stick stays with the source-pipe climb direction.
 
@@ -66,11 +66,9 @@ Stick → wish. Per axis:
 
 **Deck back ride-off:** crosses the one-sided backing wall into ordinary free air. It never mounts the wall or creates an implicit acid drop.
 
-**Spine:** transfer button while rising/apex → opposite-facing pipe from its outward side (left of left / right of right).
+**Spine / Acid:** removed pending reimplementation on the single-owner air contact stream.
 
-**Acid:** transfer button while descending → along travel to an opposite wall, or explicit deck drop-in onto an abutting pipe.
-
-Hang stores `hang_edge_id` (and launch id for lock/apex); it clears on fly-out, spine, acid, or return. Leaving the launch Z span retargets onto a colinear same-side OPEN edge or keeps a synthetic X-lock across the gap — it does not free-air / level out. Depth-transfer before apex keeps takeoff orientation. Plans never retarget mid-flight. At hang apex on the launch span, facing turns around the character's centered local Y axis into the source pipe over `APEX_FACING_DELAY`.
+Hang stores `hang_edge_id` (and launch id for lock/apex); it clears on fly-out, land, or return. Leaving the launch Z span retargets onto a colinear same-side OPEN edge or keeps a synthetic X-lock across the gap — it does not free-air / level out. Depth-transfer before apex keeps takeoff orientation. Fly-out plans never retarget mid-flight. At hang apex on the launch span, facing turns around the character's centered local Y axis into the source pipe over `APEX_FACING_DELAY`.
 
 ## Motion vectors
 
@@ -112,7 +110,7 @@ Tunable sim values sync into `SimTolerances` / `PlayerSim` each physics tick. Ca
 | [`sim/surface_query.gd`](../scripts/sim/surface_query.gd) | Separate support projection, edge lookup, and deterministic swept solid contact |
 | [`sim/ground_solver.gd`](../scripts/sim/ground_solver.gd) | Grounded + wall climb + seams |
 | [`sim/air_solver.gd`](../scripts/sim/air_solver.gd) | Free air + maneuvers |
-| [`sim/maneuver_planner.gd`](../scripts/sim/maneuver_planner.gd) | Fly-out / spine / acid plans |
+| [`sim/maneuver_planner.gd`](../scripts/sim/maneuver_planner.gd) | Fly-out plans (spine/acid TBD) |
 | [`sim/sim_tolerances.gd`](../scripts/sim/sim_tolerances.gd) | Epsilons, gravity, cast ranges |
 | [`player.gd`](../scripts/player.gd) | Input → tick → pose sync |
 | [`ramp_level.gd`](../scripts/ramp_level.gd) | Load `.ssk`, projection helpers, debug sample |
@@ -126,7 +124,7 @@ Analytical suites: [`tests/sim/`](../tests/sim/).
 1. Sim only on physics ticks.
 2. No gameplay state depends on layer index, collider order, scene-tree order, render FPS, or depenetration.
 3. Every grounded pose has one surface owner; pipe/wall `u` always stays in `[0,1]`.
-4. Spine while rising/apex; acid while descending; plans never retarget.
-5. Ordinary contact cannot switch to an opposite-facing transfer target; only an accepted plan can.
+4. Fly-out plans unlock free air immediately; they never retarget.
+5. Ordinary contact cannot switch to an opposite-facing pipe (transfers TBD).
 6. Shared boundaries have one compiled owner and every crossing consumes motion once.
 7. Presentation + collision stamp the same full-geometry `ParkModel.model_hash` as `PlayerSim`.

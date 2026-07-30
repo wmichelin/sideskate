@@ -1163,54 +1163,19 @@ func _ensure_air_outside_slopes(state: SimState) -> void:
 
 func _step_maneuver(state: SimState, wish: Vector2, delta: float) -> void:
 	var plan: ManeuverPlan = state.maneuver
-	if plan.kind == ManeuverPlan.Kind.FLY_OUT:
-		# Unlock into free air with the plan's outward seed; stick may steer after.
-		# Fly-out / deck-out stands the skater upright (no carried pipe lean).
-		state.velocity = plan.start_velocity
+	# Fly-out unlock only — spine/acid ballistic plans removed.
+	if plan.kind != ManeuverPlan.Kind.FLY_OUT:
 		state.maneuver = null
-		state.clear_hang()
-		state.free_air_upright = true
-		state.note_air_height(state.position.z)
 		_step_free(state, wish, delta)
 		return
-	plan.elapsed = minf(plan.elapsed + delta, plan.land_time)
-	var t := plan.elapsed
-	state.position = Vector3(plan.sample_x(t), plan.sample_z(t), plan.sample_height(t))
-	# Approximate velocity for landing merge.
-	var dt := 0.001
-	var t1 := minf(t + dt, plan.land_time)
-	state.velocity = Vector3(
-		(plan.sample_x(t1) - plan.sample_x(t)) / dt,
-		(plan.sample_z(t1) - plan.sample_z(t)) / dt,
-		(plan.sample_height(t1) - plan.sample_height(t)) / dt,
-	)
-	if plan.is_complete():
-		_land_maneuver(state, plan)
-
-
-func _land_maneuver(state: SimState, plan: ManeuverPlan) -> void:
-	var pipe: PipeSurface = model.pipes.get(plan.dest_pipe_id)
-	if pipe == null:
-		state.maneuver = null
-		_try_land(state)
-		return
-	var z := state.position.y
-	var x := pipe.x_at_theta(z, PI * 0.5)
-	var h := pipe.height_at_theta(z, PI * 0.5)
-	state.mode = SimState.Mode.GROUNDED
-	state.surface_id = pipe.id
-	state.u = 1.0
-	state.v = clampf((z - pipe.z_min) / maxf(pipe.z_max - pipe.z_min, 0.001), 0.0, 1.0)
-	state.position = Vector3(x, z, h)
-	# Merge descending impact into along-arc into the bowl (negative u direction).
-	var along := plan.land_along
-	if absf(along) < 1.0:
-		along = -plan.travel_sign * maxf(absf(state.velocity.z), 80.0)
-	state.tangent_velocity = Vector2(along, state.velocity.y)
-	state.velocity = Vector3.ZERO
+	# Unlock into free air with the plan's outward seed; stick may steer after.
+	# Fly-out / deck-out stands the skater upright (no carried pipe lean).
+	state.velocity = plan.start_velocity
 	state.maneuver = null
 	state.clear_hang()
-	state.clear_air_peak()
+	state.free_air_upright = true
+	state.note_air_height(state.position.z)
+	_step_free(state, wish, delta)
 
 
 func _try_land(state: SimState, from_height: float = NAN) -> void:

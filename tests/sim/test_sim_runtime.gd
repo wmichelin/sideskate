@@ -10,8 +10,6 @@ func run() -> bool:
 		and _fly_out_seeds_ballistic_outward_x()
 		and _hang_land_into_bowl()
 		and _hang_apex_faces_into_ramp()
-		and _spine_plan()
-		and _acid_plan()
 		and _deterministic_replay()
 		and _layered_spawn_respects_story()
 		and _supports_sorted_high_to_low()
@@ -72,7 +70,6 @@ func run() -> bool:
 		and _layered_hang_remounts_wall_height()
 		and _layered_l1_coping_returns_source()
 		and _wall_z_exit_consumes_motion()
-		and _cross_story_spine_is_action_only()
 		and _ramp_peak_free_air_launch()
 		and _ramp_deck_seam_and_launch()
 		and _feature_walls_block_endcaps_and_sides()
@@ -457,62 +454,6 @@ func _right_hang_turns_into_ramp() -> bool:
 	SimTolerances.APEX_FACING_DELAY = 0.05
 	push_error("right apex face: turn path was not exercised")
 	return false
-
-
-func _spine_plan() -> bool:
-	var sim := PlayerSim.new()
-	if not sim.setup_from_path("res://tests/levels/sim/sim_spine.ssk"):
-		push_error("setup spine")
-		return false
-	# Stand in air above a SHARED_SPINE coping, rising, face toward partner.
-	var src: CopingEdge = null
-	for cid in sim.model.copings.keys():
-		var c: CopingEdge = sim.model.copings[cid]
-		if c.coping_class == SimKinds.CopingClass.SHARED_SPINE and not c.shared_with_id.is_empty():
-			src = c
-			break
-	if src == null:
-		push_error("no shared spine coping in fixture")
-		return false
-	var z := src.midpoint_z()
-	var samp := src.sample_at_z(z)
-	sim.state.mode = SimState.Mode.AIRBORNE
-	sim.state.surface_id = ""
-	sim.state.position = Vector3(float(samp.coping_x), z, float(samp.height) + 20.0)
-	sim.state.velocity = Vector3(0, 0, 100.0)
-	# Face toward shared partner.
-	var partner: CopingEdge = sim.model.copings[src.shared_with_id]
-	var ps := partner.sample_at_z(z)
-	var dir := signf(float(ps.coping_x) - float(samp.coping_x))
-	sim.state.facing = "r" if dir > 0.0 else "l"
-	var pr := sim.planner.try_spine(sim.state, dir)
-	if not bool(pr.get("ok", false)):
-		push_error("spine plan failed: %s" % pr.get("reason", ""))
-		return false
-	return true
-
-
-func _acid_plan() -> bool:
-	var sim := PlayerSim.new()
-	if not sim.setup_from_path("res://tests/levels/sim/sim_halfpipe.ssk"):
-		push_error("setup acid")
-		return false
-	var left := _left_pipe(sim.model)
-	var z := (left.z_min + left.z_max) * 0.5
-	var cope: CopingEdge = sim.model.copings[left.coping_id]
-	var samp := cope.sample_at_z(z)
-	sim.state.mode = SimState.Mode.AIRBORNE
-	sim.state.position = Vector3(float(samp.coping_x), z, float(samp.height) + 80.0)
-	sim.state.velocity = Vector3(120.0, 0.0, -50.0)
-	var pr := sim.planner.try_acid(sim.state, 120.0)
-	if not bool(pr.get("ok", false)):
-		push_error("acid plan failed: %s" % pr.get("reason", ""))
-		return false
-	var plan: ManeuverPlan = pr.plan
-	if plan.travel_sign <= 0.0:
-		push_error("acid travel sign")
-		return false
-	return true
 
 
 func _deterministic_replay() -> bool:
@@ -3809,9 +3750,10 @@ func _hang_depth_transfer_lands_edge_lava() -> bool:
 	return false
 
 
-## ####((( : ride deck toward pipe → fall (no auto-stick); acid drop mounts.
+## ####((( : ride deck toward pipe → fall like a ledge (no auto-stick).
 ## Slow coast off the ledge is the regression — a fast approach can overshoot the
 ## lip onto the bowl floor and miss the sticky Mount window.
+## Acid remount coverage removed with the transfer planner; re-add when reimplemented.
 func _deck_ride_off_falls_acid_mounts() -> bool:
 	var sim := PlayerSim.new()
 	if not sim.setup_from_path("res://tests/levels/sim/sim_deck_backed.ssk"):
@@ -3874,60 +3816,10 @@ func _deck_ride_off_falls_acid_mounts() -> bool:
 			push_error("deck drop: ordinary land stuck to deck-backed pipe without acid")
 			return false
 		if sim.state.is_grounded() and not sim.model.pipes.has(sim.state.surface_id):
-			break
-		if not sim.state.alive:
-			break
-	# Fresh ride-off, then acid while descending.
-	var acid := PlayerSim.new()
-	if not acid.setup_from_path("res://tests/levels/sim/sim_deck_backed.ssk"):
-		push_error("deck acid: setup")
-		return false
-	var left2 := _left_pipe(acid.model)
-	var deck2: SupportPatch = null
-	for pid2 in acid.model.patches.keys():
-		var p2: SupportPatch = acid.model.patches[pid2]
-		if int(p2.kind) == SimKinds.SurfaceKind.DECK:
-			deck2 = p2
-			break
-	var z2 := (deck2.z_min + deck2.z_max) * 0.5
-	var cx2 := left2.coping_x_at(z2)
-	acid.state.mode = SimState.Mode.GROUNDED
-	acid.state.surface_id = deck2.id
-	acid.state.position = Vector3(cx2 - 5.0, z2, deck2.height)
-	acid.state.tangent_velocity = Vector2(200.0, 0.0)
-	acid.state.clear_hang()
-	for _k in range(90):
-		acid.set_input(Vector2.ZERO, false, false)
-		acid.tick()
-		if acid.state.is_airborne():
-			break
-	if not acid.state.is_airborne():
-		push_error("deck acid: never airborne")
-		return false
-	# Wait until descending, then press transfer.
-	var pressed := false
-	for _m in range(90):
-		var edge := false
-		if not pressed and acid.state.velocity.z < -1.0:
-			edge = true
-			pressed = true
-		acid.set_input(Vector2(1, 0), false, edge)
-		acid.tick()
-		if acid.state.has_maneuver() and acid.state.maneuver.kind == ManeuverPlan.Kind.ACID:
-			break
-		if acid.state.is_grounded() and acid.state.surface_id == left2.id:
-			break
-	# Resolve plan / land onto left pipe.
-	for _n in range(120):
-		acid.set_input(Vector2(1, 0), false, false)
-		acid.tick()
-		if acid.state.is_grounded() and acid.state.surface_id == left2.id:
 			return true
-	push_error(
-		"deck acid: never mounted left pipe mode=%s surf=%s reject=%s"
-		% [acid.state.mode, acid.state.surface_id, acid.state.last_reject]
-	)
-	return false
+		if not sim.state.alive:
+			return true
+	return true
 
 
 func _layered_deck_back_ride_off_stays_free() -> bool:
@@ -4265,63 +4157,6 @@ func _wall_z_exit_consumes_motion() -> bool:
 			push_error("wall Z exit pumped vertical speed: %.1f" % sim.state.velocity.z)
 			return false
 	return true
-
-
-func _cross_story_spine_is_action_only() -> bool:
-	var sim := PlayerSim.new()
-	if not sim.setup_from_path("res://tests/levels/sim/sim_cross_story.ssk"):
-		push_error("cross-story spine: setup")
-		return false
-	var wall: WallSurface = null
-	for id in sim.model.all_wall_ids():
-		wall = sim.model.walls[id]
-		break
-	if wall == null or wall.upper_partner_pipe_id.is_empty():
-		push_error("cross-story spine: missing wall/partner")
-		return false
-	var source: PipeSurface = sim.model.pipes[wall.source_pipe_id]
-	var target: PipeSurface = sim.model.pipes[wall.upper_partner_pipe_id]
-	var z := (wall.z_min + wall.z_max) * 0.5
-	var edge := sim.query.edge_at(wall.id, z, "top")
-	var anchor := sim.query.edge_anchor_sample(edge, z)
-	if edge == null or edge.transfer_target_id != target.coping_id or anchor.is_empty():
-		push_error("cross-story spine: invalid action edge")
-		return false
-	# No transfer input: remain anchored/return to the source wall.
-	sim.state.mode = SimState.Mode.AIRBORNE
-	sim.state.surface_id = ""
-	sim.state.hang_edge_id = edge.id
-	sim.state.maneuver = null
-	sim.state.position = Vector3(float(anchor.x), z, float(anchor.height) + 5.0)
-	sim.state.velocity = Vector3(0.0, 0.0, 80.0)
-	sim.set_input(Vector2.ZERO, false, false)
-	sim.tick()
-	if sim.state.has_maneuver() or sim.state.surface_id == target.id:
-		push_error("cross-story spine: transferred without action")
-		return false
-	# Transfer input: the compiled target is reachable only through a spine plan.
-	sim.state.mode = SimState.Mode.AIRBORNE
-	sim.state.surface_id = ""
-	sim.state.hang_edge_id = edge.id
-	sim.state.maneuver = null
-	sim.state.position = Vector3(float(anchor.x), z, float(anchor.height) + 5.0)
-	sim.state.velocity = Vector3(0.0, 0.0, 80.0)
-	sim.set_input(Vector2(source.outward_sign(), 0.0), false, true)
-	sim.tick()
-	if not sim.state.has_maneuver() \
-			or sim.state.maneuver.kind != ManeuverPlan.Kind.SPINE:
-		push_error("cross-story spine: action rejected: %s" % sim.state.last_reject)
-		return false
-	for _i in range(180):
-		sim.set_input(Vector2.ZERO, false, false)
-		sim.tick()
-		if sim.state.is_grounded():
-			if sim.state.surface_id != target.id:
-				push_error("cross-story spine: landed on %s" % sim.state.surface_id)
-				return false
-			return true
-	push_error("cross-story spine: plan never landed")
-	return false
 
 
 func _place_at_coping(sim: PlayerSim, pipe: PipeSurface, along: float) -> void:

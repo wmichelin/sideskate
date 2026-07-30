@@ -282,17 +282,8 @@ func _note_checkpoint() -> void:
 
 func _try_actions() -> void:
 	# Fly-out: stick-only at OPEN coping while grounded OR hang-airing above it.
-	var transfer_edge: TopologyEdge = null
-	if state.is_hanging():
-		transfer_edge = model.edges.get(state.hang_edge_id)
-	elif state.is_grounded() and model.walls.has(state.surface_id):
-		transfer_edge = query.edge_at(state.surface_id, state.position.y, "top")
-	var action_targets_transfer := (
-		action_just
-		and transfer_edge != null
-		and not transfer_edge.transfer_target_id.is_empty()
-	)
-	var fly_eligible := not action_targets_transfer and not state.has_maneuver() and (
+	# Spine / acid transfer acceptance removed — reimplement later.
+	var fly_eligible := not state.has_maneuver() and (
 		(
 			state.is_grounded()
 			and (model.pipes.has(state.surface_id) or model.walls.has(state.surface_id))
@@ -300,44 +291,18 @@ func _try_actions() -> void:
 		)
 		or state.is_hanging()
 	)
-	if fly_eligible:
-		var fo := planner.try_fly_out(state, last_wish.x, last_wish.y)
-		if bool(fo.get("ok", false)):
-			var plan: ManeuverPlan = fo.plan
-			state.mode = SimState.Mode.AIRBORNE
-			state.surface_id = ""
-			state.clear_hang()
-			state.maneuver = plan
-			state.last_reject = ""
-			return
-		state.last_reject = str(fo.get("reason", ""))
-	# Transfer button: spine (rising) / acid (descending) only.
-	if not action_just:
+	if not fly_eligible:
 		return
-	if state.is_airborne() and not state.has_maneuver():
-		var rising := state.velocity.z >= -0.5
-		if rising:
-			var dir := last_wish.x
-			if absf(dir) < 0.1:
-				dir = 1.0 if state.facing == "r" else -1.0
-			var sp := planner.try_spine(state, dir)
-			if bool(sp.get("ok", false)):
-				state.clear_hang()
-				state.maneuver = sp.plan
-				state.last_reject = ""
-				return
-			state.last_reject = str(sp.get("reason", ""))
-		else:
-			var travel := state.velocity.x
-			if absf(travel) < 1.0:
-				travel = last_wish.x
-			var ac := planner.try_acid(state, travel)
-			if bool(ac.get("ok", false)):
-				state.clear_hang()
-				state.maneuver = ac.plan
-				state.last_reject = ""
-				return
-			state.last_reject = str(ac.get("reason", ""))
+	var fo := planner.try_fly_out(state, last_wish.x, last_wish.y)
+	if bool(fo.get("ok", false)):
+		var plan: ManeuverPlan = fo.plan
+		state.mode = SimState.Mode.AIRBORNE
+		state.surface_id = ""
+		state.clear_hang()
+		state.maneuver = plan
+		state.last_reject = ""
+		return
+	state.last_reject = str(fo.get("reason", ""))
 
 
 func _assert_finite() -> void:
