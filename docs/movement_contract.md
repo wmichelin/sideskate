@@ -25,8 +25,8 @@ Logical axes in this document: **X** left/right, **Z** near/far, **height** up. 
 
 | Term | Alias | Meaning |
 |------|-------|---------|
-| **Air-out** | hang | Leave a compiled open edge with **X locked** to its anchor. Motion is height (+ optionally Z) only. Stick does **not** unlock X. |
-| **Fly-out** | deck-out | Exit X-lock and travel **away** from the pipe: left on a left pipe, right on a right pipe (world outward). Free-air XZ control after unlock. |
+| **Air-out** | hang | Leave a compiled open edge with **X locked** to its anchor. Motion is height (+ optionally Z) only. Stick does **not** unlock X. Keeps surface lean. |
+| **Fly-out** | **deck-out** (same action) | Exit X-lock and travel **away** from the pipe: left on a left pipe, right on a right pipe (world outward). Free-air XZ control after unlock. Resets presentation lean upright. |
 | **Spine** | — | Explicit transfer onto an **opposite-facing** pipe. Never an automatic ordinary land. |
 
 ### Fly-out / deck-out activation
@@ -34,9 +34,12 @@ Logical axes in this document: **X** left/right, **Z** near/far, **height** up. 
 While air-out (hang) or perched on an `OPEN` / `SHARED_SPINE` coping, and height above coping is within `FLY_OUT_ABOVE`:
 
 - Stick must be **X-dominant** and **outward** (into the lip / toward leaving the pipe): −X on left pipes, +X on right pipes.
-- Accepting fly-out clears hang, seeds outward free-air velocity from climb/air speed, and ends X-lock.
+- Accepting fly-out clears hang, seeds outward free-air velocity from climb/air speed, ends X-lock, and stands the skater upright (`free_air_upright` — no carried pipe/wall lean).
 
 Same-height outward `#` decks are fly/air corridor — they do **not** auto-mount from the pipe.
+Free-air landings on the coping column (or its bowl side) prefer that pipe over an abutting
+outward `#` pad — floor ollies that meet the lip drop into the bowl, they do not sticky-mount
+the deck with zero coast. Past the coping into the deck remains ordinary deck land / fly-out.
 
 ### Air-out landing
 
@@ -57,6 +60,9 @@ While air-out (X-locked):
   remountable pipe/wall is available.
 - If no remountable pipe is under the lock (outside the pipe / gap), land the nearest
   floor, deck, lava, or void. That flat land clears hang and resets lip lean / X-lock.
+- If hang clears mid-air while still on the launch coping X, descending free-air contact
+  with that pipe’s wall remounts the wall face (into the bowl) — never bounce-freeze
+  beside a coplanar abutting deck.
 
 ### Spine landing
 
@@ -96,7 +102,30 @@ A transition occurs only via:
 
 Invisible world-border walls sit on the park AABB faces (X and Z) so you cannot leave the support footprint and fall out. Edge pipe copings on `x=0` / `x=width` remain rideable. Unplayable `space`, one-sided pipe interiors, **deck volumes** (below the ride top), and compiled wall/backing volumes are solid containment. An invisible `__void_floor__` patch at `VOID_FLOOR` catches fall-through when no other support remains. `#` decks are ride-on-top only. Map-edge decks/floors are walls.
 
-**Contact ownership:** support projection, edge lookup, and swept solid contact are separate queries. A shared coping boundary has one compiled owner; the exact pipe coping is not inside either pipe solid. Contact returns a stable feature ID, surface, projection, normal, and time. Outward `#` remains `OPEN`; riding its deck off onto an abutting pipe does **not** auto-mount — fall, and mount only via **acid** while descending.
+**Contact ownership (single stream):** each airborne physics tick builds one
+ordered contact stream — solid-face sweep, support-top crossings, and hang-anchor
+crossing — sorted by time `t`. The earliest non-Corridor hit decides the tick.
+
+Compiled span owners (non-overlapping) on each coping span:
+
+| Role | Owns | Typical disposition |
+|------|------|---------------------|
+| `LIP_COLUMN` | Coping column / bowl-side lip (pipe or wall) | **Mount** when descending |
+| `OUTWARD_DECK` | Abutting `#` pad clearly outward of coping | **Mount** if deck land gates pass; else **Reject** (exterior, no `vz=0` freeze) |
+| `OPEN_CORRIDOR` | Deck-backed `OPEN` / `SHARED_SPINE` from clearly outward | **Corridor** (acid only; no ordinary mount) |
+| `WALL_CLIMB` | Explicit wall face | **Mount** hang source / inbound upper partner; else **Reject** or outward-exit **Corridor** |
+| `HANG_ANCHOR` | Retained air-out edge | **Mount** source pipe/wall |
+
+Three dispositions only: **Mount** (ground on that owner), **Reject** (stay
+exterior with normal-consistent velocity — never kill vertical while still
+intersecting), **Corridor** (continue to the next event). Hang remounts only the
+retained source; foreign lips under the X-lock are Corridor. `supports_below`
+fills UV/height for a chosen Mount — it is not a competing lander.
+
+Outward `#` remains `OPEN`; riding its deck off onto an abutting pipe does **not**
+auto-mount — fall, and mount only via **acid** while descending. The exact pipe
+coping is not inside either pipe solid; contact still returns a stable feature /
+owner id, surface, projection, normal, and time.
 
 ## Tolerances (`SimTolerances`)
 
@@ -152,8 +181,8 @@ Wall faces are one-sided. Riding off a deck through its backing wall enters ordi
 | Intent | Condition |
 |--------|-----------|
 | Move | Stick → wish in XZ / along-surface |
-| Ollie | Hold `ollie`: mild accel toward `max_speed` in **facing** direction; skipped while stick brakes opposite. Hold meter builds only while **grounded** (cannot start charging in air). Release pops to peak height `charge_frac × ollie_height` (level units; charge over `ollie_charge_ms`, capped at 100%) via `v = √(2|g|h)` if an ollie charge is available. One charge: spent on a successful release jump, restored on any grounded contact. On pipes/ramps below the lip band the pop is world-up (lip-ward / bowl-ward ride X only — peak-ward X is dropped so the pop cannot drill under the incline). In the upper `ollie_lip_frac` of a pipe/ramp (default top 50%), ollie enters X-locked hang air like a normal air-out. Presentation keeps pre-takeoff surface lean while airborne. |
-| Fly-out / deck-out | X-dominant outward stick (−X left pipe / +X right pipe) while rising in `FLY_OUT_ABOVE` on `OPEN` / `SHARED_SPINE` or while air-out. Cross-story wall tops gate height on the connected upper lip, but outward stick stays with the source pipe that climbed the wall. |
+| Ollie | Hold `ollie`: mild accel toward `max_speed` in **facing** direction; skipped while stick brakes opposite. Hold meter builds only while **grounded** (cannot start charging in air). Release pops to peak height `charge_frac × ollie_height` (level units; charge over `ollie_charge_ms`, capped at 100%) via `v = √(2|g|h)` if an ollie charge is available. One charge: spent on a successful release jump, restored on any grounded contact. On pipes/ramps below the lip band the pop is world-up (lip-ward / bowl-ward ride X only — peak-ward X is dropped so the pop cannot drill under the incline). In the upper `ollie_lip_frac` of a pipe/ramp (default top 50%), ollie enters X-locked hang air like a normal air-out. Presentation keeps pre-takeoff surface lean while airborne (unlike fly-out / deck-out). |
+| Fly-out / deck-out | Same action. X-dominant outward stick (−X left pipe / +X right pipe) while rising in `FLY_OUT_ABOVE` on `OPEN` / `SHARED_SPINE` or while air-out. Cross-story wall tops gate height on the connected upper lip, but outward stick stays with the source pipe that climbed the wall. Clears hang, seeds outward free-air X, and resets presentation lean upright. |
 | Spine | Explicit action while rising/apex; dest opposite-facing; traveler outward of dest coping |
 | Acid | Explicit action while descending; classic opposite wall, or deck drop-in onto abutting pipe from its outward side |
 | Post fly-out | Same action may acid when descending; never spine at apex |

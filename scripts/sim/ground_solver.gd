@@ -573,6 +573,8 @@ func _enter_air(state: SimState, world_vel: Vector3, hang_edge_id: String = "") 
 	state.air_peak_height = state.position.z
 	if hang_edge_id.is_empty():
 		state.clear_hang()
+		# Ollie / ride-off free air may keep presentation lean; fly-out sets upright.
+		state.free_air_upright = false
 	else:
 		state.begin_hang(hang_edge_id)
 
@@ -653,6 +655,9 @@ func _reject_into_normal(world: Vector3, normal: Vector3) -> Vector3:
 
 
 ## Upper pipe/ramp ollie → coping-anchored hang (vx locked, height free).
+## WALL_EXTENSION seams hang from the wall-top lip (effective air-out height),
+## not the geometric pipe seam — otherwise the next tick sticky-mounts the wall
+## and climbs into the upper deck band.
 func _launch_ollie_lip_hang(
 	state: SimState, height_impulse: float, along: float, depth: float
 ) -> bool:
@@ -660,6 +665,11 @@ func _launch_ollie_lip_hang(
 	var edge := query.edge_at(state.surface_id, z, "coping")
 	if edge == null:
 		return false
+	# Seam into an explicit wall: air-out lip is the wall top.
+	if model.walls.has(edge.to_surface_id):
+		var wall_top := query.edge_at(edge.to_surface_id, z, "top")
+		if wall_top != null:
+			edge = wall_top
 	var anchor := query.edge_anchor_sample(edge, z)
 	if anchor.is_empty():
 		return false

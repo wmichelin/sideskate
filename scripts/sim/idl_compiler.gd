@@ -344,7 +344,22 @@ static func _classify_copings(spec: LevelSpec, model: ParkModel) -> void:
 					cope.support_patch_id = span.support_patch_id
 			elif cope.coping_class != SimKinds.CopingClass.WALL_EXTENSION:
 				cope.coping_class = span.coping_class
+			_assign_span_contact_owners(cope, span)
 			cope.spans.append(span)
+
+
+## Non-overlapping air-contact owners for this span's coping column.
+static func _assign_span_contact_owners(cope: CopingEdge, span: CopingSpan) -> void:
+	# WALL_EXTENSION: wall owns the climb / effective lip; pipe remains source.
+	if not span.wall_id.is_empty():
+		span.lip_owner_id = span.wall_id
+	else:
+		span.lip_owner_id = cope.pipe_id
+	span.outward_owner_id = span.outward_deck_id
+	span.is_open_corridor = (
+		span.coping_class == SimKinds.CopingClass.OPEN
+		or span.coping_class == SimKinds.CopingClass.SHARED_SPINE
+	)
 
 
 static func _classify_coping_at(
@@ -540,6 +555,9 @@ static func _coping_spans_are_equivalent(a: CopingSpan, b: CopingSpan) -> bool:
 		and a.support_patch_id == b.support_patch_id
 		and a.outward_deck_id == b.outward_deck_id
 		and a.partner_coping_id == b.partner_coping_id
+		and a.lip_owner_id == b.lip_owner_id
+		and a.outward_owner_id == b.outward_owner_id
+		and a.is_open_corridor == b.is_open_corridor
 	)
 
 
@@ -716,7 +734,7 @@ static func _hash_model(model: ParkModel) -> String:
 		for span_value in c.spans:
 			var span: CopingSpan = span_value
 			lines.append(
-				"span:%s:%d:%.4f:%.4f:%s:%s:%s:%s"
+				"span:%s:%d:%.4f:%.4f:%s:%s:%s:%s:%s:%s:%d"
 				% [
 					span.id,
 					span.coping_class,
@@ -726,6 +744,9 @@ static func _hash_model(model: ParkModel) -> String:
 					span.outward_deck_id,
 					span.wall_id,
 					span.partner_coping_id,
+					span.lip_owner_id,
+					span.outward_owner_id,
+					1 if span.is_open_corridor else 0,
 				]
 			)
 	var patch_ids: Array = model.all_patch_ids()

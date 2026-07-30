@@ -31,6 +31,26 @@ enum PipeSide {
 	RIGHT = 1,
 }
 
+## Compiled air-contact ownership roles. One role owns each seam point; AirSolver
+## dispositions (Mount / Reject / Corridor) key off this, not ad-hoc geometry votes.
+enum ContactRole {
+	SOLID = 0,
+	LIP_COLUMN = 1,
+	OUTWARD_DECK = 2,
+	WALL_CLIMB = 3,
+	OPEN_CORRIDOR = 4,
+	SUPPORT_TOP = 5,
+	HANG_ANCHOR = 6,
+	BOUNDS = 7,
+}
+
+## Disposition for a single air contact.
+enum ContactDisposition {
+	MOUNT = 0,
+	REJECT = 1,
+	CORRIDOR = 2,
+}
+
 
 static func coping_class_name(c: int) -> String:
 	match c:

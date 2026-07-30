@@ -18,6 +18,21 @@ See gameplay.md § Key scripts for the full table.
 
 Use `MotionVectors.Kind` (`INPUT` / `MOMENTUM` / `ACTUAL`) when referring to stick wish, integrated control, or measured world motion. See gameplay.md § Motion vectors. Do not invent parallel names (`intent`, `wishvel`, etc.) in new code.
 
+## Aerial vocabulary
+
+Use these terms exactly. Do not invent synonyms (`unlock`, `pop out`, `hang unlock`) in new code or docs. Details/gates: [docs/movement_contract.md](docs/movement_contract.md) § Aerial vocabulary.
+
+| Term | Alias | Meaning |
+|------|-------|---------|
+| **Air-out** | hang | Leave an open coping with **X locked** to the edge anchor. Height (+ depth) only. Stick does **not** free X. |
+| **Fly-out** | **deck-out** | Same action: exit X-lock and travel **outward** from the pipe/wall (world away from the bowl). Free-air XZ after unlock. |
+| **Spine** | — | Explicit transfer to an **opposite-facing** pipe (never ordinary land). |
+| **Acid** | — | Explicit descending transfer onto a pipe (button). |
+
+**Fly-out / deck-out are the same.** Prefer **fly-out** in sim/code (`ManeuverPlan.Kind.FLY_OUT`, `try_fly_out`). **Deck-out** is the player/design name for that unlock toward a rear deck / outward free air — never a separate code path.
+
+**Lean:** air-out and ollie keep pre-takeoff surface lean; fly-out / deck-out sets `SimState.free_air_upright` and resets presentation lean upright.
+
 ## Simulation: physics ticks only
 
 All gameplay simulation must run on the **fixed physics timestep** (`_physics_process` / physics `delta`), never on render/idle frames (`_process`, “once per drawn frame,” timers tied to FPS, etc.).

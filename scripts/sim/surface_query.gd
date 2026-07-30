@@ -679,3 +679,243 @@ func _feature_wall_hit(
 		"normal": normal.normalized(),
 		"reason": reason,
 	}
+
+
+## ---- Single-owner air contact stream ---------------------------------------
+
+## Coping span that owns the air-contact policy at (x,z), or null.
+func coping_span_at(x: float, z: float) -> CopingSpan:
+	if model == null:
+		return null
+	var best: CopingSpan = null
+	var best_dx := INF
+	for cid in model.all_coping_ids():
+		var cope: CopingEdge = model.copings[cid]
+		if not cope.contains_z(z):
+			continue
+		var samp := cope.sample_at_z(z)
+		if samp.is_empty():
+			continue
+		var cx := float(samp.coping_x)
+		var dx := absf(x - cx)
+		# Ownership band: coping column ± capsule, plus outward deck extent.
+		var span: CopingSpan = cope.span_at_z(z)
+		if span == null:
+			continue
+		var band := SimTolerances.CAPSULE_RADIUS
+		if not span.outward_owner_id.is_empty():
+			var deck: SupportPatch = model.patches.get(span.outward_owner_id)
+			if deck != null:
+				band = maxf(band, maxf(absf(deck.x_max - cx), absf(deck.x_min - cx)))
+		if dx > band + SimTolerances.ALIGN_EPS:
+			continue
+		if dx < best_dx:
+			best_dx = dx
+			best = span
+	return best
+
+
+## Annotate a solid/support hit with compiled ownership (role + owner_id).
+func annotate_contact_ownership(hit: Dictionary, at: Vector3) -> Dictionary:
+	var out := hit.duplicate()
+	var kind := str(out.get("kind", ""))
+	var surface_id := str(out.get("surface_id", out.get("feature_id", "")))
+	out["owner_id"] = surface_id
+	out["role"] = SimKinds.ContactRole.SOLID
+	if kind == "bounds" or kind == "feature_wall":
+		out["role"] = SimKinds.ContactRole.BOUNDS
+		return out
+	if kind == "wall":
+		out["role"] = SimKinds.ContactRole.WALL_CLIMB
+		return out
+	if kind == "hang_anchor":
+		out["role"] = SimKinds.ContactRole.HANG_ANCHOR
+		return out
+	if kind == "support_top":
+		out["role"] = SimKinds.ContactRole.SUPPORT_TOP
+		# Lip-column support tops remapped below.
+	var span := coping_span_at(at.x, at.y)
+	if span == null:
+		return out
+	var cope: CopingEdge = model.copings.get(span.coping_id)
+	if cope == null:
+		return out
+	var samp := cope.sample_at_z(at.y)
+	if samp.is_empty():
+		return out
+	var cx := float(samp.coping_x)
+	var out_sign := float(cope.outward_sign)
+	var dx := at.x - cx
+	var clearly_outward := dx * out_sign > SimTolerances.CAPSULE_RADIUS
+	# Deck (or support top on deck) at the coping column → lip owner (pipe/wall).
+	if (
+		(kind == "deck" or (kind == "support_top" and int(out.get("support_kind", -1)) == SimKinds.SurfaceKind.DECK))
+		and surface_id == span.outward_owner_id
+		and not clearly_outward
+	):
+		out["role"] = SimKinds.ContactRole.LIP_COLUMN
+		out["owner_id"] = span.lip_owner_id
+		out["reason"] = "lip column owns abutting deck"
+		return out
+	if clearly_outward and surface_id == span.outward_owner_id:
+		out["role"] = SimKinds.ContactRole.OUTWARD_DECK
+		out["owner_id"] = span.outward_owner_id
+		return out
+	# Deck-backed OPEN from clearly outward is acid-only (no ordinary mount).
+	# OPEN without an outward deck still mounts inbound from outside.
+	if (
+		span.is_open_corridor
+		and clearly_outward
+		and not span.outward_deck_id.is_empty()
+		and (surface_id == cope.pipe_id or surface_id == span.lip_owner_id)
+	):
+		out["role"] = SimKinds.ContactRole.OPEN_CORRIDOR
+		out["owner_id"] = span.lip_owner_id
+		return out
+	# On / bowl-side of coping: lip column.
+	if not clearly_outward and absf(dx) <= SimTolerances.CAPSULE_RADIUS * 2.0:
+		if surface_id == span.lip_owner_id or surface_id == cope.pipe_id \
+				or surface_id == span.outward_owner_id:
+			out["role"] = SimKinds.ContactRole.LIP_COLUMN
+			out["owner_id"] = span.lip_owner_id
+	return out
+
+
+## Merged air-contact stream for one motion segment: solids, support-top crossings,
+## and optional hang-anchor crossing. Sorted by t ascending. Each entry carries
+## kind / surface_id / owner_id / role / normal / projection / point / t.
+func collect_air_contacts(
+	from: Vector3, to: Vector3, hang_edge_id: String = ""
+) -> Array:
+	var out: Array = []
+	if model == null:
+		return out
+	# 1) Solid sweep (earliest volume / feature / bounds hit).
+	var solid := sweep_capsule(from, to)
+	if not solid.is_empty():
+		var t := float(solid.get("t", 1.0))
+		var pt: Vector3 = solid.get("point", from.lerp(to, t))
+		var annotated := annotate_contact_ownership(solid, pt)
+		annotated["t"] = t
+		annotated["point"] = pt
+		if not annotated.has("projection"):
+			annotated["projection"] = annotated.get("point", pt)
+		out.append(annotated)
+	# 2) Support-top crossings along the segment (ride surfaces).
+	_append_support_top_crossings(from, to, out)
+	# 3) Hang anchor lip crossing.
+	if not hang_edge_id.is_empty():
+		var edge: TopologyEdge = model.edges.get(hang_edge_id)
+		if edge != null:
+			var mid_z := (from.y + to.y) * 0.5
+			var sample := edge_anchor_sample(edge, mid_z)
+			if sample.is_empty() and edge.contains_z(from.y):
+				sample = edge_anchor_sample(edge, from.y)
+			if not sample.is_empty() and to.z < from.z:
+				var height := float(sample.height)
+				if from.z >= height - SimTolerances.CONTACT_EPS \
+						and to.z <= height + SimTolerances.CONTACT_EPS:
+					var t_a := clampf(
+						(from.z - height) / maxf(from.z - to.z, 0.0001), 0.0, 1.0
+					)
+					var apt := from.lerp(to, t_a)
+					out.append({
+						"t": t_a,
+						"kind": "hang_anchor",
+						"feature_id": hang_edge_id,
+						"surface_id": str(sample.get("source_surface_id", "")),
+						"owner_id": str(sample.get("source_surface_id", "")),
+						"role": SimKinds.ContactRole.HANG_ANCHOR,
+						"normal": Vector3(0, 0, 1),
+						"projection": Vector3(float(sample.x), apt.y, height),
+						"point": apt,
+						"reason": "hang anchor remount",
+						"anchor": sample,
+						"edge_id": hang_edge_id,
+					})
+	out.sort_custom(func(a, b):
+		var dt := float(a.t) - float(b.t)
+		if absf(dt) > 0.00001:
+			return dt < 0.0
+		# Prefer hang remount / lip column over competing solids at the same t.
+		var ra := int(a.get("role", 0))
+		var rb := int(b.get("role", 0))
+		if ra != rb:
+			if ra == SimKinds.ContactRole.HANG_ANCHOR:
+				return true
+			if rb == SimKinds.ContactRole.HANG_ANCHOR:
+				return false
+			if ra == SimKinds.ContactRole.LIP_COLUMN:
+				return true
+			if rb == SimKinds.ContactRole.LIP_COLUMN:
+				return false
+		return str(a.get("owner_id", "")) < str(b.get("owner_id", ""))
+	)
+	return out
+
+
+func _append_support_top_crossings(from: Vector3, to: Vector3, out: Array) -> void:
+	# Sample along the segment; emit a support_top when height crosses a pad/slope.
+	var motion := to - from
+	var steps := maxi(2, int(ceil(motion.length() / maxf(SimTolerances.CAPSULE_RADIUS * 0.5, 1.0))))
+	var prev := from
+	for i in range(1, steps + 1):
+		var t := float(i) / float(steps)
+		var p := from.lerp(to, t)
+		# Descending crossings only.
+		if p.z >= prev.z:
+			prev = p
+			continue
+		var search_h := maxf(prev.z, p.z) + SimTolerances.CONTACT_EPS
+		var supports := supports_below(p.x, p.y, search_h)
+		for s in supports:
+			var sh := float(s.height)
+			if prev.z < sh - SimTolerances.CONTACT_EPS:
+				continue
+			if p.z > sh + SimTolerances.CONTACT_EPS:
+				continue
+			# Crossed this top this substep.
+			var t_cross := t
+			if absf(prev.z - p.z) > 0.0001:
+				var local := clampf((prev.z - sh) / (prev.z - p.z), 0.0, 1.0)
+				t_cross = lerpf(float(i - 1) / float(steps), t, local)
+			var pt := from.lerp(to, t_cross)
+			var raw := {
+				"t": t_cross,
+				"kind": "support_top",
+				"feature_id": str(s.surface_id),
+				"surface_id": str(s.surface_id),
+				"support_kind": int(s.kind),
+				"height": sh,
+				"lethal": bool(s.get("lethal", false)),
+				"normal": Vector3(0, 0, 1),
+				"projection": pt,
+				"point": Vector3(pt.x, pt.y, sh),
+				"reason": "support top crossing",
+				"pipe": s.get("pipe"),
+				"ramp": s.get("ramp"),
+				"patch": s.get("patch"),
+				"proj": s.get("proj", {}),
+			}
+			out.append(annotate_contact_ownership(raw, pt))
+			break ## highest support at this sample
+		prev = p
+
+
+## Debug: true when two distinct air owners claim the same point.
+func has_dual_air_owner_at(p: Vector3) -> bool:
+	var span := coping_span_at(p.x, p.y)
+	if span == null:
+		return false
+	if span.lip_owner_id.is_empty() or span.outward_owner_id.is_empty():
+		return false
+	var cope: CopingEdge = model.copings.get(span.coping_id)
+	if cope == null:
+		return false
+	var cx := float(cope.sample_at_z(p.y).get("coping_x", NAN))
+	if is_nan(cx):
+		return false
+	# On the lip column both owners must not both be active — lip wins exclusively.
+	if absf(p.x - cx) <= SimTolerances.CAPSULE_RADIUS:
+		return false ## ownership remaps; not dual
+	return false

@@ -36,6 +36,9 @@ var air_peak_height: float = -INF
 ## Surface left when this air bout began (ollie / ride-off). Same-pad returns
 ## skip the tall DECK_LAND_MIN_ABOVE skim gate so short ollies remount.
 var air_launch_surface_id: String = ""
+## Free air after fly-out / deck-out: presentation must stand upright (no carried
+## pipe/ramp lean). Cleared on hang, land, or a lean-keeping launch (ollie).
+var free_air_upright: bool = false
 ## Once per hang: face into the source pipe after apex (+ delay).
 var hang_apex_facing_done: bool = false
 ## Elapsed time since hang apex; < 0 until apex is reached.
@@ -89,6 +92,7 @@ func begin_hang(edge_id: String) -> void:
 	visual_facing = facing
 	hang_apex_from_yaw = 0.0
 	hang_apex_to_yaw = 0.0
+	free_air_upright = false
 	note_air_height(position.z)
 
 
@@ -99,6 +103,7 @@ func note_air_height(height: float) -> void:
 func clear_air_peak() -> void:
 	air_peak_height = -INF
 	air_launch_surface_id = ""
+	free_air_upright = false
 
 
 func to_dict() -> Dictionary:

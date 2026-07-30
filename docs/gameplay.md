@@ -56,7 +56,9 @@ Stick → wish. Per axis:
 | **Free** (fly-out / deck-out) | Outward X-dominant stick in `FLY_OUT_ABOVE`, or ride-off | Unlocked; ballistic (no friction — stick steers only while held) | Gravity only |
 | **Maneuver** | Accepted spine / acid / fly-out plan | Plan owns pose | Plan owns pose |
 
-**Fly-out / deck-out:** unlock X-lock, keep rising height, and seed outward free-air X from climb/air speed. Stick must be outward to accept; after unlock X is ballistic. Cross-story walls gate the height window on the connected upper lip; outward stick stays with the source-pipe climb direction.
+**Fly-out / deck-out:** same unlock — clear X-lock, keep rising height, seed outward free-air X from climb/air speed, and **reset surface lean upright**. Stick must be outward to accept; after unlock X is ballistic. Cross-story walls gate the height window on the connected upper lip; outward stick stays with the source-pipe climb direction.
+
+**Air-out** (and ollie free air) keep pre-takeoff pipe/wall lean. Do not confuse with fly-out.
 
 **Air-out land:** descending through the retained edge returns to its exact source pipe/wall with speed preserved. Never auto-land the opposite-facing transfer target. Same-facing X-aligned pipes still win over flats under the lock. If nothing remountable is under the lock (outside the pipe), land the nearest floor/deck/void and clear hang (drop lip lean / X-lock).
 

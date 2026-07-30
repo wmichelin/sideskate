@@ -201,8 +201,12 @@ func _sync_from_sim() -> void:
 		tilt = -ramp.outward_sign() * (st.u * PI * 0.25)
 		_carry_tilt = tilt
 	elif st.is_airborne():
-		# Keep pre-ollie pipe/ramp lean — free air must not snap upright.
-		tilt = _carry_tilt
+		# Air-out hang / ollie keep surface lean. Fly-out / deck-out stands upright.
+		if st.free_air_upright:
+			tilt = 0.0
+			_carry_tilt = 0.0
+		else:
+			tilt = _carry_tilt
 	else:
 		_carry_tilt = 0.0
 	var support_h := p.z

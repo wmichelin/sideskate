@@ -13,6 +13,13 @@ var support_patch_id: String = ""
 var outward_deck_id: String = ""
 var wall_id: String = ""
 var partner_coping_id: String = "" ## maneuver target only; never an auto seam
+## Air-contact ownership (non-overlapping at the coping X).
+## lip_owner_id: pipe or wall that owns the coping column / effective lip.
+## outward_owner_id: abutting outward deck (empty when open air past the lip).
+## is_open_corridor: true for OPEN / SHARED_SPINE — fly/air, not auto-mount from outward.
+var lip_owner_id: String = ""
+var outward_owner_id: String = ""
+var is_open_corridor: bool = false
 
 
 func contains_z(z: float) -> bool:

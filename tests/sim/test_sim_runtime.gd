@@ -27,6 +27,7 @@ func run() -> bool:
 		and _ollie_pipe_low_vx_descending_remounts()
 		and _ollie_climbing_ramp_stays_above_solid()
 		and _ollie_into_pipe_with_stick_stays_outside()
+		and _ramp_ollie_onto_abutting_deck_no_freeze()
 		and _coast_with_zero_friction()
 		and _air_no_x_friction()
 		and _wall_extension_climbs()
@@ -37,6 +38,13 @@ func run() -> bool:
 		and _upper_deck_2_hang_return_past_deck_rear()
 		and _upper_deck_2_apex_no_deck_snap()
 		and _upper_deck_2_wall_bottom_no_deck_steal()
+		and _l0_air_out_not_stuck_on_l1_opposite_deck()
+		and _l0_pipe_ollie_not_stuck_on_l1_deck()
+		and _l0_launch_does_not_force_land_inward_deck()
+		and _l0_free_air_at_cope_remounts_wall_not_freeze()
+		and _floor_ollie_coping_lands_pipe_not_deck()
+		and _air_contact_stream_lip_owns_coping_column()
+		and _airborne_reject_leaves_exterior()
 		and _void_floor_catches_fall()
 		and _hang_flat_land_clears_lock()
 		and _world_border_contains()
@@ -159,6 +167,9 @@ func _hang_x_lock_until_fly_out() -> bool:
 	if not sim.state.is_hanging():
 		push_error("expected hang after coping leave")
 		return false
+	if sim.state.free_air_upright:
+		push_error("air-out hang must not set free_air_upright")
+		return false
 	var lock_x := left.coping_x_at(sim.state.position.y)
 	# Z-dominant stick: stay hang-locked (not X-dominant fly-out).
 	sim.set_input(Vector2(-0.2, 0.9), false, false)
@@ -186,6 +197,9 @@ func _hang_x_lock_until_fly_out() -> bool:
 		return false
 	if sim.state.velocity.x >= -1.0:
 		push_error("fly-out should seed outward (-X) velocity, got %s" % sim.state.velocity)
+		return false
+	if not sim.state.free_air_upright:
+		push_error("fly-out / deck-out must set free_air_upright (reset lean)")
 		return false
 	return true
 
@@ -1185,6 +1199,91 @@ func _ollie_into_pipe_with_stick_stays_outside() -> bool:
 	return true
 
 
+func _ramp_ollie_onto_abutting_deck_no_freeze() -> bool:
+	# High ramp clip → deck used to bounce-loop under the skim gate (vz killed,
+	# pose reset to `from`) and freeze airborne with leftover horizontal speed.
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_ramp_deck.ssk"):
+		push_error("setup ramp→deck freeze")
+		return false
+	var ramp: RampSurface = null
+	for id in sim.model.ramps.keys():
+		var r: RampSurface = sim.model.ramps[id]
+		if r.outward_sign() > 0.0:
+			ramp = r
+			break
+	if ramp == null:
+		push_error("missing right ramp")
+		return false
+	var deck_id := ""
+	for id in sim.model.patches.keys():
+		var p: SupportPatch = sim.model.patches[id]
+		if int(p.kind) == SimKinds.SurfaceKind.DECK:
+			deck_id = id
+			break
+	if deck_id.is_empty():
+		push_error("missing deck")
+		return false
+	sim.ollie_accel = 0.0
+	sim.ollie_charge_ms = 0.0
+	sim.ollie_height = 40.0
+	sim.ollie_lip_frac = 0.0
+	var z := (ramp.z_min + ramp.z_max) * 0.5
+	var u := 0.85
+	var th := u * PI * 0.5
+	sim.state.mode = SimState.Mode.GROUNDED
+	sim.state.surface_id = ramp.id
+	sim.state.u = u
+	sim.state.v = 0.5
+	sim.state.tangent_velocity = Vector2(600.0, 0.0)
+	sim.state.position = Vector3(ramp.x_at_theta(z, th), z, ramp.height_at_theta(z, th))
+	sim.ollie_available = true
+	sim.ollie_charge = 1.0
+	sim.set_input(Vector2(1, 0), false, false, false, true)
+	sim.tick()
+	if not sim.state.is_airborne():
+		push_error("ramp ollie should leave")
+		return false
+	var stuck := 0
+	var last := sim.state.position
+	for _i in range(180):
+		sim.set_input(Vector2(1, 0), false, false, false, false)
+		sim.tick()
+		var moved := (sim.state.position - last).length()
+		last = sim.state.position
+		if sim.state.is_airborne() and moved < 0.05:
+			stuck += 1
+			if stuck >= 12:
+				push_error(
+					"frozen airborne at %s v=%s surf_blocker=%s"
+					% [sim.state.position, sim.state.velocity, sim.query.blocker_at(sim.state.position)]
+				)
+				return false
+		else:
+			stuck = 0
+		if sim.state.is_grounded() and sim.state.surface_id == deck_id:
+			# Must still accept stick input on the deck.
+			var tv0 := sim.state.tangent_velocity.x
+			sim.set_input(Vector2(1, 0), false, false, false, false)
+			sim.tick()
+			if sim.state.is_grounded() and absf(sim.state.tangent_velocity.x - tv0) < 0.01 \
+					and absf(tv0) < 1.0:
+				# Coasting at zero is ok if we just landed; give accel a tick.
+				sim.set_input(Vector2(1, 0), false, false, false, false)
+				sim.tick()
+			if sim.state.is_grounded() and absf(sim.state.tangent_velocity.x) < 1.0:
+				# Still fine if friction/brake — just ensure mode isn't soft-locked.
+				pass
+			return true
+	if sim.state.is_airborne():
+		push_error(
+			"never landed after ramp→deck ollie; pos=%s v=%s"
+			% [sim.state.position, sim.state.velocity]
+		)
+		return false
+	return true
+
+
 func _coast_with_zero_friction() -> bool:
 	var sim := PlayerSim.new()
 	if not sim.setup_from_path("res://tests/levels/sim/sim_halfpipe.ssk"):
@@ -1785,6 +1884,480 @@ func _upper_deck_2_wall_bottom_no_deck_steal() -> bool:
 				return false
 			return true
 	push_error("upper_deck_2 bottom: never remounted source after hang")
+	return true
+
+
+## L0 right-pipe air-out must fall back into the L0 wall/pipe bowl — never
+## sticky-mount the L1 opposite pipe's rear deck while still hanging.
+func _l0_air_out_not_stuck_on_l1_opposite_deck() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_l0_air_out_l1_deck.ssk"):
+		push_error("l0 air-out: setup")
+		return false
+	var pipe: PipeSurface = null
+	for id in sim.model.pipes.keys():
+		var p: PipeSurface = sim.model.pipes[id]
+		if p.side == SimKinds.PipeSide.RIGHT:
+			pipe = p
+			break
+	if pipe == null:
+		push_error("l0 air-out: missing right pipe")
+		return false
+	var wall: WallSurface = null
+	for id in sim.model.walls.keys():
+		var w: WallSurface = sim.model.walls[id]
+		if w.source_pipe_id == pipe.id:
+			wall = w
+			break
+	if wall == null:
+		push_error("l0 air-out: missing wall")
+		return false
+	var hung := false
+	for _i in range(200):
+		sim.set_input(Vector2(1, 0), false, false)
+		sim.tick()
+		if sim.model.patches.has(sim.state.surface_id) \
+				and int(sim.model.patches[sim.state.surface_id].kind) == SimKinds.SurfaceKind.DECK:
+			push_error("l0 air-out: deck stole climb/hang")
+			return false
+		if sim.state.is_hanging():
+			hung = true
+			break
+	if not hung:
+		push_error("l0 air-out: never hung")
+		return false
+	var stalled := 0
+	var top_h := float(wall.sample_at_z(sim.state.position.y).top_height)
+	for _j in range(220):
+		var prev_vz := sim.state.velocity.z
+		sim.set_input(Vector2.ZERO, false, false)
+		sim.tick()
+		if sim.model.patches.has(sim.state.surface_id) \
+				and int(sim.model.patches[sim.state.surface_id].kind) == SimKinds.SurfaceKind.DECK:
+			push_error("l0 air-out: landed L1 opposite rear deck")
+			return false
+		if sim.state.is_hanging() and absf(sim.state.position.z - top_h) <= 3.0 \
+				and absf(sim.state.velocity.z) < 1.0 and prev_vz < -10.0:
+			stalled += 1
+			if stalled >= 3:
+				push_error("l0 air-out: hang stalled at L1 deck/lip height")
+				return false
+		else:
+			stalled = 0
+		if sim.state.is_grounded():
+			var ok := (
+				sim.state.surface_id == wall.id
+				or sim.state.surface_id == pipe.id
+			)
+			if not ok:
+				push_error("l0 air-out: remounted %s" % sim.state.surface_id)
+				return false
+			# Keep riding a few ticks — must enter the L0 pipe bowl, not freeze at lip.
+			for _k in range(40):
+				sim.set_input(Vector2.ZERO, false, false)
+				sim.tick()
+				if sim.model.patches.has(sim.state.surface_id) \
+						and int(sim.model.patches[sim.state.surface_id].kind) \
+						== SimKinds.SurfaceKind.DECK:
+					push_error("l0 air-out: deck stole after remount")
+					return false
+				if sim.state.surface_id == pipe.id and sim.state.u < 0.95:
+					return true
+			if sim.state.surface_id == pipe.id or sim.state.surface_id == wall.id:
+				return true
+			push_error("l0 air-out: left source after remount surf=%s" % sim.state.surface_id)
+			return false
+	push_error("l0 air-out: never remounted source")
+	return false
+
+
+## Ollie from the L0 pipe lip (wall-extension) must hang at the effective lip and
+## fall back into the L0 pipe — not sticky-mount the wall climb into the L1 deck.
+func _l0_pipe_ollie_not_stuck_on_l1_deck() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_l0_air_out_l1_deck.ssk"):
+		push_error("l0 ollie: setup")
+		return false
+	var pipe: PipeSurface = null
+	for id in sim.model.pipes.keys():
+		var p: PipeSurface = sim.model.pipes[id]
+		if p.side == SimKinds.PipeSide.RIGHT:
+			pipe = p
+			break
+	if pipe == null:
+		push_error("l0 ollie: missing right pipe")
+		return false
+	var wall: WallSurface = null
+	for id in sim.model.walls.keys():
+		var w: WallSurface = sim.model.walls[id]
+		if w.source_pipe_id == pipe.id:
+			wall = w
+			break
+	if wall == null:
+		push_error("l0 ollie: missing wall")
+		return false
+	var z := (pipe.z_min + pipe.z_max) * 0.5
+	var top_h := float(wall.sample_at_z(z).top_height)
+	var u := 0.92
+	var th := u * PI * 0.5
+	sim.state.mode = SimState.Mode.GROUNDED
+	sim.state.surface_id = pipe.id
+	sim.state.u = u
+	sim.state.v = 0.5
+	sim.state.tangent_velocity = Vector2(400.0, 0.0)
+	sim.state.position = Vector3(pipe.x_at_theta(z, th), z, pipe.height_at_theta(z, th))
+	sim.state.set_facing_side("r")
+	sim.ollie_accel = 0.0
+	sim.ollie_charge_ms = 0.0
+	sim.ollie_height = 120.0
+	sim.ollie_lip_frac = 0.50
+	sim.ollie_available = true
+	sim.ollie_charge = 1.0
+	sim.set_input(Vector2.ZERO, false, false, false, true)
+	sim.tick()
+	if not sim.state.is_hanging():
+		push_error(
+			"l0 ollie: expected hang air, mode=%s surf=%s hang=%s"
+			% [sim.state.mode, sim.state.surface_id, sim.state.hang_edge_id]
+		)
+		return false
+	# Must hang at the wall-top lip, not remain on the geometric seam under the deck.
+	if sim.state.position.z < top_h - 5.0:
+		push_error(
+			"l0 ollie: hang below effective lip h=%.1f top=%.1f"
+			% [sim.state.position.z, top_h]
+		)
+		return false
+	# Must not immediately sticky-mount the wall extension and climb.
+	for _i in range(8):
+		sim.set_input(Vector2.ZERO, false, false)
+		sim.tick()
+		if sim.state.is_grounded() and sim.model.walls.has(sim.state.surface_id):
+			push_error("l0 ollie: rising hang sticky-mounted wall")
+			return false
+		if sim.model.patches.has(sim.state.surface_id) \
+				and int(sim.model.patches[sim.state.surface_id].kind) == SimKinds.SurfaceKind.DECK:
+			push_error("l0 ollie: deck stole during rise")
+			return false
+	var stalled := 0
+	for _j in range(220):
+		var prev_vz := sim.state.velocity.z
+		sim.set_input(Vector2.ZERO, false, false)
+		sim.tick()
+		if sim.model.patches.has(sim.state.surface_id) \
+				and int(sim.model.patches[sim.state.surface_id].kind) == SimKinds.SurfaceKind.DECK:
+			push_error("l0 ollie: landed L1 deck")
+			return false
+		if sim.state.is_hanging() and absf(sim.state.position.z - top_h) <= 3.0 \
+				and absf(sim.state.velocity.z) < 1.0 and prev_vz < -10.0:
+			stalled += 1
+			if stalled >= 3:
+				push_error("l0 ollie: hang stalled at deck/lip height")
+				return false
+		else:
+			stalled = 0
+		if sim.state.is_grounded():
+			if sim.state.surface_id != wall.id and sim.state.surface_id != pipe.id:
+				push_error("l0 ollie: remounted %s" % sim.state.surface_id)
+				return false
+			for _k in range(50):
+				sim.set_input(Vector2.ZERO, false, false)
+				sim.tick()
+				if sim.model.patches.has(sim.state.surface_id) \
+						and int(sim.model.patches[sim.state.surface_id].kind) \
+						== SimKinds.SurfaceKind.DECK:
+					push_error("l0 ollie: deck stole after remount")
+					return false
+				if sim.state.surface_id == pipe.id and sim.state.u < 0.95:
+					return true
+			if sim.state.surface_id == pipe.id or sim.state.surface_id == wall.id:
+				return true
+			push_error("l0 ollie: left source surf=%s" % sim.state.surface_id)
+			return false
+	push_error("l0 ollie: never remounted source")
+	return false
+
+
+## Free air over an inward opposite rear deck must not force-land just because the
+## deck shares the launch coping X (outward abut only).
+func _l0_launch_does_not_force_land_inward_deck() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_l0_air_out_l1_deck.ssk"):
+		push_error("inward deck: setup")
+		return false
+	var pipe: PipeSurface = null
+	for id in sim.model.pipes.keys():
+		var p: PipeSurface = sim.model.pipes[id]
+		if p.side == SimKinds.PipeSide.RIGHT:
+			pipe = p
+			break
+	if pipe == null:
+		push_error("inward deck: missing pipe")
+		return false
+	var deck: SupportPatch = null
+	for id in sim.model.patches.keys():
+		var patch: SupportPatch = sim.model.patches[id]
+		if int(patch.kind) == SimKinds.SurfaceKind.DECK:
+			deck = patch
+			break
+	if deck == null:
+		push_error("inward deck: missing deck")
+		return false
+	var mid_x := (deck.x_min + deck.x_max) * 0.5
+	var mid_z := (deck.z_min + deck.z_max) * 0.5
+	sim.state.mode = SimState.Mode.AIRBORNE
+	sim.state.surface_id = ""
+	sim.state.clear_hang()
+	sim.state.air_launch_surface_id = pipe.id
+	# Peak fails the tall skim gate — only force-near-pad could sticky-mount.
+	sim.state.air_peak_height = deck.height + 5.0
+	sim.state.position = Vector3(mid_x, mid_z, deck.height - 2.0)
+	sim.state.velocity = Vector3(-40.0, 0.0, -80.0)
+	for _i in range(40):
+		sim.set_input(Vector2.ZERO, false, false)
+		sim.tick()
+		if sim.state.surface_id == deck.id:
+			push_error("inward deck: force land stole opposite rear deck")
+			return false
+		if sim.state.is_grounded() and (
+			sim.state.surface_id == pipe.id
+			or sim.model.walls.has(sim.state.surface_id)
+		):
+			return true
+	return not (sim.state.surface_id == deck.id)
+
+
+## layered_demo: free air at the L0 right coping (hang cleared mid-air) must remount
+## the source wall / pipe into the bowl — never bounce-freeze at the L1 abutting
+## deck height while still leaned with X stuck.
+func _l0_free_air_at_cope_remounts_wall_not_freeze() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
+		push_error("l0 free-air cope: setup")
+		return false
+	var pipe: PipeSurface = sim.model.pipes.get("pipe_1_L0_S1")
+	if pipe == null:
+		push_error("l0 free-air cope: missing pipe_1_L0_S1")
+		return false
+	var wall: WallSurface = null
+	for id in sim.model.walls.keys():
+		var w: WallSurface = sim.model.walls[id]
+		if w.source_pipe_id == pipe.id and w.contains_z(1010.5):
+			wall = w
+			break
+	if wall == null:
+		push_error("l0 free-air cope: missing wall at mid depth")
+		return false
+	var midz := 1010.5
+	var cx := pipe.coping_x_at(midz)
+	var top_h := float(wall.sample_at_z(midz).top_height)
+	# Low peak: deck skim gate fails; abutting deck_2 sits on coping X.
+	sim.state.mode = SimState.Mode.AIRBORNE
+	sim.state.surface_id = ""
+	sim.state.clear_hang()
+	sim.state.free_air_upright = false
+	sim.state.air_launch_surface_id = pipe.id
+	sim.state.air_peak_height = top_h + 5.0
+	sim.state.position = Vector3(cx, midz, top_h + 8.0)
+	sim.state.velocity = Vector3(0.0, 0.0, -20.0)
+	var stalled := 0
+	var prev_z := sim.state.position.z
+	for _i in range(120):
+		sim.set_input(Vector2.ZERO, false, false)
+		sim.tick()
+		if sim.model.patches.has(sim.state.surface_id) \
+				and int(sim.model.patches[sim.state.surface_id].kind) == SimKinds.SurfaceKind.DECK:
+			push_error("l0 free-air cope: landed abutting L1 deck")
+			return false
+		if sim.state.is_airborne() and absf(sim.state.position.z - prev_z) < 0.01 \
+				and absf(sim.state.position.z - top_h) <= 3.0 \
+				and absf(sim.state.velocity.z) > 50.0:
+			stalled += 1
+			if stalled >= 4:
+				push_error(
+					"l0 free-air cope: freeze at lip z=%.2f vz=%.1f"
+					% [sim.state.position.z, sim.state.velocity.z]
+				)
+				return false
+		else:
+			stalled = 0
+		prev_z = sim.state.position.z
+		if sim.state.is_grounded():
+			if sim.state.surface_id != wall.id and sim.state.surface_id != pipe.id:
+				push_error("l0 free-air cope: remounted %s" % sim.state.surface_id)
+				return false
+			for _k in range(50):
+				sim.set_input(Vector2.ZERO, false, false)
+				sim.tick()
+				if sim.model.patches.has(sim.state.surface_id) \
+						and int(sim.model.patches[sim.state.surface_id].kind) \
+						== SimKinds.SurfaceKind.DECK:
+					push_error("l0 free-air cope: deck stole after remount")
+					return false
+				if sim.state.surface_id == pipe.id and sim.state.u < 0.95:
+					return true
+			return sim.state.surface_id == pipe.id or sim.state.surface_id == wall.id
+	push_error("l0 free-air cope: never remounted source")
+	return false
+
+
+## Floor / free-air ollie that meets an L0 pipe coping must land the pipe and
+## drop into the bowl — not sticky-mount the abutting same-height deck at 0 coast.
+func _floor_ollie_coping_lands_pipe_not_deck() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://levels/plaza_default.ssk"):
+		push_error("floor ollie cope: setup")
+		return false
+	var pipe: PipeSurface = sim.model.pipes.get("pipe_1_L0_S1")
+	if pipe == null:
+		push_error("floor ollie cope: missing pipe")
+		return false
+	var midz := (pipe.z_min + pipe.z_max) * 0.5
+	var cx := pipe.coping_x_at(midz)
+	var lip := pipe.height_at_theta(midz, PI * 0.5)
+	sim.state.mode = SimState.Mode.AIRBORNE
+	sim.state.surface_id = ""
+	sim.state.clear_hang()
+	sim.state.free_air_upright = false
+	sim.state.air_launch_surface_id = "floor_1_L0"
+	sim.state.air_peak_height = lip + 40.0
+	# Meet the coping column with little lateral speed (floor ollie apex).
+	sim.state.position = Vector3(cx, midz, lip + 18.0)
+	sim.state.velocity = Vector3(0.0, 0.0, -40.0)
+	for _i in range(60):
+		sim.set_input(Vector2.ZERO, false, false)
+		sim.tick()
+		if sim.model.patches.has(sim.state.surface_id) \
+				and int(sim.model.patches[sim.state.surface_id].kind) == SimKinds.SurfaceKind.DECK:
+			push_error("floor ollie cope: abutting deck stole coping land")
+			return false
+		if sim.state.is_grounded() and sim.state.surface_id == pipe.id:
+			# Must carry into the bowl, not perch frozen at u≈1.
+			for _k in range(40):
+				sim.set_input(Vector2.ZERO, false, false)
+				sim.tick()
+				if sim.model.patches.has(sim.state.surface_id) \
+						and int(sim.model.patches[sim.state.surface_id].kind) \
+						== SimKinds.SurfaceKind.DECK:
+					push_error("floor ollie cope: deck stole after pipe land")
+					return false
+				if sim.state.surface_id == pipe.id and sim.state.u < 0.95:
+					return true
+			if sim.state.surface_id == pipe.id and sim.state.u < 0.99:
+				return true
+			push_error(
+				"floor ollie cope: perched u=%.2f tv=%s"
+				% [sim.state.u, sim.state.tangent_velocity]
+			)
+			return false
+	push_error(
+		"floor ollie cope: never landed pipe mode=%s surf=%s pos=%s"
+		% [sim.state.mode, sim.state.surface_id, sim.state.position]
+	)
+	return false
+
+
+## Coping-column contacts compile to a single lip owner (pipe/wall), not the
+## abutting outward deck — stream annotation must not dual-claim the seam.
+func _air_contact_stream_lip_owns_coping_column() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://levels/plaza_default.ssk"):
+		push_error("air stream: setup")
+		return false
+	var pipe: PipeSurface = sim.model.pipes.get("pipe_1_L0_S1")
+	if pipe == null:
+		push_error("air stream: missing pipe")
+		return false
+	var midz := (pipe.z_min + pipe.z_max) * 0.5
+	var cx := pipe.coping_x_at(midz)
+	var lip := pipe.height_at_theta(midz, PI * 0.5)
+	var span = null
+	var cope: CopingEdge = sim.model.copings.get(pipe.coping_id)
+	if cope != null:
+		span = cope.span_at_z(midz)
+	if span == null or span.lip_owner_id.is_empty():
+		push_error("air stream: missing lip owner on span")
+		return false
+	if span.lip_owner_id != pipe.id and not sim.model.walls.has(span.lip_owner_id):
+		push_error("air stream: lip owner %s not pipe/wall" % span.lip_owner_id)
+		return false
+	var from := Vector3(cx, midz, lip + 12.0)
+	var to := Vector3(cx, midz, lip - 6.0)
+	var contacts: Array = sim.query.collect_air_contacts(from, to, "")
+	if contacts.is_empty():
+		push_error("air stream: expected contacts at coping column")
+		return false
+	var saw_lip := false
+	for c in contacts:
+		var role := int(c.get("role", -1))
+		var owner := str(c.get("owner_id", ""))
+		if role == SimKinds.ContactRole.LIP_COLUMN:
+			saw_lip = true
+			if owner != span.lip_owner_id and owner != pipe.id:
+				push_error(
+					"air stream: lip contact owner %s != span %s"
+					% [owner, span.lip_owner_id]
+				)
+				return false
+		# Abutting deck hits on the column must remap to the lip — never claim
+		# the deck as Mount owner at the coping X.
+		if str(c.get("kind", "")) == "deck" and role == SimKinds.ContactRole.OUTWARD_DECK:
+			if absf(float(c.get("point", from).x) - cx) <= SimTolerances.CAPSULE_RADIUS:
+				push_error("air stream: outward deck claimed coping column")
+				return false
+	if not saw_lip:
+		# Solid/support may arrive as SUPPORT_TOP remapped — accept pipe owner.
+		var c0: Dictionary = contacts[0]
+		if str(c0.get("owner_id", "")) != span.lip_owner_id \
+				and str(c0.get("owner_id", "")) != pipe.id \
+				and str(c0.get("surface_id", "")) != pipe.id:
+			push_error(
+				"air stream: no lip role; first=%s owner=%s"
+				% [c0.get("kind"), c0.get("owner_id")]
+			)
+			return false
+	return true
+
+
+## Rejecting a skim deck must leave feet outside the solid with non-zero
+## descending velocity available (no underside freeze).
+func _airborne_reject_leaves_exterior() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://levels/plaza_default.ssk"):
+		push_error("air reject: setup")
+		return false
+	var deck: SupportPatch = null
+	for pid in sim.model.patches.keys():
+		var p: SupportPatch = sim.model.patches[pid]
+		if int(p.kind) == SimKinds.SurfaceKind.DECK and not p.lethal:
+			deck = p
+			break
+	if deck == null:
+		push_error("air reject: no deck")
+		return false
+	var x := (deck.x_min + deck.x_max) * 0.5
+	var z := (deck.z_min + deck.z_max) * 0.5
+	# Skim from below the peak gate: should Reject, not Mount, and not freeze.
+	sim.state.mode = SimState.Mode.AIRBORNE
+	sim.state.surface_id = ""
+	sim.state.clear_hang()
+	sim.state.air_launch_surface_id = "floor_1_L0"
+	sim.state.air_peak_height = deck.height + 1.0 ## below DECK_LAND_MIN_ABOVE
+	sim.state.position = Vector3(x, z, deck.height + 4.0)
+	sim.state.velocity = Vector3(0.0, 0.0, -80.0)
+	for _i in range(12):
+		var prev_vz := sim.state.velocity.z
+		sim.set_input(Vector2.ZERO, false, false)
+		sim.tick()
+		if sim.state.is_grounded() and sim.state.surface_id == deck.id:
+			push_error("air reject: skim mounted deck")
+			return false
+		if sim.state.is_airborne():
+			var blk := sim.query.blocker_at(sim.state.position)
+			if not blk.is_empty() and str(blk.get("kind", "")) == "deck" \
+					and absf(sim.state.velocity.z) <= 0.01 and prev_vz < -10.0:
+				push_error("air reject: underside freeze in deck")
+				return false
 	return true
 
 

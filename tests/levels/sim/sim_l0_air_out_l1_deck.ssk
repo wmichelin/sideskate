@@ -1,0 +1,23 @@
+ssk 2
+name sim_l0_air_out_l1_deck
+spawn_facing r
+# L0 right pipe into lava; L1 opposite left pipe with rear deck behind it.
+# Air-out from L0 must remount L0, not stick on the L1 deck under the lock.
+---
+layer 0
+height 0
+=====)))xxxxx
+=====)))xxxxx
+=====)))xxxxx
+====@)))xxxxx
+=====)))xxxxx
+=====)))xxxxx
+---
+layer 1
+height 141
+.......#(((==
+.......#(((==
+.......#(((==
+.......#(((==
+.......#(((==
+.......#(((==
