@@ -4,6 +4,7 @@ extends RefCounted
 
 const _FloorMeshBuilder := preload("res://scripts/mesh/floor_mesh_builder.gd")
 const _PipeMeshBuilder := preload("res://scripts/mesh/pipe_mesh_builder.gd")
+const _RampMeshBuilder := preload("res://scripts/mesh/ramp_mesh_builder.gd")
 const _DeckMeshBuilder := preload("res://scripts/mesh/deck_mesh_builder.gd")
 
 
@@ -13,6 +14,7 @@ static func build_parts(spec: LevelSpec, pipes: Array) -> Array:
 		return parts
 	parts.append_array(_FloorMeshBuilder.build_parts(spec))
 	parts.append_array(_PipeMeshBuilder.build_parts_from_pipes(pipes))
+	parts.append_array(_RampMeshBuilder.build_parts_from_pipes(pipes))
 	parts.append_array(_DeckMeshBuilder.build_parts(spec))
 	return parts
 

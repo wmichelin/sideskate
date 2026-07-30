@@ -14,6 +14,7 @@ func run() -> bool:
 	ok = _lava_glyph_samples() and ok
 	ok = _halfpipe_geometry() and ok
 	ok = _pipe_radius_scales_with_glyphs() and ok
+	ok = _ramp_radius_and_deck_from_neighbors() and ok
 	ok = _pipe_screen_quarter_circle() and ok
 	ok = _ledge_spawn_facing() and ok
 	ok = _uneven_rows_fail() and ok
@@ -150,6 +151,71 @@ height 0
 		return false
 	if not is_equal_approx(left_r, 4.0 * r1):
 		push_error("(((( should be 4× ( radius (%s vs %s)" % [left_r, r1])
+		return false
+	return true
+
+
+## `<`/`>` ramps share pipe footprint radius; decks abutting ramps rise to peak.
+func _ramp_radius_and_deck_from_neighbors() -> bool:
+	var text := """ssk 2
+name ramp_glyphs
+---
+layer 0
+height 0
+>>>###<<<
+>>>#@#<<<
+>>>###<<<
+"""
+	var spec := LevelLoader.parse_text(text, "ramp_glyphs")
+	if spec == null:
+		push_error("ramp_glyphs parse failed: %s" % LevelLoader.last_error)
+		return false
+	var cx := LevelLoader.cell_size_x
+	var ramp_n := 0
+	var pipe_n := 0
+	var right_r := -1.0
+	for p in spec.pipes:
+		if str(p.get("kind", "pipe")) == "ramp":
+			ramp_n += 1
+			if int(p.side) == QuarterPipe.PipeSide.RIGHT:
+				right_r = float(p.radius)
+		else:
+			pipe_n += 1
+	if ramp_n < 2 or pipe_n != 0:
+		push_error("ramp_glyphs: expected ≥2 ramps and 0 pipes, got ramp=%d pipe=%d" % [
+			ramp_n, pipe_n
+		])
+		return false
+	var want := 3.0 * cx
+	if not is_equal_approx(right_r, want):
+		push_error(">>> radius want %s got %s" % [want, right_r])
+		return false
+	if spec.decks.is_empty():
+		push_error("ramp_glyphs: expected deck from #")
+		return false
+	var deck_h := float(spec.decks[0].get("height", -1.0))
+	if not is_equal_approx(deck_h, right_r):
+		push_error("deck height want ramp peak %s got %s" % [right_r, deck_h])
+		return false
+	# Mixed ramp–deck–pipe composition.
+	var mixed := """ssk 2
+name ramp_pipe_deck
+---
+layer 0
+height 0
+>>>===(====
+>>>==@=(===
+>>>===(====
+"""
+	var spec2 := LevelLoader.parse_text(mixed, "ramp_pipe_deck")
+	if spec2 == null:
+		push_error("ramp_pipe_deck parse failed: %s" % LevelLoader.last_error)
+		return false
+	var kinds := {}
+	for p2 in spec2.pipes:
+		kinds[str(p2.get("kind", "pipe"))] = true
+	if not kinds.has("ramp") or not kinds.has("pipe"):
+		push_error("ramp_pipe_deck: need both kinds, got %s" % kinds)
 		return false
 	return true
 

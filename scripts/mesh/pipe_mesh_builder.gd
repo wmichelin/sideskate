@@ -18,8 +18,12 @@ static func build_parts_from_pipes(pipes: Array) -> Array:
 	var out: Array = []
 	for pipe in pipes:
 		if pipe is QuarterPipe:
+			if (pipe as QuarterPipe).is_ramp():
+				continue
 			out.append_array(build_one_parts(pipe as QuarterPipe))
 		elif pipe is Dictionary:
+			if str(pipe.get("kind", "pipe")) == "ramp":
+				continue
 			var qp := QuarterPipe.new()
 			qp.side = int(pipe.side)
 			qp.lip_x = float(pipe.lip_x)

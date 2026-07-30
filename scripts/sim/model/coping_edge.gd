@@ -4,6 +4,7 @@ extends RefCounted
 
 
 var id: String = ""
+## Source pipe or ramp surface id (historical field name).
 var pipe_id: String = ""
 var side: int = 0
 var coping_class: int = 0 ## SimKinds.CopingClass
@@ -15,6 +16,8 @@ var support_patch_id: String = "" ## aggregate compatibility/debug metadata only
 var shared_with_id: String = "" ## opposite coping for SHARED_SPINE
 var outward_sign: float = 1.0
 var spans: Array = [] ## CopingSpan[]; complete non-overlapping Z partition
+## Ramp peaks launch free-air — never X-lock / hang from this coping.
+var allows_hang: bool = true
 
 
 func sample_at_z(z: float) -> Dictionary:

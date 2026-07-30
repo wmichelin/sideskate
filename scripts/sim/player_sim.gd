@@ -272,6 +272,7 @@ func _assert_invariants(previous_surface_id: String, planned_surface_change: boo
 	if state.is_grounded():
 		var owners := int(model.patches.has(state.surface_id)) \
 			+ int(model.pipes.has(state.surface_id)) \
+			+ int(model.ramps.has(state.surface_id)) \
 			+ int(model.walls.has(state.surface_id))
 		if owners != 1:
 			push_error(
@@ -279,8 +280,11 @@ func _assert_invariants(previous_surface_id: String, planned_surface_change: boo
 				% [state.tick, state.surface_id]
 			)
 			return
-		if (model.pipes.has(state.surface_id) or model.walls.has(state.surface_id)) \
-				and (state.u < -0.001 or state.u > 1.001):
+		if (
+			model.pipes.has(state.surface_id)
+			or model.ramps.has(state.surface_id)
+			or model.walls.has(state.surface_id)
+		) and (state.u < -0.001 or state.u > 1.001):
 			push_error(
 				"PlayerSim surface coordinate invariant at tick %d: %s u=%.4f"
 				% [state.tick, state.surface_id, state.u]

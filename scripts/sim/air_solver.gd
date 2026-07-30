@@ -79,7 +79,7 @@ func _step_free(state: SimState, wish: Vector2, delta: float) -> void:
 		var t := float(hit.get("t", 1.0))
 		state.position = from.lerp(to, maxf(t - 0.01, 0.0))
 		var kind := str(hit.get("kind", ""))
-		if kind == "pipe" or kind == "deck" or kind == "wall":
+		if kind == "pipe" or kind == "ramp" or kind == "deck" or kind == "wall":
 			if _snap_onto_solid(state, hit, from.z):
 				return
 			# Compiled outward-deck edge is action-only: ordinary air passes through.
@@ -308,6 +308,29 @@ func _snap_onto_solid(state: SimState, hit: Dictionary, from_height: float = NAN
 		state.clear_hang()
 		state.clear_air_peak()
 		return true
+	if kind == "ramp":
+		# Ordinary same-facing land / bounce — never hang from ramp peaks.
+		if state.velocity.z > 80.0:
+			return false
+		var ramp: RampSurface = model.ramps.get(str(hit.get("surface_id", "")))
+		if ramp == null:
+			return false
+		var rproj := ramp.project(state.position.x, state.position.y, state.position.z)
+		if not bool(rproj.get("ok", false)):
+			var rpt: Vector3 = hit.get("projection", state.position)
+			rproj = ramp.project(rpt.x, rpt.y, rpt.z)
+		if not bool(rproj.get("ok", false)):
+			return false
+		state.mode = SimState.Mode.GROUNDED
+		state.surface_id = ramp.id
+		state.u = float(rproj.u)
+		state.v = float(rproj.v)
+		state.position = rproj.point
+		state.tangent_velocity = Vector2(-maxf(impact, 80.0), vz)
+		state.velocity = Vector3.ZERO
+		state.clear_hang()
+		state.clear_air_peak()
+		return true
 	if kind == "deck":
 		if not _deck_descending_cross_ok(state, hit, from_height):
 			return false
@@ -444,6 +467,21 @@ func _bounce_off_solid(state: SimState, hit: Dictionary, from: Vector3) -> void:
 					state.position.z, float(proj.point.z) + SimTolerances.CONTACT_EPS
 				)
 				# Kill only downward into the surface; keep vx so try_land / next tick can settle.
+				if state.velocity.z < 0.0:
+					state.velocity.z = 0.0
+				_depenetrate(state, from)
+				return
+	if kind == "ramp":
+		var ramp: RampSurface = model.ramps.get(str(hit.get("surface_id", "")))
+		if ramp != null:
+			var rproj := ramp.project(state.position.x, state.position.y, state.position.z)
+			if not bool(rproj.get("ok", false)):
+				var rpt: Vector3 = hit.get("projection", state.position)
+				rproj = ramp.project(rpt.x, rpt.y, rpt.z)
+			if bool(rproj.get("ok", false)):
+				state.position.z = maxf(
+					state.position.z, float(rproj.point.z) + SimTolerances.CONTACT_EPS
+				)
 				if state.velocity.z < 0.0:
 					state.velocity.z = 0.0
 				_depenetrate(state, from)
@@ -611,6 +649,12 @@ func _try_land(state: SimState, from_height: float = NAN) -> void:
 			state.position = proj.point
 			# Drop-in: negative along always rides into the bowl (toward lip).
 			state.tangent_velocity = Vector2(-maxf(impact, 80.0), vz)
+	elif int(top.kind) == SimKinds.SurfaceKind.RAMP:
+		var rproj: Dictionary = top.proj
+		state.u = float(rproj.u)
+		state.v = float(rproj.v)
+		state.position = rproj.point
+		state.tangent_velocity = Vector2(-maxf(impact, 80.0), vz)
 	else:
 		# Flat land from hang: drop X-lock / lip lean; coast with world XZ.
 		state.u = 0.0
@@ -691,6 +735,8 @@ func _try_return_to_anchor(state: SimState, from_height: float) -> bool:
 	state.clear_hang()
 	state.clear_air_peak()
 	return true
+
+
 ## Air-out prefers same-facing X-aligned pipes (remount). If none are available
 ## at this XZ (outside the pipe / gap), land the nearest flat solid and clear hang.
 func _pick_ordinary_land(state: SimState, candidates: Array) -> Dictionary:
@@ -721,6 +767,8 @@ func _pick_ordinary_land(state: SimState, candidates: Array) -> Dictionary:
 			return c
 		return {}
 	for c in candidates:
+		if int(c.kind) == SimKinds.SurfaceKind.RAMP:
+			return c
 		if int(c.kind) != SimKinds.SurfaceKind.PIPE:
 			return c
 		var pipe2: PipeSurface = c.get("pipe")

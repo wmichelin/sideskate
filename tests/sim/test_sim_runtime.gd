@@ -53,6 +53,8 @@ func run() -> bool:
 		and _layered_l1_coping_returns_source()
 		and _wall_z_exit_consumes_motion()
 		and _cross_story_spine_is_action_only()
+		and _ramp_peak_free_air_launch()
+		and _ramp_deck_seam_and_launch()
 	)
 
 
@@ -3111,3 +3113,142 @@ func _place_at_coping(sim: PlayerSim, pipe: PipeSurface, along: float) -> void:
 		pipe.height_at_theta(z, PI * 0.5)
 	)
 	sim.state.maneuver = null
+
+
+## Climb a `>` ramp to the peak → free-air launch with upward tangent, no hang/X-lock.
+func _ramp_peak_free_air_launch() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_ramp.ssk"):
+		push_error("ramp peak: setup failed")
+		return false
+	if sim.model.ramps.is_empty():
+		push_error("ramp peak: no ramps compiled")
+		return false
+	var ramp: RampSurface = sim.model.ramps[sim.model.all_ramp_ids()[0]]
+	if ramp.side != SimKinds.PipeSide.RIGHT:
+		push_error("ramp peak: expected right ramp")
+		return false
+	var z := (ramp.z_min + ramp.z_max) * 0.5
+	sim.state.mode = SimState.Mode.GROUNDED
+	sim.state.surface_id = ramp.id
+	sim.state.u = 0.2
+	sim.state.v = 0.5
+	sim.state.tangent_velocity = Vector2(500.0, 0.0)
+	sim.state.position = Vector3(
+		ramp.x_at_theta(z, 0.2 * PI * 0.5),
+		z,
+		ramp.height_at_theta(z, 0.2 * PI * 0.5)
+	)
+	sim.state.clear_hang()
+	var launched := false
+	for _i in range(120):
+		sim.set_input(Vector2(1, 0), false, false)
+		sim.tick()
+		if sim.state.is_hanging() or not sim.state.hang_edge_id.is_empty():
+			push_error("ramp peak: hang/X-lock must never engage")
+			return false
+		if sim.state.is_airborne():
+			launched = true
+			break
+	if not launched:
+		push_error("ramp peak: never launched (u=%.2f grounded=%s)" % [
+			sim.state.u, sim.state.is_grounded()
+		])
+		return false
+	if sim.state.velocity.z <= 1.0:
+		push_error("ramp peak: expected upward height vel, got %s" % sim.state.velocity)
+		return false
+	if sim.state.velocity.x <= 1.0:
+		push_error("ramp peak: expected outward +X, got %s" % sim.state.velocity)
+		return false
+	# Stay free-air for a few ticks — no sticky remount at peak height.
+	for _j in range(6):
+		sim.set_input(Vector2.ZERO, false, false)
+		sim.tick()
+		if sim.state.is_hanging():
+			push_error("ramp peak: hang engaged after launch")
+			return false
+	return true
+
+
+## `>===<` deck height matches ramp peak; peak leave onto deck seams; deck→air stays free.
+func _ramp_deck_seam_and_launch() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_ramp_deck.ssk"):
+		push_error("ramp deck: setup failed")
+		return false
+	if sim.model.ramps.size() < 2:
+		push_error("ramp deck: expected two ramps, got %d" % sim.model.ramps.size())
+		return false
+	var right: RampSurface = null
+	for id in sim.model.all_ramp_ids():
+		var r: RampSurface = sim.model.ramps[id]
+		if r.side == SimKinds.PipeSide.RIGHT:
+			right = r
+			break
+	if right == null:
+		push_error("ramp deck: missing right ramp")
+		return false
+	var z := (right.z_min + right.z_max) * 0.5
+	var peak_h := right.height_at_theta(z, PI * 0.5)
+	var deck: SupportPatch = null
+	for pid in sim.model.patches.keys():
+		var p: SupportPatch = sim.model.patches[pid]
+		if int(p.kind) == SimKinds.SurfaceKind.DECK:
+			deck = p
+			break
+	if deck == null:
+		push_error("ramp deck: missing deck patch")
+		return false
+	if absf(deck.height - peak_h) > SimTolerances.SEAM_EPS:
+		push_error("ramp deck: deck h=%.1f != ramp peak %.1f" % [deck.height, peak_h])
+		return false
+	# Ride right ramp into deck seam.
+	sim.state.mode = SimState.Mode.GROUNDED
+	sim.state.surface_id = right.id
+	sim.state.u = 0.85
+	sim.state.v = 0.5
+	sim.state.tangent_velocity = Vector2(600.0, 0.0)
+	sim.state.position = Vector3(
+		right.x_at_theta(z, 0.85 * PI * 0.5),
+		z,
+		right.height_at_theta(z, 0.85 * PI * 0.5)
+	)
+	sim.state.clear_hang()
+	var on_deck := false
+	for _i in range(60):
+		sim.set_input(Vector2(1, 0), false, false)
+		sim.tick()
+		if sim.state.is_hanging():
+			push_error("ramp deck: hang during seam")
+			return false
+		if sim.state.is_grounded() and sim.model.patches.has(sim.state.surface_id):
+			var landed: SupportPatch = sim.model.patches[sim.state.surface_id]
+			if int(landed.kind) == SimKinds.SurfaceKind.DECK:
+				on_deck = true
+				break
+	if not on_deck:
+		push_error("ramp deck: never seamed onto deck (surf=%s airborne=%s)" % [
+			sim.state.surface_id, sim.state.is_airborne()
+		])
+		return false
+	# Ride off deck toward open air — must not sticky remount mid-launch.
+	sim.set_input(Vector2(1, 0), false, false)
+	var left_air := false
+	for _j in range(90):
+		sim.tick()
+		if sim.state.is_airborne() and sim.state.hang_edge_id.is_empty():
+			left_air = true
+			break
+	if not left_air:
+		# Still on deck is ok if we haven't reached the edge; force leave probe.
+		if sim.state.is_grounded() and sim.model.patches.has(sim.state.surface_id):
+			sim.state.position.x = deck.x_max + 2.0
+			sim.set_input(Vector2(1, 0), false, false)
+			sim.tick()
+			if sim.state.is_airborne() and sim.state.hang_edge_id.is_empty():
+				left_air = true
+	if not left_air:
+		push_error("ramp deck: expected free-air leave from deck")
+		return false
+	return true

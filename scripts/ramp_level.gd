@@ -105,6 +105,7 @@ func apply_spec(s: LevelSpec) -> void:
 		n.layer = int(pd.get("layer", 0))
 		n.z_min = pd.z_min
 		n.z_max = pd.z_max
+		n.kind = str(pd.get("kind", "pipe"))
 		add_child(n)
 		pipes.append(n)
 
@@ -266,7 +267,7 @@ func sample_pipe_on_story(logical_x: float, logical_z: float, prefer_h: float) -
 		return {}
 	var cell := spec.cell_at(logical_x, logical_z)
 	var ginfo: Dictionary = spec.glyph_at_prefer_h(cell.x, cell.y, prefer_h)
-	if ContactMath.zone_from_glyph(str(ginfo.get("glyph", " "))) != "pipe":
+	if ContactMath.zone_from_glyph(str(ginfo.get("glyph", " "))) not in ["pipe", "ramp"]:
 		return {}
 	var layer := int(ginfo.get("layer", -1))
 	var candidates: Array = []
@@ -378,9 +379,19 @@ func _fallback_hit(logical_x: float, logical_z: float, prefer_h: float = NAN) ->
 			return _flat_hit(true, "lava", maxf(layer_h, 0.0), maxi(layer, 0))
 		"pipe":
 			for pipe in pipes:
+				if pipe.is_ramp():
+					continue
 				var q: Dictionary = pipe.query_surface(logical_x, logical_z)
 				if q.get("active", false):
 					return q
+			return _flat_hit(true, "flat", maxf(layer_h, 0.0), maxi(layer, 0))
+		"ramp":
+			for pipe in pipes:
+				if not pipe.is_ramp():
+					continue
+				var rq: Dictionary = pipe.query_surface(logical_x, logical_z)
+				if rq.get("active", false):
+					return rq
 			return _flat_hit(true, "flat", maxf(layer_h, 0.0), maxi(layer, 0))
 		"oob":
 			return _flat_hit(false, "hole", 0.0, maxi(layer, 0))
@@ -548,9 +559,8 @@ func project_screen(logical_x: float, logical_z: float, surface_height: float = 
 	)
 
 
-## Screen-space quarter circle (θ=0 lip → θ=π/2 coping).
-## Radius = projected glyph run width so magnitude tracks `(((` / `((((`;
-## decks lower their draw height to meet this coping (not the reverse).
+## Screen-space profile (θ=0 lip → θ=π/2 coping).
+## Pipes: quarter circle. Ramps: straight incline.
 func pipe_screen_point_for(pipe: QuarterPipe, logical_z: float, u: float) -> Vector2:
 	var frame := pipe_arc_frame(pipe, logical_z)
 	return pipe_arc_point(frame, u)
@@ -561,22 +571,30 @@ func pipe_arc_frame(pipe: QuarterPipe, logical_z: float) -> Dictionary:
 	var is_left := pipe.side == QuarterPipe.PipeSide.LEFT
 	var coping_x := pipe.x_min() if is_left else pipe.x_max()
 	var lip := project_screen(pipe.lip_x, logical_z, pipe.base_height)
-	var cope := project_screen(coping_x, logical_z, pipe.base_height)
-	var r := absf(cope.x - lip.x)
+	var cope_flat := project_screen(coping_x, logical_z, pipe.base_height)
+	var cope_peak := project_screen(coping_x, logical_z, pipe.base_height + pipe.radius)
+	var r := absf(cope_flat.x - lip.x)
 	return {
 		"lip": lip,
+		"peak": cope_peak,
 		"r": r,
 		"center": Vector2(lip.x, lip.y - r),
 		"sgn": -1.0 if is_left else 1.0,
+		"is_ramp": pipe.is_ramp(),
 	}
 
 
 func pipe_arc_point(frame: Dictionary, u: float) -> Vector2:
+	var uu := clampf(u, 0.0, 1.0)
+	if bool(frame.get("is_ramp", false)):
+		var lip: Vector2 = frame.lip
+		var peak: Vector2 = frame.peak
+		return lip.lerp(peak, uu)
 	var r: float = float(frame.r)
-	var lip: Vector2 = frame.lip
+	var lip_p: Vector2 = frame.lip
 	if r <= 0.0001:
-		return lip
-	var theta := clampf(u, 0.0, 1.0) * PI * 0.5
+		return lip_p
+	var theta := uu * PI * 0.5
 	var center: Vector2 = frame.center
 	var sgn: float = float(frame.sgn)
 	return Vector2(center.x + sgn * r * sin(theta), center.y + r * cos(theta))

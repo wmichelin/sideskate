@@ -18,6 +18,10 @@ static func zone_name(side: int) -> String:
 	return "left_pipe" if side == 0 else "right_pipe"
 
 
+static func ramp_zone_name(side: int) -> String:
+	return "left_ramp" if side == 0 else "right_ramp"
+
+
 ## True when two opposite-facing pipes share (or nearly share) a top coping X.
 static func opposite_coping_near(
 	side_a: int,

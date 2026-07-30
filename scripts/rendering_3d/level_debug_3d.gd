@@ -378,6 +378,7 @@ func _append_pipe_wireframe(st: SurfaceTool, lift: float) -> void:
 	for pipe in _level.pipes:
 		var side := int(pipe.side)
 		var is_left := side == QuarterPipe.PipeSide.LEFT
+		var is_ramp := bool(pipe.is_ramp()) if pipe.has_method("is_ramp") else false
 		var lip_x := float(pipe.lip_x)
 		var radius := float(pipe.radius)
 		var base := float(pipe.base_height)
@@ -398,12 +399,12 @@ func _append_pipe_wireframe(st: SurfaceTool, lift: float) -> void:
 		_add_line_vert(st, cope_x, z0, base + lift)
 		_add_line_vert(st, cope_x, z1, cope_h + lift)
 		_add_line_vert(st, cope_x, z1, base + lift)
-		# Endcap sides only (no along-Z ride rails): arc + base chord at z_min/z_max.
+		# Endcap sides only (no along-Z ride rails): profile + base chord at z_min/z_max.
 		for z_end in [z0, z1]:
-			var prev := _pipe_profile_point(lip_x, radius, base, 0.0, is_left)
+			var prev := _slope_profile_point(lip_x, radius, base, 0.0, is_left, is_ramp)
 			for i in range(1, ARC_STEPS + 1):
 				var theta := (float(i) / float(ARC_STEPS)) * PI * 0.5
-				var p := _pipe_profile_point(lip_x, radius, base, theta, is_left)
+				var p := _slope_profile_point(lip_x, radius, base, theta, is_left, is_ramp)
 				_add_line_vert(st, prev.x, z_end, prev.y + lift)
 				_add_line_vert(st, p.x, z_end, p.y + lift)
 				prev = p
@@ -418,6 +419,7 @@ func _append_pipe_lattice(st: SurfaceTool, lift: float) -> void:
 	for pipe in _level.pipes:
 		var side := int(pipe.side)
 		var is_left := side == QuarterPipe.PipeSide.LEFT
+		var is_ramp := bool(pipe.is_ramp()) if pipe.has_method("is_ramp") else false
 		var lip_x := float(pipe.lip_x)
 		var radius := float(pipe.radius)
 		var base := float(pipe.base_height)
@@ -427,18 +429,18 @@ func _append_pipe_lattice(st: SurfaceTool, lift: float) -> void:
 			continue
 		var cope_x := PipeMath.coping_x(side, lip_x, radius)
 		var cope_h := base + radius
-		# Ride surface: constant-θ rails along Z + constant-Z arcs.
+		# Ride surface: constant-θ rails along Z + constant-Z arcs/lines.
 		for i in range(arc_n + 1):
 			var theta := (float(i) / float(arc_n)) * PI * 0.5
-			var p := _pipe_profile_point(lip_x, radius, base, theta, is_left)
+			var p := _slope_profile_point(lip_x, radius, base, theta, is_left, is_ramp)
 			_add_line_vert(st, p.x, z0, p.y + lift)
 			_add_line_vert(st, p.x, z1, p.y + lift)
 		for j in range(z_n + 1):
 			var z := lerpf(z0, z1, float(j) / float(z_n))
-			var prev := _pipe_profile_point(lip_x, radius, base, 0.0, is_left)
+			var prev := _slope_profile_point(lip_x, radius, base, 0.0, is_left, is_ramp)
 			for i in range(1, arc_n + 1):
 				var theta := (float(i) / float(arc_n)) * PI * 0.5
-				var p := _pipe_profile_point(lip_x, radius, base, theta, is_left)
+				var p := _slope_profile_point(lip_x, radius, base, theta, is_left, is_ramp)
 				_add_line_vert(st, prev.x, z, prev.y + lift)
 				_add_line_vert(st, p.x, z, p.y + lift)
 				prev = p
@@ -460,12 +462,28 @@ func _append_pipe_lattice(st: SurfaceTool, lift: float) -> void:
 func _pipe_profile_point(
 	lip_x: float, radius: float, base_height: float, theta: float, is_left: bool
 ) -> Vector2:
-	var h := base_height + radius * (1.0 - cos(theta))
+	return _slope_profile_point(lip_x, radius, base_height, theta, is_left, false)
+
+
+func _slope_profile_point(
+	lip_x: float,
+	radius: float,
+	base_height: float,
+	theta: float,
+	is_left: bool,
+	is_ramp: bool,
+) -> Vector2:
+	var th := clampf(theta, 0.0, PI * 0.5)
+	var h: float
 	var x: float
-	if is_left:
-		x = lip_x - radius * sin(theta)
+	if is_ramp:
+		var u := th / (PI * 0.5)
+		h = base_height + radius * u
+		var off := radius * u
+		x = lip_x - off if is_left else lip_x + off
 	else:
-		x = lip_x + radius * sin(theta)
+		h = base_height + radius * (1.0 - cos(th))
+		x = lip_x - radius * sin(th) if is_left else lip_x + radius * sin(th)
 	return Vector2(x, h)
 
 

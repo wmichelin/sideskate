@@ -134,98 +134,124 @@ static func _compile_decks(spec: LevelSpec, model: ParkModel) -> void:
 
 
 static func _compile_pipes(spec: LevelSpec, model: ParkModel) -> void:
-	# Group LevelSpec pipe dicts by (side, layer, connected Z/X runs).
+	# Group LevelSpec pipe/ramp dicts by (side, layer, connected Z/X runs).
 	# Existing loader already emits one dict per contiguous run component.
 	var i := 0
 	for p in spec.pipes:
-		var pipe := PipeSurface.new()
+		var kind := str(p.get("kind", "pipe"))
 		var side := int(p.get("side", 0))
 		var layer := int(p.get("layer", 0))
-		pipe.id = "pipe_%d_L%d_S%d" % [i, layer, side]
-		pipe.side = side
-		pipe.z_min = float(p.get("z_min", 0.0))
-		pipe.z_max = float(p.get("z_max", 0.0))
 		var lip := float(p.get("lip_x", 0.0))
 		var radius := float(p.get("radius", 0.0))
 		var base_h := float(p.get("base_height", 0.0))
-		# Uniform sample at z_min/z_max (loader stores constant R per component).
-		pipe.samples = [
-			{"z": pipe.z_min, "lip_x": lip, "radius": radius, "base_height": base_h},
-			{"z": pipe.z_max, "lip_x": lip, "radius": radius, "base_height": base_h},
+		var z_min := float(p.get("z_min", 0.0))
+		var z_max := float(p.get("z_max", 0.0))
+		var is_ramp := kind == "ramp"
+		var surf_id := ("%s_%d_L%d_S%d" % ["ramp" if is_ramp else "pipe", i, layer, side])
+		var samples: Array = [
+			{"z": z_min, "lip_x": lip, "radius": radius, "base_height": base_h},
+			{"z": z_max, "lip_x": lip, "radius": radius, "base_height": base_h},
 		]
 		var cope := CopingEdge.new()
-		cope.id = "coping_%s" % pipe.id
-		cope.pipe_id = pipe.id
+		cope.id = "coping_%s" % surf_id
+		cope.pipe_id = surf_id
 		cope.side = side
-		cope.z_min = pipe.z_min
-		cope.z_max = pipe.z_max
+		cope.z_min = z_min
+		cope.z_max = z_max
 		cope.outward_sign = -1.0 if side == SimKinds.PipeSide.LEFT else 1.0
+		cope.allows_hang = not is_ramp
 		var cx := lip - radius if side == SimKinds.PipeSide.LEFT else lip + radius
 		var ch := base_h + radius
 		cope.height_samples = [
-			{"z": pipe.z_min, "height": ch, "coping_x": cx},
-			{"z": pipe.z_max, "height": ch, "coping_x": cx},
+			{"z": z_min, "height": ch, "coping_x": cx},
+			{"z": z_max, "height": ch, "coping_x": cx},
 		]
 		cope.coping_class = SimKinds.CopingClass.OPEN
-		pipe.coping_id = cope.id
-		model.pipes[pipe.id] = pipe
+		if is_ramp:
+			var ramp := RampSurface.new()
+			ramp.id = surf_id
+			ramp.side = side
+			ramp.z_min = z_min
+			ramp.z_max = z_max
+			ramp.samples = samples
+			ramp.coping_id = cope.id
+			model.ramps[ramp.id] = ramp
+		else:
+			var pipe := PipeSurface.new()
+			pipe.id = surf_id
+			pipe.side = side
+			pipe.z_min = z_min
+			pipe.z_max = z_max
+			pipe.samples = samples
+			pipe.coping_id = cope.id
+			model.pipes[pipe.id] = pipe
 		model.copings[cope.id] = cope
 		i += 1
 
 	# Refine variable-width lofts from layer glyphs when widths change along Z.
 	_refine_pipe_lofts_from_glyphs(spec, model)
+	_refine_ramp_lofts_from_glyphs(spec, model)
 
 
 static func _refine_pipe_lofts_from_glyphs(spec: LevelSpec, model: ParkModel) -> void:
-	# For each pipe, rebuild samples from per-row run widths that match side+lip band.
 	for pipe_id in model.pipes.keys():
 		var pipe: PipeSurface = model.pipes[pipe_id]
-		var new_samples: Array = []
-		for L in spec.layers:
-			var layer_i := int(L.get("index", 0))
-			# Match by base_height ≈ layer height for this pipe's first sample.
-			var base0 := float((pipe.samples[0] as Dictionary).base_height)
-			var lh := float(L.get("height", 0.0))
-			if absf(base0 - lh) > 0.5:
+		var glyph := "(" if pipe.side == SimKinds.PipeSide.LEFT else ")"
+		_refine_slope_loft(spec, model, pipe, glyph)
+
+
+static func _refine_ramp_lofts_from_glyphs(spec: LevelSpec, model: ParkModel) -> void:
+	for ramp_id in model.ramps.keys():
+		var ramp: RampSurface = model.ramps[ramp_id]
+		var glyph := "<" if ramp.side == SimKinds.PipeSide.LEFT else ">"
+		_refine_slope_loft(spec, model, ramp, glyph)
+
+
+## Rebuild loft samples from per-row run widths (pipes and ramps share footprint).
+static func _refine_slope_loft(spec: LevelSpec, model: ParkModel, surf, glyph: String) -> void:
+	var new_samples: Array = []
+	for L in spec.layers:
+		var base0 := float((surf.samples[0] as Dictionary).base_height)
+		var lh := float(L.get("height", 0.0))
+		if absf(base0 - lh) > 0.5:
+			continue
+		var rows: PackedStringArray = L.get("rows", PackedStringArray())
+		for r in range(rows.size()):
+			var z0 := float(spec.grid_h - 1 - r) * spec.cell_h
+			var z1 := float(spec.grid_h - r) * spec.cell_h
+			var z_mid := (z0 + z1) * 0.5
+			if z_mid < surf.z_min - 0.01 or z_mid > surf.z_max + 0.01:
 				continue
-			var rows: PackedStringArray = L.get("rows", PackedStringArray())
-			var glyph := "(" if pipe.side == SimKinds.PipeSide.LEFT else ")"
-			for r in range(rows.size()):
-				var z0 := float(spec.grid_h - 1 - r) * spec.cell_h
-				var z1 := float(spec.grid_h - r) * spec.cell_h
-				var z_mid := (z0 + z1) * 0.5
-				if z_mid < pipe.z_min - 0.01 or z_mid > pipe.z_max + 0.01:
-					continue
-				var line: String = rows[r]
-				var run := _pipe_run_on_row(line, glyph, pipe, spec)
-				if run.is_empty():
-					continue
-				new_samples.append({
-					"z": z_mid,
-					"lip_x": float(run.lip_x),
-					"radius": float(run.radius),
-					"base_height": lh,
-				})
-		if new_samples.size() >= 2:
-			new_samples.sort_custom(func(a, b): return float(a.z) < float(b.z))
-			pipe.samples = new_samples
-			pipe.z_min = float(new_samples[0].z) - spec.cell_h * 0.5
-			pipe.z_max = float(new_samples[new_samples.size() - 1].z) + spec.cell_h * 0.5
-			# Refresh coping samples from loft.
-			var cope: CopingEdge = model.copings[pipe.coping_id]
-			cope.z_min = pipe.z_min
-			cope.z_max = pipe.z_max
-			var hs: Array = []
-			for s in pipe.samples:
-				var lip := float(s.lip_x)
-				var radius := float(s.radius)
-				var base_h := float(s.base_height)
-				var cx := lip - radius if pipe.side == SimKinds.PipeSide.LEFT else lip + radius
-				hs.append({"z": float(s.z), "height": base_h + radius, "coping_x": cx})
-			cope.height_samples = hs
+			var line: String = rows[r]
+			var run := _slope_run_on_row(line, glyph, surf, spec)
+			if run.is_empty():
+				continue
+			new_samples.append({
+				"z": z_mid,
+				"lip_x": float(run.lip_x),
+				"radius": float(run.radius),
+				"base_height": lh,
+			})
+	if new_samples.size() < 2:
+		return
+	new_samples.sort_custom(func(a, b): return float(a.z) < float(b.z))
+	surf.samples = new_samples
+	surf.z_min = float(new_samples[0].z) - spec.cell_h * 0.5
+	surf.z_max = float(new_samples[new_samples.size() - 1].z) + spec.cell_h * 0.5
+	var cope: CopingEdge = model.copings[surf.coping_id]
+	cope.z_min = surf.z_min
+	cope.z_max = surf.z_max
+	var hs: Array = []
+	for s in surf.samples:
+		var lip := float(s.lip_x)
+		var radius := float(s.radius)
+		var base_h := float(s.base_height)
+		var cx := lip - radius if surf.side == SimKinds.PipeSide.LEFT else lip + radius
+		hs.append({"z": float(s.z), "height": base_h + radius, "coping_x": cx})
+	cope.height_samples = hs
 
 
-static func _pipe_run_on_row(line: String, glyph: String, pipe: PipeSurface, spec: LevelSpec) -> Dictionary:
+static func _slope_run_on_row(line: String, glyph: String, surf, spec: LevelSpec) -> Dictionary:
 	var best := {}
 	var c := 0
 	while c < line.length():
@@ -240,12 +266,11 @@ static func _pipe_run_on_row(line: String, glyph: String, pipe: PipeSurface, spe
 		var x0 := float(start) * spec.cell_w
 		var x1 := float(c) * spec.cell_w
 		var lip: float
-		if pipe.side == SimKinds.PipeSide.LEFT:
-			lip = x1 ## lip on right edge of < run
+		if surf.side == SimKinds.PipeSide.LEFT:
+			lip = x1 ## lip on right edge of run
 		else:
-			lip = x0 ## lip on left edge of > run
-		# Prefer run whose lip matches existing pipe lip closely.
-		var ref_lip := float((pipe.samples[0] as Dictionary).lip_x)
+			lip = x0 ## lip on left edge of run
+		var ref_lip := float((surf.samples[0] as Dictionary).lip_x)
 		if absf(lip - ref_lip) < spec.cell_w * 0.6:
 			return {"lip_x": lip, "radius": radius}
 		if best.is_empty() or absf(lip - ref_lip) < absf(float(best.lip_x) - ref_lip):
@@ -271,6 +296,14 @@ static func _classify_copings(spec: LevelSpec, model: ParkModel) -> void:
 				continue
 			breaks.append(clampf(other.z_min, cope.z_min, cope.z_max))
 			breaks.append(clampf(other.z_max, cope.z_min, cope.z_max))
+		for ramp_id in model.ramps.keys():
+			var other_r: RampSurface = model.ramps[ramp_id]
+			if other_r.id == cope.pipe_id:
+				continue
+			if other_r.z_max <= cope.z_min + 0.001 or other_r.z_min >= cope.z_max - 0.001:
+				continue
+			breaks.append(clampf(other_r.z_min, cope.z_min, cope.z_max))
+			breaks.append(clampf(other_r.z_max, cope.z_min, cope.z_max))
 		breaks.sort()
 		var unique: Array[float] = []
 		for value in breaks:
@@ -334,10 +367,18 @@ static func _classify_coping_at(
 			best_patch = patch
 	if best_patch != null:
 		if best_patch.kind == SimKinds.SurfaceKind.DECK:
-			desc = {
-				"class": SimKinds.CopingClass.OPEN,
-				"outward_deck_id": best_patch.id,
-			}
+			var deck_dh := best_patch.height - ch
+			# Ramp peaks seam onto an abutting same-height deck (no hang / X-lock).
+			if not cope.allows_hang and absf(deck_dh) <= SimTolerances.SEAM_EPS:
+				desc = {
+					"class": SimKinds.CopingClass.SUPPORT_SEAM,
+					"support_patch_id": best_patch.id,
+				}
+			else:
+				desc = {
+					"class": SimKinds.CopingClass.OPEN,
+					"outward_deck_id": best_patch.id,
+				}
 		else:
 			var dh := best_patch.height - ch
 			if absf(dh) <= SimTolerances.SEAM_EPS:
@@ -346,10 +387,15 @@ static func _classify_coping_at(
 					"support_patch_id": best_patch.id,
 				}
 			elif dh > SimTolerances.SEAM_EPS:
-				desc = {
-					"class": SimKinds.CopingClass.WALL_EXTENSION,
-					"support_patch_id": best_patch.id,
-				}
+				# Ramps never grow wall extensions — open peak / free-air only.
+				if cope.allows_hang:
+					desc = {
+						"class": SimKinds.CopingClass.WALL_EXTENSION,
+						"support_patch_id": best_patch.id,
+					}
+	# Ramp peaks never wall-extend toward taller opposite pipes (no fly-out/spine).
+	if not cope.allows_hang:
+		return desc
 	# A taller opposite pipe creates a story wall and is action-only at the top.
 	var max_gap := model.cell_w * 3.0 + SimTolerances.ALIGN_EPS
 	var best_other: PipeSurface = null
@@ -424,8 +470,12 @@ static func _link_shared_spines(model: ParkModel) -> void:
 	var max_dh := SimTolerances.SEAM_EPS * 4.0
 	for i in range(ids.size()):
 		var a: CopingEdge = model.copings[ids[i]]
+		if not a.allows_hang:
+			continue
 		for j in range(i + 1, ids.size()):
 			var b: CopingEdge = model.copings[ids[j]]
+			if not b.allows_hang:
+				continue
 			if a.side == b.side:
 				continue
 			var right_c: CopingEdge = a if a.side == SimKinds.PipeSide.RIGHT else b
@@ -502,31 +552,9 @@ static func _coping_spans_are_equivalent(a: CopingSpan, b: CopingSpan) -> bool:
 static func _build_topology_edges(model: ParkModel) -> void:
 	model.edges.clear()
 	for pipe_id in model.pipes.keys():
-		var pipe: PipeSurface = model.pipes[pipe_id]
-		var cope: CopingEdge = model.copings.get(pipe.coping_id)
-		if cope == null:
-			continue
-		for span_value in cope.spans:
-			var span: CopingSpan = span_value
-			var edge := TopologyEdge.new()
-			edge.id = "edge_%s_coping" % span.id
-			edge.from_surface_id = pipe.id
-			edge.coping_id = cope.id
-			edge.z_min = span.z_min
-			edge.z_max = span.z_max
-			edge.boundary = "coping"
-			edge.u_gate = 1.0
-			edge.transfer_target_id = span.partner_coping_id
-			if not span.wall_id.is_empty():
-				edge.kind = SimKinds.EdgeKind.SEAM
-				edge.to_surface_id = span.wall_id
-			elif span.coping_class == SimKinds.CopingClass.SUPPORT_SEAM:
-				edge.kind = SimKinds.EdgeKind.SEAM
-				edge.to_surface_id = span.support_patch_id
-			else:
-				edge.kind = SimKinds.EdgeKind.OPEN_COPING
-				edge.to_surface_id = ""
-			model.edges[edge.id] = edge
+		_build_surface_coping_edges(model, pipe_id, model.pipes[pipe_id].coping_id)
+	for ramp_id in model.ramps.keys():
+		_build_surface_coping_edges(model, ramp_id, model.ramps[ramp_id].coping_id)
 	for wall_id in model.walls.keys():
 		var wall: WallSurface = model.walls[wall_id]
 		var bottom := TopologyEdge.new()
@@ -557,6 +585,35 @@ static func _build_topology_edges(model: ParkModel) -> void:
 			var partner: PipeSurface = model.pipes[wall.upper_partner_pipe_id]
 			top.transfer_target_id = partner.coping_id
 		model.edges[top.id] = top
+
+
+static func _build_surface_coping_edges(
+	model: ParkModel, surface_id: String, coping_id: String
+) -> void:
+	var cope: CopingEdge = model.copings.get(coping_id)
+	if cope == null:
+		return
+	for span_value in cope.spans:
+		var span: CopingSpan = span_value
+		var edge := TopologyEdge.new()
+		edge.id = "edge_%s_coping" % span.id
+		edge.from_surface_id = surface_id
+		edge.coping_id = cope.id
+		edge.z_min = span.z_min
+		edge.z_max = span.z_max
+		edge.boundary = "coping"
+		edge.u_gate = 1.0
+		edge.transfer_target_id = span.partner_coping_id
+		if not span.wall_id.is_empty():
+			edge.kind = SimKinds.EdgeKind.SEAM
+			edge.to_surface_id = span.wall_id
+		elif span.coping_class == SimKinds.CopingClass.SUPPORT_SEAM:
+			edge.kind = SimKinds.EdgeKind.SEAM
+			edge.to_surface_id = span.support_patch_id
+		else:
+			edge.kind = SimKinds.EdgeKind.OPEN_COPING
+			edge.to_surface_id = ""
+		model.edges[edge.id] = edge
 
 
 static func _bounds_from_poly(patch: SupportPatch) -> void:
@@ -630,6 +687,15 @@ static func _hash_model(model: ParkModel) -> String:
 			lines.append(
 				"ps:%.4f:%.4f:%.4f:%.4f"
 				% [sample.z, sample.lip_x, sample.radius, sample.base_height]
+			)
+	for id in model.all_ramp_ids():
+		var ramp: RampSurface = model.ramps[id]
+		lines.append("ramp:%s:%d:%.4f:%.4f" % [id, ramp.side, ramp.z_min, ramp.z_max])
+		for sample_value in ramp.samples:
+			var rsample: Dictionary = sample_value
+			lines.append(
+				"rs:%.4f:%.4f:%.4f:%.4f"
+				% [rsample.z, rsample.lip_x, rsample.radius, rsample.base_height]
 			)
 	for id in model.all_wall_ids():
 		var wall: WallSurface = model.walls[id]

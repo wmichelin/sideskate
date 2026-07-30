@@ -26,7 +26,8 @@ func spawn_state() -> SimState:
 	st.mode = SimState.Mode.GROUNDED
 	st.surface_id = str(top.surface_id)
 	st.position.z = float(top.height)
-	if int(top.kind) == SimKinds.SurfaceKind.PIPE:
+	if int(top.kind) == SimKinds.SurfaceKind.PIPE \
+			or int(top.kind) == SimKinds.SurfaceKind.RAMP:
 		var proj: Dictionary = top.proj
 		st.u = float(proj.u)
 		st.v = float(proj.v)
@@ -79,6 +80,11 @@ func step(
 			state, wish, delta, accel, max_speed, max_speed_z,
 			brake, friction, ramp_friction, ollie, ollie_accel
 		)
+	elif model.ramps.has(state.surface_id):
+		_step_ramp(
+			state, wish, delta, accel, max_speed, max_speed_z,
+			brake, friction, ramp_friction, ollie, ollie_accel
+		)
 	elif model.walls.has(state.surface_id):
 		_step_wall(
 			state, wish, delta, accel, max_speed, max_speed_z,
@@ -111,11 +117,11 @@ func _step_patch(
 		state.alive = false
 		return
 	var on_deck := int(patch.kind) == SimKinds.SurfaceKind.DECK
-	# Floor under an embedded pipe mounts the arc. Decks never auto-stick to a
-	# pipe — ride-off falls (acid drop is the transfer button).
+	# Floor under an embedded pipe/ramp mounts the slope. Decks never auto-stick
+	# to a pipe/ramp — ride-off falls (acid drop is the transfer button).
 	if not on_deck:
-		if _mount_pipe_at(state, state.position.x, state.position.y, state.tangent_velocity.x):
-			_update_facing_pipe(state, model.pipes[state.surface_id])
+		if _mount_slope_at(state, state.position.x, state.position.y, state.tangent_velocity.x):
+			_update_facing_slope(state, state.surface_id)
 			return
 	# Stuck under a deck volume (floor wrap / clip) → only legal pose is the top.
 	if _rescue_deck_top(state):
@@ -136,8 +142,8 @@ func _step_patch(
 	# World/space: axis-slide. Deck/pipe/wall: remount onto ride surface — never pin.
 	var contained := _contain_ground_xz(state, next)
 	if bool(contained.get("remounted", false)):
-		if model.pipes.has(state.surface_id):
-			_update_facing_pipe(state, model.pipes[state.surface_id])
+		if model.pipes.has(state.surface_id) or model.ramps.has(state.surface_id):
+			_update_facing_slope(state, state.surface_id)
 		else:
 			_update_facing(state)
 		return
@@ -145,10 +151,10 @@ func _step_patch(
 		_update_facing(state)
 		return
 	next = contained.pos
-	# Entering a pipe footprint from floor → mount. From deck → fall (acid only).
+	# Entering a pipe/ramp footprint from floor → mount. From deck → fall (acid only).
 	if not on_deck:
-		if _mount_pipe_at(state, next.x, next.y, state.tangent_velocity.x):
-			_update_facing_pipe(state, model.pipes[state.surface_id])
+		if _mount_slope_at(state, next.x, next.y, state.tangent_velocity.x):
+			_update_facing_slope(state, state.surface_id)
 			return
 	if patch.contains_xz(next.x, next.y):
 		state.position = next
@@ -157,20 +163,19 @@ func _step_patch(
 	# Left patch — try seam to neighboring support or air.
 	var top := query.top_support(next.x, next.y, patch.height + SimTolerances.CONTACT_EPS)
 	if not top.is_empty() and absf(float(top.height) - patch.height) <= SimTolerances.SEAM_EPS:
-		# Deck → pipe at matching lip height is not a seam; acid drop only.
-		if on_deck and int(top.kind) == SimKinds.SurfaceKind.PIPE:
+		# Deck → pipe/ramp at matching lip height is not a seam; acid drop only.
+		if on_deck and _is_slope_kind(int(top.kind)):
 			_enter_air(state, Vector3(state.tangent_velocity.x, state.tangent_velocity.y, 0.0))
 			return
 		state.surface_id = str(top.surface_id)
 		state.position = Vector3(next.x, next.y, float(top.height))
-		if int(top.kind) == SimKinds.SurfaceKind.PIPE:
+		if _is_slope_kind(int(top.kind)):
 			var proj: Dictionary = top.proj
 			state.u = float(proj.u)
 			state.v = float(proj.v)
 			state.position = proj.point
 			# World X → along-arc: +along = toward coping = outward.
-			var pipe: PipeSurface = model.pipes[state.surface_id]
-			state.tangent_velocity.x = state.tangent_velocity.x * pipe.outward_sign()
+			state.tangent_velocity.x = state.tangent_velocity.x * _slope_outward(state.surface_id)
 		if top.get("lethal", false):
 			state.alive = false
 		_update_facing(state)
@@ -293,6 +298,89 @@ func _step_pipe(
 		state.tangent_velocity.x = minf(state.tangent_velocity.x, 0.0)
 
 
+func _step_ramp(
+	state: SimState,
+	wish: Vector2,
+	delta: float,
+	accel: float,
+	max_speed: float,
+	max_speed_z: float,
+	brake: float,
+	friction: float,
+	ramp_friction: float,
+	ollie: bool,
+	ollie_accel: float,
+) -> void:
+	var ramp: RampSurface = model.ramps[state.surface_id]
+	var along_wish := wish.x * ramp.outward_sign()
+	# Constant 45° incline (rise == run width).
+	var g_along := SimTolerances.GRAVITY * (1.0 / sqrt(2.0))
+	state.tangent_velocity.x = _integrate_axis(
+		state.tangent_velocity.x, along_wish, max_speed, accel, brake, ramp_friction, delta
+	)
+	state.tangent_velocity.x += g_along * delta
+	state.tangent_velocity.y = _integrate_depth(wish.y, max_speed_z)
+	_apply_ollie_slope(state, ramp.outward_sign(), wish, delta, max_speed, ollie, ollie_accel)
+	var sample := ramp.sample_at_z(state.position.y)
+	var radius := float(sample.radius)
+	if radius <= 0.001:
+		return
+	var incline := ramp.incline_length(state.position.y)
+	var u := clampf(state.u, 0.0, 1.0)
+	var new_u := u + state.tangent_velocity.x * delta / maxf(incline, 0.001)
+	var raw_z := state.position.y + state.tangent_velocity.y * delta
+	var new_z := _clamp_park_depth(raw_z)
+	if _slope_z_out_of_span(ramp, new_z):
+		if _leave_slope_at_z_end(state, ramp, new_z):
+			return
+		new_z = _clamp_world_depth_slope(ramp, new_z)
+		state.tangent_velocity.y = 0.0
+	if new_u <= 0.0:
+		_leave_slope_at_lip(state, ramp, new_z)
+		return
+	if new_u < 1.0:
+		var th := new_u * PI * 0.5
+		state.u = new_u
+		state.v = clampf((new_z - ramp.z_min) / maxf(ramp.z_max - ramp.z_min, 0.001), 0.0, 1.0)
+		state.position = Vector3(
+			ramp.x_at_theta(new_z, th),
+			new_z,
+			ramp.height_at_theta(new_z, th)
+		)
+		_update_facing_slope(state, ramp.id)
+		return
+	state.u = 1.0
+	state.v = clampf((new_z - ramp.z_min) / maxf(ramp.z_max - ramp.z_min, 0.001), 0.0, 1.0)
+	state.position = Vector3(
+		ramp.x_at_theta(new_z, PI * 0.5),
+		new_z,
+		ramp.height_at_theta(new_z, PI * 0.5)
+	)
+	var edge := query.edge_at(ramp.id, new_z, "coping")
+	if edge == null:
+		push_error("GroundSolver: missing coping edge for %s at z=%.2f" % [ramp.id, new_z])
+		state.tangent_velocity.x = minf(state.tangent_velocity.x, 0.0)
+		return
+	if model.patches.has(edge.to_surface_id):
+		_mount_patch_from_edge(state, ramp, model.patches[edge.to_surface_id], new_z)
+		return
+	# Open peak: free-air launch along the incline tangent — never hang / X-lock.
+	if state.tangent_velocity.x > 1.0:
+		_launch_from_ramp_peak(state, ramp, new_z)
+	else:
+		state.tangent_velocity.x = minf(state.tangent_velocity.x, 0.0)
+
+
+func _launch_from_ramp_peak(state: SimState, ramp: RampSurface, z: float) -> void:
+	var along := state.tangent_velocity.x
+	var inv := 1.0 / sqrt(2.0)
+	var world_vx := along * ramp.outward_sign() * inv
+	var world_vh := along * inv
+	var world_vz := state.tangent_velocity.y
+	state.position = Vector3(ramp.coping_x_at(z), z, ramp.height_at_theta(z, PI * 0.5))
+	_enter_air(state, Vector3(world_vx, world_vz, world_vh), "")
+
+
 func _enter_wall_from_pipe(
 	state: SimState, wall: WallSurface, z: float, excess_height: float
 ) -> void:
@@ -394,10 +482,10 @@ func _cross_wall_top(state: SimState, wall: WallSurface, z: float) -> void:
 
 
 func _mount_patch_from_edge(
-	state: SimState, source: PipeSurface, patch: SupportPatch, z: float
+	state: SimState, source, patch: SupportPatch, z: float
 ) -> void:
-	var out := source.outward_sign()
-	var anchor_x := source.coping_x_at(z)
+	var out := float(source.outward_sign())
+	var anchor_x := float(source.coping_x_at(z))
 	state.surface_id = patch.id
 	state.position = Vector3(anchor_x + out * SimTolerances.CAPSULE_RADIUS, z, patch.height)
 	state.u = 0.0
@@ -420,15 +508,18 @@ func _launch_from_edge(state: SimState, edge: TopologyEdge, z: float) -> void:
 	_enter_air(state, Vector3(0.0, world_vz, world_vh), edge.id)
 
 
-## Exit pipe at the lip onto abutting floor/deck, or free-air if unsupported.
+## Exit pipe/ramp at the lip onto abutting floor/deck, or free-air if unsupported.
 func _leave_pipe_at_lip(state: SimState, pipe: PipeSurface, z: float) -> void:
-	var lip_x := pipe.x_at_theta(z, 0.0)
-	var lip_h := pipe.height_at_theta(z, 0.0)
-	# Place slightly into the bowl flat (inward from lip).
-	var inward := -pipe.outward_sign()
+	_leave_slope_at_lip(state, pipe, z)
+
+
+func _leave_slope_at_lip(state: SimState, surf, z: float) -> void:
+	var lip_x := float(surf.x_at_theta(z, 0.0))
+	var lip_h := float(surf.height_at_theta(z, 0.0))
+	var outward := float(surf.outward_sign())
+	var inward := -outward
 	var onto_x := lip_x + inward * maxf(SimTolerances.CONTACT_EPS, 1.0)
-	# Along → world X at θ≈0: vx = along * outward_sign.
-	var world_vx := state.tangent_velocity.x * pipe.outward_sign()
+	var world_vx := state.tangent_velocity.x * outward
 	var world_vz := state.tangent_velocity.y
 	var top := query.top_support(onto_x, z, lip_h + SimTolerances.CONTACT_EPS)
 	if not top.is_empty() and absf(float(top.height) - lip_h) <= SimTolerances.SEAM_EPS:
@@ -438,14 +529,12 @@ func _leave_pipe_at_lip(state: SimState, pipe: PipeSurface, z: float) -> void:
 		state.v = 0.0
 		state.position = Vector3(onto_x, z, float(top.height))
 		state.tangent_velocity = Vector2(world_vx, world_vz)
-		if int(top.kind) == SimKinds.SurfaceKind.PIPE:
-			# Landed on a different pipe footprint — project.
+		if _is_slope_kind(int(top.kind)):
 			var proj: Dictionary = top.proj
 			state.u = float(proj.u)
 			state.v = float(proj.v)
 			state.position = proj.point
-			var other: PipeSurface = model.pipes[state.surface_id]
-			state.tangent_velocity.x = world_vx * other.outward_sign()
+			state.tangent_velocity.x = world_vx * _slope_outward(state.surface_id)
 		if top.get("lethal", false):
 			state.alive = false
 		return
@@ -463,7 +552,7 @@ func try_mount_surface(state: SimState, x: float, z: float, h: float) -> bool:
 	state.surface_id = str(top.surface_id)
 	state.maneuver = null
 	state.position = Vector3(x, z, float(top.height))
-	if int(top.kind) == SimKinds.SurfaceKind.PIPE:
+	if _is_slope_kind(int(top.kind)):
 		var proj: Dictionary = top.proj
 		state.u = float(proj.u)
 		state.v = float(proj.v)
@@ -488,11 +577,15 @@ func _enter_air(state: SimState, world_vel: Vector3, hang_edge_id: String = "") 
 
 ## Keep pipe depth inside both the pipe loft and the park AABB (inset from faces).
 func _clamp_world_depth(pipe: PipeSurface, z: float) -> float:
+	return _clamp_world_depth_slope(pipe, z)
+
+
+func _clamp_world_depth_slope(surf, z: float) -> float:
 	var z_eps := 0.05
 	var world_lo := z_eps
 	var world_hi := maxf(model.depth - z_eps, z_eps)
-	var lo := maxf(pipe.z_min, world_lo)
-	var hi := minf(pipe.z_max, world_hi)
+	var lo := maxf(float(surf.z_min), world_lo)
+	var hi := minf(float(surf.z_max), world_hi)
 	if hi < lo:
 		return clampf(z, world_lo, world_hi)
 	return clampf(z, lo, hi)
@@ -504,31 +597,37 @@ func _clamp_park_depth(z: float) -> float:
 
 
 func _pipe_z_out_of_span(pipe: PipeSurface, z: float) -> bool:
-	return z < pipe.z_min - 0.001 or z > pipe.z_max + 0.001
+	return _slope_z_out_of_span(pipe, z)
+
+
+func _slope_z_out_of_span(surf, z: float) -> bool:
+	return z < float(surf.z_min) - 0.001 or z > float(surf.z_max) + 0.001
 
 
 ## Ride off a pipe's near/far end into a same-height support or free air (holes).
 ## Returns true when the skater left the pipe.
 func _leave_pipe_at_z_end(state: SimState, pipe: PipeSurface, proposed_z: float) -> bool:
+	return _leave_slope_at_z_end(state, pipe, proposed_z)
+
+
+func _leave_slope_at_z_end(state: SimState, surf, proposed_z: float) -> bool:
 	var theta := clampf(state.u, 0.0, 1.0) * PI * 0.5
-	# Sample at the pipe end, then step just outside for the leave probe.
-	var end_z := clampf(proposed_z, pipe.z_min, pipe.z_max)
-	var x := pipe.x_at_theta(end_z, theta)
-	var h := pipe.height_at_theta(end_z, theta)
-	var world_vx := state.tangent_velocity.x * pipe.outward_sign()
+	var end_z := clampf(proposed_z, float(surf.z_min), float(surf.z_max))
+	var x := float(surf.x_at_theta(end_z, theta))
+	var h := float(surf.height_at_theta(end_z, theta))
+	var outward := float(surf.outward_sign())
+	var world_vx := state.tangent_velocity.x * outward
 	var world_vz := state.tangent_velocity.y
-	# Prefer a continuous support beyond the end at this height.
 	var top := query.top_support(x, proposed_z, h + SimTolerances.CONTACT_EPS)
 	if not top.is_empty() and absf(float(top.height) - h) <= SimTolerances.SEAM_EPS:
 		state.surface_id = str(top.surface_id)
 		state.position = Vector3(x, proposed_z, float(top.height))
-		if int(top.kind) == SimKinds.SurfaceKind.PIPE:
+		if _is_slope_kind(int(top.kind)):
 			var proj: Dictionary = top.proj
 			state.u = float(proj.u)
 			state.v = float(proj.v)
 			state.position = proj.point
-			var dest: PipeSurface = model.pipes[state.surface_id]
-			state.tangent_velocity.x = world_vx * dest.outward_sign()
+			state.tangent_velocity.x = world_vx * _slope_outward(state.surface_id)
 		else:
 			state.u = 0.0
 			state.v = 0.0
@@ -537,13 +636,11 @@ func _leave_pipe_at_z_end(state: SimState, pipe: PipeSurface, proposed_z: float)
 			state.alive = false
 		_update_facing(state)
 		return true
-	# No seam — fall into the hole / open air (void floor catches).
 	if not model.is_traversable_xz(x, proposed_z):
 		return false
 	var probe := Vector3(x, proposed_z, h)
 	var hit := query.blocker_at(probe)
-	if not hit.is_empty() and str(hit.get("kind", "")) == "pipe":
-		# Still inside another pipe body — let that mount path claim next tick.
+	if not hit.is_empty() and str(hit.get("kind", "")) in ["pipe", "ramp"]:
 		pass
 	_enter_air(state, Vector3(world_vx, world_vz, 0.0))
 	state.position = probe
@@ -559,6 +656,13 @@ func _ensure_surface_contact(state: SimState) -> void:
 			state.position = proj.point
 			state.u = float(proj.u)
 			state.v = float(proj.v)
+	elif model.ramps.has(state.surface_id):
+		var ramp: RampSurface = model.ramps[state.surface_id]
+		var rproj := ramp.project(state.position.x, state.position.y, state.position.z)
+		if bool(rproj.get("ok", false)):
+			state.position = rproj.point
+			state.u = float(rproj.u)
+			state.v = float(rproj.v)
 	elif model.walls.has(state.surface_id):
 		var wall: WallSurface = model.walls[state.surface_id]
 		state.position = wall.position_at(state.position.y, state.u)
@@ -575,20 +679,22 @@ func _ensure_surface_contact(state: SimState) -> void:
 	if hit.is_empty():
 		return
 	var kind := str(hit.get("kind", ""))
-	if kind == "pipe":
-		# Don't steal onto a stacked/foreign pipe while riding our own arc.
-		if model.pipes.has(state.surface_id):
+	if kind == "pipe" or kind == "ramp":
+		# Don't steal onto a stacked/foreign slope while riding our own.
+		if model.pipes.has(state.surface_id) or model.ramps.has(state.surface_id):
 			return
-		# Deck → pipe is acid drop only — fall, don't auto-stick.
+		# Deck → pipe/ramp is acid drop only — fall, don't auto-stick.
 		if model.patches.has(state.surface_id):
 			var cur: SupportPatch = model.patches[state.surface_id]
 			if int(cur.kind) == SimKinds.SurfaceKind.DECK:
 				return
-		_mount_pipe_at(state, state.position.x, state.position.y, state.tangent_velocity.x)
+		_mount_slope_at(state, state.position.x, state.position.y, state.tangent_velocity.x)
 	elif kind == "deck":
-		# Grounded wall/pipe owns the climb — never deck-rescue through an
+		# Grounded wall/pipe/ramp owns the climb — never deck-rescue through an
 		# overhanging pad that shares the wall-face X.
-		if model.walls.has(state.surface_id) or model.pipes.has(state.surface_id):
+		if model.walls.has(state.surface_id) \
+				or model.pipes.has(state.surface_id) \
+				or model.ramps.has(state.surface_id):
 			return
 		_rescue_deck_top(state)
 	elif kind == "wall":
@@ -598,9 +704,12 @@ func _ensure_surface_contact(state: SimState) -> void:
 		_mount_wall_from_hit(state, hit, state.position)
 
 
-## Snap grounded floor motion onto a pipe ride surface covering (x,z).
-## Prevents skating the floor poly under an embedded pipe (stick / clip).
+## Snap grounded floor motion onto a pipe/ramp ride surface covering (x,z).
 func _mount_pipe_at(state: SimState, x: float, z: float, world_vx: float) -> bool:
+	return _mount_slope_at(state, x, z, world_vx)
+
+
+func _mount_slope_at(state: SimState, x: float, z: float, world_vx: float) -> bool:
 	for pipe_id in model.pipes.keys():
 		var pipe: PipeSurface = model.pipes[pipe_id]
 		if not pipe.contains_xz(x, z):
@@ -617,7 +726,35 @@ func _mount_pipe_at(state: SimState, x: float, z: float, world_vx: float) -> boo
 		state.velocity = Vector3.ZERO
 		state.clear_hang()
 		return true
+	for ramp_id in model.ramps.keys():
+		var ramp: RampSurface = model.ramps[ramp_id]
+		if not ramp.contains_xz(x, z):
+			continue
+		var rproj := ramp.project(x, z, state.position.z)
+		if not bool(rproj.get("ok", false)):
+			continue
+		state.mode = SimState.Mode.GROUNDED
+		state.surface_id = ramp.id
+		state.u = float(rproj.u)
+		state.v = float(rproj.v)
+		state.position = rproj.point
+		state.tangent_velocity.x = world_vx * ramp.outward_sign()
+		state.velocity = Vector3.ZERO
+		state.clear_hang()
+		return true
 	return false
+
+
+func _is_slope_kind(kind: int) -> bool:
+	return kind == SimKinds.SurfaceKind.PIPE or kind == SimKinds.SurfaceKind.RAMP
+
+
+func _slope_outward(surface_id: String) -> float:
+	if model.pipes.has(surface_id):
+		return model.pipes[surface_id].outward_sign()
+	if model.ramps.has(surface_id):
+		return model.ramps[surface_id].outward_sign()
+	return 1.0
 
 
 ## If feet are inside a deck's solid volume, snap to the ride top.
@@ -642,9 +779,8 @@ func _mount_deck_from_hit(state: SimState, hit: Dictionary, at: Vector3) -> bool
 	# Preserve world XZ motion onto the deck top.
 	var world_vx := state.tangent_velocity.x
 	var world_vz := state.tangent_velocity.y
-	if model.pipes.has(state.surface_id):
-		var cur: PipeSurface = model.pipes[state.surface_id]
-		world_vx = state.tangent_velocity.x * cur.outward_sign()
+	if model.pipes.has(state.surface_id) or model.ramps.has(state.surface_id):
+		world_vx = state.tangent_velocity.x * _slope_outward(state.surface_id)
 	state.mode = SimState.Mode.GROUNDED
 	state.surface_id = deck.id
 	state.u = 0.0
@@ -687,9 +823,8 @@ func _mount_wall_from_hit(state: SimState, hit: Dictionary, at: Vector3) -> bool
 	var samp := wall.sample_at_z(at.y)
 	var world_vx := state.tangent_velocity.x
 	var world_vz := state.tangent_velocity.y
-	if model.pipes.has(state.surface_id):
-		var cur: PipeSurface = model.pipes[state.surface_id]
-		world_vx = state.tangent_velocity.x * cur.outward_sign()
+	if model.pipes.has(state.surface_id) or model.ramps.has(state.surface_id):
+		world_vx = state.tangent_velocity.x * _slope_outward(state.surface_id)
 	state.mode = SimState.Mode.GROUNDED
 	state.surface_id = patch.id
 	state.u = 0.0
@@ -705,25 +840,25 @@ func _mount_wall_from_hit(state: SimState, hit: Dictionary, at: Vector3) -> bool
 	return true
 
 
-## Deck / pipe / wall solid → remount ride surface. Returns true when handled.
+## Deck / pipe / ramp / wall solid → remount ride surface. Returns true when handled.
 func _resolve_solid_contact(state: SimState, hit: Dictionary, at: Vector3) -> bool:
 	var kind := str(hit.get("kind", ""))
 	if kind == "deck":
 		return _mount_deck_from_hit(state, hit, at)
-	if kind == "pipe":
-		# Deck never auto-mounts a pipe (acid drop only).
+	if kind == "pipe" or kind == "ramp":
+		# Deck never auto-mounts a pipe/ramp (acid drop only).
 		if model.patches.has(state.surface_id):
 			var cur: SupportPatch = model.patches[state.surface_id]
 			if int(cur.kind) == SimKinds.SurfaceKind.DECK:
 				_enter_air(state, Vector3(state.tangent_velocity.x, state.tangent_velocity.y, 0.0))
 				return true
 		var world_vx := state.tangent_velocity.x
-		if model.pipes.has(state.surface_id):
-			world_vx = state.tangent_velocity.x * model.pipes[state.surface_id].outward_sign()
+		if model.pipes.has(state.surface_id) or model.ramps.has(state.surface_id):
+			world_vx = state.tangent_velocity.x * _slope_outward(state.surface_id)
 		# Place probe then mount.
 		var prev := state.position
 		state.position = Vector3(at.x, at.y, at.z)
-		if _mount_pipe_at(state, at.x, at.y, world_vx):
+		if _mount_slope_at(state, at.x, at.y, world_vx):
 			return true
 		state.position = prev
 		return false
@@ -786,8 +921,12 @@ func _update_facing(state: SimState) -> void:
 
 
 func _update_facing_pipe(state: SimState, pipe: PipeSurface) -> void:
+	_update_facing_slope(state, pipe.id)
+
+
+func _update_facing_slope(state: SimState, surface_id: String) -> void:
 	# Facing follows world X, not along-arc sign.
-	var world_vx := state.tangent_velocity.x * pipe.outward_sign()
+	var world_vx := state.tangent_velocity.x * _slope_outward(surface_id)
 	if absf(world_vx) > 1.0:
 		state.set_facing_side("r" if world_vx > 0.0 else "l")
 
@@ -847,13 +986,25 @@ func _apply_ollie_pipe(
 	ollie: bool,
 	ollie_accel: float,
 ) -> void:
+	_apply_ollie_slope(state, pipe.outward_sign(), wish, delta, max_speed, ollie, ollie_accel)
+
+
+func _apply_ollie_slope(
+	state: SimState,
+	outward: float,
+	wish: Vector2,
+	delta: float,
+	max_speed: float,
+	ollie: bool,
+	ollie_accel: float,
+) -> void:
 	if not ollie or ollie_accel <= 0.0:
 		return
 	var face := 1.0 if state.facing == "r" else -1.0
 	if wish.x * face < -0.15:
 		return
 	# world_vx = along * outward → along_target = face * outward * max_speed
-	var along_target := face * pipe.outward_sign() * max_speed
+	var along_target := face * outward * max_speed
 	state.tangent_velocity.x = move_toward(
 		state.tangent_velocity.x, along_target, ollie_accel * delta
 	)

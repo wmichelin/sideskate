@@ -207,6 +207,22 @@ static func _resolve_cell(
 				stub["side"] = want_side
 				return stub
 			return pipe_info
+		"ramp":
+			var ramp_side := 0 if glyph == "<" else 1
+			var ramp_info: Dictionary = _ramp_info_on_layer(
+				spec, pipes, logical_x, logical_z, ramp_side, layer, col, row
+			)
+			if ramp_info.is_empty():
+				var mid_r: Dictionary = spec.cell_bounds(col, row)
+				var mx_r := (float(mid_r.x0) + float(mid_r.x1)) * 0.5
+				ramp_info = _ramp_info_on_layer(
+					spec, pipes, mx_r, logical_z, ramp_side, layer, col, row
+				)
+			if ramp_info.is_empty():
+				var stub_r := _empty_surface("ramp", layer_h, layer)
+				stub_r["side"] = ramp_side
+				return stub_r
+			return ramp_info
 		"flat":
 			return _empty_surface("flat", layer_h, layer)
 		"lava":
@@ -252,6 +268,8 @@ static func _pipe_info_on_layer(
 	for pipe in pipes:
 		if int(pipe.side) != want_side:
 			continue
+		if _pipe_kind(pipe) == "ramp":
+			continue
 		var pl := _pipe_layer(pipe)
 		if layer >= 0 and pl >= 0 and pl != layer:
 			continue
@@ -283,6 +301,63 @@ static func _pipe_info_on_layer(
 			"theta": float(hit.get("theta", 0.0)),
 		}
 	return {}
+
+
+static func _ramp_info_on_layer(
+	spec: Variant,
+	pipes: Array,
+	logical_x: float,
+	logical_z: float,
+	want_side: int,
+	layer: int,
+	col: int,
+	row: int,
+) -> Dictionary:
+	for pipe in pipes:
+		if int(pipe.side) != want_side:
+			continue
+		if _pipe_kind(pipe) != "ramp":
+			continue
+		var pl := _pipe_layer(pipe)
+		if layer >= 0 and pl >= 0 and pl != layer:
+			continue
+		var hit: Dictionary = _pipe_query(pipe, logical_x, logical_z)
+		if not hit.get("active", false):
+			continue
+		var lip := float(pipe.lip_x)
+		var radius := float(pipe.radius)
+		var side := int(pipe.side)
+		var cope := _PipeMath.coping_x(side, lip, radius)
+		var is_cope := false
+		if spec != null:
+			var b: Dictionary = spec.cell_bounds(col, row)
+			is_cope = cope >= float(b.x0) - 0.05 and cope <= float(b.x1) + 0.05
+		else:
+			is_cope = absf(logical_x - cope) <= maxf(radius * 0.5, 0.05)
+		return {
+			"height": float(hit.get("height", 0.0)),
+			"zone": str(hit.get("zone", "ramp")),
+			"layer": layer,
+			"is_coping": is_cope,
+			"side": side,
+			"lip_x": lip,
+			"radius": radius,
+			"base_height": _pipe_base_height(pipe),
+			"z_min": _pipe_z_min(pipe),
+			"z_max": _pipe_z_max(pipe),
+			"top_coping": cope,
+			"theta": float(hit.get("theta", 0.0)),
+			"kind": "ramp",
+		}
+	return {}
+
+
+static func _pipe_kind(pipe: Variant) -> String:
+	if typeof(pipe) == TYPE_DICTIONARY:
+		return str(pipe.get("kind", "pipe"))
+	if typeof(pipe) == TYPE_OBJECT and "kind" in pipe:
+		return str(pipe.kind)
+	return "pipe"
 
 
 static func _pipe_layer(pipe: Variant) -> int:
@@ -340,15 +415,25 @@ static func _pipe_query(pipe: Variant, logical_x: float, logical_z: float) -> Di
 	var x_offset := (lip - logical_x) if side == 0 else (logical_x - lip)
 	x_offset = clampf(x_offset, 0.0, radius)
 	var ratio := 0.0 if radius <= 0.0001 else clampf(x_offset / radius, 0.0, 1.0)
-	var theta := asin(ratio)
-	var height := base_h + radius * (1.0 - cos(theta))
+	var is_ramp := _pipe_kind(pipe) == "ramp"
+	var theta: float
+	var height: float
+	if is_ramp:
+		theta = ratio * PI * 0.5
+		height = base_h + radius * ratio
+	else:
+		theta = asin(ratio)
+		height = base_h + radius * (1.0 - cos(theta))
 	return {
 		"active": true,
-		"zone": "left_pipe" if side == 0 else "right_pipe",
+		"zone": (
+			_PipeMath.ramp_zone_name(side) if is_ramp else _PipeMath.zone_name(side)
+		),
 		"height": height,
 		"theta": theta,
 		"lip_x": lip,
 		"side": side,
+		"kind": "ramp" if is_ramp else "pipe",
 		"base_height": base_h,
 		"radius": radius,
 		"layer": _pipe_layer(pipe),

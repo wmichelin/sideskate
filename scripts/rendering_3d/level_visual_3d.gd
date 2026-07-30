@@ -80,6 +80,10 @@ func _material_for(key: String) -> StandardMaterial3D:
 			mat.albedo_color = Color(0.42, 0.38, 0.48, 1.0)
 		"pipe_wall":
 			mat.albedo_color = Color(0.28, 0.24, 0.32, 1.0)
+		"ramp_ride":
+			mat.albedo_color = Color(0.48, 0.40, 0.36, 1.0)
+		"ramp_wall":
+			mat.albedo_color = Color(0.32, 0.26, 0.22, 1.0)
 		_:
 			mat.albedo_color = Color(0.32, 0.38, 0.42, 1.0)
 	return mat

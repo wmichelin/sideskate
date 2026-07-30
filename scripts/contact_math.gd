@@ -21,10 +21,15 @@ static func is_pipe(hit: Dictionary) -> bool:
 	return zone == "left_pipe" or zone == "right_pipe"
 
 
+static func is_ramp(hit: Dictionary) -> bool:
+	var zone := str(hit.get("zone", ""))
+	return zone == "left_ramp" or zone == "right_ramp"
+
+
 static func surface_pref_rank(hit: Dictionary) -> int:
 	if is_solid(hit):
 		return 2
-	if is_pipe(hit):
+	if is_pipe(hit) or is_ramp(hit):
 		return 1
 	return 0
 
@@ -228,6 +233,8 @@ static func zone_from_glyph(glyph: String) -> String:
 			return "deck"
 		"(", ")":
 			return "pipe"
+		"<", ">":
+			return "ramp"
 		" ":
 			return "oob"
 		_:

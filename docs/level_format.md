@@ -92,20 +92,25 @@ height 141
 | `=` | Floor at layer height | `layer.height` |
 | `x` / `X` | Lava pad (solid; lethal when grounded) | `layer.height` |
 | `.` | Hole (nil) on this layer — fall through | — |
-| `#` | Deck (spine / coping flat) | `layer.height + pipe rise` |
+| `#` | Deck (spine / coping flat) | `layer.height + pipe/ramp rise` |
 | `@` | Spawn + floor | `layer.height` |
 | `(` | Left-facing pipe (lip on **right** edge of run) | `base + R(1−cosθ)` |
 | `)` | Right-facing pipe (lip on **left** edge of run) | `base + R(1−cosθ)` |
+| `<` | Left-facing **ramp** (lip on **right** edge of run) | `base + R·u` (straight incline) |
+| `>` | Right-facing **ramp** (lip on **left** edge of run) | `base + R·u` (straight incline) |
 | space | Solid invisible wall (never enter; not a kill) | — |
 
 ## Deck height
 
 For each connected `#` component on a layer:
 
-1. Find 4-neighbor pipe tiles (`(` or `)`) on that layer  
-2. `rise = max(radius)` of those pipes (or header `deck_height`)  
+1. Find 4-neighbor pipe/ramp tiles (`(`, `)`, `<`, or `>`) on that layer  
+2. `rise = max(radius)` of those neighbors (or header `deck_height`)  
 3. Deck absolute height = `layer.height + rise`  
-4. Error if no neighboring pipe and no header override  
+4. Error if no neighboring pipe/ramp and no header override  
+
+Ramp peak height uses the same rise as a pipe of equal run width (`base + R`), so
+`>===<` and `)===(` both lift the deck to matching coping height.
 
 ## Spine example
 
@@ -124,6 +129,27 @@ height 0
 
 `)))##(((` = right-pipe → elevated deck spine → left-pipe.  
 Both pipe runs must be the same width so coping height matches on both sides.
+
+## Ramp example
+
+```text
+ssk 2
+name ramp_demo
+---
+layer 0
+height 0
+>>>=======<<<
+>>>=======<<<
+>>>===@===<<<
+>>>=======<<<
+>>>=======<<<
+```
+
+`>>>=======<<<` = right-ramp → floor → left-ramp.  
+`>===(` = right-ramp → deck → left-pipe (deck rises to the shared peak/radius).
+
+Riding off a ramp peak launches free air along the incline tangent — **no X-lock /
+hang**. Stick fly-out / spine / acid do not originate from ramps.
 
 ## Multi-story example
 
@@ -156,6 +182,13 @@ run width × `cell_w` (or header `pipe_radius`). Across Z, `lip(z)`, `radius(z)`
 `base(z)` are joined with monotone interpolation that does not overshoot. Runtime
 logic never branches on layer index — layers only contribute absolute heights at
 compile time.
+
+### Ramp lofts
+
+Same-side contiguous `<` / `>` cells form a triangular ramp component with the same
+footprint/radius rules as pipes. Profile is linear (45° when width equals height rise):
+`u ∈ [0,1]` from lip→peak, `height = base + R·u`, `x` = lip ± `R·u`. Peak leave is
+ordinary free air (no hang).
 
 ### Coping classification
 

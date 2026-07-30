@@ -23,8 +23,10 @@ var floors: Array = []
 ## Each: { "poly": PackedVector2Array, "height": float, "anchors": Array, "layer": int,
 ##         "base_height": float }
 var decks: Array = []
-## Each: { "side": int, "lip_x": float, "radius": float, "base_height": float,
-##         "z_min": float, "z_max": float, "x_min": float, "x_max": float, "layer": int }
+## Each: { "kind": "pipe"|"ramp", "side": int, "lip_x": float, "radius": float,
+##         "base_height": float, "z_min": float, "z_max": float,
+##         "x_min": float, "x_max": float, "layer": int }
+## Ramps reuse the same footprint fields; peak height = base + radius.
 var pipes: Array = []
 ## Floor glyph cells as Vector2i(col, row) — row 0 = far/top (all stories).
 var floor_cells: Array = []

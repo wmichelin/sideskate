@@ -46,6 +46,24 @@ func supports_below(x: float, z: float, feet_y: float) -> Array:
 			"pipe": pipe,
 			"proj": proj,
 		})
+	for ramp_id in model.ramps.keys():
+		var ramp: RampSurface = model.ramps[ramp_id]
+		if not ramp.contains_xz(x, z):
+			continue
+		var rproj := ramp.project(x, z, feet_y)
+		if not bool(rproj.get("ok", false)):
+			continue
+		var rh := float(rproj.point.z)
+		if rh > feet_y + SimTolerances.CONTACT_EPS:
+			continue
+		out.append({
+			"surface_id": ramp.id,
+			"kind": SimKinds.SurfaceKind.RAMP,
+			"height": rh,
+			"lethal": false,
+			"ramp": ramp,
+			"proj": rproj,
+		})
 	out.sort_custom(func(a, b):
 		# Highest support first (descending height), then stable id.
 		var dh := float(a.height) - float(b.height)
@@ -104,6 +122,9 @@ func project_to_surface(surface_id: String, x: float, z: float, h: float) -> Dic
 	if model.pipes.has(surface_id):
 		var pipe: PipeSurface = model.pipes[surface_id]
 		return pipe.project(x, z, h)
+	if model.ramps.has(surface_id):
+		var ramp: RampSurface = model.ramps[surface_id]
+		return ramp.project(x, z, h)
 	if model.walls.has(surface_id):
 		var wall: WallSurface = model.walls[surface_id]
 		return wall.project(x, z, h)
@@ -145,6 +166,16 @@ func edge_anchor_sample(edge: TopologyEdge, z: float) -> Dictionary:
 			"outward_sign": pipe.outward_sign(),
 			"source_pipe_id": pipe.id,
 			"source_surface_id": pipe.id,
+		}
+	if model.ramps.has(edge.from_surface_id):
+		var ramp: RampSurface = model.ramps[edge.from_surface_id]
+		return {
+			"x": ramp.coping_x_at(z),
+			"height": ramp.height_at_theta(z, PI * 0.5),
+			"outward_sign": ramp.outward_sign(),
+			"source_pipe_id": "",
+			"source_surface_id": ramp.id,
+			"source_ramp_id": ramp.id,
 		}
 	return {}
 
@@ -323,6 +354,23 @@ func _blocker_at(p: Vector3) -> Dictionary:
 				"projection": proj.point,
 				"normal": proj.normal,
 				"reason": "through pipe body",
+			}
+	for ramp_id in model.all_ramp_ids():
+		var ramp: RampSurface = model.ramps[ramp_id]
+		if not ramp.contains_solid_xz(x, z):
+			continue
+		var rproj := ramp.project(x, z, h)
+		if not bool(rproj.get("ok", false)):
+			continue
+		var rh := float(rproj.point.z)
+		if h < rh - SimTolerances.CONTACT_EPS:
+			return {
+				"kind": "ramp",
+				"feature_id": ramp.id,
+				"surface_id": ramp.id,
+				"projection": rproj.point,
+				"normal": rproj.normal,
+				"reason": "through ramp body",
 			}
 	# Deck platforms: solid below the top — ride on top only, never through the base.
 	var patch_ids: Array = model.patches.keys()
