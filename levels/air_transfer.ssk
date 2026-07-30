@@ -1,0 +1,13 @@
+ssk 2
+name air_transfer
+spawn_facing r
+
+---
+layer 0
+height 0    
+<<<==========>>>
+<<<===@======>>>
+<<<==========>>>
+xxxxxxxxxxxxxxxx
+<<<==========>>>
+<<<==========>>>
