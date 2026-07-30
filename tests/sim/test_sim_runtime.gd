@@ -26,6 +26,7 @@ func run() -> bool:
 		and _ollie_short_deck_return_no_tunnel()
 		and _ollie_pipe_low_vx_descending_remounts()
 		and _ollie_climbing_ramp_stays_above_solid()
+		and _ollie_into_pipe_with_stick_stays_outside()
 		and _coast_with_zero_friction()
 		and _air_no_x_friction()
 		and _wall_extension_climbs()
@@ -1120,6 +1121,67 @@ func _ollie_climbing_ramp_stays_above_solid() -> bool:
 			and sim.state.surface_id != ramp.id:
 		push_error("landed wrong ramp %s" % sim.state.surface_id)
 		return false
+	return true
+
+
+func _ollie_into_pipe_with_stick_stays_outside() -> bool:
+	# Stick toward coping while airborne used to chord-cut under the pipe body
+	# because bounce depenetrated back toward the embedded start pose.
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_halfpipe.ssk"):
+		push_error("setup pipe stick ollie")
+		return false
+	var pipe := _left_pipe(sim.model)
+	if pipe == null:
+		push_error("missing left pipe")
+		return false
+	sim.ollie_accel = 0.0
+	sim.ollie_charge_ms = 0.0
+	sim.ollie_height = 80.0
+	sim.ollie_lip_frac = 0.0
+	var z := (pipe.z_min + pipe.z_max) * 0.5
+	var u := 0.4
+	var th := u * PI * 0.5
+	var cx := pipe.coping_x_at(z)
+	var peak := (
+		float(pipe.sample_at_z(z).base_height) + float(pipe.sample_at_z(z).radius)
+	)
+	sim.state.mode = SimState.Mode.GROUNDED
+	sim.state.surface_id = pipe.id
+	sim.state.u = u
+	sim.state.v = 0.5
+	sim.state.tangent_velocity = Vector2(700.0, 0.0)
+	sim.state.position = Vector3(pipe.x_at_theta(z, th), z, pipe.height_at_theta(z, th))
+	sim.ollie_available = true
+	sim.ollie_charge = 1.0
+	var out := pipe.outward_sign()
+	sim.set_input(Vector2(out, 0.0), false, false, false, true)
+	sim.tick()
+	if not sim.state.is_airborne():
+		push_error("pipe stick ollie should leave")
+		return false
+	for _i in range(120):
+		# Keep holding toward the coping — must collide / stay outside, not bury.
+		sim.set_input(Vector2(out, 0.0), false, false, false, false)
+		sim.tick()
+		if pipe.contains_xz(sim.state.position.x, sim.state.position.y):
+			var proj := pipe.project(
+				sim.state.position.x, sim.state.position.y, sim.state.position.z
+			)
+			if bool(proj.get("ok", false)) \
+					and sim.state.position.z < float(proj.point.z) - SimTolerances.CONTACT_EPS:
+				push_error(
+					"buried in pipe solid pos=%s surface_h=%s"
+					% [sim.state.position, proj.point.z]
+				)
+				return false
+		# Past coping below peak without clearing = tunneled through the body.
+		if (sim.state.position.x - cx) * out > 15.0 \
+				and sim.state.position.z < peak - 10.0:
+			push_error("tunneled past pipe coping below peak at %s" % sim.state.position)
+			return false
+		if sim.state.is_grounded():
+			break
 	return true
 
 

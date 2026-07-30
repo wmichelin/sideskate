@@ -96,6 +96,7 @@ func _step_free(state: SimState, wish: Vector2, delta: float) -> void:
 			if kind == "pipe" and _pipe_contact_is_action_only(state, hit):
 				state.position = to
 				_try_land(state, from.z)
+				_ensure_air_outside_slopes(state)
 				state.position.y = clampf(state.position.y, 0.05, maxf(model.depth - 0.05, 0.05))
 				return
 			# Hang / rising / skim: pass through decks. Descending free-air that only
@@ -105,12 +106,14 @@ func _step_free(state: SimState, wish: Vector2, delta: float) -> void:
 				if state.is_hanging() or state.velocity.z >= -SimTolerances.CONTACT_EPS:
 					state.position = to
 					_try_land(state, from.z)
+					_ensure_air_outside_slopes(state)
 					state.position.y = clampf(
 						state.position.y, 0.05, maxf(model.depth - 0.05, 0.05)
 					)
 					return
 				_bounce_off_solid(state, hit, from)
 				_try_land(state, from.z)
+				_ensure_air_outside_slopes(state)
 				state.position.y = clampf(
 					state.position.y, 0.05, maxf(model.depth - 0.05, 0.05)
 				)
@@ -120,6 +123,7 @@ func _step_free(state: SimState, wish: Vector2, delta: float) -> void:
 			if kind == "wall" and _wall_contact_is_outward_exit(state, hit):
 				state.position = to
 				_try_land(state, from.z)
+				_ensure_air_outside_slopes(state)
 				state.position.y = clampf(
 					state.position.y, 0.05, maxf(model.depth - 0.05, 0.05)
 				)
@@ -138,10 +142,12 @@ func _step_free(state: SimState, wish: Vector2, delta: float) -> void:
 			# bounds: stop into-normal motion.
 			_resolve_bounds_hit(state, hit, from)
 			_try_land(state, from.z)
+		_ensure_air_outside_slopes(state)
 		state.position.y = clampf(state.position.y, 0.05, maxf(model.depth - 0.05, 0.05))
 		return
 	state.position = to
 	_try_land(state, from.z)
+	_ensure_air_outside_slopes(state)
 	# Depth walls sit on the park faces — keep feet inside even if a sweep skimmed.
 	state.position.y = clampf(state.position.y, 0.05, maxf(model.depth - 0.05, 0.05))
 
@@ -434,7 +440,8 @@ func _pipe_proj_for_air_hit(state: SimState, pipe: PipeSurface, hit: Dictionary 
 
 
 ## A deck-backed OPEN span is compiled as action-only. Ordinary contact from its
-## outward side passes through; an accepted acid plan is the sole mount path.
+## outward coping corridor may pass through for deck→bowl drops; deep body under
+## the arc is solid (ollie / lateral flight must clear peak or collide).
 func _pipe_contact_is_action_only(state: SimState, hit: Dictionary) -> bool:
 	var pipe: PipeSurface = model.pipes.get(str(hit.get("surface_id", "")))
 	if pipe == null:
@@ -445,7 +452,10 @@ func _pipe_contact_is_action_only(state: SimState, hit: Dictionary) -> bool:
 		return false
 	var cx := pipe.coping_x_at(state.position.y)
 	var out := pipe.outward_sign()
-	return not is_nan(cx) and (state.position.x - cx) * out >= -SimTolerances.CAPSULE_RADIUS
+	if is_nan(cx) or (state.position.x - cx) * out < -SimTolerances.CAPSULE_RADIUS:
+		return false
+	# Only the coping seam — mid-arc body stays collidable.
+	return absf(state.position.x - cx) <= SimTolerances.CAPSULE_RADIUS * 2.0
 
 
 ## True when mounting this pipe would be an ordinary land (not a spine/acid steal).
@@ -506,7 +516,9 @@ func _bounce_off_solid(state: SimState, hit: Dictionary, from: Vector3) -> void:
 					)
 					if state.velocity.z < 0.0:
 						state.velocity.z = 0.0
-				_depenetrate(state, from)
+				# Do not lerp back toward `from` — it is often still inside the solid
+				# and would re-bury a clean normal projection.
+				_push_out_of_solids(state, n if n.length_squared() > 0.0001 else Vector3.UP)
 				return
 	if kind == "ramp":
 		var ramp: RampSurface = model.ramps.get(str(hit.get("surface_id", "")))
@@ -527,7 +539,7 @@ func _bounce_off_solid(state: SimState, hit: Dictionary, from: Vector3) -> void:
 					)
 					if state.velocity.z < 0.0:
 						state.velocity.z = 0.0
-				_depenetrate(state, from)
+				_push_out_of_solids(state, rn if rn.length_squared() > 0.0001 else Vector3.UP)
 				return
 	if kind == "wall":
 		var normal: Vector3 = hit.get("normal", Vector3.ZERO)
@@ -555,6 +567,40 @@ func _reject_into_normal(world: Vector3, normal: Vector3) -> Vector3:
 	if vn < 0.0:
 		return world - n * vn
 	return world
+
+
+## If still inside a solid after a normal projection, step along `hint_n` (not
+## back toward an embedded `from`).
+func _push_out_of_solids(state: SimState, hint_n: Vector3) -> void:
+	if query.blocker_at(state.position).is_empty():
+		return
+	var step := hint_n.normalized() * SimTolerances.CONTACT_EPS
+	if step.length_squared() < 0.0001:
+		step = Vector3(0.0, 0.0, SimTolerances.CONTACT_EPS)
+	for _i in range(16):
+		if query.blocker_at(state.position).is_empty():
+			return
+		state.position += step
+	# Last resort: project onto whatever solid owns the feet.
+	var hit := query.blocker_at(state.position)
+	if hit.is_empty():
+		return
+	var kind := str(hit.get("kind", ""))
+	if kind == "pipe" or kind == "ramp":
+		var sid := str(hit.get("surface_id", ""))
+		var surf = model.pipes.get(sid)
+		if surf == null:
+			surf = model.ramps.get(sid)
+		if surf != null:
+			var proj: Dictionary = surf.project(
+				state.position.x, state.position.y, state.position.z
+			)
+			if bool(proj.get("ok", false)):
+				var n2: Vector3 = proj.normal
+				state.position = (
+					proj.point + n2.normalized() * SimTolerances.CONTACT_EPS
+				)
+				state.velocity = _reject_into_normal(state.velocity, n2)
 
 
 func _wall_contact_is_outward_exit(state: SimState, hit: Dictionary) -> bool:
@@ -643,15 +689,35 @@ func _resolve_bounds_hit(state: SimState, hit: Dictionary, from: Vector3) -> voi
 
 
 ## Walk back toward `from` until the capsule is outside solids.
+## Never snap to an embedded `from` — that re-buries slope bounces.
 func _depenetrate(state: SimState, from: Vector3) -> void:
 	if query.blocker_at(state.position).is_empty():
 		return
-	for _i in range(12):
+	if query.blocker_at(from).is_empty():
+		for _i in range(12):
+			if query.blocker_at(state.position).is_empty():
+				return
+			state.position = state.position.lerp(from, 0.35)
 		if query.blocker_at(state.position).is_empty():
 			return
-		state.position = state.position.lerp(from, 0.35)
-	if not query.blocker_at(state.position).is_empty():
 		state.position = from
+		return
+	_push_out_of_solids(state, Vector3(0.0, 0.0, 1.0))
+
+
+## Free-air must not remain under a pipe/ramp ride surface (chord cuts / stick drill).
+func _ensure_air_outside_slopes(state: SimState) -> void:
+	if not state.is_airborne():
+		return
+	var hit := query.blocker_at(state.position)
+	if hit.is_empty():
+		return
+	var kind := str(hit.get("kind", ""))
+	if kind != "pipe" and kind != "ramp":
+		return
+	if _snap_onto_solid(state, hit, state.position.z):
+		return
+	_bounce_off_solid(state, hit, state.position)
 
 
 func _step_maneuver(state: SimState, wish: Vector2, delta: float) -> void:
