@@ -169,6 +169,7 @@ func _ready() -> void:
 	_setup_apex_facing_slider()
 	_setup_depth_turn_slider()
 	_bind_float_slider(_ollie_slider, ollie_accel_min, ollie_accel_max, 10.0, _player, "ollie_accel", 650.0, _on_ollie_accel_changed, _refresh_ollie_label)
+	_setup_ollie_jump_sliders()
 	_bind_float_slider(_max_speed_x_slider, max_speed_x_min, max_speed_x_max, 10.0, _player, "max_speed_x", 880.0, _on_max_speed_x_changed, _refresh_max_speed_x_label)
 	_bind_float_slider(_max_speed_z_slider, max_speed_z_min, max_speed_z_max, 5.0, _player, "max_speed_z", 400.0, _on_max_speed_z_changed, _refresh_max_speed_z_label)
 	_bind_float_slider(_accel_slider, acceleration_min, acceleration_max, 50.0, _player, "accel", 3250.0, _on_accel_changed, _refresh_accel_label)
@@ -207,6 +208,8 @@ func _ready() -> void:
 	_head_debug_check.button_pressed = DebugTools.show_head_debug
 	_head_debug_check.focus_mode = Control.FOCUS_NONE
 	_head_debug_check.toggled.connect(_on_head_debug_toggled)
+
+	_setup_ollie_charge_toggle()
 
 	_fps_check.button_pressed = DebugTools.show_fps
 	_fps_check.focus_mode = Control.FOCUS_NONE
@@ -255,6 +258,69 @@ func _ready() -> void:
 			row.focus_mode = Control.FOCUS_NONE
 
 	_set_collapsed(start_collapsed)
+
+
+func _setup_ollie_jump_sliders() -> void:
+	if _body == null:
+		return
+	var insert_at := 0
+	var ollie_row := _body.get_node_or_null("OllieAccelRow")
+	if ollie_row != null:
+		insert_at = ollie_row.get_index() + 1
+	var charge_row := _make_slider_row("OllieChargeMsRow", "ollie charge", insert_at)
+	_bind_float_slider(
+		charge_row["slider"],
+		0.0,
+		5000.0,
+		1.0,
+		_player,
+		"ollie_charge_ms",
+		250.0,
+		_on_ollie_charge_ms_changed,
+		_refresh_ollie_charge_ms_label
+	)
+	charge_row["slider"].focus_mode = Control.FOCUS_NONE
+	var impulse_row := _make_slider_row(
+		"OllieHeightRow", "ollie height", charge_row["row"].get_index() + 1
+	)
+	_bind_float_slider(
+		impulse_row["slider"],
+		0.0,
+		200.0,
+		0.1,
+		_player,
+		"ollie_height",
+		100.0,
+		_on_ollie_height_changed,
+		_refresh_ollie_height_label
+	)
+	impulse_row["slider"].focus_mode = Control.FOCUS_NONE
+
+
+func _setup_ollie_charge_toggle() -> void:
+	if _body == null:
+		return
+	var insert_at := 0
+	var head_row := _body.get_node_or_null("HeadDebugRow")
+	if head_row != null:
+		insert_at = head_row.get_index() + 1
+	var row := HBoxContainer.new()
+	row.name = "OllieChargeBarRow"
+	row.add_theme_constant_override("separation", 8)
+	var cap := Label.new()
+	cap.name = "Caption"
+	cap.text = "ollie charge bar"
+	cap.add_theme_font_size_override("font_size", 12)
+	cap.add_theme_color_override("font_color", Color(0.75, 0.8, 0.88, 1))
+	var check := CheckButton.new()
+	check.name = "Check"
+	check.focus_mode = Control.FOCUS_NONE
+	check.button_pressed = DebugTools.show_ollie_charge
+	check.toggled.connect(_on_ollie_charge_bar_toggled)
+	row.add_child(cap)
+	row.add_child(check)
+	_body.add_child(row)
+	_body.move_child(row, mini(insert_at, _body.get_child_count() - 1))
 
 
 func _setup_apex_facing_slider() -> void:
@@ -626,6 +692,30 @@ func _refresh_ollie_label(v: float) -> void:
 	_ollie_value.text = "%.0f" % v
 
 
+func _on_ollie_charge_ms_changed(v: float) -> void:
+	if _player != null:
+		_player.set("ollie_charge_ms", v)
+	_refresh_ollie_charge_ms_label(v)
+
+
+func _refresh_ollie_charge_ms_label(v: float) -> void:
+	var row := _body.get_node_or_null("OllieChargeMsRow/Value") as Label if _body else null
+	if row != null:
+		row.text = "%.0f ms" % v
+
+
+func _on_ollie_height_changed(v: float) -> void:
+	if _player != null:
+		_player.set("ollie_height", v)
+	_refresh_ollie_height_label(v)
+
+
+func _refresh_ollie_height_label(v: float) -> void:
+	var row := _body.get_node_or_null("OllieHeightRow/Value") as Label if _body else null
+	if row != null:
+		row.text = "%.1f u" % v
+
+
 func _on_max_speed_x_changed(v: float) -> void:
 	if _player != null:
 		_player.set("max_speed_x", v)
@@ -818,6 +908,10 @@ func _on_motion_vectors_toggled(on: bool) -> void:
 
 func _on_head_debug_toggled(on: bool) -> void:
 	DebugTools.set_show_head_debug(on)
+
+
+func _on_ollie_charge_bar_toggled(on: bool) -> void:
+	DebugTools.set_show_ollie_charge(on)
 
 
 func _on_fps_toggled(on: bool) -> void:

@@ -8,6 +8,8 @@ var available: bool = false
 var show_motion_vectors: bool = false
 ## Zone / facing box over the skater's head. Off by default.
 var show_head_debug: bool = false
+## Ollie charge bar over the skater's head. On by default while debugging.
+var show_ollie_charge: bool = true
 ## Bottom-left FPS counter. On by default while debugging.
 var show_fps: bool = true
 ## DisplayServer VSync. Mailbox when on (high-refresh friendly); off = uncapped.
@@ -15,6 +17,7 @@ var vsync_enabled: bool = true
 
 signal show_motion_vectors_changed(enabled: bool)
 signal show_head_debug_changed(enabled: bool)
+signal show_ollie_charge_changed(enabled: bool)
 signal show_fps_changed(enabled: bool)
 signal vsync_changed(enabled: bool)
 
@@ -54,6 +57,15 @@ func set_show_head_debug(on: bool) -> void:
 		return
 	show_head_debug = on
 	show_head_debug_changed.emit(show_head_debug)
+
+
+func set_show_ollie_charge(on: bool) -> void:
+	if not available:
+		on = false
+	if show_ollie_charge == on:
+		return
+	show_ollie_charge = on
+	show_ollie_charge_changed.emit(show_ollie_charge)
 
 
 func set_show_fps(on: bool) -> void:

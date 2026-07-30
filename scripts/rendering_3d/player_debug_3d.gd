@@ -8,9 +8,16 @@ extends Node3D
 @export var min_length: float = 0.18
 @export var max_length: float = 0.90
 @export var head_offset: Vector3 = Vector3(0.0, 0.52, 0.0)
+@export var charge_bar_offset: Vector3 = Vector3(0.0, 0.72, 0.0)
+@export var charge_bar_width: float = 0.42
+@export var charge_bar_height: float = 0.05
 
 var _player: Node
 var _head: Label3D
+var _charge_root: Node3D
+var _charge_bg: MeshInstance3D
+var _charge_fill: MeshInstance3D
+var _charge_label: Label3D
 var _arrows: Dictionary = {}
 
 
@@ -33,9 +40,62 @@ func _ready() -> void:
 	_head.visible = false
 	add_child(_head)
 
+	_setup_charge_bar()
+
 	_spawn_arrow(MotionVectors.Kind.ACTUAL, Vector3(-12, 48, 0), MotionVectors.debug_color(MotionVectors.Kind.ACTUAL))
 	_spawn_arrow(MotionVectors.Kind.MOMENTUM, Vector3(12, 48, 0), MotionVectors.debug_color(MotionVectors.Kind.MOMENTUM))
 	_spawn_arrow(MotionVectors.Kind.INPUT, Vector3(0, 58, 0), MotionVectors.debug_color(MotionVectors.Kind.INPUT))
+
+
+func _setup_charge_bar() -> void:
+	_charge_root = Node3D.new()
+	_charge_root.name = "OllieChargeBar"
+	_charge_root.position = charge_bar_offset
+	add_child(_charge_root)
+
+	_charge_bg = MeshInstance3D.new()
+	_charge_bg.name = "ChargeBg"
+	_charge_bg.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_charge_bg.mesh = _quad_mesh(charge_bar_width, charge_bar_height)
+	var bg_mat := StandardMaterial3D.new()
+	bg_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	bg_mat.albedo_color = Color(0.08, 0.1, 0.14, 0.85)
+	bg_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	bg_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	bg_mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	_charge_bg.material_override = bg_mat
+	_charge_root.add_child(_charge_bg)
+
+	_charge_fill = MeshInstance3D.new()
+	_charge_fill.name = "ChargeFill"
+	_charge_fill.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_charge_fill.mesh = _quad_mesh(charge_bar_width, charge_bar_height)
+	var fill_mat := StandardMaterial3D.new()
+	fill_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	fill_mat.albedo_color = Color(0.95, 0.72, 0.18, 0.95)
+	fill_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	fill_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	fill_mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
+	_charge_fill.material_override = fill_mat
+	_charge_root.add_child(_charge_fill)
+
+	_charge_label = Label3D.new()
+	_charge_label.name = "ChargeLabel"
+	_charge_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	_charge_label.font_size = 28
+	_charge_label.modulate = Color(0.98, 0.95, 0.85, 1)
+	_charge_label.outline_size = 4
+	_charge_label.outline_modulate = Color(0, 0, 0, 0.7)
+	_charge_label.position = Vector3(0.0, charge_bar_height + 0.04, 0.0)
+	_charge_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_charge_root.add_child(_charge_label)
+	_charge_root.visible = false
+
+
+func _quad_mesh(w: float, h: float) -> QuadMesh:
+	var q := QuadMesh.new()
+	q.size = Vector2(w, h)
+	return q
 
 
 func _spawn_arrow(kind: MotionVectors.Kind, offset: Vector3, color: Color) -> void:
@@ -78,6 +138,7 @@ func _process(_delta: float) -> void:
 	scale = Vector3.ONE
 
 	_update_head()
+	_update_charge_bar()
 	_update_arrows()
 
 
@@ -86,6 +147,26 @@ func _update_head() -> void:
 	_head.visible = on
 	if on and _player.has_method("zone_debug_label"):
 		_head.text = str(_player.call("zone_debug_label"))
+
+
+func _update_charge_bar() -> void:
+	if _charge_root == null:
+		return
+	var on := DebugTools.show_ollie_charge
+	if not on or not _player.has_method("ollie_charge_frac"):
+		_charge_root.visible = false
+		return
+	_charge_root.visible = true
+	var frac := clampf(float(_player.call("ollie_charge_frac")), 0.0, 1.0)
+	_charge_fill.scale = Vector3(maxf(frac, 0.001), 1.0, 1.0)
+	# Grow fill from the left edge of the background.
+	_charge_fill.position.x = -0.5 * charge_bar_width * (1.0 - frac)
+	_charge_label.text = "%d%%" % int(round(frac * 100.0))
+	_charge_fill.visible = frac > 0.001
+	if frac <= 0.001:
+		_charge_fill.scale = Vector3(0.001, 1.0, 1.0)
+		_charge_fill.position.x = -0.5 * charge_bar_width
+		_charge_fill.visible = false
 
 
 func _update_arrows() -> void:

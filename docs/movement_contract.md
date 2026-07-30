@@ -152,7 +152,7 @@ Wall faces are one-sided. Riding off a deck through its backing wall enters ordi
 | Intent | Condition |
 |--------|-----------|
 | Move | Stick → wish in XZ / along-surface |
-| Ollie | Hold `ollie`: mild accel toward `max_speed` in **facing** direction; skipped while stick brakes opposite |
+| Ollie | Hold `ollie`: mild accel toward `max_speed` in **facing** direction; skipped while stick brakes opposite. Release pops to peak height `charge_frac × ollie_height` (level units; charge over `ollie_charge_ms`, capped at 100%) via `v = √(2|g|h)`. Works grounded or airborne; gravity applies next. Presentation keeps pre-takeoff surface lean while airborne. |
 | Fly-out / deck-out | X-dominant outward stick (−X left pipe / +X right pipe) while rising in `FLY_OUT_ABOVE` on `OPEN` / `SHARED_SPINE` or while air-out. Cross-story wall tops gate height on the connected upper lip, but outward stick stays with the source pipe that climbed the wall. |
 | Spine | Explicit action while rising/apex; dest opposite-facing; traveler outward of dest coping |
 | Acid | Explicit action while descending; classic opposite wall, or deck drop-in onto abutting pipe from its outward side |

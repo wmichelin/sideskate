@@ -17,6 +17,9 @@ func run() -> bool:
 		and _supports_sorted_high_to_low()
 		and _pipe_along_wish_and_lip_exit()
 		and _ollie_faces_direction()
+		and _ollie_jump_charge_scales_impulse()
+		and _ollie_jump_caps_at_full_charge()
+		and _ollie_jump_airborne_adds_impulse()
 		and _coast_with_zero_friction()
 		and _air_no_x_friction()
 		and _wall_extension_climbs()
@@ -649,6 +652,117 @@ func _ollie_faces_direction() -> bool:
 			break
 	if sim.state.tangent_velocity.x >= -10.0:
 		push_error("ollie facing-l should accelerate -X, tv=%s" % sim.state.tangent_velocity)
+		return false
+	return true
+
+
+func _ollie_jump_charge_scales_impulse() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_halfpipe.ssk"):
+		push_error("setup ollie jump scale")
+		return false
+	sim.ollie_accel = 0.0
+	sim.ollie_charge_ms = 500.0
+	sim.ollie_height = 40.0
+	sim.state.tangent_velocity = Vector2.ZERO
+	var h0 := sim.state.position.z
+	# Hold for half the charge window (15 frames @ 60Hz ≈ 250ms).
+	for _i in range(15):
+		sim.set_input(Vector2.ZERO, false, false, true, false)
+		sim.tick()
+	if absf(sim.ollie_charge - 0.5) > 0.05:
+		push_error("expected ~50%% charge, got %s" % sim.ollie_charge)
+		return false
+	sim.set_input(Vector2.ZERO, false, false, false, true)
+	sim.tick()
+	if not sim.state.is_airborne():
+		push_error("partial ollie should leave ground")
+		return false
+	# 50% of 40u → peak ~20u; after one tick should still be rising above pad.
+	if sim.state.velocity.z <= 0.0:
+		push_error("partial ollie should still be rising, vh=%s" % sim.state.velocity.z)
+		return false
+	if sim.state.position.z <= h0 + 0.5:
+		push_error(
+			"partial ollie should lift off pad (h0=%s h=%s)" % [h0, sim.state.position.z]
+		)
+		return false
+	return true
+
+
+func _ollie_jump_caps_at_full_charge() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_halfpipe.ssk"):
+		push_error("setup ollie jump cap")
+		return false
+	sim.ollie_accel = 0.0
+	sim.ollie_charge_ms = 200.0
+	sim.ollie_height = 40.0
+	sim.state.tangent_velocity = Vector2.ZERO
+	var h0 := sim.state.position.z
+	# Hold well past full charge.
+	for _i in range(60):
+		sim.set_input(Vector2.ZERO, false, false, true, false)
+		sim.tick()
+	if sim.ollie_charge < 0.999:
+		push_error("overhold should stay capped at 100%%, got %s" % sim.ollie_charge)
+		return false
+	sim.set_input(Vector2.ZERO, false, false, false, true)
+	sim.tick()
+	if not sim.state.is_airborne():
+		push_error("full ollie should leave ground")
+		return false
+	var expected_v := sqrt(2.0 * absf(SimTolerances.GRAVITY) * 40.0) \
+			+ SimTolerances.GRAVITY * SimTolerances.FIXED_DT
+	if absf(sim.state.velocity.z - expected_v) > 5.0:
+		push_error(
+			"full ollie vh expected ~%s got %s" % [expected_v, sim.state.velocity.z]
+		)
+		return false
+	# Climb toward peak over a few ticks.
+	var peak := h0
+	for _i in range(90):
+		sim.set_input(Vector2.ZERO, false, false, false, false)
+		sim.tick()
+		peak = maxf(peak, sim.state.position.z)
+		if sim.state.velocity.z <= 0.0 and sim.state.position.z < peak - 0.1:
+			break
+	if peak < h0 + 30.0:
+		push_error("full ollie peak too low: h0=%s peak=%s" % [h0, peak])
+		return false
+	return true
+
+
+func _ollie_jump_airborne_adds_impulse() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_halfpipe.ssk"):
+		push_error("setup ollie air jump")
+		return false
+	sim.ollie_accel = 0.0
+	sim.ollie_charge_ms = 0.0
+	sim.ollie_height = 40.0
+	# Seed free air with zero vertical, high enough not to remount.
+	sim.state.mode = SimState.Mode.AIRBORNE
+	sim.state.surface_id = ""
+	sim.state.tangent_velocity = Vector2.ZERO
+	sim.state.velocity = Vector3(0.0, 0.0, 0.0)
+	sim.state.clear_hang()
+	sim.state.position.z = 80.0
+	sim.set_input(Vector2.ZERO, false, false, true, false)
+	sim.tick()
+	if sim.ollie_charge < 0.999:
+		push_error("0ms charge should be instantly full while held")
+		return false
+	var before := sim.state.velocity.z
+	sim.set_input(Vector2.ZERO, false, false, false, true)
+	sim.tick()
+	var add := sqrt(2.0 * absf(SimTolerances.GRAVITY) * 40.0)
+	var expected := before + add + SimTolerances.GRAVITY * SimTolerances.FIXED_DT
+	if absf(sim.state.velocity.z - expected) > 5.0:
+		push_error(
+			"air ollie vh expected ~%s got %s (before=%s)"
+			% [expected, sim.state.velocity.z, before]
+		)
 		return false
 	return true
 

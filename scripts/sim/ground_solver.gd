@@ -575,6 +575,41 @@ func _enter_air(state: SimState, world_vel: Vector3, hang_edge_id: String = "") 
 		state.begin_hang(hang_edge_id)
 
 
+## Leave grounded contact into free air, preserving world XZ speed and adding
+## height impulse (sim +Z). Used by charge-release ollie jump.
+func launch_height_impulse(state: SimState, height_impulse: float) -> void:
+	if state == null or not state.alive or not state.is_grounded():
+		return
+	var world := _grounded_world_velocity(state)
+	world.z += height_impulse
+	_enter_air(state, world, "")
+
+
+func _grounded_world_velocity(state: SimState) -> Vector3:
+	var along := state.tangent_velocity.x
+	var depth := state.tangent_velocity.y
+	if model.patches.has(state.surface_id):
+		return Vector3(along, depth, 0.0)
+	if model.walls.has(state.surface_id):
+		# Wall along-speed is already world height.
+		return Vector3(0.0, depth, along)
+	if model.pipes.has(state.surface_id):
+		var pipe: PipeSurface = model.pipes[state.surface_id]
+		var proj := pipe.project(state.position.x, state.position.y, state.position.z)
+		if bool(proj.get("ok", false)):
+			var t: Vector3 = proj.tangent_along
+			return Vector3(t.x * along, depth, t.z * along)
+		return Vector3(along * pipe.outward_sign(), depth, 0.0)
+	if model.ramps.has(state.surface_id):
+		var ramp: RampSurface = model.ramps[state.surface_id]
+		var rproj := ramp.project(state.position.x, state.position.y, state.position.z)
+		if bool(rproj.get("ok", false)):
+			var rt: Vector3 = rproj.tangent_along
+			return Vector3(rt.x * along, depth, rt.z * along)
+		return Vector3(along * ramp.outward_sign(), depth, 0.0)
+	return Vector3(along, depth, 0.0)
+
+
 ## Keep pipe depth inside both the pipe loft and the park AABB (inset from faces).
 func _clamp_world_depth(pipe: PipeSurface, z: float) -> float:
 	return _clamp_world_depth_slope(pipe, z)

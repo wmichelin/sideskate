@@ -13,12 +13,19 @@ var accel: float = 3250.0
 var max_speed: float = 880.0
 var max_speed_z: float = 400.0
 var ollie_accel: float = 650.0
+## Full-charge hold time in milliseconds (0 = instantly full while held).
+var ollie_charge_ms: float = 250.0
+## Peak ollie height at 100% charge (level units). Converted to up-speed via gravity.
+var ollie_height: float = 100.0
 var brake: float = 1250.0
 var friction: float = 0.0
 var ramp_friction: float = 0.0
 var last_wish: Vector2 = Vector2.ZERO
 var action_just: bool = false
 var ollie_pressed: bool = false
+var ollie_just_released: bool = false
+## Current charge fraction in [0, 1], updated on physics ticks.
+var ollie_charge: float = 0.0
 var debug: SimDebugSnapshot
 var trace: SimTrace
 ## Safe floor/deck pose history for lava respawn. Oldest sample in the window
@@ -60,10 +67,17 @@ func _finish_setup() -> bool:
 	return true
 
 
-func set_input(wish: Vector2, _action_down: bool, action_edge: bool, ollie_down: bool = false) -> void:
+func set_input(
+	wish: Vector2,
+	_action_down: bool,
+	action_edge: bool,
+	ollie_down: bool = false,
+	ollie_released: bool = false,
+) -> void:
 	last_wish = wish
 	action_just = action_edge
 	ollie_pressed = ollie_down
+	ollie_just_released = ollie_released
 
 
 func tick(delta: float = SimTolerances.FIXED_DT) -> void:
@@ -71,6 +85,8 @@ func tick(delta: float = SimTolerances.FIXED_DT) -> void:
 		return
 	var previous_surface_id := state.surface_id
 	state.tick += 1
+	_update_ollie_charge(delta)
+	_try_ollie_jump()
 	_try_actions()
 	var planned_surface_change := state.has_maneuver()
 	if state.is_grounded():
@@ -96,6 +112,52 @@ func tick(delta: float = SimTolerances.FIXED_DT) -> void:
 	debug.capture(state, model, query)
 	trace.record(state, last_wish, action_just)
 	action_just = false
+	ollie_just_released = false
+
+
+func _update_ollie_charge(delta: float) -> void:
+	if ollie_just_released:
+		return
+	if not ollie_pressed:
+		ollie_charge = 0.0
+		return
+	if ollie_charge_ms <= 0.0:
+		ollie_charge = 1.0
+		return
+	ollie_charge = minf(1.0, ollie_charge + (delta * 1000.0) / ollie_charge_ms)
+
+
+func _try_ollie_jump() -> void:
+	if not ollie_just_released:
+		return
+	var frac := ollie_charge
+	ollie_charge = 0.0
+	var height := frac * ollie_height
+	if height <= 0.0:
+		return
+	_apply_height_impulse(_up_speed_for_height(height))
+
+
+## Ballistic peak height → initial up-speed under current gravity: v = √(2|g|h).
+func _up_speed_for_height(height: float) -> float:
+	var g := absf(SimTolerances.GRAVITY)
+	if height <= 0.0 or g < 0.001:
+		return 0.0
+	return sqrt(2.0 * g * height)
+
+
+func _apply_height_impulse(up_speed: float) -> void:
+	if state == null or not state.alive or up_speed <= 0.0:
+		return
+	if state.is_grounded():
+		ground.launch_height_impulse(state, up_speed)
+		return
+	# Airborne (free or hang): add upward speed and drop hang/maneuver lock.
+	state.maneuver = null
+	if state.is_hanging():
+		state.clear_hang()
+	state.velocity.z += up_speed
+	state.note_air_height(state.position.z)
 
 
 ## Grounded contact with any lethal pad kills (floor polys may still cover the

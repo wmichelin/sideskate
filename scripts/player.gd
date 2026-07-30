@@ -14,6 +14,8 @@ const BODY_CYLINDER_H_M := 0.22
 @export var max_speed_x: float = 880.0
 @export var max_speed_z: float = 400.0
 @export var ollie_accel: float = 650.0
+@export_range(0.0, 5000.0, 1.0) var ollie_charge_ms: float = 250.0
+@export_range(0.0, 200.0, 0.1) var ollie_height: float = 100.0
 @export var brake: float = 1250.0
 @export var friction: float = 0.0
 @export var ramp_friction: float = 0.0
@@ -39,6 +41,8 @@ var _pose_snap_ready: bool = false
 var _model_hash: String = ""
 var _death_busy: bool = false
 var _last_wish: Vector2 = Vector2.ZERO
+## Last grounded pipe/wall lean — kept while airborne so ollie doesn't snap upright.
+var _carry_tilt: float = 0.0
 
 
 func _ready() -> void:
@@ -116,8 +120,9 @@ func _physics_process(delta: float) -> void:
 	var action_down := Input.is_action_pressed("transfer")
 	var action_edge := Input.is_action_just_pressed("transfer")
 	var ollie_down := Input.is_action_pressed("ollie")
+	var ollie_released := Input.is_action_just_released("ollie")
 	_sync_tuning_to_sim()
-	_sim.set_input(wish, action_down, action_edge, ollie_down)
+	_sim.set_input(wish, action_down, action_edge, ollie_down, ollie_released)
 	_sim.tick(delta)
 	_sync_from_sim()
 	_capture_pose_snapshots()
@@ -132,6 +137,8 @@ func _sync_tuning_to_sim() -> void:
 	_sim.max_speed = max_speed_x
 	_sim.max_speed_z = max_speed_z
 	_sim.ollie_accel = ollie_accel
+	_sim.ollie_charge_ms = ollie_charge_ms
+	_sim.ollie_height = ollie_height
 	_sim.brake = brake
 	_sim.friction = friction
 	_sim.ramp_friction = ramp_friction
@@ -174,14 +181,27 @@ func _sync_from_sim() -> void:
 					hang_pipe = _sim.model.pipes.get(hang_wall.source_pipe_id) as PipeSurface
 		if hang_pipe != null:
 			tilt = -hang_pipe.outward_sign() * (PI * 0.5)
+			_carry_tilt = tilt
 	elif st.is_grounded() and _sim.model.walls.has(st.surface_id):
 		var wall: WallSurface = _sim.model.walls[st.surface_id]
 		var wall_pipe: PipeSurface = _sim.model.pipes[wall.source_pipe_id]
 		tilt = -wall_pipe.outward_sign() * (PI * 0.5)
+		_carry_tilt = tilt
 	elif st.is_grounded() and _sim.model.pipes.has(st.surface_id):
 		var pipe: PipeSurface = _sim.model.pipes[st.surface_id]
 		var th := st.u * (PI * 0.5)
 		tilt = -pipe.outward_sign() * th
+		_carry_tilt = tilt
+	elif st.is_grounded() and _sim.model.ramps.has(st.surface_id):
+		var ramp: RampSurface = _sim.model.ramps[st.surface_id]
+		# Match pipe lean along incline (u∈[0,1] → 0…45° at full rise).
+		tilt = -ramp.outward_sign() * (st.u * PI * 0.25)
+		_carry_tilt = tilt
+	elif st.is_airborne():
+		# Keep pre-ollie pipe/ramp lean — free air must not snap upright.
+		tilt = _carry_tilt
+	else:
+		_carry_tilt = 0.0
 	var support_h := p.z
 	if st.is_hanging():
 		var support_edge: TopologyEdge = _sim.model.edges.get(st.hang_edge_id)
@@ -263,6 +283,7 @@ func _on_death_finished() -> void:
 	if _sim != null:
 		_sim.respawn()
 	_death_busy = false
+	_carry_tilt = 0.0
 	_sync_from_sim()
 	_capture_pose_snapshots()
 
@@ -290,6 +311,12 @@ func zone_debug_label() -> String:
 			return "air %s" % (st.maneuver as ManeuverPlan).kind_name()
 		return "air"
 	return "gnd %s" % st.surface_id
+
+
+func ollie_charge_frac() -> float:
+	if _sim == null:
+		return 0.0
+	return clampf(_sim.ollie_charge, 0.0, 1.0)
 
 
 func next_facing_coping_debug() -> String:
