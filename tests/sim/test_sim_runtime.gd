@@ -21,6 +21,8 @@ func run() -> bool:
 		and _ollie_jump_caps_at_full_charge()
 		and _ollie_jump_airborne_adds_impulse()
 		and _ollie_single_charge_replenishes_on_ground()
+		and _ollie_on_pipe_pops_world_up_not_along_tangent()
+		and _ollie_on_pipe_lip_enters_hang()
 		and _coast_with_zero_friction()
 		and _air_no_x_friction()
 		and _wall_extension_climbs()
@@ -838,6 +840,114 @@ func _ollie_single_charge_replenishes_on_ground() -> bool:
 		return false
 	if not sim.ollie_available:
 		push_error("ground contact should replenish ollie charge")
+		return false
+	return true
+
+
+func _ollie_on_pipe_pops_world_up_not_along_tangent() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_halfpipe.ssk"):
+		push_error("setup ollie pipe pop")
+		return false
+	sim.ollie_accel = 0.0
+	sim.ollie_charge_ms = 0.0
+	sim.ollie_height = 40.0
+	var pipe := _left_pipe(sim.model)
+	if pipe == null:
+		push_error("missing left pipe")
+		return false
+	# Mid-transition with strong along-toward-coping — old launch converted this
+	# into a free-air slope exit (vh ≈ along*t.z + ollie).
+	var z := (pipe.z_min + pipe.z_max) * 0.5
+	var u := 0.45
+	var th := u * PI * 0.5
+	var along := 500.0
+	sim.state.mode = SimState.Mode.GROUNDED
+	sim.state.surface_id = pipe.id
+	sim.state.u = u
+	sim.state.v = 0.5
+	sim.state.tangent_velocity = Vector2(along, 0.0)
+	sim.state.position = Vector3(pipe.x_at_theta(z, th), z, pipe.height_at_theta(z, th))
+	sim.ollie_available = true
+	var proj := pipe.project(sim.state.position.x, sim.state.position.y, sim.state.position.z)
+	if not bool(proj.get("ok", false)):
+		push_error("pipe project failed")
+		return false
+	var t: Vector3 = proj.tangent_along
+	var old_launch_vh := t.z * along + sqrt(2.0 * absf(SimTolerances.GRAVITY) * 40.0)
+	sim.set_input(Vector2.ZERO, false, false, true, false)
+	sim.tick()
+	sim.set_input(Vector2.ZERO, false, false, false, true)
+	sim.tick()
+	if not sim.state.is_airborne():
+		push_error("pipe ollie should leave the surface")
+		return false
+	var expected_vh := sqrt(2.0 * absf(SimTolerances.GRAVITY) * 40.0) \
+			+ SimTolerances.GRAVITY * SimTolerances.FIXED_DT
+	if absf(sim.state.velocity.z - expected_vh) > 8.0:
+		push_error(
+			"pipe ollie should pop world-up (~%s), not along-tangent launch (~%s); got %s"
+			% [expected_vh, old_launch_vh + SimTolerances.GRAVITY * SimTolerances.FIXED_DT, sim.state.velocity.z]
+		)
+		return false
+	# Horizontal carry may keep t.x*along (air step can nudge slightly).
+	if absf(sim.state.velocity.x - t.x * along) > 20.0:
+		push_error(
+			"pipe ollie vx should be ride X carry only, got %s vs t.x*along %s"
+			% [sim.state.velocity.x, t.x * along]
+		)
+		return false
+	return true
+
+
+func _ollie_on_pipe_lip_enters_hang() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_halfpipe.ssk"):
+		push_error("setup ollie lip hang")
+		return false
+	sim.ollie_accel = 0.0
+	sim.ollie_charge_ms = 0.0
+	sim.ollie_height = 40.0
+	sim.ollie_lip_frac = 0.15
+	var pipe := _left_pipe(sim.model)
+	if pipe == null:
+		push_error("missing left pipe")
+		return false
+	var z := (pipe.z_min + pipe.z_max) * 0.5
+	var u := 0.92
+	var th := u * PI * 0.5
+	sim.state.mode = SimState.Mode.GROUNDED
+	sim.state.surface_id = pipe.id
+	sim.state.u = u
+	sim.state.v = 0.5
+	sim.state.tangent_velocity = Vector2(200.0, 0.0)
+	sim.state.position = Vector3(pipe.x_at_theta(z, th), z, pipe.height_at_theta(z, th))
+	sim.ollie_available = true
+	# Instant full meter without an extra grounded physics tick (along would decay).
+	sim.ollie_charge = 1.0
+	sim.set_input(Vector2.ZERO, false, false, false, true)
+	sim.tick()
+	if not sim.state.is_airborne():
+		push_error("lip ollie should leave the pipe")
+		return false
+	if not sim.state.is_hanging():
+		push_error("lip ollie should X-lock into hang air")
+		return false
+	if absf(sim.state.velocity.x) > 0.01:
+		push_error("hang ollie must lock vx, got %s" % sim.state.velocity.x)
+		return false
+	var expected_vh := 200.0 + sqrt(2.0 * absf(SimTolerances.GRAVITY) * 40.0) \
+			+ SimTolerances.GRAVITY * SimTolerances.FIXED_DT
+	if absf(sim.state.velocity.z - expected_vh) > 10.0:
+		push_error(
+			"lip hang vh expected ~%s (along+ollie) got %s" % [expected_vh, sim.state.velocity.z]
+		)
+		return false
+	var lock_x := pipe.coping_x_at(z)
+	if absf(sim.state.position.x - lock_x) > 1.0:
+		push_error(
+			"lip hang should sit on coping x=%s got %s" % [lock_x, sim.state.position.x]
+		)
 		return false
 	return true
 

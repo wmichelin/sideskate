@@ -16,6 +16,8 @@ const BODY_CYLINDER_H_M := 0.22
 @export var ollie_accel: float = 650.0
 @export_range(0.0, 5000.0, 1.0) var ollie_charge_ms: float = 250.0
 @export_range(0.0, 200.0, 0.1) var ollie_height: float = 100.0
+## Upper pipe/ramp fraction from the lip that X-locks ollie into hang air (0.15 = top 15%).
+@export_range(0.0, 1.0, 0.01) var ollie_lip_frac: float = 0.15
 @export var brake: float = 1250.0
 @export var friction: float = 0.0
 @export var ramp_friction: float = 0.0
@@ -139,6 +141,7 @@ func _sync_tuning_to_sim() -> void:
 	_sim.ollie_accel = ollie_accel
 	_sim.ollie_charge_ms = ollie_charge_ms
 	_sim.ollie_height = ollie_height
+	_sim.ollie_lip_frac = ollie_lip_frac
 	_sim.brake = brake
 	_sim.friction = friction
 	_sim.ramp_friction = ramp_friction

@@ -295,6 +295,20 @@ func _setup_ollie_jump_sliders() -> void:
 		_refresh_ollie_height_label
 	)
 	impulse_row["slider"].focus_mode = Control.FOCUS_NONE
+	var lip_row := _make_slider_row(
+		"OllieLipFracRow", "ollie lip", impulse_row["row"].get_index() + 1
+	)
+	var lip_slider: HSlider = lip_row["slider"]
+	lip_slider.min_value = 0.0
+	lip_slider.max_value = 100.0
+	lip_slider.step = 1.0
+	var lip_pct := 15.0
+	if _player != null and _player.get("ollie_lip_frac") != null:
+		lip_pct = float(_player.get("ollie_lip_frac")) * 100.0
+	lip_slider.value = lip_pct
+	lip_slider.value_changed.connect(_on_ollie_lip_pct_changed)
+	_refresh_ollie_lip_pct_label(lip_pct)
+	lip_slider.focus_mode = Control.FOCUS_NONE
 
 
 func _setup_ollie_charge_toggle() -> void:
@@ -714,6 +728,18 @@ func _refresh_ollie_height_label(v: float) -> void:
 	var row := _body.get_node_or_null("OllieHeightRow/Value") as Label if _body else null
 	if row != null:
 		row.text = "%.1f u" % v
+
+
+func _on_ollie_lip_pct_changed(v: float) -> void:
+	if _player != null:
+		_player.set("ollie_lip_frac", v / 100.0)
+	_refresh_ollie_lip_pct_label(v)
+
+
+func _refresh_ollie_lip_pct_label(v: float) -> void:
+	var row := _body.get_node_or_null("OllieLipFracRow/Value") as Label if _body else null
+	if row != null:
+		row.text = "top %.0f%%" % v
 
 
 func _on_max_speed_x_changed(v: float) -> void:

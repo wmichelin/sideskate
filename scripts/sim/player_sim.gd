@@ -17,6 +17,9 @@ var ollie_accel: float = 650.0
 var ollie_charge_ms: float = 250.0
 ## Peak ollie height at 100% charge (level units). Converted to up-speed via gravity.
 var ollie_height: float = 100.0
+## Upper pipe/ramp band (fraction of u from the lip) where ollie enters X-locked hang air.
+## 0.15 = top 15% of the transition (u ≥ 0.85).
+var ollie_lip_frac: float = 0.15
 var brake: float = 1250.0
 var friction: float = 0.0
 var ramp_friction: float = 0.0
@@ -166,11 +169,11 @@ func _apply_height_impulse(up_speed: float) -> void:
 	if state == null or not state.alive or up_speed <= 0.0:
 		return
 	if state.is_grounded():
-		ground.launch_height_impulse(state, up_speed)
+		ground.launch_height_impulse(state, up_speed, ollie_lip_frac)
 		return
-	# Airborne (free or hang): add upward speed and drop hang/maneuver lock.
+	# Airborne free air: add upward speed. Hang already is X-locked air — just pop.
 	state.maneuver = null
-	if state.is_hanging():
+	if not state.is_hanging():
 		state.clear_hang()
 	state.velocity.z += up_speed
 	state.note_air_height(state.position.z)

@@ -44,7 +44,7 @@ Stick → wish. Per axis:
 
 **Facing** `l`/`r`: follows world X speed when X-dominant. Spawn from `spawn_facing`.
 
-**Ollie** (Space): hold for mild facing accel (skipped while stick brakes opposite) and to charge a jump **while grounded**; release pops up to charge% × `ollie_height` level units (tunable charge time / height). One jump charge — spent on release, restored when grounded on any surface. Air keeps pre-takeoff pipe/ramp lean (no upright snap).
+**Ollie** (Space): hold for mild facing accel (skipped while stick brakes opposite) and to charge a jump **while grounded**; release pops up to charge% × `ollie_height` level units (tunable charge time / height). One jump charge — spent on release, restored when grounded on any surface. Upper pipe/ramp band (`ollie lip` slider, default top 15%) X-locks into hang air. Air keeps pre-takeoff pipe/ramp lean (no upright snap).
 
 **Pipe:** UV along-arc (+along = toward coping), always `u∈[0,1]`; gravity projects onto the tangent. A compiled seam enters a separate `WallSurface`, whose own `u∈[0,1]` runs bottom→top.
 
@@ -94,7 +94,7 @@ Gated by autoload `DebugTools` (`OS.is_debug_build()` or export feature `debug_t
 |-------|------|
 | Head arrows | INPUT / MOMENTUM / ACTUAL |
 | Overlay | Zone / surface / next coping candidate |
-| TUNING sliders | Gravity, fly-out window, apex turn duration, depth-turn angle, spine/acid cast cells, ollie accel / charge ms / height, ollie charge bar, speeds, accel, brake, friction, cell size, camera |
+| TUNING sliders | Gravity, fly-out window, apex turn duration, depth-turn angle, spine/acid cast cells, ollie accel / charge ms / height / lip %, ollie charge bar, speeds, accel, brake, friction, cell size, camera |
 | Cell / facing cast / edge lattice | Presentation-only highlight |
 
 Tunable sim values sync into `SimTolerances` / `PlayerSim` each physics tick. Cast-cell highlight distance is debug draw only (not a separate gameplay path).
