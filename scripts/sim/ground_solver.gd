@@ -361,10 +361,8 @@ func _step_ramp(
 		push_error("GroundSolver: missing coping edge for %s at z=%.2f" % [ramp.id, new_z])
 		state.tangent_velocity.x = minf(state.tangent_velocity.x, 0.0)
 		return
-	if model.patches.has(edge.to_surface_id):
-		_mount_patch_from_edge(state, ramp, model.patches[edge.to_surface_id], new_z)
-		return
-	# Open peak: free-air launch along the incline tangent — never hang / X-lock.
+	# Peak leave is always free-air along the incline tangent — never seam onto
+	# an abutting deck/floor (that felt like sticky mounting) and never hang.
 	if state.tangent_velocity.x > 1.0:
 		_launch_from_ramp_peak(state, ramp, new_z)
 	else:
@@ -377,7 +375,9 @@ func _launch_from_ramp_peak(state: SimState, ramp: RampSurface, z: float) -> voi
 	var world_vx := along * ramp.outward_sign() * inv
 	var world_vh := along * inv
 	var world_vz := state.tangent_velocity.y
-	state.position = Vector3(ramp.coping_x_at(z), z, ramp.height_at_theta(z, PI * 0.5))
+	# Nudge past the coping so feet clear the peak before ballistic flight.
+	var peak_x := ramp.coping_x_at(z) + ramp.outward_sign() * SimTolerances.CAPSULE_RADIUS
+	state.position = Vector3(peak_x, z, ramp.height_at_theta(z, PI * 0.5))
 	_enter_air(state, Vector3(world_vx, world_vz, world_vh), "")
 
 

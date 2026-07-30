@@ -367,25 +367,19 @@ static func _classify_coping_at(
 			best_patch = patch
 	if best_patch != null:
 		if best_patch.kind == SimKinds.SurfaceKind.DECK:
-			var deck_dh := best_patch.height - ch
-			# Ramp peaks seam onto an abutting same-height deck (no hang / X-lock).
-			if not cope.allows_hang and absf(deck_dh) <= SimTolerances.SEAM_EPS:
-				desc = {
-					"class": SimKinds.CopingClass.SUPPORT_SEAM,
-					"support_patch_id": best_patch.id,
-				}
-			else:
-				desc = {
-					"class": SimKinds.CopingClass.OPEN,
-					"outward_deck_id": best_patch.id,
-				}
+			desc = {
+				"class": SimKinds.CopingClass.OPEN,
+				"outward_deck_id": best_patch.id,
+			}
 		else:
 			var dh := best_patch.height - ch
 			if absf(dh) <= SimTolerances.SEAM_EPS:
-				desc = {
-					"class": SimKinds.CopingClass.SUPPORT_SEAM,
-					"support_patch_id": best_patch.id,
-				}
+				# Ramp peaks never seam onto flats — always free-air launch.
+				if cope.allows_hang:
+					desc = {
+						"class": SimKinds.CopingClass.SUPPORT_SEAM,
+						"support_patch_id": best_patch.id,
+					}
 			elif dh > SimTolerances.SEAM_EPS:
 				# Ramps never grow wall extensions — open peak / free-air only.
 				if cope.allows_hang:
