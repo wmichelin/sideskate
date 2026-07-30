@@ -43,6 +43,7 @@ func run() -> bool:
 		and _l0_lava_gap_no_phantom_wall_climb()
 		and _lava_grounded_contact_kills()
 		and _respawn_at_prior_floor_or_deck()
+		and _air_transfer_hang_depth_over_lava()
 		and _deck_ride_off_falls_acid_mounts()
 		and _layered_deck_back_ride_off_stays_free()
 		and _map_edge_deck_no_void_exit()
@@ -2421,6 +2422,104 @@ func _respawn_at_prior_floor_or_deck() -> bool:
 			"respawn cp: floor pose want ~%s got %s"
 			% [spawn_floor_pos, deck_sim.state.position]
 		)
+		return false
+	return true
+
+
+## Hang depth-transfer across lava: stay X-locked, keep takeoff orientation,
+## remount the same-facing pipe on the far side of the gap.
+func _air_transfer_hang_depth_over_lava() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/air_transfer.ssk"):
+		push_error("air transfer: setup")
+		return false
+	# Spawn sits on the far bank; climb the right pipe that owns that depth.
+	var spawn_z := sim.state.position.y
+	var source: PipeSurface = null
+	for id in sim.model.pipes.keys():
+		var p: PipeSurface = sim.model.pipes[id]
+		if p.side != SimKinds.PipeSide.RIGHT:
+			continue
+		if spawn_z < p.z_min - 1.0 or spawn_z > p.z_max + 1.0:
+			continue
+		source = p
+		break
+	if source == null:
+		push_error("air transfer: no right pipe at spawn depth")
+		return false
+	_place_at_coping(sim, source, 400.0)
+	sim.state.set_facing_side("r")
+	SimTolerances.APEX_FACING_DELAY = 0.05
+	sim.set_input(Vector2.ZERO, false, false)
+	sim.tick()
+	if not sim.state.is_hanging():
+		push_error("air transfer: expected hang after coping leave")
+		return false
+	var lock_x := source.coping_x_at(sim.state.position.y)
+	var takeoff_facing := sim.state.facing
+	var takeoff_visual := sim.state.visual_facing
+	# Depth toward camera (near / −Z) crosses lava; keep rising so we stay above.
+	var saw_gap := false
+	var remounted := false
+	var dest_pipe_id := ""
+	for _i in range(240):
+		sim.set_input(Vector2(0, -1), false, false)
+		sim.tick()
+		if not sim.state.alive:
+			push_error("air transfer: died (lava?) at z=%.1f h=%.1f" % [
+				sim.state.position.y, sim.state.position.z
+			])
+			return false
+		if absf(sim.state.position.x - lock_x) > SimTolerances.ALIGN_EPS + 0.5:
+			push_error(
+				"air transfer: lost X lock got %.2f want %.2f"
+				% [sim.state.position.x, lock_x]
+			)
+			return false
+		if absf(sim.state.facing_yaw) > 0.05:
+			push_error(
+				"air transfer: orientation changed (yaw=%.3f facing=%s)"
+				% [sim.state.facing_yaw, sim.state.facing]
+			)
+			return false
+		if sim.state.facing != takeoff_facing or sim.state.visual_facing != takeoff_visual:
+			push_error(
+				"air transfer: facing flipped %s/%s → %s/%s"
+				% [takeoff_facing, takeoff_visual, sim.state.facing, sim.state.visual_facing]
+			)
+			return false
+		# Lava band on this map sits between the two pipe Z spans.
+		if sim.state.is_hanging() and sim.state.position.y < source.z_min - 1.0:
+			saw_gap = true
+			if absf(sim.state.velocity.x) > 0.01:
+				push_error("air transfer: hang over gap must keep vx=0")
+				return false
+		if sim.state.is_grounded() and sim.model.pipes.has(sim.state.surface_id):
+			var landed: PipeSurface = sim.model.pipes[sim.state.surface_id]
+			if landed.side != SimKinds.PipeSide.RIGHT:
+				push_error("air transfer: landed wrong-facing pipe")
+				return false
+			if landed.id == source.id:
+				# Still on launch span — keep going toward near bank.
+				continue
+			remounted = true
+			dest_pipe_id = landed.id
+			break
+	if not saw_gap:
+		push_error("air transfer: never left launch Z span over lava")
+		return false
+	if not remounted:
+		push_error(
+			"air transfer: never remounted far pipe (mode=%s z=%.1f hang=%s)"
+			% [
+				sim.state.mode,
+				sim.state.position.y,
+				sim.state.hang_edge_id,
+			]
+		)
+		return false
+	if dest_pipe_id == source.id:
+		push_error("air transfer: remounted launch pipe instead of far bank")
 		return false
 	return true
 
