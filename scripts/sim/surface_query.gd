@@ -180,17 +180,19 @@ func edge_anchor_sample(edge: TopologyEdge, z: float) -> Dictionary:
 	return {}
 
 
-## Copings in horizontal direction from position (layer-agnostic).
-## direction: -1 left / +1 right. Returns ranked candidate dicts.
+## Copings near position (layer-agnostic). Returns ranked candidate dicts.
+## direction: -1 left / +1 right half-plane; 0 = both ways within range (stacked
+## L1 lips share an L0 cope X — a strict ahead plane drops them at the lip).
 func copings_in_direction(
-	x: float, z: float, h: float, direction: float, max_cells: int = -1
+	x: float, z: float, h: float, direction: float = 0.0, max_cells: int = -1
 ) -> Array:
 	var out: Array = []
-	if model == null or absf(direction) < 0.001:
+	if model == null:
 		return out
 	var cells := max_cells if max_cells > 0 else SimTolerances.FACING_COPING_CELLS
 	var max_dist := float(cells) * model.cell_w + SimTolerances.ALIGN_EPS
 	var dir := signf(direction)
+	var half_plane := absf(direction) >= 0.001
 	for cid in model.all_coping_ids():
 		var cope: CopingEdge = model.copings[cid]
 		if not cope.contains_z(z):
@@ -201,13 +203,11 @@ func copings_in_direction(
 		var span := cope.span_at_z(z)
 		var cx := float(samp.coping_x)
 		var dx := cx - x
-		if dx * dir <= 0.0:
+		if half_plane and dx * dir < -SimTolerances.ALIGN_EPS:
 			continue
 		var dist := absf(dx)
 		if dist > max_dist:
 			continue
-		# Opposite facing: left pipe opens left (outward -1); want target whose
-		# inward faces the traveler. Acid wants opposite-facing.
 		out.append({
 			"coping_id": cid,
 			"coping": cope,

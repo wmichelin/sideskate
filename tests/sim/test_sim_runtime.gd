@@ -65,6 +65,7 @@ func run() -> bool:
 		and _hang_depth_transfer_lands_edge_lava()
 		and _deck_ride_off_falls_acid_mounts()
 		and _right_pipe_deck_slow_leave_lands_floor()
+		and _layered_next_spine_keeps_l1_past_l0_lip()
 		and _layered_deck_back_ride_off_stays_free()
 		and _map_edge_deck_no_void_exit()
 		and _layered_outer_coping_seam_stays_anchored()
@@ -3822,6 +3823,46 @@ func _deck_ride_off_falls_acid_mounts() -> bool:
 			return true
 		if not sim.state.alive:
 			return true
+	return true
+
+
+## Facing left on L0 left pipe: stacked L1 right lip stays next-spine after the
+## shared cope X (strict ahead half-plane used to drop dist=0 / behind targets).
+func _layered_next_spine_keeps_l1_past_l0_lip() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
+		push_error("next spine: setup")
+		return false
+	var left: PipeSurface = sim.model.pipes.get("pipe_2_L0_S0")
+	if left == null:
+		push_error("next spine: missing pipe_2_L0_S0")
+		return false
+	var z := 1700.0
+	var cx := left.coping_x_at(z)
+	var ch := left.height_at_theta(z, PI * 0.5)
+	sim.state.mode = SimState.Mode.GROUNDED
+	sim.state.surface_id = left.id
+	sim.state.u = 1.0
+	sim.state.position = Vector3(cx, z, ch)
+	sim.state.tangent_velocity = Vector2(300.0, 0.0)
+	sim.state.set_facing_side("l")
+	sim.debug.capture(sim.state, sim.model, sim.query)
+	if sim.debug.candidates.is_empty() \
+			or str(sim.debug.candidates[0].get("id", "")) != "coping_pipe_5_L1_S1":
+		push_error("next spine: want L1 right at L0 lip got %s" % [sim.debug.candidates])
+		return false
+	sim.state.mode = SimState.Mode.AIRBORNE
+	sim.state.surface_id = ""
+	sim.state.position = Vector3(cx - 10.0, z, ch + 20.0)
+	sim.state.velocity = Vector3(-200.0, 0.0, 50.0)
+	sim.state.set_facing_side("l")
+	sim.debug.capture(sim.state, sim.model, sim.query)
+	if sim.debug.candidates.is_empty() \
+			or str(sim.debug.candidates[0].get("id", "")) != "coping_pipe_5_L1_S1":
+		push_error(
+			"next spine: want L1 right past L0 lip got %s" % [sim.debug.candidates]
+		)
+		return false
 	return true
 
 
