@@ -48,6 +48,7 @@ func run() -> bool:
 		and _floor_ollie_coping_lands_pipe_not_deck()
 		and _floor_ollie_rising_skims_high_pipe()
 		and _floor_ollie_high_pipe_drop_in()
+		and _floor_ollie_high_pipe_no_air_out()
 		and _air_contact_stream_lip_owns_coping_column()
 		and _airborne_reject_leaves_exterior()
 		and _void_floor_catches_fall()
@@ -3871,15 +3872,19 @@ func _floor_ollie_rising_skims_high_pipe() -> bool:
 	sim.state.velocity = Vector3(120.0, 0.0, 45.0)
 	sim.state.note_air_height(sim.state.position.z)
 	for _i in range(20):
+		var prev_vz := sim.state.velocity.z
+		# Air step applies gravity before contact — only reject mounts that stay rising.
+		var vz_after_g := prev_vz + SimTolerances.GRAVITY * SimTolerances.FIXED_DT
 		sim.set_input(Vector2(1, 0), false, false)
 		sim.tick()
-		if sim.state.is_grounded() and sim.state.surface_id == right.id:
+		if vz_after_g > SimTolerances.CONTACT_EPS \
+				and sim.state.is_grounded() and sim.state.surface_id == right.id:
 			push_error(
-				"floor rising high pipe: mounted while rising u=%.2f along=%.1f"
-				% [sim.state.u, sim.state.tangent_velocity.x]
+				"floor rising high pipe: mounted while rising vz_g=%.1f u=%.2f along=%.1f"
+				% [vz_after_g, sim.state.u, sim.state.tangent_velocity.x]
 			)
 			return false
-		if sim.state.velocity.z <= 0.0:
+		if prev_vz <= 0.0:
 			break
 	return true
 
@@ -3946,6 +3951,119 @@ func _floor_ollie_high_pipe_drop_in() -> bool:
 	push_error(
 		"floor high pipe drop: never landed pipe mode=%s surf=%s"
 		% [sim.state.mode, sim.state.surface_id]
+	)
+	return false
+
+
+## Charged floor ollie + hold +X into the high right pipe must drop in — not
+## sticky-mount with uphill along and `_launch_from_edge` into hang air.
+func _floor_ollie_high_pipe_no_air_out() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_halfpipe.ssk"):
+		push_error("floor high pipe air-out: setup")
+		return false
+	var right: PipeSurface = null
+	var floor_id := ""
+	for id in sim.model.pipes.keys():
+		var p: PipeSurface = sim.model.pipes[id]
+		if p.side == SimKinds.PipeSide.RIGHT:
+			right = p
+			break
+	for id in sim.model.patches.keys():
+		var pad: SupportPatch = sim.model.patches[id]
+		if int(pad.kind) == SimKinds.SurfaceKind.FLOOR:
+			floor_id = id
+			break
+	if right == null or floor_id.is_empty():
+		push_error("floor high pipe air-out: missing right pipe / floor")
+		return false
+	var z := (right.z_min + right.z_max) * 0.5
+	var trough := right.x_at_theta(z, 0.0)
+	var lip_h := right.height_at_theta(z, PI * 0.5)
+	var floor_x := trough - 90.0
+	var top := sim.query.top_support(floor_x, z, 400.0)
+	if top.is_empty() or str(top.get("surface_id", "")) != floor_id:
+		push_error("floor high pipe air-out: floor seat failed")
+		return false
+	sim.state.mode = SimState.Mode.GROUNDED
+	sim.state.surface_id = floor_id
+	sim.state.position = Vector3(floor_x, z, float(top.get("height", 0.0)))
+	sim.state.tangent_velocity = Vector2(200.0, 0.0)
+	sim.state.velocity = Vector3.ZERO
+	sim.state.clear_hang()
+	sim.state.set_facing_side("r")
+	sim.ollie_available = true
+	sim.ollie_charge_ms = 1.0
+	# Charge then release.
+	for _c in range(3):
+		sim.set_input(Vector2(1, 0), false, false, true, false)
+		sim.tick()
+	sim.set_input(Vector2(1, 0), false, false, false, true)
+	sim.tick()
+	if not sim.state.is_airborne() or sim.state.air_launch_surface_id != floor_id:
+		push_error(
+			"floor high pipe air-out: expected floor air launch, mode=%s launch=%s"
+			% [sim.state.mode, sim.state.air_launch_surface_id]
+		)
+		return false
+	var mounted := false
+	var mount_u := NAN
+	var mount_along := NAN
+	for _i in range(90):
+		sim.set_input(Vector2(1, 0), false, false, false, false)
+		sim.tick()
+		if sim.state.falling:
+			push_error(
+				"floor high pipe air-out: fall before lip mount pos=%s launch=%s"
+				% [sim.state.position, sim.state.air_launch_surface_id]
+			)
+			return false
+		if sim.state.is_grounded() and sim.state.surface_id == right.id:
+			mounted = true
+			mount_u = sim.state.u
+			mount_along = sim.state.tangent_velocity.x
+			break
+	if not mounted:
+		push_error("floor high pipe air-out: never mounted right pipe")
+		return false
+	if sim.state.falling:
+		push_error(
+			"floor high pipe air-out: edge rim must not fall-lock the lip mount (u=%.2f along=%.1f)"
+			% [mount_u, mount_along]
+		)
+		return false
+	if mount_u >= 0.85 and mount_along > -40.0:
+		push_error(
+			"floor high pipe air-out: high land must seed downhill, u=%.2f along=%.1f"
+			% [mount_u, mount_along]
+		)
+		return false
+	# Holding +X must not immediately yeet over the lip into hang.
+	for _k in range(45):
+		sim.set_input(Vector2(1, 0), false, false, false, false)
+		sim.tick()
+		if sim.state.falling:
+			push_error("floor high pipe air-out: entered fall after lip mount")
+			return false
+		if sim.state.is_hanging():
+			push_error(
+				"floor high pipe air-out: hang after flat land u=%.2f along=%.1f z=%.1f lip=%.1f"
+				% [sim.state.u, sim.state.tangent_velocity.x, sim.state.position.z, lip_h]
+			)
+			return false
+		if sim.state.is_airborne() and sim.state.velocity.z > 200.0:
+			push_error(
+				"floor high pipe air-out: launched up after flat land vz=%.1f z=%.1f"
+				% [sim.state.velocity.z, sim.state.position.z]
+			)
+			return false
+		if sim.state.is_grounded() and sim.state.surface_id == right.id and sim.state.u < 0.70:
+			return true
+	if sim.state.is_grounded() and sim.state.surface_id == right.id and sim.state.u < mount_u:
+		return true
+	push_error(
+		"floor high pipe air-out: did not drop in; mode=%s sid=%s u=%.2f along=%.1f"
+		% [sim.state.mode, sim.state.surface_id, sim.state.u, sim.state.tangent_velocity.x]
 	)
 	return false
 
