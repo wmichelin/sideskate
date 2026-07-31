@@ -115,10 +115,10 @@ func apply_pose(pose: LogicalPose) -> void:
 	)
 	var body_yaw := pose.facing_yaw + pose.depth_turn_yaw
 	var tilt := pose.surface_tilt
-	# Fall side-lean pivots at the feet, so the body AABB digs into the ride
-	# surface — lift so the lowest mesh point rests on the contact plane.
+	# Fall side-lean pivots at the feet into the ride plane — lift along the
+	# *support* normal (ramp/pipe), not only world Y, or we bury into slopes.
 	if falling:
-		world_position.y += _lean_clearance_lift(tilt, body_yaw)
+		world_position += _lean_clearance_offset(tilt, body_yaw, pose.support_tilt)
 	if is_inside_tree():
 		global_position = world_position
 	else:
@@ -147,11 +147,16 @@ func apply_pose(pose: LogicalPose) -> void:
 			_facing_mark.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	if _fall_shadow_proxy != null:
 		if falling:
-			# Extra world-Y above the visual so the cast clears the floor (no acne).
+			# Extra along support normal so the cast clears the contact plane.
 			const PROXY_EXTRA := 0.07
-			var s := sin(tilt)
-			var c := cos(tilt)
-			_fall_shadow_proxy.position = body_pos + Vector3(PROXY_EXTRA * s, PROXY_EXTRA * c, 0.0)
+			var n := _support_normal(pose.support_tilt)
+			# Proxy is a child of the tilted root — convert world normal delta to local.
+			var local_extra := Vector3(
+				n.x * cos(tilt) + n.y * sin(tilt),
+				-n.x * sin(tilt) + n.y * cos(tilt),
+				0.0
+			) * PROXY_EXTRA
+			_fall_shadow_proxy.position = body_pos + local_extra
 			_fall_shadow_proxy.rotation = body_basis_yaw
 			_fall_shadow_proxy.scale = body_scl
 			_fall_shadow_proxy.visible = true
@@ -163,28 +168,35 @@ func apply_pose(pose: LogicalPose) -> void:
 			_fall_shadow_proxy.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
 
-## World-Y lift so a Z-tilted body AABB's lowest corner sits on the feet plane.
-func _lean_clearance_lift(tilt: float, body_yaw: float) -> float:
+## Presentation up after a Z tilt of `support_tilt` — contact-plane normal.
+func _support_normal(support_tilt: float) -> Vector3:
+	return Vector3(-sin(support_tilt), cos(support_tilt), 0.0)
+
+
+## Offset so a fall-tilted body AABB clears the support plane (floor / ramp / pipe).
+func _lean_clearance_offset(fall_tilt: float, body_yaw: float, support_tilt: float) -> Vector3:
+	var n := _support_normal(support_tilt)
 	var hx := body_size.x * 0.5
 	var hy := body_size.y * 0.5
 	var hz := body_size.z * 0.5
 	var cy := body_size.y * 0.5
 	var yaw_c := cos(body_yaw)
 	var yaw_s := sin(body_yaw)
-	var s := sin(tilt)
-	var c := cos(tilt)
-	var min_y := INF
+	var s := sin(fall_tilt)
+	var c := cos(fall_tilt)
+	var min_d := INF
 	for lx in [-hx, hx]:
 		for ly in [-hy, hy]:
 			for lz in [-hz, hz]:
-				# Body local → root (Y yaw around body center, then + feet offset).
 				var rx: float = lx * yaw_c + lz * yaw_s
 				var ry: float = ly + cy
-				# Root tilt about Z.
+				# Root fall tilt about Z, then measure against support normal.
+				var wx: float = rx * c - ry * s
 				var wy: float = rx * s + ry * c
-				min_y = minf(min_y, wy)
-	# Visual clearance only — shadow proxy handles CSM gap separately.
-	return maxf(0.0, -min_y) + 0.02
+				var d: float = wx * n.x + wy * n.y
+				min_d = minf(min_d, d)
+	var lift := maxf(0.0, -min_d) + 0.02
+	return n * lift
 
 
 func _build_live_pose() -> LogicalPose:

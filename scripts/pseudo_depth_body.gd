@@ -47,6 +47,9 @@ var surface_height: float = 0.0
 var height_offset: float = 0.0
 ## Body rotation (radians). Set by Player so local-up follows pipe surface normal.
 var surface_tilt: float = 0.0
+## Contact-plane lean used for fall clearance (pre-fall surface tilt). Same as
+## surface_tilt when not falling; kept so side-lay can lift along the ramp/pipe normal.
+var support_tilt: float = 0.0
 ## True while airborne — shadow pins to support_height instead of feet height.
 var airborne: bool = false
 ## Underfoot surface height while airborne (shadow rests here).

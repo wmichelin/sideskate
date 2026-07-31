@@ -243,6 +243,8 @@ func _sync_from_sim() -> void:
 	else:
 		_transfer_tilt_active = false
 		_carry_tilt = 0.0
+	# Contact-plane lean (ramp/pipe) before fall overrides display tilt.
+	var support_tilt := tilt
 	if st.falling:
 		# Fall bout owns visual lean — roll onto facing side.
 		var af := _sim.fall_anim_frac()
@@ -269,6 +271,7 @@ func _sync_from_sim() -> void:
 		depth.airborne = _airborne
 		depth.support_height = support_h
 		depth.surface_tilt = tilt
+		depth.support_tilt = support_tilt
 		depth.apply()
 	global_position = _WorldSpace.logical_to_world(p.x, p.y, p.z)
 	collision_mask = 0
