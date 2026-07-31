@@ -308,7 +308,7 @@ func _setup_ollie_jump_sliders() -> void:
 		0.1,
 		_player,
 		"ollie_height_pipe",
-		40.0,
+		100.0,
 		_on_ollie_height_pipe_changed,
 		_refresh_ollie_height_pipe_label
 	)

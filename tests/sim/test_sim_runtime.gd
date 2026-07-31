@@ -796,6 +796,7 @@ func _wall_ollie_hangs_x_locked() -> bool:
 
 
 ## Lip-band pipe ollie peak comes from ollie_height_pipe only — not climb along.
+## Takeoff Z stays put (no snap to wall-top) so the slider pop is fully felt.
 func _pipe_lip_ollie_respects_height_not_along() -> bool:
 	var sim := PlayerSim.new()
 	if not sim.setup_from_path("res://tests/levels/sim/sim_halfpipe.ssk"):
@@ -811,7 +812,86 @@ func _pipe_lip_ollie_respects_height_not_along() -> bool:
 	sim.ollie_accel = 0.0
 	sim.ollie_charge_ms = 0.0
 	sim.ollie_height_flat = 150.0
-	sim.ollie_height_pipe = 40.0
+	sim.ollie_height_pipe = 100.0
+	sim.ollie_lip_frac = 0.50
+	var z := (pipe.z_min + pipe.z_max) * 0.5
+	var u := 0.92
+	var th := u * PI * 0.5
+	var takeoff_h := pipe.height_at_theta(z, th)
+	sim.state.mode = SimState.Mode.GROUNDED
+	sim.state.surface_id = pipe.id
+	sim.state.u = u
+	sim.state.v = 0.5
+	sim.state.tangent_velocity = Vector2(400.0, 0.0)
+	sim.state.position = Vector3(pipe.x_at_theta(z, th), z, takeoff_h)
+	sim.ollie_available = true
+	sim.ollie_charge = 1.0
+	sim.set_input(Vector2.ZERO, false, false, false, true)
+	sim.tick()
+	if not sim.state.is_hanging():
+		push_error("lip ollie height: expected hang")
+		return false
+	# One air tick climbs ~vh·dt; a Z teleport to wall-top would leap tens of units.
+	var climb := sim.state.position.z - takeoff_h
+	if climb > 40.0:
+		push_error(
+			"lip ollie snapped Z (climb %.1f from %.1f) — hides ollie_height_pipe"
+			% [climb, takeoff_h]
+		)
+		return false
+	var g := absf(SimTolerances.GRAVITY)
+	var edge := sim.query.edge_at(pipe.id, z, "coping")
+	var hang_z := takeoff_h
+	if edge != null:
+		if sim.model.walls.has(edge.to_surface_id):
+			var wall_top := sim.query.edge_at(edge.to_surface_id, z, "top")
+			if wall_top != null:
+				edge = wall_top
+		var anchor := sim.query.edge_anchor_sample(edge, z)
+		if not anchor.is_empty():
+			hang_z = float(anchor.height)
+	var gap := hang_z - takeoff_h
+	var clearance := 0.0
+	if gap > 0.5:
+		clearance = sqrt(2.0 * g * gap)
+	var want := sqrt(2.0 * g * 100.0) + clearance \
+			+ SimTolerances.GRAVITY * SimTolerances.FIXED_DT
+	if absf(sim.state.velocity.z - want) > 2.0:
+		push_error(
+			"lip ollie height: vz=%.1f want ~%.1f (along must not stack)"
+			% [sim.state.velocity.z, want]
+		)
+		return false
+	# Slider must move peak: taller pipe height → clearly higher hang apex.
+	var peak_lo := _hang_peak_for_pipe_height(20.0)
+	var peak_hi := _hang_peak_for_pipe_height(120.0)
+	if peak_lo < 0.0 or peak_hi < 0.0:
+		return false
+	if peak_hi - peak_lo < 60.0:
+		push_error(
+			"pipe height slider dead: peak@20=%.1f peak@120=%.1f"
+			% [peak_lo, peak_hi]
+		)
+		return false
+	return true
+
+
+func _hang_peak_for_pipe_height(pipe_h: float) -> float:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_halfpipe.ssk"):
+		push_error("hang peak: setup")
+		return -1.0
+	var pipe: PipeSurface = null
+	for id in sim.model.all_pipe_ids():
+		pipe = sim.model.pipes[id]
+		break
+	if pipe == null:
+		push_error("hang peak: no pipe")
+		return -1.0
+	sim.ollie_accel = 0.0
+	sim.ollie_charge_ms = 0.0
+	sim.ollie_height_flat = 150.0
+	sim.ollie_height_pipe = pipe_h
 	sim.ollie_lip_frac = 0.50
 	var z := (pipe.z_min + pipe.z_max) * 0.5
 	var u := 0.92
@@ -820,24 +900,23 @@ func _pipe_lip_ollie_respects_height_not_along() -> bool:
 	sim.state.surface_id = pipe.id
 	sim.state.u = u
 	sim.state.v = 0.5
-	sim.state.tangent_velocity = Vector2(400.0, 0.0)
+	sim.state.tangent_velocity = Vector2(50.0, 0.0)
 	sim.state.position = Vector3(pipe.x_at_theta(z, th), z, pipe.height_at_theta(z, th))
 	sim.ollie_available = true
 	sim.ollie_charge = 1.0
 	sim.set_input(Vector2.ZERO, false, false, false, true)
 	sim.tick()
 	if not sim.state.is_hanging():
-		push_error("lip ollie height: expected hang")
-		return false
-	var g := absf(SimTolerances.GRAVITY)
-	var want := sqrt(2.0 * g * 40.0) - g * SimTolerances.FIXED_DT
-	if absf(sim.state.velocity.z - want) > 2.0:
-		push_error(
-			"lip ollie height: vz=%.1f want ~%.1f (along must not stack)"
-			% [sim.state.velocity.z, want]
-		)
-		return false
-	return true
+		push_error("hang peak: expected hang at h=%s" % pipe_h)
+		return -1.0
+	var peak := sim.state.position.z
+	for _i in range(90):
+		sim.set_input(Vector2.ZERO, false, false, false, false)
+		sim.tick()
+		peak = maxf(peak, sim.state.position.z)
+		if sim.state.is_grounded():
+			break
+	return peak
 
 
 func _ollie_jump_caps_at_full_charge() -> bool:
@@ -1089,11 +1168,25 @@ func _ollie_on_pipe_lip_enters_hang() -> bool:
 	if absf(sim.state.velocity.x) > 0.01:
 		push_error("hang ollie must lock vx, got %s" % sim.state.velocity.x)
 		return false
-	var expected_vh := sqrt(2.0 * absf(SimTolerances.GRAVITY) * 40.0) \
+	var takeoff_h := pipe.height_at_theta(z, th)
+	var edge := sim.query.edge_at(pipe.id, z, "coping")
+	var hang_z := takeoff_h
+	if edge != null:
+		if sim.model.walls.has(edge.to_surface_id):
+			var wall_top := sim.query.edge_at(edge.to_surface_id, z, "top")
+			if wall_top != null:
+				edge = wall_top
+		var anchor := sim.query.edge_anchor_sample(edge, z)
+		if not anchor.is_empty():
+			hang_z = float(anchor.height)
+	var g := absf(SimTolerances.GRAVITY)
+	var gap := hang_z - takeoff_h
+	var clearance := 0.0 if gap <= 0.5 else sqrt(2.0 * g * gap)
+	var expected_vh := sqrt(2.0 * g * 40.0) + clearance \
 			+ SimTolerances.GRAVITY * SimTolerances.FIXED_DT
 	if absf(sim.state.velocity.z - expected_vh) > 10.0:
 		push_error(
-			"lip hang vh expected ~%s (ollie height only) got %s" % [expected_vh, sim.state.velocity.z]
+			"lip hang vh expected ~%s (ollie+clearance) got %s" % [expected_vh, sim.state.velocity.z]
 		)
 		return false
 	var lock_x := pipe.coping_x_at(z)
@@ -2247,10 +2340,22 @@ func _l0_pipe_ollie_not_stuck_on_l1_deck() -> bool:
 			% [sim.state.mode, sim.state.surface_id, sim.state.hang_edge_id]
 		)
 		return false
-	# Must hang at the wall-top lip, not remain on the geometric seam under the deck.
-	if sim.state.position.z < top_h - 5.0:
+	if sim.state.velocity.z <= 0.0:
+		push_error("l0 ollie: expected rising hang pop, vz=%s" % sim.state.velocity.z)
+		return false
+	# Clearance+ollie must carry past the wall-top lip (no Z teleport).
+	var cleared := false
+	for _rise in range(45):
+		if sim.state.position.z >= top_h - 2.0:
+			cleared = true
+			break
+		sim.set_input(Vector2.ZERO, false, false)
+		sim.tick()
+		if not sim.state.is_hanging() and not sim.state.is_airborne():
+			break
+	if not cleared:
 		push_error(
-			"l0 ollie: hang below effective lip h=%.1f top=%.1f"
+			"l0 ollie: never cleared effective lip h=%.1f top=%.1f"
 			% [sim.state.position.z, top_h]
 		)
 		return false

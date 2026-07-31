@@ -16,7 +16,7 @@ const BODY_CYLINDER_H_M := 0.22
 @export var ollie_accel: float = 650.0
 @export_range(0.0, 5000.0, 1.0) var ollie_charge_ms: float = 250.0
 @export_range(0.0, 200.0, 0.1) var ollie_height_flat: float = 150.0
-@export_range(0.0, 200.0, 0.1) var ollie_height_pipe: float = 40.0
+@export_range(0.0, 200.0, 0.1) var ollie_height_pipe: float = 100.0
 ## Upper pipe/ramp fraction from the lip that X-locks ollie into hang air (0.50 = top 50%).
 @export_range(0.0, 1.0, 0.01) var ollie_lip_frac: float = 0.50
 @export var brake: float = 1250.0
@@ -116,7 +116,7 @@ func _assert_presentation_hash() -> void:
 		vis.set_meta("sim_model_hash", _model_hash)
 
 
-func _physics_process(delta: float) -> void:
+func _physics_process(_delta: float) -> void:
 	if _sim == null or _sim.state == null or _death_busy:
 		return
 	var wish := Vector2(
@@ -130,7 +130,8 @@ func _physics_process(delta: float) -> void:
 	var ollie_released := Input.is_action_just_released("ollie")
 	_sync_tuning_to_sim()
 	_sim.set_input(wish, action_down, action_edge, ollie_down, ollie_released)
-	_sim.tick(delta)
+	# Always fixed-step — never inherit a render-tied physics delta.
+	_sim.tick(SimTolerances.FIXED_DT)
 	_sync_from_sim()
 	_capture_pose_snapshots()
 	if not _sim.state.alive:

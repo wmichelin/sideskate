@@ -652,9 +652,9 @@ func _reject_into_normal(world: Vector3, normal: Vector3) -> Vector3:
 
 
 ## Upper pipe/ramp ollie → coping-anchored hang (vx locked, height free).
-## WALL_EXTENSION seams hang from the wall-top lip (effective air-out height),
-## not the geometric pipe seam — otherwise the next tick sticky-mounts the wall
-## and climbs into the upper deck band.
+## WALL_EXTENSION: X locks to the wall-top lip. Takeoff Z stays put; any gap up
+## to that lip is converted to clearance speed so `ollie_height_pipe` still adds
+## peak *above* the lip (snapping Z there used to eat the pop).
 func _launch_ollie_lip_hang(
 	state: SimState, height_impulse: float, _along: float, depth: float
 ) -> bool:
@@ -662,7 +662,7 @@ func _launch_ollie_lip_hang(
 	var edge := query.edge_at(state.surface_id, z, "coping")
 	if edge == null:
 		return false
-	# Seam into an explicit wall: air-out lip is the wall top.
+	# Seam into an explicit wall: air-out lip is the wall top (X lock + clearance).
 	if model.walls.has(edge.to_surface_id):
 		var wall_top := query.edge_at(edge.to_surface_id, z, "top")
 		if wall_top != null:
@@ -670,10 +670,11 @@ func _launch_ollie_lip_hang(
 	var anchor := query.edge_anchor_sample(edge, z)
 	if anchor.is_empty():
 		return false
-	# Ollie supplies the vertical pop — do not add climb along-speed or the
-	# tunable peak height is ignored when riding hard into the lip.
-	var world_vh := height_impulse
-	state.position = Vector3(float(anchor.x), z, float(anchor.height))
+	var takeoff_z := state.position.z
+	var hang_z := float(anchor.height)
+	# Ollie pop + ballistic clearance to the hang lip. Climb along never stacks.
+	var world_vh := height_impulse + _up_speed_for_height_gap(hang_z - takeoff_z)
+	state.position = Vector3(float(anchor.x), z, takeoff_z)
 	_enter_air(state, Vector3(0.0, depth, world_vh), edge.id)
 	return true
 
@@ -708,14 +709,22 @@ func _launch_ollie_wall_top(
 	var anchor := query.edge_anchor_sample(edge, z)
 	if anchor.is_empty():
 		return false
-	var world_vh := height_impulse
-	# Keep current height for mid-climb pops; lip snaps to the hang anchor.
-	var h := state.position.z
-	if lip > 0.0 and state.u >= 1.0 - lip:
-		h = float(anchor.height)
-	state.position = Vector3(float(anchor.x), z, h)
+	var takeoff_z := state.position.z
+	var hang_z := float(anchor.height)
+	var world_vh := height_impulse + _up_speed_for_height_gap(hang_z - takeoff_z)
+	state.position = Vector3(float(anchor.x), z, takeoff_z)
 	_enter_air(state, Vector3(0.0, depth, world_vh), edge.id)
 	return true
+
+
+## Extra up-speed to clear a vertical gap (0 when already at/above the lip).
+func _up_speed_for_height_gap(gap: float) -> float:
+	if gap <= 0.5:
+		return 0.0
+	var g := absf(SimTolerances.GRAVITY)
+	if g < 0.001:
+		return 0.0
+	return sqrt(2.0 * g * gap)
 
 
 ## Keep pipe depth inside both the pipe loft and the park AABB (inset from faces).
