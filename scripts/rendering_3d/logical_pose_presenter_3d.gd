@@ -100,10 +100,14 @@ func apply_pose(pose: LogicalPose) -> void:
 	var world_position := WorldSpace.logical_to_world(
 		pose.logical_x, pose.logical_z, pose.feet_height
 	)
+	var falling := (
+		_player != null and _player.has_method("is_falling") and bool(_player.call("is_falling"))
+	)
+	var body_yaw := pose.facing_yaw + pose.depth_turn_yaw
 	# Fall side-lean pivots at the feet, so the body AABB digs into the ride
 	# surface — lift so the lowest mesh point rests on the contact plane.
-	if _player != null and _player.has_method("is_falling") and bool(_player.call("is_falling")):
-		world_position.y += _lean_clearance_lift(pose.surface_tilt)
+	if falling:
+		world_position.y += _lean_clearance_lift(pose.surface_tilt, body_yaw)
 	if is_inside_tree():
 		global_position = world_position
 	else:
@@ -118,22 +122,39 @@ func apply_pose(pose: LogicalPose) -> void:
 		# Facing +logical X is screen-right after WorldSpace X mirror.
 		_body.scale = Vector3(-face, 1.0, 1.0)
 		_body.position = Vector3(0.0, body_size.y * 0.5, 0.0)
-		_body.rotation = Vector3(
-			0.0, pose.facing_yaw + pose.depth_turn_yaw, 0.0
+		_body.rotation = Vector3(0.0, body_yaw, 0.0)
+		# Side-lay casts a huge floating blob under the key light — off while down.
+		_body.cast_shadow = (
+			GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			if falling
+			else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 		)
+		if _facing_mark != null:
+			_facing_mark.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
 
 ## World-Y lift so a Z-tilted body AABB's lowest corner sits on the feet plane.
-func _lean_clearance_lift(tilt: float) -> float:
+func _lean_clearance_lift(tilt: float, body_yaw: float) -> float:
 	var hx := body_size.x * 0.5
+	var hy := body_size.y * 0.5
+	var hz := body_size.z * 0.5
+	var cy := body_size.y * 0.5
+	var yaw_c := cos(body_yaw)
+	var yaw_s := sin(body_yaw)
 	var s := sin(tilt)
 	var c := cos(tilt)
 	var min_y := INF
-	for x in [-hx, hx]:
-		for y in [0.0, body_size.y]:
-			min_y = minf(min_y, x * s + y * c)
-	# Tiny epsilon so the mesh rests on top rather than z-fighting the surface.
-	return maxf(0.0, -min_y) + 0.005
+	for lx in [-hx, hx]:
+		for ly in [-hy, hy]:
+			for lz in [-hz, hz]:
+				# Body local → root (Y yaw around body center, then + feet offset).
+				var rx := lx * yaw_c + lz * yaw_s
+				var ry := ly + cy
+				# Root tilt about Z.
+				var wy := rx * s + ry * c
+				min_y = minf(min_y, wy)
+	# Rest on top of the surface with a visible clearance (was still grazing).
+	return maxf(0.0, -min_y) + 0.02
 
 
 func _build_live_pose() -> LogicalPose:
