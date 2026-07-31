@@ -82,7 +82,105 @@ func run() -> bool:
 		and _ramp_peak_free_air_launch()
 		and _ramp_deck_seam_and_launch()
 		and _feature_walls_block_endcaps_and_sides()
+		and _air_land_ramp_keeps_uphill_along()
+		and _air_land_pipe_maps_vx_via_outward()
 	)
+
+
+func _air_land_ramp_keeps_uphill_along() -> bool:
+	# Free-air above mid >, vx > 0 → land with tangent_velocity.x > 0 (not forced downhill).
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_ramp.ssk"):
+		push_error("air land ramp: setup")
+		return false
+	if sim.model.ramps.is_empty():
+		push_error("air land ramp: no ramps")
+		return false
+	var ramp: RampSurface = sim.model.ramps[sim.model.all_ramp_ids()[0]]
+	var z := (ramp.z_min + ramp.z_max) * 0.5
+	var mid_u := 0.45
+	var th := mid_u * PI * 0.5
+	var mid_x := ramp.x_at_theta(z, th)
+	var mid_h := ramp.height_at_theta(z, th)
+	sim.state.mode = SimState.Mode.AIRBORNE
+	sim.state.surface_id = ""
+	sim.state.clear_hang()
+	sim.state.maneuver = null
+	sim.state.free_air_upright = true
+	sim.state.position = Vector3(mid_x, z, mid_h + 60.0)
+	sim.state.velocity = Vector3(220.0, 0.0, -350.0)
+	var landed := false
+	for _i in range(90):
+		sim.set_input(Vector2(1, 0), false, false)
+		sim.tick()
+		if sim.state.is_grounded() and sim.state.surface_id == ramp.id:
+			landed = true
+			if sim.state.tangent_velocity.x <= 0.0:
+				push_error(
+					"air land ramp: expected uphill along (>0), got %.1f"
+					% sim.state.tangent_velocity.x
+				)
+				return false
+			break
+	if not landed:
+		push_error("air land ramp: never grounded on ramp")
+		return false
+	return true
+
+
+func _air_land_pipe_maps_vx_via_outward() -> bool:
+	# Free-air above mid ), vx > 0 → along == vx * outward_sign() (not -max(impact, 80)).
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_halfpipe.ssk"):
+		push_error("air land pipe: setup")
+		return false
+	var right: PipeSurface = null
+	for id in sim.model.pipes.keys():
+		var p: PipeSurface = sim.model.pipes[id]
+		if p.side == SimKinds.PipeSide.RIGHT:
+			right = p
+			break
+	if right == null:
+		push_error("air land pipe: missing right pipe")
+		return false
+	var z := (right.z_min + right.z_max) * 0.5
+	var th := PI * 0.35
+	var mid_x := right.x_at_theta(z, th)
+	var mid_h := right.height_at_theta(z, th)
+	var vx := 180.0
+	sim.state.mode = SimState.Mode.AIRBORNE
+	sim.state.surface_id = ""
+	sim.state.clear_hang()
+	sim.state.maneuver = null
+	sim.state.free_air_upright = true
+	sim.state.position = Vector3(mid_x, z, mid_h + 60.0)
+	sim.state.velocity = Vector3(vx, 0.0, -350.0)
+	var want := vx * right.outward_sign()
+	var landed := false
+	for _i in range(90):
+		sim.set_input(Vector2(1, 0), false, false)
+		sim.tick()
+		if sim.state.is_grounded() and sim.state.surface_id == right.id:
+			landed = true
+			# Stick may integrate after mount; first grounded tick must not be forced downhill.
+			if sim.state.tangent_velocity.x * want <= 0.0:
+				push_error(
+					"air land pipe: along sign want %.1f got %.1f"
+					% [want, sim.state.tangent_velocity.x]
+				)
+				return false
+			# Must not be the old forced -max(impact, 80) seed (~-350).
+			if sim.state.tangent_velocity.x < -50.0:
+				push_error(
+					"air land pipe: still forced downhill along %.1f"
+					% sim.state.tangent_velocity.x
+				)
+				return false
+			break
+	if not landed:
+		push_error("air land pipe: never grounded on pipe")
+		return false
+	return true
 
 
 func _ride_halfpipe() -> bool:
