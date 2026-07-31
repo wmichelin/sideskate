@@ -46,7 +46,8 @@ Suggested defaults are starting points only.
 
 - Ignore stick, transfer, and ollie (control wish treated as zero; no new hang / transfer / ollie).
 - Gravity still applies to height (Z).
-- Air and ground contact / mounts still run so the skater can land mid-bout.
+- **Collision stays on.** Fall must not bypass the analytical contact pipeline: air contact stream (Mount / Reject / Corridor), bounds / feature-wall rejects, solid depenetration, and grounded surface constraints / mounts all keep running. The skater still hits pipes, decks, walls, and park bounds while falling; planar stop only decays control-driven X/depth speed — it does not ghost through geometry.
+- Air and ground mounts still run so the skater can land mid-bout (required for air-then-land recovery).
 - Retrigger via `begin_fall()`: no-op.
 - Lava kill (`alive = false`) wins: clear fall; existing death overlay path runs.
 
@@ -115,11 +116,13 @@ Mirror the ollie charge bar in `scripts/rendering_3d/player_debug_3d.gd`.
 2. World X / depth decay to ~0 by `fall_stop_duration`; airborne height still changes under gravity.
 3. Duration elapsed in air → still locked; after land → upright, zero vel, wish works again.
 4. Facing at enter drives lean sign (sim exposes fall progress / facing for presenters).
+5. Mid-fall into a solid / lip still collides or mounts (no tunnel through pipe/deck body).
 
 ## Success criteria
 
 - Y (or `begin_fall()`) starts a fall bout that hard-interrupts hang / maneuver / ollie.
 - Skater leans onto facing side quickly; planar speed dies out; gravity continues.
+- Collision / contact resolution continues for the whole bout (no ghosting).
 - Input stays locked for `fall_duration`, extended until land if needed; recovery is in-place upright with zero velocity.
 - Debug cooldown bar counts down over the head when enabled.
-- Headless tests cover lockout, stop lerp, and air-then-land recovery.
+- Headless tests cover lockout, stop lerp, collision, and air-then-land recovery.
