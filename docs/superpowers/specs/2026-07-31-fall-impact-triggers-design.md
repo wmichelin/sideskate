@@ -30,6 +30,10 @@ Hang remount of owned pipe / ramp / wall stays Mount as today.
 
 - **Own-ramp peak leave** — contacts that currently corridor via `_slope_outer_back_is_launch_exit` must not fall (riding off `>>` stays free air).
 - **Intentional deck-back ride-off** — crossing the one-sided backing wall from a ridden deck top into free air does not fall.
+- **Free-air map-edge over a bordering deck** — soft AABB clamp above an edge `#` keeps depth control / land (not a wipeout).
+- **Free-air map-edge leaving an edge pipe/ramp** — coping on that AABB rim (ollie / peak leave) must not wipe out.
+- **Grounded on a map-edge deck** pressing into the rim — stay playable; grounded floor into the rim still falls.
+- Hang deck contacts while a remountable pipe/wall remains under the lock (Corridor; layered decks must not steal).
 - Soft Corridor contacts that are not Reject / contain / hang-flat mounts.
 
 ## Recovery (all falls, including Y)

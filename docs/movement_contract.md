@@ -59,7 +59,8 @@ While air-out (X-locked):
   edge anchor. Cross-story rear decks under the lock must not steal remount while a
   remountable pipe/wall is available.
 - If no remountable pipe is under the lock (outside the pipe / gap), land the nearest
-  floor, deck, lava, or void. That flat land clears hang and resets lip lean / X-lock.
+  floor, deck, lava, or void. Floor/deck flat land clears hang and starts a **fall bout**;
+  lava still kills.
 - If hang clears mid-air while still on the launch coping X, descending free-air contact
   with that pipe’s wall remounts the wall face (into the bowl) — never bounce-freeze
   beside a coplanar abutting deck.
@@ -73,7 +74,7 @@ Exactly one of:
 
 `hang_edge_id` empty ⇒ free air (XZ control). Non-empty ⇒ **air-out**: X is locked to that edge’s anchor at current Z (depth stick still applies; height ballistic). Hang clears on fly-out, land, or remount. Leaving the launch edge’s Z span **retargets** onto a colinear same-side OPEN edge when available, otherwise keeps a synthetic X-lock across the gap (does not clear).
 
-Crash / death is a terminal grounded→overlay path after **lava** contact only; it is not a third motion state. World borders, unplayable space, and solid geometry are **containment** (invisible walls / void floor) — never crash. Respawn restores the oldest sample in a rolling `CHECKPOINT_HISTORY_SEC` window of grounded floor/deck poses (~1.5s back). Lava / pipe / wall / void never count.
+Crash / death is a terminal grounded→overlay path after **lava** contact only; it is not a third motion state. World borders, unplayable space, deck walls/volumes, and ramp outer-back solids are **containment** that can start a **fall bout** (`begin_fall`) when contacted in free air or while grounded (hang remount of pipe/ramp/wall excluded; own-ramp peak leave and intentional deck-back ride-off excluded). Hang land onto floor/deck also starts a fall. After the fall bout, soft-restore uses the same floor/deck `CHECKPOINT_HISTORY_SEC` window as lava respawn (no death overlay). Invisible `__void_floor__` still catches fall-through. Lava / pipe / wall / void never count as checkpoints.
 
 ## Transitions
 

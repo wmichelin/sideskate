@@ -125,7 +125,7 @@ Tunable sim values sync into `SimTolerances` / `PlayerSim` each physics tick. Ca
 
 ### Fall bout
 
-`PlayerSim.begin_fall()` (dev invoke: **Y** / InputMap `fall`) starts a soft wipeout: clears hang/maneuver/ollie charge, ignores stick/transfer/ollie, keeps analytical collision + gravity, lerps planar X/depth to 0 over `fall_stop_duration`, leans onto the facing side over `fall_anim_duration`, and recovers upright with zero velocity after `fall_duration` once grounded (if duration ends in air, stay locked until land). Debug TUNING exposes the three durations and a head countdown bar (`show_fall_cooldown`).
+`PlayerSim.begin_fall()` starts a soft wipeout: clears hang/maneuver/ollie charge, ignores stick/transfer/ollie, keeps analytical collision + gravity, lerps planar X/depth to 0 over `fall_stop_duration`, leans onto the facing side over `fall_anim_duration`, and after `fall_duration` once grounded soft-restores to the last floor/deck checkpoint (same ~1.5s history as lava, no death overlay). Triggers: free-air or grounded impact with level walls, deck walls/volumes, or ramp launch/outer-back (not hang; not own-ramp peak leave / intentional deck-back ride-off); hang land onto floor/deck (not pipe/ramp). Dev invoke: **Y** / InputMap `fall`. Debug TUNING exposes the three durations and a head countdown bar (`show_fall_cooldown`).
 
 Analytical suites: [`tests/sim/`](../tests/sim/).
 

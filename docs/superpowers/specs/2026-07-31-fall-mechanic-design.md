@@ -75,12 +75,11 @@ Recovery runs when **both** are true:
 
 If duration elapses while airborne, remain locked until the next grounded mount, then recover on that tick.
 
-On recovery:
+On recovery (see also fall-impact-triggers spec):
 
-- Standing upright presentation
-- Zero world velocity and tangent velocity
-- Clear fall bout
-- Input returns
+- Soft restore to the oldest floor/deck checkpoint (`CHECKPOINT_HISTORY_SEC`), same selection as lava `respawn()` — no death overlay
+- Clear fall bout; zero velocity; input returns
+- Presentation stands upright at the restored pose
 
 ## Input
 

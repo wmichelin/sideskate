@@ -174,7 +174,11 @@ func tick(delta: float = SimTolerances.FIXED_DT) -> void:
 		)
 	else:
 		air.step(state, wish, delta, max_speed, max_speed_z)
-	if falling:
+	if state.request_fall:
+		state.request_fall = false
+		begin_fall()
+		falling = state.falling
+	if falling or state.falling:
 		_tick_fall(delta)
 	_replenish_ollie_on_ground()
 	# Refresh charge peak after surface changes this tick (floor→pipe mount).
@@ -206,10 +210,7 @@ func _tick_fall(delta: float) -> void:
 		state.tangent_velocity.y = vy
 		state.velocity = Vector3.ZERO
 	if state.fall_elapsed >= fall_duration and state.is_grounded():
-		state.tangent_velocity = Vector2.ZERO
-		state.velocity = Vector3.ZERO
-		state.clear_fall()
-		ollie_available = true
+		_restore_to_checkpoint()
 
 
 func _update_ollie_charge(delta: float) -> void:
@@ -407,7 +408,7 @@ func _sync_checkpoint_mirror() -> void:
 
 
 func _note_checkpoint() -> void:
-	if state == null or not state.alive or not state.is_grounded():
+	if state == null or not state.alive or not state.is_grounded() or state.falling:
 		return
 	if not _is_checkpoint_surface(state.surface_id):
 		return
@@ -513,7 +514,9 @@ func _assert_invariants(previous_surface_id: String, planned_surface_change: boo
 			)
 
 
-func respawn() -> void:
+## Soft restore to oldest floor/deck checkpoint (lava respawn + fall recovery).
+## Does not touch `alive` or death UI — callers own that.
+func _restore_to_checkpoint() -> void:
 	if model == null or query == null or ground == null:
 		return
 	_sync_checkpoint_mirror()
@@ -550,13 +553,17 @@ func respawn() -> void:
 		state.clear_fall()
 		state.last_reject = ""
 		_seed_checkpoint_from_state()
+	ollie_available = state != null and state.is_grounded()
+	ollie_charge = 0.0
+	ollie_charge_peak_height = 0.0
 	if debug != null:
 		debug.capture(state, model, query)
 	if trace != null:
 		trace.record(state, Vector2.ZERO, false)
-	ollie_available = state != null and state.is_grounded()
-	ollie_charge = 0.0
-	ollie_charge_peak_height = 0.0
+
+
+func respawn() -> void:
+	_restore_to_checkpoint()
 
 
 func pose_dict() -> Dictionary:

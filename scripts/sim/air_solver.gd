@@ -143,13 +143,20 @@ func _step_free(state: SimState, wish: Vector2, delta: float) -> void:
 				_assert_air_invariants(state)
 				return
 			from = state.position
-	var to := from + Vector3(state.velocity.x, state.velocity.y, state.velocity.z) * delta
+	var raw_to := from + Vector3(state.velocity.x, state.velocity.y, state.velocity.z) * delta
+	var to := raw_to
 	to.x = clampf(to.x, 0.05, maxf(model.width - 0.05, 0.05))
 	to.y = clampf(to.y, 0.05, maxf(model.depth - 0.05, 0.05))
+	# Soft AABB clamp keeps feet inside — never samples x>width bounds Reject.
+	# Treat rim clamp as a level-wall hit for free-air bail.
+	var rim_clamp := (
+		absf(raw_to.x - to.x) > 0.0001 or absf(raw_to.y - to.y) > 0.0001
+	)
 	if state.is_hanging():
 		var to_anchor := _hang_anchor(state, to.y)
 		if not to_anchor.is_empty():
 			to.x = float(to_anchor.x)
+		rim_clamp = false
 	var hang_id := state.hang_edge_id if state.is_hanging() else ""
 	var contacts := query.collect_air_contacts(from, to, hang_id)
 	# Walk contacts in order; Corridor continues to the next, Mount/Reject end the tick.
@@ -187,7 +194,51 @@ func _step_free(state: SimState, wish: Vector2, delta: float) -> void:
 	state.position = to
 	_ensure_air_outside_slopes(state)
 	state.position.y = clampf(state.position.y, 0.05, maxf(model.depth - 0.05, 0.05))
+	# Free-air AABB rim: bail unless bordering deck (edge fly-out) or leaving an
+	# edge pipe/ramp whose coping sits on that rim (ollie / peak leave).
+	if rim_clamp and not state.falling and state.alive \
+			and not _air_rim_has_border_deck(state, to) \
+			and not _air_rim_is_launch_slope_edge(state, to):
+		state.request_fall = true
+		if absf(raw_to.x - to.x) > 0.0001:
+			state.velocity.x = 0.0
+		if absf(raw_to.y - to.y) > 0.0001:
+			state.velocity.y = 0.0
 	_assert_air_invariants(state)
+
+
+## Map-edge clamp over an abutting deck — not a level-wall wipeout.
+func _air_rim_has_border_deck(state: SimState, at: Vector3) -> bool:
+	var top := query.top_support(
+		at.x, at.y, state.position.z + SimTolerances.CAPSULE_RADIUS * 4.0
+	)
+	if top.is_empty():
+		return false
+	var sid := str(top.get("surface_id", ""))
+	if not model.patches.has(sid):
+		return false
+	return int((model.patches[sid] as SupportPatch).kind) == SimKinds.SurfaceKind.DECK
+
+
+## Edge ))) / ((( / >> at the park AABB — free-air leave must not wipe out.
+func _air_rim_is_launch_slope_edge(state: SimState, at: Vector3) -> bool:
+	var launch := state.air_launch_surface_id
+	if launch.is_empty():
+		return false
+	var surf = model.pipes.get(launch)
+	if surf == null:
+		surf = model.ramps.get(launch)
+	if surf == null:
+		return false
+	var cx := float(surf.coping_x_at(at.y))
+	if is_nan(cx):
+		return false
+	var band := maxf(model.cell_w * 2.0, SimTolerances.CAPSULE_RADIUS * 4.0)
+	if at.x >= model.width - 1.0 and absf(cx - model.width) <= band:
+		return true
+	if at.x <= 1.0 and absf(cx) <= band:
+		return true
+	return false
 
 
 ## True when a contact after `index` dispositions to Mount (and can seat).
@@ -233,19 +284,25 @@ func _disposition_for_contact(
 	# Hang remount always mounts the retained edge.
 	if role == SimKinds.ContactRole.HANG_ANCHOR or kind == "hang_anchor":
 		return SimKinds.ContactDisposition.MOUNT
-	# Hang: remount retained source, or clear onto flat floor/lava/void.
-	# Foreign lips/decks/walls Corridor so opposite-layer coping never steals.
+	# Hang: remount retained source, or clear onto flat floor/deck/lava/void.
+	# Foreign lips/walls Corridor so opposite-layer coping never steals.
 	if state.is_hanging():
-		if kind == "deck" or role == SimKinds.ContactRole.OUTWARD_DECK:
-			return SimKinds.ContactDisposition.CORRIDOR
 		if role == SimKinds.ContactRole.OPEN_CORRIDOR:
 			return SimKinds.ContactDisposition.CORRIDOR
+		# Deck under X-lock stays Corridor while a remountable pipe/wall exists
+		# (layered rear decks must not steal). Floor / void / lava Mount→fall.
+		# Deck Mount→fall only when no remountable source remains under the lock.
 		if _hang_is_flat_land_contact(contact):
+			var flat_is_deck := _hang_flat_contact_is_deck(contact)
+			if flat_is_deck and _hang_has_remountable_source(state):
+				return SimKinds.ContactDisposition.CORRIDOR
 			return (
 				SimKinds.ContactDisposition.MOUNT
 				if state.velocity.z <= SimTolerances.CONTACT_EPS
 				else SimKinds.ContactDisposition.CORRIDOR
 			)
+		if kind == "deck" or role == SimKinds.ContactRole.OUTWARD_DECK:
+			return SimKinds.ContactDisposition.CORRIDOR
 		if not _hang_owns_contact(state, contact):
 			return SimKinds.ContactDisposition.CORRIDOR
 		if kind == "wall" and state.velocity.z > SimTolerances.CONTACT_EPS * 10.0:
@@ -470,11 +527,13 @@ func _mount_air_contact(state: SimState, contact: Dictionary, from_height: float
 	var kind := str(contact.get("kind", ""))
 	var role := int(contact.get("role", SimKinds.ContactRole.SOLID))
 	var owner_id := str(contact.get("owner_id", contact.get("surface_id", "")))
+	var was_hanging := state.is_hanging()
+	var mounted := false
 	# Hang anchor remount.
 	if role == SimKinds.ContactRole.HANG_ANCHOR or kind == "hang_anchor":
-		return _try_return_to_anchor(state, from_height)
+		mounted = _try_return_to_anchor(state, from_height)
 	# Lip column → mount pipe or wall owner.
-	if role == SimKinds.ContactRole.LIP_COLUMN:
+	elif role == SimKinds.ContactRole.LIP_COLUMN:
 		if model.walls.has(owner_id):
 			var whit := {
 				"kind": "wall",
@@ -484,37 +543,55 @@ func _mount_air_contact(state: SimState, contact: Dictionary, from_height: float
 			if ground != null and ground._mount_wall_from_hit(
 				state, whit, state.position
 			):
-				return true
-			# Fall through to source pipe.
-			var wall: WallSurface = model.walls[owner_id]
-			owner_id = wall.source_pipe_id
-		if model.pipes.has(owner_id):
-			return _mount_pipe_owner(state, owner_id, contact)
-		if model.ramps.has(owner_id):
-			return _mount_ramp_owner(state, owner_id, contact)
+				mounted = true
+			else:
+				# Fall through to source pipe.
+				var wall: WallSurface = model.walls[owner_id]
+				owner_id = wall.source_pipe_id
+		if not mounted and model.pipes.has(owner_id):
+			mounted = _mount_pipe_owner(state, owner_id, contact)
+		if not mounted and model.ramps.has(owner_id):
+			mounted = _mount_ramp_owner(state, owner_id, contact)
 	# Slope outer-back land.
-	if kind == "feature_wall" and str(contact.get("reason", "")) == "slope outer back":
-		return _try_land_through_slope_back(state, contact, from_height)
+	elif kind == "feature_wall" and str(contact.get("reason", "")) == "slope outer back":
+		mounted = _try_land_through_slope_back(state, contact, from_height)
 	# Support top / solid mount via existing snap + land helpers.
-	if kind == "support_top":
-		return _mount_support_top(state, contact, from_height)
-	# Remap owner into a solid-shaped hit for snap.
-	var hit := contact.duplicate()
-	hit["surface_id"] = owner_id if not owner_id.is_empty() else str(contact.get("surface_id", ""))
-	if role == SimKinds.ContactRole.LIP_COLUMN and model.pipes.has(hit["surface_id"]):
-		hit["kind"] = "pipe"
-	elif model.walls.has(hit["surface_id"]) or kind == "wall" \
-			or role == SimKinds.ContactRole.WALL_CLIMB:
-		hit["kind"] = "wall"
-		hit["surface_id"] = str(contact.get("surface_id", hit["surface_id"]))
-	elif model.patches.has(hit["surface_id"]):
-		hit["kind"] = "deck"
-	if _snap_onto_solid(state, hit, from_height):
-		return true
-	# Near-pad deck force mount.
-	if hit.get("kind", "") == "deck" and _force_near_pad_deck_land(state, hit):
-		return true
-	return false
+	elif kind == "support_top":
+		mounted = _mount_support_top(state, contact, from_height)
+	else:
+		# Remap owner into a solid-shaped hit for snap.
+		var hit := contact.duplicate()
+		hit["surface_id"] = owner_id if not owner_id.is_empty() else str(contact.get("surface_id", ""))
+		if role == SimKinds.ContactRole.LIP_COLUMN and model.pipes.has(hit["surface_id"]):
+			hit["kind"] = "pipe"
+		elif model.walls.has(hit["surface_id"]) or kind == "wall" \
+				or role == SimKinds.ContactRole.WALL_CLIMB:
+			hit["kind"] = "wall"
+			hit["surface_id"] = str(contact.get("surface_id", hit["surface_id"]))
+		elif model.patches.has(hit["surface_id"]):
+			hit["kind"] = "deck"
+		if _snap_onto_solid(state, hit, from_height):
+			mounted = true
+		elif hit.get("kind", "") == "deck" and _force_near_pad_deck_land(state, hit):
+			mounted = true
+	if mounted:
+		_maybe_request_fall_after_hang_flat(state, was_hanging)
+	return mounted
+
+
+## Hang land onto floor/deck (not lava) → fall bout instead of skating away.
+func _maybe_request_fall_after_hang_flat(state: SimState, was_hanging: bool) -> void:
+	if not was_hanging or state == null or not state.is_grounded():
+		return
+	if not model.patches.has(state.surface_id):
+		return
+	var patch: SupportPatch = model.patches[state.surface_id]
+	var pk := int(patch.kind)
+	if pk != SimKinds.SurfaceKind.FLOOR and pk != SimKinds.SurfaceKind.DECK:
+		return
+	if patch.lethal:
+		return
+	state.request_fall = true
 
 
 ## Free-air approach into a wall that compiles an upper partner pipe (layered
@@ -651,6 +728,8 @@ func _mount_support_top(state: SimState, contact: Dictionary, from_height: float
 func _reject_air_contact(state: SimState, contact: Dictionary, from: Vector3) -> void:
 	var kind := str(contact.get("kind", ""))
 	var normal: Vector3 = contact.get("normal", Vector3.ZERO)
+	if _contact_requests_fall(state, contact):
+		state.request_fall = true
 	if kind == "bounds" or kind == "feature_wall":
 		_resolve_bounds_hit(state, contact, from)
 		_ensure_air_outside_slopes(state)
@@ -664,6 +743,29 @@ func _reject_air_contact(state: SimState, contact: Dictionary, from: Vector3) ->
 	else:
 		_bounce_off_solid_no_vz_kill(state, contact, from)
 	_ensure_air_outside_slopes(state)
+
+
+## Free-air / grounded bail solids: level walls, deck walls/volumes, ramp outer-back.
+## Hang uses flat-land mount path instead. Launch-exit corridors never Reject here.
+func _contact_requests_fall(state: SimState, contact: Dictionary) -> bool:
+	if state == null or state.falling or not state.alive or state.is_hanging():
+		return false
+	var kind := str(contact.get("kind", ""))
+	var role := int(contact.get("role", SimKinds.ContactRole.SOLID))
+	var reason := str(contact.get("reason", ""))
+	var sid := str(contact.get("surface_id", contact.get("owner_id", "")))
+	if reason == "slope outer back" and _slope_outer_back_is_launch_exit(state, contact):
+		return false
+	if reason == "deck open side" and state.air_launch_surface_id == sid:
+		return false
+	if kind == "bounds" or role == SimKinds.ContactRole.BOUNDS:
+		return true
+	if kind == "feature_wall":
+		return true
+	# Deck solid / underside Reject (Mount path does not call this).
+	if kind == "deck" or role == SimKinds.ContactRole.OUTWARD_DECK:
+		return true
+	return false
 
 
 ## Like _bounce_off_solid but never zeroes descending vz (freeze root cause).
@@ -1309,6 +1411,9 @@ func _try_land_through_slope_back(state: SimState, hit: Dictionary, from_height:
 func _resolve_bounds_hit(state: SimState, hit: Dictionary, from: Vector3) -> void:
 	var axis := str(hit.get("axis", ""))
 	var kind := str(hit.get("kind", ""))
+	# Bail on level / feature walls (Reject path also stamps; this covers all entries).
+	if _contact_requests_fall(state, hit):
+		state.request_fall = true
 	if axis == "x":
 		state.velocity.x = 0.0
 	elif axis == "z":
@@ -1651,8 +1756,46 @@ func _hang_owns_contact(state: SimState, contact: Dictionary) -> bool:
 	return false
 
 
-## Hang may clear onto floor / lava / void when no remountable source is under
-## the lock. Decks stay Corridor (never sticky-mount a pad under X-lock).
+func _hang_flat_contact_is_deck(contact: Dictionary) -> bool:
+	var kind := str(contact.get("kind", ""))
+	if kind == "deck" or int(contact.get("role", -1)) == SimKinds.ContactRole.OUTWARD_DECK:
+		return true
+	if kind == "support_top":
+		return int(contact.get("support_kind", -1)) == SimKinds.SurfaceKind.DECK
+	var sid := str(contact.get("owner_id", contact.get("surface_id", "")))
+	var patch: SupportPatch = model.patches.get(sid)
+	return patch != null and int(patch.kind) == SimKinds.SurfaceKind.DECK
+
+
+## True when hang can still remount same-facing X-aligned pipe/wall under the lock.
+func _hang_has_remountable_source(state: SimState) -> bool:
+	var anchor := _hang_anchor(state, state.position.y)
+	if anchor.is_empty():
+		return false
+	var lock_x := float(anchor.x)
+	var src: PipeSurface = model.pipes.get(str(anchor.get("source_pipe_id", ""))) as PipeSurface
+	if src == null:
+		return false
+	var z := state.position.y
+	if z >= src.z_min - 0.001 and z <= src.z_max + 0.001:
+		var cx := src.coping_x_at(z)
+		if not is_nan(cx) and absf(cx - lock_x) <= SimTolerances.ALIGN_EPS:
+			return true
+	# Wall extension above the pipe still counts as remountable source.
+	var edge: TopologyEdge = model.edges.get(state.hang_edge_id)
+	if edge != null and model.walls.has(edge.from_surface_id):
+		return true
+	for wid in model.walls.keys():
+		var wall: WallSurface = model.walls[wid]
+		if wall.source_pipe_id != src.id:
+			continue
+		if wall.contains_z(z):
+			return true
+	return false
+
+
+## Hang may clear onto floor / deck / lava / void when no remountable source is
+## under the lock. Floor/deck mounts request a fall bout (lava still kills).
 func _hang_is_flat_land_contact(contact: Dictionary) -> bool:
 	var sid := str(contact.get("owner_id", contact.get("surface_id", "")))
 	if sid == "__void_floor__" or sid == "__park_floor__":
@@ -1660,12 +1803,22 @@ func _hang_is_flat_land_contact(contact: Dictionary) -> bool:
 	var kind := str(contact.get("kind", ""))
 	if kind == "support_top":
 		var sk := int(contact.get("support_kind", -1))
-		return sk == SimKinds.SurfaceKind.FLOOR or sk == SimKinds.SurfaceKind.LAVA
+		return (
+			sk == SimKinds.SurfaceKind.FLOOR
+			or sk == SimKinds.SurfaceKind.DECK
+			or sk == SimKinds.SurfaceKind.LAVA
+		)
+	if kind == "deck" or int(contact.get("role", -1)) == SimKinds.ContactRole.OUTWARD_DECK:
+		return true
 	var patch: SupportPatch = model.patches.get(sid)
 	if patch == null:
 		return false
 	var pk := int(patch.kind)
-	return pk == SimKinds.SurfaceKind.FLOOR or pk == SimKinds.SurfaceKind.LAVA
+	return (
+		pk == SimKinds.SurfaceKind.FLOOR
+		or pk == SimKinds.SurfaceKind.DECK
+		or pk == SimKinds.SurfaceKind.LAVA
+	)
 
 
 ## True when the air bout began on a pipe/ramp whose coping opens onto this deck

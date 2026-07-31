@@ -99,6 +99,11 @@ func run() -> bool:
 		and _fall_stops_planar_keeps_gravity()
 		and _fall_air_waits_for_land_then_recovers()
 		and _fall_midair_still_collides_pipe()
+		and _fall_impact_bounds_requests_fall()
+		and _fall_impact_deck_wall_requests_fall()
+		and _fall_hang_flat_floor_requests_fall()
+		and _fall_peak_leave_does_not_bail()
+		and _fall_recovery_restores_checkpoint()
 		and _ramp_edge_lip_stick_out_faces_and_climbs()
 	)
 
@@ -288,6 +293,191 @@ func _fall_midair_still_collides_pipe() -> bool:
 		if sim.state.is_grounded():
 			break
 	return true
+
+
+func _fall_impact_bounds_requests_fall() -> bool:
+	# Grounded into park AABB (free-air rim over a border deck stays playable).
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_open_fly.ssk"):
+		push_error("fall bounds: setup")
+		return false
+	sim.fall_duration = 5.0
+	var mid_z := sim.model.depth * 0.5
+	var floor_top := sim.query.top_support(sim.model.width - 40.0, mid_z, 5.0)
+	if floor_top.is_empty():
+		push_error("fall bounds: no floor")
+		return false
+	sim.state.mode = SimState.Mode.GROUNDED
+	sim.state.surface_id = str(floor_top.surface_id)
+	sim.state.position = Vector3(sim.model.width - 40.0, mid_z, float(floor_top.height))
+	sim.state.tangent_velocity = Vector2(600.0, 0.0)
+	sim.state.clear_hang()
+	for _i in range(90):
+		sim.set_input(Vector2(1, 0), false, false)
+		sim.tick()
+		if sim.state.falling:
+			return true
+	push_error("fall bounds: never fell into world wall")
+	return false
+
+
+func _fall_impact_deck_wall_requests_fall() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_feature_walls.ssk"):
+		push_error("fall deck wall: setup")
+		return false
+	sim.fall_duration = 5.0
+	var deck: SupportPatch = null
+	for id in sim.model.patches.keys():
+		var p: SupportPatch = sim.model.patches[id]
+		if int(p.kind) == SimKinds.SurfaceKind.DECK:
+			deck = p
+			break
+	if deck == null:
+		push_error("fall deck wall: no deck")
+		return false
+	var mid_x := (deck.x_min + deck.x_max) * 0.5
+	# Free-air into the deck open-side feature wall (floor footprint may end sooner).
+	sim.state.mode = SimState.Mode.AIRBORNE
+	sim.state.surface_id = ""
+	sim.state.clear_hang()
+	sim.state.maneuver = null
+	sim.state.air_launch_surface_id = ""
+	sim.state.position = Vector3(mid_x, deck.z_max + 25.0, deck.height * 0.5)
+	sim.state.velocity = Vector3(0.0, -500.0, 0.0)
+	sim.state.note_air_height(sim.state.position.z)
+	for _i in range(60):
+		sim.set_input(Vector2(0, -1), false, false)
+		sim.tick()
+		if sim.state.falling:
+			return true
+	push_error("fall deck wall: never fell")
+	return false
+
+
+func _fall_hang_flat_floor_requests_fall() -> bool:
+	# Hang off the pipe Z span onto floor — must fall (not skate away).
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_open_fly.ssk"):
+		push_error("fall hang flat: setup")
+		return false
+	sim.fall_duration = 5.0
+	var left: PipeSurface = null
+	for id in sim.model.pipes.keys():
+		var p: PipeSurface = sim.model.pipes[id]
+		if p.side == SimKinds.PipeSide.LEFT:
+			left = p
+			break
+	if left == null:
+		push_error("fall hang flat: no left pipe")
+		return false
+	var z := (left.z_min + left.z_max) * 0.5
+	var edge := sim.query.edge_at(left.id, z, "coping")
+	if edge == null:
+		push_error("fall hang flat: no coping")
+		return false
+	var off_z := left.z_min - 20.0
+	if off_z < 1.0:
+		off_z = left.z_max + 20.0
+	sim.state.mode = SimState.Mode.AIRBORNE
+	sim.state.surface_id = ""
+	sim.state.begin_hang(edge.id)
+	sim.state.position = Vector3(left.coping_x_at(z), off_z, 80.0)
+	sim.state.velocity = Vector3(0.0, 0.0, -100.0)
+	sim.state.note_air_height(sim.state.position.z)
+	for _i in range(180):
+		sim.set_input(Vector2.ZERO, false, false)
+		sim.tick()
+		if sim.state.falling:
+			return true
+	push_error(
+		"fall hang flat: never fell mode=%s surf=%s hang=%s"
+		% [sim.state.mode, sim.state.surface_id, sim.state.hang_edge_id]
+	)
+	return false
+
+
+func _fall_peak_leave_does_not_bail() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_ramp.ssk"):
+		push_error("fall peak leave: setup")
+		return false
+	sim.fall_duration = 5.0
+	if sim.model.ramps.is_empty():
+		push_error("fall peak leave: no ramps")
+		return false
+	var ramp: RampSurface = sim.model.ramps[sim.model.all_ramp_ids()[0]]
+	var z := (ramp.z_min + ramp.z_max) * 0.5
+	sim.state.mode = SimState.Mode.GROUNDED
+	sim.state.surface_id = ramp.id
+	sim.state.u = 0.85
+	sim.state.v = 0.5
+	sim.state.tangent_velocity = Vector2(500.0, 0.0)
+	sim.state.position = Vector3(
+		ramp.x_at_theta(z, 0.85 * PI * 0.5),
+		z,
+		ramp.height_at_theta(z, 0.85 * PI * 0.5)
+	)
+	sim.state.clear_hang()
+	for _i in range(80):
+		sim.set_input(Vector2(1, 0), false, false)
+		sim.tick()
+		if sim.state.falling:
+			push_error("fall peak leave: peak leave must not bail")
+			return false
+		if sim.state.is_airborne():
+			# Give a few free-air ticks past the outer-back band.
+			for _j in range(8):
+				sim.set_input(Vector2(1, 0), false, false)
+				sim.tick()
+				if sim.state.falling:
+					push_error("fall peak leave: fell after peak leave")
+					return false
+			return true
+	push_error("fall peak leave: never launched")
+	return false
+
+
+func _fall_recovery_restores_checkpoint() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_halfpipe.ssk"):
+		push_error("fall cp: setup")
+		return false
+	sim.fall_anim_duration = 0.05
+	sim.fall_stop_duration = 0.05
+	sim.fall_duration = 0.15
+	sim.friction = 0.0
+	var spawn := sim.state.position
+	var floor_id := sim.state.surface_id
+	if not sim._is_checkpoint_surface(floor_id):
+		push_error("fall cp: spawn should be floor")
+		return false
+	for i in range(sim._checkpoint_history_limit()):
+		sim._push_checkpoint_sample(
+			floor_id,
+			Vector3(spawn.x, spawn.y + 30.0 + float(i), spawn.z),
+			"r"
+		)
+	var want := sim.checkpoint_position
+	if want.distance_to(spawn) < 5.0:
+		push_error("fall cp: history never left spawn")
+		return false
+	sim.begin_fall()
+	for _j in range(200):
+		sim.set_input(Vector2.ZERO, false, false)
+		sim.tick()
+		if not sim.state.falling and sim.state.is_grounded():
+			if sim.state.position.distance_to(want) > 8.0:
+				push_error(
+					"fall cp: expected checkpoint %s got %s" % [want, sim.state.position]
+				)
+				return false
+			if not sim._is_checkpoint_surface(sim.state.surface_id):
+				push_error("fall cp: restored surface not floor/deck")
+				return false
+			return true
+	push_error("fall cp: never recovered")
+	return false
 
 
 ## Park-edge >>> lip: facing left + hold right must face right and climb out
@@ -3844,7 +4034,18 @@ func _hang_flat_land_clears_lock() -> bool:
 	if sim.state.surface_id == "__void_floor__" and not sim.state.alive:
 		push_error("hang flat: void land must stay alive")
 		return false
+	# Floor/deck hang-flat starts a fall bout (void does not).
+	if model_patches_is_floor_or_deck(sim) and not sim.state.falling:
+		push_error("hang flat: floor/deck land must request fall")
+		return false
 	return true
+
+
+func model_patches_is_floor_or_deck(sim: PlayerSim) -> bool:
+	if not sim.model.patches.has(sim.state.surface_id):
+		return false
+	var pk := int((sim.model.patches[sim.state.surface_id] as SupportPatch).kind)
+	return pk == SimKinds.SurfaceKind.FLOOR or pk == SimKinds.SurfaceKind.DECK
 
 
 func _world_border_contains() -> bool:
@@ -4880,26 +5081,23 @@ func _respawn_at_prior_floor_or_deck() -> bool:
 	if not sim.setup_from_path("res://tests/levels/test_lava.ssk"):
 		push_error("respawn cp: setup")
 		return false
+	sim.fall_duration = 30.0
 	var spawn_pos := sim.state.position
-	# Build a full history window by skating along the floor (away from lava).
-	# Keep going until the oldest sample is no longer the IDL spawn pose.
+	var floor_id := sim.state.surface_id
+	if not sim._is_checkpoint_surface(floor_id):
+		push_error("respawn cp: spawn should be floor")
+		return false
+	# Seed a full history window away from spawn (narrow maps hit pipes/rims
+	# before natural skate can age the oldest sample out).
 	var mark := Vector3.ZERO
-	var marked := false
-	for _i in range(sim._checkpoint_history_limit() * 2 + 10):
-		sim.set_input(Vector2(0, -1), false, false)
-		sim.tick()
-		if not sim.state.alive:
-			push_error("respawn cp: died while filling history")
-			return false
-		if sim.checkpoint_history.size() >= sim._checkpoint_history_limit() \
-				and sim.checkpoint_position.distance_to(spawn_pos) > 20.0:
-			mark = sim.checkpoint_position
-			marked = true
-			break
-	if not marked:
+	for i in range(sim._checkpoint_history_limit()):
+		var sample_pos := Vector3(spawn_pos.x + 40.0 + float(i), spawn_pos.y, spawn_pos.z)
+		sim._push_checkpoint_sample(floor_id, sample_pos, "r")
+	mark = sim.checkpoint_position
+	if mark.distance_to(spawn_pos) <= 20.0:
 		push_error(
-			"respawn cp: oldest sample never left spawn (cp=%s hist=%d)"
-			% [sim.checkpoint_position, sim.checkpoint_history.size()]
+			"respawn cp: seeded oldest still near spawn (cp=%s)"
+			% sim.checkpoint_position
 		)
 		return false
 	# Now skate into lava and die.
@@ -5120,6 +5318,8 @@ func _hang_depth_transfer_lands_edge_floor() -> bool:
 				% [sim.state.position, sim.state.is_hanging()]
 			)
 			return false
+		if sim.state.falling:
+			return true
 		if sim.state.is_grounded() and sim.model.patches.has(sim.state.surface_id):
 			var patch: SupportPatch = sim.model.patches[sim.state.surface_id]
 			if int(patch.kind) != SimKinds.SurfaceKind.FLOOR:
@@ -5132,6 +5332,9 @@ func _hang_depth_transfer_lands_edge_floor() -> bool:
 				return false
 			if absf(sim.state.position.z - patch.height) > SimTolerances.CONTACT_EPS * 2.0:
 				push_error("hang edge floor: not seated on pad h=%.2f" % sim.state.position.z)
+				return false
+			if not sim.state.falling:
+				push_error("hang edge floor: floor land must start fall")
 				return false
 			return true
 	push_error(
@@ -6201,6 +6404,8 @@ func _feature_walls_block_endcaps_and_sides() -> bool:
 	if not sim.setup_from_path("res://tests/levels/sim/sim_feature_walls.ssk"):
 		push_error("feature walls: setup")
 		return false
+	# Bail duration long so impact→fall does not checkpoint-teleport mid-assert.
+	sim.fall_duration = 10.0
 	var right: RampSurface = null
 	for id in sim.model.all_ramp_ids():
 		var r: RampSurface = sim.model.ramps[id]
@@ -6230,16 +6435,20 @@ func _feature_walls_block_endcaps_and_sides() -> bool:
 	sim.state.v = 0.0
 	sim.state.tangent_velocity = Vector2(0.0, -500.0)
 	sim.state.clear_hang()
+	var endcap_bailed := false
 	for _i in range(90):
 		sim.set_input(Vector2(0, -1), false, false)
 		sim.tick()
+		if sim.state.falling:
+			endcap_bailed = true
+			break
 		if sim.model.ramps.has(sim.state.surface_id):
 			push_error("feature walls: remounted ramp via endcap")
 			return false
 		if sim.state.position.y < right.z_max - 1.0:
 			push_error("feature walls: tunneled through far endcap z=%.1f" % sim.state.position.y)
 			return false
-	if sim.state.position.y < right.z_max:
+	if not endcap_bailed and sim.state.position.y < right.z_max:
 		push_error("feature walls: crossed into ramp Z span via endcap")
 		return false
 	# 2) Open pipe outer back (no outward deck) — stop, do not remount.

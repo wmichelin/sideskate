@@ -1140,6 +1140,7 @@ func _contain_ground_xz(state: SimState, proposed: Vector3) -> Dictionary:
 		Vector3(proposed.x, state.position.y, proposed.z),
 		Vector3(state.position.x, proposed.y, proposed.z),
 	]
+	var hit_bail := false
 	for trial in trials:
 		var c: Vector3 = trial
 		var clamped := model.clamp_xz(c.x, c.y)
@@ -1153,11 +1154,20 @@ func _contain_ground_xz(state: SimState, proposed: Vector3) -> Dictionary:
 				state.tangent_velocity.x = 0.0
 			if absf(c.y - proposed.y) > 0.001:
 				state.tangent_velocity.y = 0.0
+			# Soft AABB clamp (blocker never sees x>width) — level-wall wipeout
+			# unless already riding a map-edge deck (border pad stay playable).
+			if (
+				_ground_proposed_hits_world_rim(proposed)
+				and not state.falling
+				and not _ground_on_border_deck(state)
+			):
+				state.request_fall = true
 			return {"ok": true, "pos": c}
 		var kind := str(hit.get("kind", ""))
 		if kind == "bounds" or kind == "feature_wall":
 			# World border / unplayable space / feature endcaps & open sides —
 			# try other axis slide (never remount onto the wall face).
+			hit_bail = true
 			continue
 		# Deck / pipe / wall: remount instead of freezing.
 		if _resolve_solid_contact(state, hit, Vector3(c.x, c.y, c.z)):
@@ -1167,7 +1177,37 @@ func _contain_ground_xz(state: SimState, proposed: Vector3) -> Dictionary:
 	# Only true borders left: stop into-wall speed, stay put.
 	state.tangent_velocity.x = 0.0
 	state.tangent_velocity.y = 0.0
+	if hit_bail and not state.falling:
+		state.request_fall = true
 	return {"ok": false}
+
+
+func _ground_proposed_hits_world_rim(proposed: Vector3) -> bool:
+	if model == null:
+		return false
+	var inset := 0.05
+	return (
+		proposed.x < inset
+		or proposed.x > model.width - inset
+		or proposed.y < inset
+		or proposed.y > model.depth - inset
+	)
+
+
+func _ground_on_border_deck(state: SimState) -> bool:
+	if state == null or not model.patches.has(state.surface_id):
+		return false
+	var patch: SupportPatch = model.patches[state.surface_id]
+	if int(patch.kind) != SimKinds.SurfaceKind.DECK:
+		return false
+	var inset := 0.05
+	var band := maxf(model.cell_w, SimTolerances.CAPSULE_RADIUS * 2.0)
+	return (
+		patch.x_min <= inset + band
+		or patch.x_max >= model.width - inset - band
+		or patch.z_min <= inset + band
+		or patch.z_max >= model.depth - inset - band
+	)
 
 
 func _update_facing(state: SimState) -> void:

@@ -58,6 +58,8 @@ var fall_lean_sign: float = 1.0
 ## Captured planar speeds at fall enter (air: world vx/vy; ground: tangent).
 var fall_start_vx: float = 0.0
 var fall_start_vy: float = 0.0
+## Solvers stamp this; PlayerSim calls begin_fall() after the step.
+var request_fall: bool = false
 
 
 func is_grounded() -> bool:
@@ -124,6 +126,7 @@ func clear_fall() -> void:
 	fall_lean_sign = 1.0
 	fall_start_vx = 0.0
 	fall_start_vy = 0.0
+	request_fall = false
 
 
 func to_dict() -> Dictionary:
