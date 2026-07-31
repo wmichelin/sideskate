@@ -1,13 +1,14 @@
 class_name PipeSurface
 extends RefCounted
-## Lofted quarter-pipe: lip/radius/base sampled along Z.
+## Lofted quarter-pipe: lip/radius/rise/base sampled along Z.
+## radius = X span; rise = height span (equal when step_height == cell_w).
 
 
 var id: String = ""
 var side: int = 0 ## SimKinds.PipeSide
 var z_min: float = 0.0
 var z_max: float = 0.0
-## Sorted samples along Z: {z, lip_x, radius, base_height}
+## Sorted samples along Z: {z, lip_x, radius, rise, base_height}
 var samples: Array = []
 var coping_id: String = ""
 ## Conservative AABB over all samples (lip↔cope × base↔peak). Used for query culling.
@@ -15,6 +16,10 @@ var bound_x_min: float = 0.0
 var bound_x_max: float = 0.0
 var bound_h_min: float = 0.0
 var bound_h_max: float = 0.0
+
+
+static func _rise_of(s: Dictionary) -> float:
+	return float(s.get("rise", s.get("radius", 0.0)))
 
 
 ## Recompute AABB after samples are filled / mutated.
@@ -28,12 +33,13 @@ func rebuild_bounds() -> void:
 	for s in samples:
 		var lip := float(s.lip_x)
 		var r := float(s.radius)
+		var rise := _rise_of(s)
 		var base := float(s.base_height)
 		var cope := lip - r if side == SimKinds.PipeSide.LEFT else lip + r
 		bound_x_min = minf(bound_x_min, minf(lip, cope))
 		bound_x_max = maxf(bound_x_max, maxf(lip, cope))
 		bound_h_min = minf(bound_h_min, base)
-		bound_h_max = maxf(bound_h_max, base + r)
+		bound_h_max = maxf(bound_h_max, base + rise)
 
 
 func sample_at_z(z: float) -> Dictionary:
@@ -55,6 +61,7 @@ func sample_at_z(z: float) -> Dictionary:
 				"z": zc,
 				"lip_x": lerpf(float(a.lip_x), float(b.lip_x), t),
 				"radius": lerpf(float(a.radius), float(b.radius), t),
+				"rise": lerpf(_rise_of(a), _rise_of(b), t),
 				"base_height": lerpf(float(a.base_height), float(b.base_height), t),
 			}
 	return (samples[samples.size() - 1] as Dictionary).duplicate()
@@ -74,7 +81,7 @@ func height_at_theta(z: float, theta: float) -> float:
 	if s.is_empty():
 		return NAN
 	var th := clampf(theta, 0.0, PI * 0.5)
-	return float(s.base_height) + float(s.radius) * (1.0 - cos(th))
+	return float(s.base_height) + _rise_of(s) * (1.0 - cos(th))
 
 
 func x_at_theta(z: float, theta: float) -> float:
@@ -135,12 +142,22 @@ func project(x: float, z: float, h: float) -> Dictionary:
 	var ph := height_at_theta(z, th)
 	var s := sample_at_z(z)
 	var r := float(s.radius)
-	# Outward normal in XH plane (toward open bowl = into flat).
-	var n_x := cos(th) if side == SimKinds.PipeSide.LEFT else -cos(th)
-	var n_h := sin(th)
-	# Tangent along arc (increasing theta = toward coping).
-	var t_x := -sin(th) if side == SimKinds.PipeSide.LEFT else sin(th)
-	var t_h := cos(th)
+	var rise := _rise_of(s)
+	# Scaled quarter-circle frame: reduces to circular when rise == radius.
+	var n_x: float
+	var n_h: float
+	var t_x: float
+	var t_h: float
+	if side == SimKinds.PipeSide.LEFT:
+		n_x = rise * cos(th)
+		n_h = r * sin(th)
+		t_x = -r * sin(th)
+		t_h = rise * cos(th)
+	else:
+		n_x = -rise * cos(th)
+		n_h = r * sin(th)
+		t_x = r * sin(th)
+		t_h = rise * cos(th)
 	return {
 		"ok": true,
 		"point": Vector3(px, z, ph),
@@ -153,10 +170,11 @@ func project(x: float, z: float, h: float) -> Dictionary:
 		"separation": h - ph,
 		"surface_id": id,
 		"radius": r,
+		"rise": rise,
 		"lip_x": float(s.lip_x),
 		"base_height": float(s.base_height),
 		"coping_x": coping_x_at(z),
-		"coping_height": float(s.base_height) + r,
+		"coping_height": float(s.base_height) + rise,
 	}
 
 

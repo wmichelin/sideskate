@@ -16,6 +16,8 @@ enum PipeSide { LEFT, RIGHT }
 ## X where the pipe meets its base flat (layer floor).
 @export var lip_x: float = 180.0
 @export var radius: float = 150.0
+## Height span of the transition. -1 = same as radius (circular / 45° ramp).
+@export var rise: float = -1.0
 ## Absolute logical height of the pipe's base flat (layer height).
 @export var base_height: float = 0.0
 ## Source layer index from the .ssk (`layer N`).
@@ -50,6 +52,10 @@ func is_ramp() -> bool:
 	return kind == "ramp"
 
 
+func effective_rise() -> float:
+	return rise if rise > 0.0 else radius
+
+
 ## Returns surface sample, or { active: false } if outside this pipe.
 func query_surface(logical_x: float, logical_z: float) -> Dictionary:
 	if not contains_z(logical_z) or not contains_x(logical_x):
@@ -63,22 +69,29 @@ func query_surface(logical_x: float, logical_z: float) -> Dictionary:
 
 	x_offset = clampf(x_offset, 0.0, radius)
 	var ratio := 0.0 if radius <= 0.0001 else clampf(x_offset / radius, 0.0, 1.0)
+	var ry := effective_rise()
 	var theta: float
 	var height: float
 	var normal_x: float
 	var normal_y: float
 	if is_ramp():
 		theta = ratio * PI * 0.5
-		height = base_height + radius * ratio
-		var inv := 1.0 / sqrt(2.0)
-		normal_x = inv if side == PipeSide.LEFT else -inv
-		normal_y = inv
+		height = base_height + ry * ratio
+		var nlen := sqrt(ry * ry + radius * radius)
+		normal_x = (ry / nlen) if side == PipeSide.LEFT else -(ry / nlen)
+		normal_y = radius / nlen
 	else:
 		theta = asin(ratio)
-		height = base_height + radius * (1.0 - cos(theta))
-		# Unit normal pointing toward the plaza / open air (away from the wall).
-		normal_x = cos(theta) if side == PipeSide.LEFT else -cos(theta)
-		normal_y = sin(theta)  # "up" in logical height space
+		height = base_height + ry * (1.0 - cos(theta))
+		# Scaled quarter-circle frame (matches PipeSurface when rise == radius).
+		var n_x := ry * cos(theta)
+		var n_h := radius * sin(theta)
+		var nlen2 := sqrt(n_x * n_x + n_h * n_h)
+		if nlen2 > 0.0001:
+			n_x /= nlen2
+			n_h /= nlen2
+		normal_x = n_x if side == PipeSide.LEFT else -n_x
+		normal_y = n_h
 
 	var zone := (
 		PipeMath.ramp_zone_name(side) if is_ramp() else PipeMath.zone_name(side)
@@ -96,6 +109,7 @@ func query_surface(logical_x: float, logical_z: float) -> Dictionary:
 		"side": side,
 		"base_height": base_height,
 		"radius": radius,
+		"rise": ry,
 		"layer": layer,
 		"z_min": z_min,
 		"z_max": z_max,

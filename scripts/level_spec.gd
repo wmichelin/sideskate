@@ -8,6 +8,8 @@ var width: float = 0.0
 var depth: float = 0.0
 var pipe_radius_override: float = -1.0
 var deck_height_override: float = -1.0
+## Per-glyph-cell height rise for pipes/ramps. -1 = use cell_w at compile.
+var step_height: float = -1.0
 
 var spawn_x: float = 640.0
 var spawn_z: float = 40.0
@@ -24,9 +26,10 @@ var floors: Array = []
 ##         "base_height": float }
 var decks: Array = []
 ## Each: { "kind": "pipe"|"ramp", "side": int, "lip_x": float, "radius": float,
-##         "base_height": float, "z_min": float, "z_max": float,
+##         "rise": float, "base_height": float, "z_min": float, "z_max": float,
 ##         "x_min": float, "x_max": float, "layer": int }
-## Ramps reuse the same footprint fields; peak height = base + radius.
+## radius = X footprint (run_cells × cell_w); rise = height (run_cells × step_height).
+## Peak height = base + rise.
 var pipes: Array = []
 ## Floor glyph cells as Vector2i(col, row) — row 0 = far/top (all stories).
 var floor_cells: Array = []

@@ -315,8 +315,11 @@ func _step_ramp(
 ) -> void:
 	var ramp: RampSurface = model.ramps[state.surface_id]
 	var along_wish := wish.x * ramp.outward_sign()
-	# Constant 45° incline (rise == run width).
-	var g_along := SimTolerances.GRAVITY * (1.0 / sqrt(2.0))
+	var sample0 := ramp.sample_at_z(state.position.y)
+	var run0 := float(sample0.get("radius", 0.0))
+	var rise0 := float(sample0.get("rise", run0))
+	var hyp0 := sqrt(run0 * run0 + rise0 * rise0)
+	var g_along := SimTolerances.GRAVITY * (rise0 / maxf(hyp0, 0.001))
 	state.tangent_velocity.x = _integrate_axis(
 		state.tangent_velocity.x, along_wish, max_speed, accel, brake, ramp_friction, delta
 	)

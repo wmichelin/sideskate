@@ -28,6 +28,7 @@ static func build_parts_from_pipes(pipes: Array) -> Array:
 			qp.side = int(pipe.side)
 			qp.lip_x = float(pipe.lip_x)
 			qp.radius = float(pipe.radius)
+			qp.rise = float(pipe.get("rise", pipe.radius))
 			qp.base_height = float(pipe.get("base_height", 0.0))
 			qp.layer = int(pipe.get("layer", 0))
 			qp.z_min = float(pipe.z_min)
@@ -62,6 +63,7 @@ static func _pipe_meta(pipe: QuarterPipe, face_role: String) -> Dictionary:
 		"side": pipe.side,
 		"lip_x": pipe.lip_x,
 		"radius": pipe.radius,
+		"rise": pipe.effective_rise(),
 		"base_height": pipe.base_height,
 		"z_min": pipe.z_min,
 		"z_max": pipe.z_max,
@@ -98,7 +100,7 @@ static func _build_ride_part(pipe: QuarterPipe):
 static func _build_outer_wall_part(pipe: QuarterPipe):
 	var part = _MeshPart.make("pipe_wall", pipe.layer, _pipe_meta(pipe, "back"))
 	var cope_x := _PipeMath.coping_x(pipe.side, pipe.lip_x, pipe.radius)
-	var top_h := pipe.base_height + pipe.radius
+	var top_h := pipe.base_height + pipe.effective_rise()
 	var bot := pipe.base_height
 	var z0 := pipe.z_min
 	var z1 := pipe.z_max
@@ -142,7 +144,7 @@ static func _endcap_at(part, pipe: QuarterPipe, logical_z: float, near_face: boo
 
 ## Profile point: Vector2(x, height) at angle theta from lip (0) to coping (π/2).
 static func profile_point(pipe: QuarterPipe, theta: float, is_left: bool) -> Vector2:
-	var h := pipe.base_height + pipe.radius * (1.0 - cos(theta))
+	var h := pipe.base_height + pipe.effective_rise() * (1.0 - cos(theta))
 	var x: float
 	if is_left:
 		x = pipe.lip_x - pipe.radius * sin(theta)

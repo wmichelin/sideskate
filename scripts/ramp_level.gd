@@ -101,6 +101,7 @@ func apply_spec(s: LevelSpec) -> void:
 		n.side = pd.side
 		n.lip_x = pd.lip_x
 		n.radius = pd.radius
+		n.rise = float(pd.get("rise", pd.radius))
 		n.base_height = float(pd.get("base_height", 0.0))
 		n.layer = int(pd.get("layer", 0))
 		n.z_min = pd.z_min
@@ -572,7 +573,7 @@ func pipe_arc_frame(pipe: QuarterPipe, logical_z: float) -> Dictionary:
 	var coping_x := pipe.x_min() if is_left else pipe.x_max()
 	var lip := project_screen(pipe.lip_x, logical_z, pipe.base_height)
 	var cope_flat := project_screen(coping_x, logical_z, pipe.base_height)
-	var cope_peak := project_screen(coping_x, logical_z, pipe.base_height + pipe.radius)
+	var cope_peak := project_screen(coping_x, logical_z, pipe.base_height + pipe.effective_rise())
 	var r := absf(cope_flat.x - lip.x)
 	return {
 		"lip": lip,

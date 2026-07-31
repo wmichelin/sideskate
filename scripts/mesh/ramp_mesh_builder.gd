@@ -27,6 +27,7 @@ static func build_parts_from_pipes(pipes: Array) -> Array:
 			qp.side = int(pipe.side)
 			qp.lip_x = float(pipe.lip_x)
 			qp.radius = float(pipe.radius)
+			qp.rise = float(pipe.get("rise", pipe.radius))
 			qp.base_height = float(pipe.get("base_height", 0.0))
 			qp.layer = int(pipe.get("layer", 0))
 			qp.z_min = float(pipe.z_min)
@@ -61,6 +62,7 @@ static func _ramp_meta(pipe: QuarterPipe, face_role: String) -> Dictionary:
 		"side": pipe.side,
 		"lip_x": pipe.lip_x,
 		"radius": pipe.radius,
+		"rise": pipe.effective_rise(),
 		"base_height": pipe.base_height,
 		"z_min": pipe.z_min,
 		"z_max": pipe.z_max,
@@ -71,7 +73,7 @@ static func _ramp_meta(pipe: QuarterPipe, face_role: String) -> Dictionary:
 
 static func _profile_point(pipe: QuarterPipe, u: float) -> Vector2:
 	var uu := clampf(u, 0.0, 1.0)
-	var h := pipe.base_height + pipe.radius * uu
+	var h := pipe.base_height + pipe.effective_rise() * uu
 	var off := pipe.radius * uu
 	var x := pipe.lip_x - off if pipe.side == QuarterPipe.PipeSide.LEFT else pipe.lip_x + off
 	return Vector2(x, h)
@@ -100,7 +102,7 @@ static func _build_ride_part(pipe: QuarterPipe):
 static func _build_outer_wall_part(pipe: QuarterPipe):
 	var part = _MeshPart.make("ramp_wall", pipe.layer, _ramp_meta(pipe, "back"))
 	var cope_x := _PipeMath.coping_x(pipe.side, pipe.lip_x, pipe.radius)
-	var top_h := pipe.base_height + pipe.radius
+	var top_h := pipe.base_height + pipe.effective_rise()
 	var bot := pipe.base_height
 	var z0 := pipe.z_min
 	var z1 := pipe.z_max

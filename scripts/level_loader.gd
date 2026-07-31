@@ -178,7 +178,7 @@ static func _is_map_row(stripped: String) -> bool:
 		return false
 	# Header keys
 	var key := stripped.split(" ")[0]
-	if key in ["ssk", "name", "width", "depth", "pipe_radius", "deck_height", "perspective_inset", "far_geometry_scale", "reference_depth", "reference_width", "spawn_facing", "layer", "height"]:
+	if key in ["ssk", "name", "width", "depth", "pipe_radius", "deck_height", "step_height", "perspective_inset", "far_geometry_scale", "reference_depth", "reference_width", "spawn_facing", "layer", "height"]:
 		return false
 	# Must contain at least one map glyph (not only spaces)
 	for glyph in stripped:
@@ -210,6 +210,8 @@ static func _parse_header_kv(spec: LevelSpec, stripped: String) -> void:
 			spec.pipe_radius_override = float(val)
 		"deck_height":
 			spec.deck_height_override = float(val)
+		"step_height":
+			spec.step_height = float(val)
 		"spawn_facing":
 			var f := val.strip_edges().to_lower()
 			if f == "l" or f == "left":
@@ -376,7 +378,8 @@ static func _append_layer_geometry(
 					spec.playable_mask[r * W + c] = 1
 
 	var layer_pipes: Array = _pipes_from_aligned_runs(
-		grid, W, H, cw, ch, spec.pipe_radius_override, base_height
+		grid, W, H, cw, ch, spec.pipe_radius_override, base_height,
+		_effective_step_height(spec)
 	)
 	for pipe in layer_pipes:
 		pipe["layer"] = layer_index
@@ -407,12 +410,12 @@ static func _append_layer_geometry(
 				)
 		var rise := spec.deck_height_override
 		if rise < 0.0:
-			rise = float(neighbors[0].radius)
+			rise = float(neighbors[0].get("rise", neighbors[0].radius))
 			for i in range(1, neighbors.size()):
-				var rh := float(neighbors[i].radius)
+				var rh := float(neighbors[i].get("rise", neighbors[i].radius))
 				if not is_equal_approx(rh, rise):
 					push_warning(
-						"LevelLoader: layer %d deck neighbors have unequal pipe/ramp radii (%.1f vs %.1f); spine coping will gap. Use matching ()<> run widths."
+						"LevelLoader: layer %d deck neighbors have unequal pipe/ramp rises (%.1f vs %.1f); spine coping will gap. Use matching ()<> run widths."
 						% [layer_index, rise, rh]
 					)
 				rise = maxf(rise, rh)
@@ -424,6 +427,7 @@ static func _append_layer_geometry(
 				"lip_x": float(pipe.lip_x),
 				"side": pipe.side,
 				"radius": float(pipe.radius),
+				"rise": float(pipe.get("rise", pipe.radius)),
 				"coping_x": float(pipe.x_min) if is_left else float(pipe.x_max),
 			})
 		var dpoly := _outline_poly(comp, cw, ch, H)
@@ -490,9 +494,15 @@ static func _recompute_bounds(spec: LevelSpec) -> void:
 	spec.z_max = zmax
 
 
+static func _effective_step_height(spec: LevelSpec) -> float:
+	if spec.step_height > 0.0:
+		return spec.step_height
+	return spec.cell_w
+
+
 static func _pipes_from_aligned_runs(
 	grid: Array, W: int, H: int, cw: float, ch: float, radius_override: float,
-	base_height: float = 0.0
+	base_height: float = 0.0, step_height: float = -1.0
 ) -> Array:
 	# Collect per-row horizontal () / <> runs, then merge only identical column
 	# spans that are contiguous in row — so stepped layouts don't fatten into
@@ -521,6 +531,7 @@ static func _pipes_from_aligned_runs(
 
 	var used := {}
 	var pipes: Array = []
+	var step_h := step_height if step_height > 0.0 else cw
 	for i in range(runs.size()):
 		if used.has(i):
 			continue
@@ -545,36 +556,41 @@ static func _pipes_from_aligned_runs(
 				band.r1 = maxi(band.r1, other.r1)
 				used[j] = true
 				changed = true
-		pipes.append(_pipe_from_band(band, cw, ch, H, radius_override, base_height))
+		pipes.append(_pipe_from_band(band, cw, ch, H, radius_override, base_height, step_h))
 	return pipes
 
 
 static func _pipe_from_band(
 	band: Dictionary, cw: float, ch: float, H: int, radius_override: float,
-	base_height: float = 0.0
+	base_height: float = 0.0, step_height: float = -1.0
 ) -> Dictionary:
 	var x0 := float(band.c0) * cw
 	var x1 := float(band.c1 + 1) * cw
 	var z0 := float(H - 1 - band.r1) * ch
 	var z1 := float(H - band.r0) * ch
-	var radius: float = radius_override if radius_override > 0.0 else (x1 - x0)
+	var width_cells := int(band.c1) - int(band.c0) + 1
+	var footprint := x1 - x0
+	var step_h := step_height if step_height > 0.0 else cw
+	var rise: float = radius_override if radius_override > 0.0 else float(width_cells) * step_h
 	var is_left: bool = band.is_left
 	var lip_x: float = x1 if is_left else x0
 	return {
 		"kind": str(band.get("kind", "pipe")),
 		"side": QuarterPipe.PipeSide.LEFT if is_left else QuarterPipe.PipeSide.RIGHT,
 		"lip_x": lip_x,
-		"radius": radius,
+		"radius": footprint,
+		"rise": rise,
 		"base_height": base_height,
 		"z_min": z0,
 		"z_max": z1,
-		"x_min": lip_x - radius if is_left else lip_x,
-		"x_max": lip_x if is_left else lip_x + radius,
+		"x_min": lip_x - footprint if is_left else lip_x,
+		"x_max": lip_x if is_left else lip_x + footprint,
 	}
 
 
 static func _pipe_from_component(
-	comp: Array, is_left: bool, cw: float, ch: float, H: int, radius_override: float
+	comp: Array, is_left: bool, cw: float, ch: float, H: int, radius_override: float,
+	step_height: float = -1.0
 ) -> Dictionary:
 	var min_c := 999999
 	var max_c := -1
@@ -593,11 +609,10 @@ static func _pipe_from_component(
 	var z0 := float(H - 1 - max_r) * ch
 	var z1 := float(H - min_r) * ch
 
-	var radius: float
-	if radius_override > 0.0:
-		radius = radius_override
-	else:
-		radius = x1 - x0
+	var width_cells := max_c - min_c + 1
+	var footprint := x1 - x0
+	var step_h := step_height if step_height > 0.0 else cw
+	var rise: float = radius_override if radius_override > 0.0 else float(width_cells) * step_h
 
 	var lip_x: float
 	if is_left:
@@ -609,11 +624,12 @@ static func _pipe_from_component(
 		"kind": "pipe",
 		"side": QuarterPipe.PipeSide.LEFT if is_left else QuarterPipe.PipeSide.RIGHT,
 		"lip_x": lip_x,
-		"radius": radius,
+		"radius": footprint,
+		"rise": rise,
 		"z_min": z0,
 		"z_max": z1,
-		"x_min": lip_x - radius if is_left else lip_x,
-		"x_max": lip_x if is_left else lip_x + radius,
+		"x_min": lip_x - footprint if is_left else lip_x,
+		"x_max": lip_x if is_left else lip_x + footprint,
 	}
 
 

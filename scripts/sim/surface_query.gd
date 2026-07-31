@@ -587,7 +587,8 @@ func _slope_feature_wall(surf, surface_id: String, x: float, z: float, h: float,
 		return {}
 	var base := float(sample.base_height)
 	var radius := float(sample.radius)
-	var peak := base + radius
+	var rise := float(sample.get("rise", radius))
+	var peak := base + rise
 	if h < base - SimTolerances.CONTACT_EPS or h > peak + SimTolerances.CONTACT_EPS:
 		return {}
 	var lip := float(sample.lip_x)

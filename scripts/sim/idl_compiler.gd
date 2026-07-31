@@ -144,14 +144,15 @@ static func _compile_pipes(spec: LevelSpec, model: ParkModel) -> void:
 		var layer := int(p.get("layer", 0))
 		var lip := float(p.get("lip_x", 0.0))
 		var radius := float(p.get("radius", 0.0))
+		var rise := float(p.get("rise", radius))
 		var base_h := float(p.get("base_height", 0.0))
 		var z_min := float(p.get("z_min", 0.0))
 		var z_max := float(p.get("z_max", 0.0))
 		var is_ramp := kind == "ramp"
 		var surf_id := ("%s_%d_L%d_S%d" % ["ramp" if is_ramp else "pipe", i, layer, side])
 		var samples: Array = [
-			{"z": z_min, "lip_x": lip, "radius": radius, "base_height": base_h},
-			{"z": z_max, "lip_x": lip, "radius": radius, "base_height": base_h},
+			{"z": z_min, "lip_x": lip, "radius": radius, "rise": rise, "base_height": base_h},
+			{"z": z_max, "lip_x": lip, "radius": radius, "rise": rise, "base_height": base_h},
 		]
 		var cope := CopingEdge.new()
 		cope.id = "coping_%s" % surf_id
@@ -162,7 +163,7 @@ static func _compile_pipes(spec: LevelSpec, model: ParkModel) -> void:
 		cope.outward_sign = -1.0 if side == SimKinds.PipeSide.LEFT else 1.0
 		cope.allows_hang = not is_ramp
 		var cx := lip - radius if side == SimKinds.PipeSide.LEFT else lip + radius
-		var ch := base_h + radius
+		var ch := base_h + rise
 		cope.height_samples = [
 			{"z": z_min, "height": ch, "coping_x": cx},
 			{"z": z_max, "height": ch, "coping_x": cx},
@@ -235,6 +236,7 @@ static func _refine_slope_loft(spec: LevelSpec, model: ParkModel, surf, glyph: S
 				"z": z_mid,
 				"lip_x": float(run.lip_x),
 				"radius": float(run.radius),
+				"rise": float(run.rise),
 				"base_height": lh,
 			})
 	if new_samples.size() < 2:
@@ -250,14 +252,16 @@ static func _refine_slope_loft(spec: LevelSpec, model: ParkModel, surf, glyph: S
 	for s in surf.samples:
 		var lip := float(s.lip_x)
 		var radius := float(s.radius)
+		var rise := float(s.get("rise", radius))
 		var base_h := float(s.base_height)
 		var cx := lip - radius if surf.side == SimKinds.PipeSide.LEFT else lip + radius
-		hs.append({"z": float(s.z), "height": base_h + radius, "coping_x": cx})
+		hs.append({"z": float(s.z), "height": base_h + rise, "coping_x": cx})
 	cope.height_samples = hs
 
 
 static func _slope_run_on_row(line: String, glyph: String, surf, spec: LevelSpec) -> Dictionary:
 	var best := {}
+	var step_h := spec.step_height if spec.step_height > 0.0 else spec.cell_w
 	var c := 0
 	while c < line.length():
 		if line[c] != glyph:
@@ -268,6 +272,7 @@ static func _slope_run_on_row(line: String, glyph: String, surf, spec: LevelSpec
 			c += 1
 		var width_cells := c - start
 		var radius := float(width_cells) * spec.cell_w
+		var rise := float(width_cells) * step_h
 		var x0 := float(start) * spec.cell_w
 		var x1 := float(c) * spec.cell_w
 		var lip: float
@@ -277,9 +282,9 @@ static func _slope_run_on_row(line: String, glyph: String, surf, spec: LevelSpec
 			lip = x0 ## lip on left edge of run
 		var ref_lip := float((surf.samples[0] as Dictionary).lip_x)
 		if absf(lip - ref_lip) < spec.cell_w * 0.6:
-			return {"lip_x": lip, "radius": radius}
+			return {"lip_x": lip, "radius": radius, "rise": rise}
 		if best.is_empty() or absf(lip - ref_lip) < absf(float(best.lip_x) - ref_lip):
-			best = {"lip_x": lip, "radius": radius}
+			best = {"lip_x": lip, "radius": radius, "rise": rise}
 	return best
 
 

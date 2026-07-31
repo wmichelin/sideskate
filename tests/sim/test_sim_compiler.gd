@@ -13,7 +13,66 @@ func run() -> bool:
 		and _unrelated_story_breaks_do_not_split_coping()
 		and _open_coping()
 		and _playable_levels_compile()
+		and _step_height_scales_ramp_and_pipe()
+		and _step_height_defaults_to_cell_w()
 	)
+
+
+func _step_height_scales_ramp_and_pipe() -> bool:
+	var m: ParkModel = IdlCompiler.compile_path("res://tests/levels/sim/sim_step_height.ssk")
+	if not m.is_valid():
+		push_error("step_height compile: %s" % ",".join(m.compile_errors))
+		return false
+	var cw := m.cell_w
+	var want_rise := 3.0 * 40.0
+	var want_radius := 3.0 * cw
+	if m.ramps.is_empty() or m.pipes.is_empty():
+		push_error("step_height map missing ramp or pipe")
+		return false
+	var ramp: RampSurface = m.ramps[m.ramps.keys()[0]]
+	var pipe: PipeSurface = m.pipes[m.pipes.keys()[0]]
+	var rs: Dictionary = ramp.sample_at_z((ramp.z_min + ramp.z_max) * 0.5)
+	var ps: Dictionary = pipe.sample_at_z((pipe.z_min + pipe.z_max) * 0.5)
+	if absf(float(rs.get("rise", -1.0)) - want_rise) > 0.01:
+		push_error("ramp rise want %.1f got %s" % [want_rise, rs.get("rise", rs.get("radius"))])
+		return false
+	if absf(float(rs.radius) - want_radius) > 0.01:
+		push_error("ramp radius(X) want %.1f got %.1f" % [want_radius, float(rs.radius)])
+		return false
+	if absf(float(ps.get("rise", -1.0)) - want_rise) > 0.01:
+		push_error("pipe rise want %.1f got %s" % [want_rise, ps.get("rise", ps.get("radius"))])
+		return false
+	if absf(float(ps.radius) - want_radius) > 0.01:
+		push_error("pipe radius(X) want %.1f got %.1f" % [want_radius, float(ps.radius)])
+		return false
+	var peak_r := ramp.height_at_theta((ramp.z_min + ramp.z_max) * 0.5, PI * 0.5)
+	var peak_p := pipe.height_at_theta((pipe.z_min + pipe.z_max) * 0.5, PI * 0.5)
+	if absf(peak_r - want_rise) > 0.01 or absf(peak_p - want_rise) > 0.01:
+		push_error("peak height want %.1f ramp=%.1f pipe=%.1f" % [want_rise, peak_r, peak_p])
+		return false
+	return true
+
+
+func _step_height_defaults_to_cell_w() -> bool:
+	var m: ParkModel = IdlCompiler.compile_path("res://tests/levels/sim/sim_step_height_default.ssk")
+	if not m.is_valid():
+		push_error("step_height default compile: %s" % ",".join(m.compile_errors))
+		return false
+	var cw := m.cell_w
+	var want := 3.0 * cw
+	var ramp: RampSurface = m.ramps[m.ramps.keys()[0]]
+	var pipe: PipeSurface = m.pipes[m.pipes.keys()[0]]
+	var rs: Dictionary = ramp.sample_at_z((ramp.z_min + ramp.z_max) * 0.5)
+	var ps: Dictionary = pipe.sample_at_z((pipe.z_min + pipe.z_max) * 0.5)
+	var rr := float(rs.get("rise", rs.radius))
+	var pr := float(ps.get("rise", ps.radius))
+	if absf(rr - want) > 0.01 or absf(float(rs.radius) - want) > 0.01:
+		push_error("default ramp rise/radius want %.1f rise=%.1f radius=%.1f" % [want, rr, float(rs.radius)])
+		return false
+	if absf(pr - want) > 0.01 or absf(float(ps.radius) - want) > 0.01:
+		push_error("default pipe rise/radius want %.1f rise=%.1f radius=%.1f" % [want, pr, float(ps.radius)])
+		return false
+	return true
 
 
 func _halfpipe_compiles() -> bool:

@@ -381,13 +381,14 @@ func _append_pipe_wireframe(st: SurfaceTool, lift: float) -> void:
 		var is_ramp := bool(pipe.is_ramp()) if pipe.has_method("is_ramp") else false
 		var lip_x := float(pipe.lip_x)
 		var radius := float(pipe.radius)
+		var rise := float(pipe.effective_rise()) if pipe.has_method("effective_rise") else radius
 		var base := float(pipe.base_height)
 		var z0 := float(pipe.z_min)
 		var z1 := float(pipe.z_max)
 		if absf(z1 - z0) < 0.01 or radius <= 0.001:
 			continue
 		var cope_x := PipeMath.coping_x(side, lip_x, radius)
-		var cope_h := base + radius
+		var cope_h := base + rise
 		# Coping (top of back) along Z.
 		_add_line_vert(st, cope_x, z0, cope_h + lift)
 		_add_line_vert(st, cope_x, z1, cope_h + lift)
@@ -401,10 +402,10 @@ func _append_pipe_wireframe(st: SurfaceTool, lift: float) -> void:
 		_add_line_vert(st, cope_x, z1, base + lift)
 		# Endcap sides only (no along-Z ride rails): profile + base chord at z_min/z_max.
 		for z_end in [z0, z1]:
-			var prev := _slope_profile_point(lip_x, radius, base, 0.0, is_left, is_ramp)
+			var prev := _slope_profile_point(lip_x, radius, base, 0.0, is_left, is_ramp, rise)
 			for i in range(1, ARC_STEPS + 1):
 				var theta := (float(i) / float(ARC_STEPS)) * PI * 0.5
-				var p := _slope_profile_point(lip_x, radius, base, theta, is_left, is_ramp)
+				var p := _slope_profile_point(lip_x, radius, base, theta, is_left, is_ramp, rise)
 				_add_line_vert(st, prev.x, z_end, prev.y + lift)
 				_add_line_vert(st, p.x, z_end, p.y + lift)
 				prev = p
@@ -422,25 +423,26 @@ func _append_pipe_lattice(st: SurfaceTool, lift: float) -> void:
 		var is_ramp := bool(pipe.is_ramp()) if pipe.has_method("is_ramp") else false
 		var lip_x := float(pipe.lip_x)
 		var radius := float(pipe.radius)
+		var rise := float(pipe.effective_rise()) if pipe.has_method("effective_rise") else radius
 		var base := float(pipe.base_height)
 		var z0 := float(pipe.z_min)
 		var z1 := float(pipe.z_max)
 		if absf(z1 - z0) < 0.01 or radius <= 0.001:
 			continue
 		var cope_x := PipeMath.coping_x(side, lip_x, radius)
-		var cope_h := base + radius
+		var cope_h := base + rise
 		# Ride surface: constant-θ rails along Z + constant-Z arcs/lines.
 		for i in range(arc_n + 1):
 			var theta := (float(i) / float(arc_n)) * PI * 0.5
-			var p := _slope_profile_point(lip_x, radius, base, theta, is_left, is_ramp)
+			var p := _slope_profile_point(lip_x, radius, base, theta, is_left, is_ramp, rise)
 			_add_line_vert(st, p.x, z0, p.y + lift)
 			_add_line_vert(st, p.x, z1, p.y + lift)
 		for j in range(z_n + 1):
 			var z := lerpf(z0, z1, float(j) / float(z_n))
-			var prev := _slope_profile_point(lip_x, radius, base, 0.0, is_left, is_ramp)
+			var prev := _slope_profile_point(lip_x, radius, base, 0.0, is_left, is_ramp, rise)
 			for i in range(1, arc_n + 1):
 				var theta := (float(i) / float(arc_n)) * PI * 0.5
-				var p := _slope_profile_point(lip_x, radius, base, theta, is_left, is_ramp)
+				var p := _slope_profile_point(lip_x, radius, base, theta, is_left, is_ramp, rise)
 				_add_line_vert(st, prev.x, z, prev.y + lift)
 				_add_line_vert(st, p.x, z, p.y + lift)
 				prev = p
@@ -472,17 +474,19 @@ func _slope_profile_point(
 	theta: float,
 	is_left: bool,
 	is_ramp: bool,
+	rise: float = -1.0,
 ) -> Vector2:
 	var th := clampf(theta, 0.0, PI * 0.5)
+	var ry := rise if rise > 0.0 else radius
 	var h: float
 	var x: float
 	if is_ramp:
 		var u := th / (PI * 0.5)
-		h = base_height + radius * u
+		h = base_height + ry * u
 		var off := radius * u
 		x = lip_x - off if is_left else lip_x + off
 	else:
-		h = base_height + radius * (1.0 - cos(th))
+		h = base_height + ry * (1.0 - cos(th))
 		x = lip_x - radius * sin(th) if is_left else lip_x + radius * sin(th)
 	return Vector2(x, h)
 

@@ -208,7 +208,7 @@ func _pipe_back_solid_shape(part) -> Shape3D:
 		cope = lip - radius if side == 0 else lip + radius
 	if side < 0 or radius <= 0.001 or absf(z1 - z0) < 0.01:
 		return null
-	var top_h := base_h + radius
+	var top_h := base_h + float(part.meta.get("rise", radius))
 	# Outward from bowl: LEFT → −X logical, RIGHT → +X.
 	var outward := -1.0 if side == 0 else 1.0
 	var thick_logic := 8.0
