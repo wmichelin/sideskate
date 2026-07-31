@@ -24,10 +24,12 @@ func _setup_environment() -> void:
 		env.ambient_light_color = Color(0.35, 0.38, 0.42)
 		env.ambient_light_energy = 0.55
 		we.environment = env
-	# Shadows over a 100m park farm the GPU; fill lights stay on.
+	# Keep soft key shadows — deck wood vs floor blue-grey needs the contrast.
+	# Cap distance so spine_demo's 100m farm does not cascade the whole park.
 	var key := get_node_or_null("World3D/KeyLight") as DirectionalLight3D
 	if key != null:
-		key.shadow_enabled = false
+		key.shadow_enabled = true
+		key.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
 		key.directional_shadow_max_distance = 28.0
 		key.shadow_blur = 0.8
 

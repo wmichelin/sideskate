@@ -92,4 +92,4 @@ menu_back={
 
 [rendering]
 
-anti_aliasing/quality/msaa_3d=1
+anti_aliasing/quality/msaa_3d=2

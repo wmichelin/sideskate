@@ -73,7 +73,7 @@ func _material_for(key: String) -> StandardMaterial3D:
 	if _materials.has(key):
 		return _materials[key]
 	var mat := StandardMaterial3D.new()
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_PER_VERTEX
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
 	# Double-sided: trough cameras often see deck undersides / thin ride ribbons.
 	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 	match key:
