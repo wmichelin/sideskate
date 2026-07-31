@@ -23,6 +23,7 @@
 
 - Footprint stays grid-aligned (`run_cells × cell_w`).
 - Height uses `run_cells × step_height` so taller runs are proportionally taller even if `cell_w` changes.
+- When `step_height ≠ cell_w`, ramp incline is no longer 45° (X span and rise diverge by design).
 - Deck `#` rise from neighboring pipe/ramp continues to use max neighbor rise (now driven by step_height).
 - Pipes and ramps **always share** the same `step_height` (one header).
 
