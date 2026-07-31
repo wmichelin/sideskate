@@ -31,7 +31,7 @@ Use these terms exactly. Do not invent synonyms (`unlock`, `pop out`, `hang unlo
 
 **Fly-out / deck-out are the same.** Prefer **fly-out** in sim/code (`ManeuverPlan.Kind.FLY_OUT`, `try_fly_out`). **Deck-out** is the player/design name for that unlock toward a rear deck / outward free air — never a separate code path.
 
-**Lean:** air-out and ollie keep pre-takeoff surface lean; fly-out / deck-out sets `SimState.free_air_upright` and resets presentation lean upright.
+**Lean:** air-out and ollie keep pre-takeoff surface lean; fly-out / deck-out and ramp lip-band free-air leave (incl. peak leave) set `SimState.free_air_upright` and presentation lerps lean upright (`free_air_upright_duration`).
 
 ## Simulation: physics ticks only
 

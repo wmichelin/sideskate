@@ -158,6 +158,7 @@ func tick(delta: float = SimTolerances.FIXED_DT) -> void:
 		_try_actions()
 	var planned_surface_change := state.has_maneuver()
 	if state.is_grounded():
+		ground.ollie_lip_frac = ollie_lip_frac
 		ground.step(
 			state,
 			wish,

@@ -91,6 +91,9 @@ func run() -> bool:
 		and _pipe_ollie_below_lip_keeps_peakward_x()
 		and _ramp_adjacent_pipe_z_leave_no_hang()
 		and _ramp_lip_ollie_is_free_air()
+		and _ramp_lip_ollie_sets_free_air_upright()
+		and _ramp_mid_ollie_keeps_lean()
+		and _ramp_peak_leave_sets_free_air_upright()
 		and _ramp_peak_beside_pipe_keeps_outward_x()
 		and _fall_clears_hang_ignores_wish()
 		and _fall_stops_planar_keeps_gravity()
@@ -2015,6 +2018,115 @@ func _ramp_lip_ollie_is_free_air() -> bool:
 		push_error("ramp lip ollie: must not X-lock hang")
 		return false
 	return true
+
+
+func _ramp_lip_ollie_sets_free_air_upright() -> bool:
+	# Lip-band ramp ollie levels presentation tilt (same band as pipe ollie_lip_frac).
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_ramp.ssk"):
+		push_error("ramp lip upright: setup")
+		return false
+	sim.ollie_accel = 0.0
+	sim.ollie_charge_ms = 0.0
+	sim.ollie_height_flat = 60.0
+	sim.ollie_height_pipe = 60.0
+	sim.ollie_lip_frac = 0.50
+	if sim.model.ramps.is_empty():
+		push_error("ramp lip upright: no ramps")
+		return false
+	var ramp: RampSurface = sim.model.ramps[sim.model.all_ramp_ids()[0]]
+	var z := (ramp.z_min + ramp.z_max) * 0.5
+	var u := 0.92
+	var th := u * PI * 0.5
+	sim.state.mode = SimState.Mode.GROUNDED
+	sim.state.surface_id = ramp.id
+	sim.state.u = u
+	sim.state.v = 0.5
+	sim.state.tangent_velocity = Vector2(200.0, 0.0)
+	sim.state.position = Vector3(ramp.x_at_theta(z, th), z, ramp.height_at_theta(z, th))
+	sim.ollie_available = true
+	sim.set_input(Vector2.ZERO, false, false, true, false)
+	sim.tick()
+	sim.set_input(Vector2.ZERO, false, false, false, true)
+	sim.tick()
+	if not sim.state.is_airborne():
+		push_error("ramp lip upright: should be airborne")
+		return false
+	if not sim.state.free_air_upright:
+		push_error("ramp lip upright: expected free_air_upright")
+		return false
+	return true
+
+
+func _ramp_mid_ollie_keeps_lean() -> bool:
+	# Below lip band, ramp ollie keeps pre-takeoff lean.
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_ramp.ssk"):
+		push_error("ramp mid ollie lean: setup")
+		return false
+	sim.ollie_accel = 0.0
+	sim.ollie_charge_ms = 0.0
+	sim.ollie_height_flat = 60.0
+	sim.ollie_height_pipe = 60.0
+	sim.ollie_lip_frac = 0.50
+	if sim.model.ramps.is_empty():
+		push_error("ramp mid ollie lean: no ramps")
+		return false
+	var ramp: RampSurface = sim.model.ramps[sim.model.all_ramp_ids()[0]]
+	var z := (ramp.z_min + ramp.z_max) * 0.5
+	var u := 0.25
+	var th := u * PI * 0.5
+	sim.state.mode = SimState.Mode.GROUNDED
+	sim.state.surface_id = ramp.id
+	sim.state.u = u
+	sim.state.v = 0.5
+	sim.state.tangent_velocity = Vector2(200.0, 0.0)
+	sim.state.position = Vector3(ramp.x_at_theta(z, th), z, ramp.height_at_theta(z, th))
+	sim.ollie_available = true
+	sim.set_input(Vector2.ZERO, false, false, true, false)
+	sim.tick()
+	sim.set_input(Vector2.ZERO, false, false, false, true)
+	sim.tick()
+	if not sim.state.is_airborne():
+		push_error("ramp mid ollie lean: should be airborne")
+		return false
+	if sim.state.free_air_upright:
+		push_error("ramp mid ollie lean: must keep lean (free_air_upright false)")
+		return false
+	return true
+
+
+func _ramp_peak_leave_sets_free_air_upright() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_ramp.ssk"):
+		push_error("ramp peak upright: setup")
+		return false
+	if sim.model.ramps.is_empty():
+		push_error("ramp peak upright: no ramps")
+		return false
+	var ramp: RampSurface = sim.model.ramps[sim.model.all_ramp_ids()[0]]
+	var z := (ramp.z_min + ramp.z_max) * 0.5
+	sim.state.mode = SimState.Mode.GROUNDED
+	sim.state.surface_id = ramp.id
+	sim.state.u = 0.85
+	sim.state.v = 0.5
+	sim.state.tangent_velocity = Vector2(500.0, 0.0)
+	sim.state.position = Vector3(
+		ramp.x_at_theta(z, 0.85 * PI * 0.5),
+		z,
+		ramp.height_at_theta(z, 0.85 * PI * 0.5)
+	)
+	sim.state.clear_hang()
+	for _i in range(120):
+		sim.set_input(Vector2(1, 0), false, false)
+		sim.tick()
+		if sim.state.is_airborne():
+			if not sim.state.free_air_upright:
+				push_error("ramp peak upright: expected free_air_upright")
+				return false
+			return true
+	push_error("ramp peak upright: never launched")
+	return false
 
 
 func _ramp_peak_beside_pipe_keeps_outward_x() -> bool:

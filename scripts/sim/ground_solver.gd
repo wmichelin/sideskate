@@ -5,6 +5,8 @@ extends RefCounted
 
 var model: ParkModel
 var query: SurfaceQuery
+## Synced from PlayerSim each tick — lip band for ramp free-air upright.
+var ollie_lip_frac: float = 0.50
 
 
 func _init(m: ParkModel = null, q: SurfaceQuery = null) -> void:
@@ -408,6 +410,8 @@ func _launch_from_ramp_peak(state: SimState, ramp: RampSurface, z: float) -> voi
 	)
 	state.position = Vector3(peak_x, z, ramp.height_at_theta(z, PI * 0.5))
 	_enter_air(state, Vector3(world_vx, world_vz, world_vh), "")
+	# Peak is always in the lip band (u = 1) — level out tilt in free air.
+	state.free_air_upright = true
 
 
 func _enter_wall_from_pipe(
@@ -617,10 +621,19 @@ func _enter_air(state: SimState, world_vel: Vector3, hang_edge_id: String = "") 
 	state.air_peak_height = state.position.z
 	if hang_edge_id.is_empty():
 		state.clear_hang()
-		# Ollie / ride-off free air may keep presentation lean; fly-out sets upright.
+		# Free air may keep lean; fly-out / ramp lip-band leave set upright after.
 		state.free_air_upright = false
 	else:
 		state.begin_hang(hang_edge_id)
+
+
+## Ramp free-air leave from the peak-ward lip band → level presentation tilt.
+func _maybe_upright_after_ramp_lip_leave(
+	state: SimState, takeoff_u: float, lip_frac: float
+) -> void:
+	var lip := clampf(lip_frac, 0.0, 1.0)
+	if takeoff_u >= 1.0 - lip:
+		state.free_air_upright = true
 
 
 ## Leave grounded contact into free air with an upward ollie pop.
@@ -635,6 +648,8 @@ func launch_height_impulse(
 	var along := state.tangent_velocity.x
 	var depth := state.tangent_velocity.y
 	var lip := clampf(lip_frac, 0.0, 1.0)
+	var from_ramp := model.ramps.has(state.surface_id)
+	var takeoff_u := state.u
 	# Lip-band hang is pipe-only. Ramps always free-air pop (no X-lock / fly-out).
 	if lip > 0.0 and state.u >= 1.0 - lip and model.pipes.has(state.surface_id):
 		if _launch_ollie_lip_hang(state, height_impulse, along, depth):
@@ -675,6 +690,8 @@ func launch_height_impulse(
 	if nudge.length_squared() > 0.0:
 		state.position += nudge
 	_enter_air(state, world, "")
+	if from_ramp:
+		_maybe_upright_after_ramp_lip_leave(state, takeoff_u, lip)
 
 
 ## Drop velocity into a surface normal so free-air never launches underground.
@@ -809,6 +826,7 @@ func _leave_slope_at_z_end(state: SimState, surf, proposed_z: float) -> bool:
 	var world_vx := state.tangent_velocity.x * outward
 	var world_vz := state.tangent_velocity.y
 	var leaving_ramp := model.ramps.has(state.surface_id)
+	var takeoff_u := state.u
 	var top := query.top_support(x, proposed_z, h + SimTolerances.CONTACT_EPS)
 	if not top.is_empty() and absf(float(top.height) - h) <= SimTolerances.SEAM_EPS:
 		var dest_id := str(top.surface_id)
@@ -848,6 +866,8 @@ func _leave_slope_at_z_end(state: SimState, surf, proposed_z: float) -> bool:
 		pass
 	_enter_air(state, Vector3(world_vx, world_vz, 0.0))
 	state.position = probe
+	if leaving_ramp:
+		_maybe_upright_after_ramp_lip_leave(state, takeoff_u, ollie_lip_frac)
 	return true
 
 

@@ -31,6 +31,8 @@ const BODY_CYLINDER_H_M := 0.22
 @export_range(0.0, 5.0, 0.01) var fall_anim_duration: float = 0.15
 @export_range(0.0, 5.0, 0.01) var fall_stop_duration: float = 0.35
 @export_range(0.0, 10.0, 0.01) var fall_duration: float = 1.0
+## Presentation: seconds to ease carried lean → upright when `free_air_upright` (0 = snap).
+@export_range(0.0, 2.0, 0.01) var free_air_upright_duration: float = 0.1
 
 var depth: PseudoDepthBody
 var facing_h: String = "r"
@@ -53,6 +55,10 @@ var _carry_tilt: float = 0.0
 var _transfer_tilt_active: bool = false
 var _transfer_tilt_start: float = 0.0
 var _transfer_tilt_end: float = 0.0
+## Free-air upright lerp (fly-out / ramp lip leave): carry → 0 over duration.
+var _upright_tilt_active: bool = false
+var _upright_tilt_start: float = 0.0
+var _upright_tilt_elapsed: float = 0.0
 
 
 func _ready() -> void:
@@ -181,6 +187,7 @@ func _sync_from_sim() -> void:
 	}
 	var tilt := 0.0
 	if st.is_hanging():
+		_upright_tilt_active = false
 		# Prefer live anchor; off-span hang still leans from the launch pipe.
 		var hang_pipe: PipeSurface = null
 		var edge: TopologyEdge = _sim.model.edges.get(st.hang_edge_id)
@@ -201,16 +208,19 @@ func _sync_from_sim() -> void:
 			tilt = -hang_pipe.outward_sign() * (PI * 0.5)
 			_carry_tilt = tilt
 	elif st.is_grounded() and _sim.model.walls.has(st.surface_id):
+		_upright_tilt_active = false
 		var wall: WallSurface = _sim.model.walls[st.surface_id]
 		var wall_pipe: PipeSurface = _sim.model.pipes[wall.source_pipe_id]
 		tilt = -wall_pipe.outward_sign() * (PI * 0.5)
 		_carry_tilt = tilt
 	elif st.is_grounded() and _sim.model.pipes.has(st.surface_id):
+		_upright_tilt_active = false
 		var pipe: PipeSurface = _sim.model.pipes[st.surface_id]
 		var th := st.u * (PI * 0.5)
 		tilt = -pipe.outward_sign() * th
 		_carry_tilt = tilt
 	elif st.is_grounded() and _sim.model.ramps.has(st.surface_id):
+		_upright_tilt_active = false
 		var ramp: RampSurface = _sim.model.ramps[st.surface_id]
 		# Match pipe lean along incline (u∈[0,1] → 0…45° at full rise).
 		tilt = -ramp.outward_sign() * (st.u * PI * 0.25)
@@ -220,6 +230,7 @@ func _sync_from_sim() -> void:
 		if st.has_maneuver() and st.maneuver is ManeuverPlan \
 				and (st.maneuver as ManeuverPlan).kind == ManeuverPlan.Kind.TRANSFER:
 			var tplan: ManeuverPlan = st.maneuver
+			_upright_tilt_active = false
 			if not _transfer_tilt_active:
 				_transfer_tilt_start = _carry_tilt
 				_transfer_tilt_end = tplan.tilt_end
@@ -233,20 +244,22 @@ func _sync_from_sim() -> void:
 				tilt = lerp_angle(0.0, _transfer_tilt_end, (tt - apex) / (1.0 - apex))
 			_carry_tilt = tilt
 		elif st.free_air_upright:
-			# Air-out hang / ollie keep surface lean. Fly-out / deck-out stands upright.
+			# Fly-out / ramp lip-band leave: ease carried lean to upright.
 			_transfer_tilt_active = false
-			tilt = 0.0
-			_carry_tilt = 0.0
+			tilt = _step_upright_tilt()
 		else:
 			_transfer_tilt_active = false
+			_upright_tilt_active = false
 			tilt = _carry_tilt
 	else:
 		_transfer_tilt_active = false
+		_upright_tilt_active = false
 		_carry_tilt = 0.0
 	# Contact-plane lean (ramp/pipe). Fall visual is a physics box (presenter).
 	var support_tilt := tilt
 	if st.falling:
 		_transfer_tilt_active = false
+		_upright_tilt_active = false
 	var support_h := p.z
 	if st.is_hanging():
 		var support_edge: TopologyEdge = _sim.model.edges.get(st.hang_edge_id)
@@ -272,6 +285,28 @@ func _sync_from_sim() -> void:
 		depth.apply()
 	global_position = _WorldSpace.logical_to_world(p.x, p.y, p.z)
 	collision_mask = 0
+
+
+## Ease `_carry_tilt` → 0 while airborne with `free_air_upright` (physics-fixed dt).
+func _step_upright_tilt() -> float:
+	var dur := maxf(free_air_upright_duration, 0.0)
+	if dur <= 0.0:
+		_upright_tilt_active = false
+		_carry_tilt = 0.0
+		return 0.0
+	if not _upright_tilt_active:
+		_upright_tilt_active = true
+		_upright_tilt_start = _carry_tilt
+		_upright_tilt_elapsed = 0.0
+	_upright_tilt_elapsed += SimTolerances.FIXED_DT
+	var t := clampf(_upright_tilt_elapsed / dur, 0.0, 1.0)
+	var tilt := lerp_angle(_upright_tilt_start, 0.0, t)
+	_carry_tilt = tilt
+	if t >= 1.0:
+		_upright_tilt_active = false
+		_carry_tilt = 0.0
+		return 0.0
+	return tilt
 
 
 func _zone_from_state(st: SimState) -> String:
