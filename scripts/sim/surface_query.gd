@@ -190,8 +190,9 @@ func edge_anchor_sample(edge: TopologyEdge, z: float) -> Dictionary:
 	return {}
 
 
-## Next acid/spine targets: facing half-plane, opposite side, above the lip,
-## never the lip you already own. Ranked nearest-first (same order as HUD).
+## Next acid/spine targets: facing half-plane, opposite side, above the hang
+## lip (wall top / open cope — same height the plan touches), never the lip
+## you already own. Ranked nearest-first (same order as HUD).
 func transfer_candidates(state: SimState) -> Array:
 	var out: Array = []
 	if model == null or state == null:
@@ -208,10 +209,27 @@ func transfer_candidates(state: SimState) -> Array:
 			continue
 		if not skip_cope.is_empty() and str(c.coping_id) == skip_cope:
 			continue
-		if state.position.z <= float(c.height) + SimTolerances.CONTACT_EPS:
+		# Gate on hang lip, not raw geometric pipe lip — WALL_EXTENSION targets
+		# sit ~one story above the pipe radius. Accepting between those heights
+		# builds an unreachable plan that snaps X and never touches.
+		var hang_h := transfer_hang_height(str(c.coping_id), state.position.y, float(c.height))
+		if state.position.z <= hang_h + SimTolerances.CONTACT_EPS:
 			continue
-		out.append(c)
+		var ranked: Dictionary = c.duplicate()
+		ranked["height"] = hang_h
+		out.append(ranked)
 	return out
+
+
+## Hang-touch height for a transfer destination at depth z (wall top preferred).
+func transfer_hang_height(coping_id: String, z: float, fallback: float) -> float:
+	var hang_edge := open_hang_edge_for_coping(coping_id, z)
+	if hang_edge == null:
+		return fallback
+	var anchor := edge_anchor_sample(hang_edge, z)
+	if anchor.is_empty():
+		return fallback
+	return float(anchor.height)
 
 
 func self_coping_id_for_transfer(state: SimState) -> String:

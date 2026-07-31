@@ -69,6 +69,7 @@ func run() -> bool:
 		and _layered_next_spine_keeps_l1_past_l0_lip()
 		and _transfer_button_lerps_x_holds_facing()
 		and _transfer_shared_x_spine_reanchors_hang()
+		and _transfer_rejects_below_hang_lip_after_floor_ollie()
 		and _layered_deck_back_ride_off_stays_free()
 		and _map_edge_deck_no_void_exit()
 		and _layered_outer_coping_seam_stays_anchored()
@@ -4088,6 +4089,78 @@ func _transfer_button_lerps_x_holds_facing() -> bool:
 	if sim.state.facing != "l":
 		push_error("transfer lerp: facing lost after arrive")
 		return false
+	return true
+
+
+## Floor ollie mid-band (above geometric L0 lip, below WALL_EXTENSION hang lip):
+## transfer must reject — accepting snaps X through the ramp and falls forever.
+func _transfer_rejects_below_hang_lip_after_floor_ollie() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
+		push_error("below-hang transfer: setup")
+		return false
+	var l1r: PipeSurface = sim.model.pipes.get("pipe_5_L1_S1")
+	var l0l: PipeSurface = sim.model.pipes.get("pipe_2_L0_S0")
+	if l1r == null or l0l == null:
+		push_error("below-hang transfer: missing pipes")
+		return false
+	var z := 1700.0
+	var cx := float(l1r.coping_x_at(z))
+	var geom_h := float(sim.model.copings[l0l.coping_id].sample_at_z(z).height)
+	var hang_h := sim.query.transfer_hang_height(l0l.coping_id, z, geom_h)
+	if hang_h <= geom_h + 10.0:
+		push_error(
+			"below-hang transfer: expected WALL_EXTENSION hang above geom (%.1f / %.1f)"
+			% [hang_h, geom_h]
+		)
+		return false
+	var mid_h := (geom_h + hang_h) * 0.5
+	var floor_id := ""
+	for pid in sim.model.patches.keys():
+		if str(pid).begins_with("floor"):
+			floor_id = str(pid)
+			break
+	if floor_id.is_empty():
+		push_error("below-hang transfer: no floor")
+		return false
+	# Free air after floor ollie, bowl-side of L1 right, facing the L0 left wall.
+	sim.state.mode = SimState.Mode.AIRBORNE
+	sim.state.surface_id = ""
+	sim.state.air_launch_surface_id = floor_id
+	sim.state.position = Vector3(cx - 60.0, z, mid_h)
+	sim.state.velocity = Vector3(200.0, 0.0, 80.0)
+	sim.state.set_facing_side("r")
+	sim.state.clear_hang()
+	sim.state.maneuver = null
+	var cands := sim.query.transfer_candidates(sim.state)
+	for c in cands:
+		if str(c.get("coping_id", "")) == l0l.coping_id:
+			push_error(
+				"below-hang transfer: L0 wall listed while below hang lip (h=%.1f hang=%.1f)"
+				% [mid_h, hang_h]
+			)
+			return false
+	sim.set_input(Vector2(1, 0), false, true)
+	sim.tick()
+	if sim.state.has_maneuver():
+		push_error(
+			"below-hang transfer: accepted unreachable plan land_h=%.1f start_h=%.1f"
+			% [(sim.state.maneuver as ManeuverPlan).land_height, mid_h]
+		)
+		return false
+	# Stay alive above the void — no snap-through forever fall.
+	for _i in range(90):
+		sim.set_input(Vector2(1, 0), false, false)
+		sim.tick()
+		if not sim.state.alive:
+			push_error("below-hang transfer: died mid air")
+			return false
+		if sim.state.position.z < SimTolerances.VOID_FLOOR + 5.0 and sim.state.has_maneuver():
+			push_error(
+				"below-hang transfer: fell through while still maneuvering h=%.1f"
+				% sim.state.position.z
+			)
+			return false
 	return true
 
 

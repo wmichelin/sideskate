@@ -39,12 +39,12 @@ func try_transfer(state: SimState) -> Dictionary:
 	)
 	plan.land_x = land_x
 	# Touch height = hang lip (wall top / open cope), not raw geometric pipe lip.
-	plan.land_height = float(c.height)
-	var hang_edge := query.open_hang_edge_for_coping(dest_id, state.position.y)
-	if hang_edge != null:
-		var anchor := query.edge_anchor_sample(hang_edge, state.position.y)
-		if not anchor.is_empty():
-			plan.land_height = float(anchor.height)
+	# Candidates already store hang height; re-sample so plan matches the gate.
+	plan.land_height = query.transfer_hang_height(
+		dest_id, state.position.y, float(c.height)
+	)
+	if state.position.z <= plan.land_height + SimTolerances.CONTACT_EPS:
+		return _reject("below dest hang lip")
 	plan.hold_facing = state.facing
 	# Geometric dest lip lean (matches hang after re-anchor). Presentation
 	# rolls start → upright at apex → dest (never the inverted half).
@@ -63,6 +63,8 @@ func try_transfer(state: SimState) -> Dictionary:
 		plan.land_height,
 		SimTolerances.GRAVITY,
 	)
+	if plan.land_time <= 0.0001:
+		return _reject("no ballistic path to dest hang lip")
 	if plan.land_time + 0.0001 < plan.rise_time:
 		# Rising past lip height; still need the fall after apex.
 		var apex_h := plan.start_position.z + vz0 * vz0 / maxf(2.0 * g_abs, 0.001)

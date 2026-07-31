@@ -1254,6 +1254,17 @@ func _step_transfer(
 		and state.position.z <= plan.land_height + SimTolerances.CONTACT_EPS
 		and state.velocity.z <= 0.0
 	)
+	# Unreachable / expired transfer (below hang lip with no touch) — drop into
+	# free air so solids / void floor can remount. Capsule contact is skipped
+	# while the maneuver owns the tick.
+	if (
+		not touched
+		and plan.elapsed > maxf(plan.land_time, SimTolerances.FIXED_DT) + 0.25
+		and state.position.z < plan.land_height - SimTolerances.CONTACT_EPS
+	):
+		state.maneuver = null
+		_step_free(state, wish, delta)
+		return
 	# Clock through apex at constant rate — never stall when vz≈0.
 	# Cap below 1 until lip touch so a short land_time cannot finish early.
 	var t := plan.transfer_progress_at_elapsed(plan.elapsed)
