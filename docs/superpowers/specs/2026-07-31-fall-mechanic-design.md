@@ -62,6 +62,7 @@ Suggested defaults are starting points only.
 
 - Over `fall_anim_duration`, lerp fall roll to **±90° toward current facing** at enter (`l` one way, `r` the other).
 - While falling, fall roll **owns** visual lean (replaces normal surface-tilt presentation lean).
+- Fall lean pivots at the feet contact; the 3D presenter **lifts** the visual along world Y so the tilted body AABB rests on top of the surface (no mesh bleed-through).
 - On recovery: return to normal surface tilt / upright presentation.
 - Anim finishing early does not unlock input.
 

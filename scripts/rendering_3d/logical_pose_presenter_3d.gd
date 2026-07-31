@@ -100,6 +100,10 @@ func apply_pose(pose: LogicalPose) -> void:
 	var world_position := WorldSpace.logical_to_world(
 		pose.logical_x, pose.logical_z, pose.feet_height
 	)
+	# Fall side-lean pivots at the feet, so the body AABB digs into the ride
+	# surface — lift so the lowest mesh point rests on the contact plane.
+	if _player != null and _player.has_method("is_falling") and bool(_player.call("is_falling")):
+		world_position.y += _lean_clearance_lift(pose.surface_tilt)
 	if is_inside_tree():
 		global_position = world_position
 	else:
@@ -117,6 +121,19 @@ func apply_pose(pose: LogicalPose) -> void:
 		_body.rotation = Vector3(
 			0.0, pose.facing_yaw + pose.depth_turn_yaw, 0.0
 		)
+
+
+## World-Y lift so a Z-tilted body AABB's lowest corner sits on the feet plane.
+func _lean_clearance_lift(tilt: float) -> float:
+	var hx := body_size.x * 0.5
+	var s := sin(tilt)
+	var c := cos(tilt)
+	var min_y := INF
+	for x in [-hx, hx]:
+		for y in [0.0, body_size.y]:
+			min_y = minf(min_y, x * s + y * c)
+	# Tiny epsilon so the mesh rests on top rather than z-fighting the surface.
+	return maxf(0.0, -min_y) + 0.005
 
 
 func _build_live_pose() -> LogicalPose:
