@@ -148,10 +148,10 @@ func _lean_clearance_lift(tilt: float, body_yaw: float) -> float:
 		for ly in [-hy, hy]:
 			for lz in [-hz, hz]:
 				# Body local → root (Y yaw around body center, then + feet offset).
-				var rx := lx * yaw_c + lz * yaw_s
-				var ry := ly + cy
+				var rx: float = lx * yaw_c + lz * yaw_s
+				var ry: float = ly + cy
 				# Root tilt about Z.
-				var wy := rx * s + ry * c
+				var wy: float = rx * s + ry * c
 				min_y = minf(min_y, wy)
 	# Rest on top of the surface with a visible clearance (was still grazing).
 	return maxf(0.0, -min_y) + 0.02
