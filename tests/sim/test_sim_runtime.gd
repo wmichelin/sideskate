@@ -96,6 +96,7 @@ func run() -> bool:
 		and _fall_stops_planar_keeps_gravity()
 		and _fall_air_waits_for_land_then_recovers()
 		and _fall_midair_still_collides_pipe()
+		and _ramp_edge_lip_stick_out_faces_and_climbs()
 	)
 
 
@@ -286,6 +287,59 @@ func _fall_midair_still_collides_pipe() -> bool:
 	return true
 
 
+## Park-edge >>> lip: facing left + hold right must face right and climb out
+## (not bounce into void and remount with a downhill punch forever).
+func _ramp_edge_lip_stick_out_faces_and_climbs() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_ramp.ssk"):
+		push_error("ramp edge lip: setup")
+		return false
+	if sim.model.ramps.is_empty():
+		push_error("ramp edge lip: no ramps")
+		return false
+	sim.friction = 0.0
+	sim.ramp_friction = 0.0
+	var rid: String = str(sim.model.ramps.keys()[0])
+	var ramp: RampSurface = sim.model.ramps[rid]
+	var z := (ramp.z_min + ramp.z_max) * 0.5
+	sim.state.mode = SimState.Mode.GROUNDED
+	sim.state.surface_id = rid
+	sim.state.u = 0.05
+	sim.state.v = 0.5
+	sim.state.maneuver = null
+	sim.state.clear_hang()
+	var th := sim.state.u * PI * 0.5
+	sim.state.position = Vector3(
+		ramp.x_at_theta(z, th), z, ramp.height_at_theta(z, th)
+	)
+	sim.state.tangent_velocity = Vector2(-120.0, 0.0)
+	sim.state.velocity = Vector3.ZERO
+	sim.state.set_facing_side("l")
+	var u0 := sim.state.u
+	for _i in range(180):
+		sim.set_input(Vector2(1.0, 0.0), false, false, false)
+		sim.tick()
+	if sim.state.facing != "r":
+		push_error(
+			"ramp edge lip: still facing %s after hold-right (sid=%s u=%.3f tv=%s)"
+			% [sim.state.facing, sim.state.surface_id, sim.state.u, sim.state.tangent_velocity]
+		)
+		return false
+	var climbed := sim.state.surface_id == rid and sim.state.u > u0 + 0.08
+	var on_floor_right := (
+		sim.state.is_grounded()
+		and not sim.model.ramps.has(sim.state.surface_id)
+		and sim.state.position.x > ramp.bound_x_max - 5.0
+	)
+	if not climbed and not on_floor_right:
+		push_error(
+			"ramp edge lip: did not climb/ride out (sid=%s u=%.3f→%.3f x=%.1f)"
+			% [sim.state.surface_id, u0, sim.state.u, sim.state.position.x]
+		)
+		return false
+	return true
+
+
 func _air_land_ramp_keeps_uphill_along() -> bool:
 	# Skate onto mid > with mostly horizontal +vx → uphill along (not forced downhill).
 	var sim := PlayerSim.new()
@@ -420,17 +474,22 @@ func _air_out_reenter_ramp_not_fake_uphill() -> bool:
 		)
 		return false
 	# With friction 0, downhill coast should not grind toward zero from fake uphill.
+	# Sample mid-incline only — park-edge lips clamp instead of void-ejecting.
 	var a0 := landed_along
-	for _j in range(20):
+	var a_mid := a0
+	for _j in range(10):
 		sim.set_input(Vector2.ZERO, false, false)
 		sim.tick()
-		if not sim.state.is_grounded():
+		if not sim.state.is_grounded() or sim.state.surface_id != ramp.id:
 			break
-	if sim.state.is_grounded() and a0 < -1.0 and sim.state.tangent_velocity.x > a0 + 5.0:
+		if sim.state.u < 0.08:
+			break
+		a_mid = sim.state.tangent_velocity.x
+	if a0 < -1.0 and a_mid > a0 + 5.0:
 		# Became less downhill (wrong) — gravity should speed downhill.
 		push_error(
 			"air-out reenter: downhill coast lost speed %.1f → %.1f (friction0)"
-			% [a0, sim.state.tangent_velocity.x]
+			% [a0, a_mid]
 		)
 		return false
 	return true

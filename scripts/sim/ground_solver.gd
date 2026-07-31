@@ -568,8 +568,22 @@ func _leave_slope_at_lip(state: SimState, surf, z: float) -> void:
 		if top.get("lethal", false):
 			state.alive = false
 		return
-	state.position = Vector3(onto_x, z, lip_h)
-	_enter_air(state, Vector3(world_vx, world_vz, 0.0))
+	# No abutting support (park edge / void). Stay on the lip — ejecting into
+	# free air stamps air_launch_surface_id and same-slope remount punches
+	# downhill (≥80), trapping stick-out reverse at the border forever.
+	state.mode = SimState.Mode.GROUNDED
+	state.u = 0.0
+	state.v = clampf(
+		(z - float(surf.z_min)) / maxf(float(surf.z_max) - float(surf.z_min), 0.001),
+		0.0,
+		1.0
+	)
+	state.position = Vector3(lip_x, z, lip_h)
+	# Kill downhill along so the next tick can brake/accel uphill from rest.
+	state.tangent_velocity.x = maxf(state.tangent_velocity.x, 0.0)
+	state.tangent_velocity.y = world_vz
+	state.velocity = Vector3.ZERO
+	_update_facing_slope(state, str(surf.id))
 
 
 func try_mount_surface(state: SimState, x: float, z: float, h: float) -> bool:
