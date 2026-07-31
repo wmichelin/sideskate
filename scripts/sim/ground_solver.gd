@@ -584,9 +584,9 @@ func _enter_air(state: SimState, world_vel: Vector3, hang_edge_id: String = "") 
 
 
 ## Leave grounded contact into free air with an upward ollie pop.
-## Flats / walls: world-up impulse. Pipes / ramps below the lip band: carry ride X
-## only + world-up pop. In the upper `lip_frac` of a pipe/ramp (default top 50%),
-## enter X-locked hang air like a normal air-out, with ollie providing vertical.
+## Flats: world-up impulse. Pipes / ramps in the upper `lip_frac`: X-locked hang.
+## Walls: always deck-out (lip + top pad) or X-locked hang — never free-air X.
+## Below the lip band on pipes/ramps: carry ride X only + world-up.
 func launch_height_impulse(
 	state: SimState, height_impulse: float, lip_frac: float = 0.50
 ) -> void:
@@ -595,26 +595,19 @@ func launch_height_impulse(
 	var along := state.tangent_velocity.x
 	var depth := state.tangent_velocity.y
 	var lip := clampf(lip_frac, 0.0, 1.0)
-	if (
-		lip > 0.0
-		and state.u >= 1.0 - lip
-		and (model.pipes.has(state.surface_id) or model.ramps.has(state.surface_id))
-	):
-		if _launch_ollie_lip_hang(state, height_impulse, along, depth):
+	if lip > 0.0 and state.u >= 1.0 - lip:
+		if model.pipes.has(state.surface_id) or model.ramps.has(state.surface_id):
+			if _launch_ollie_lip_hang(state, height_impulse, along, depth):
+				return
+	# Wall climb ollie: never free-air with stick X — deck-out or hang.
+	if model.walls.has(state.surface_id):
+		if _launch_ollie_wall_top(state, height_impulse, along, depth, lip):
 			return
 	var world := Vector3(along, depth, height_impulse)
 	var nudge := Vector3.ZERO
 	if model.patches.has(state.surface_id):
 		world = Vector3(along, depth, height_impulse)
 		nudge = Vector3(0.0, 0.0, SimTolerances.CONTACT_EPS)
-	elif model.walls.has(state.surface_id):
-		# Wall along-speed is already world height — keep it and add the pop.
-		world = Vector3(0.0, depth, along + height_impulse)
-		var wall: WallSurface = model.walls[state.surface_id]
-		var source: PipeSurface = model.pipes.get(wall.source_pipe_id)
-		if source != null:
-			# Nudge into the bowl so we clear the face.
-			nudge = Vector3(-source.outward_sign() * SimTolerances.CONTACT_EPS, 0.0, 0.0)
 	elif model.pipes.has(state.surface_id) or model.ramps.has(state.surface_id):
 		var surf = model.pipes.get(state.surface_id)
 		if surf == null:
@@ -680,6 +673,46 @@ func _launch_ollie_lip_hang(
 	# Toward-coping ride speed becomes vertical like a normal air-out, plus ollie.
 	var world_vh := maxf(along, 0.0) + height_impulse
 	state.position = Vector3(float(anchor.x), z, float(anchor.height))
+	_enter_air(state, Vector3(0.0, depth, world_vh), edge.id)
+	return true
+
+
+## Wall ollie: deck-out onto compiled top support when in the lip band, else
+## X-locked hang on the wall-top edge (never free-air stick X).
+func _launch_ollie_wall_top(
+	state: SimState,
+	height_impulse: float,
+	along: float,
+	depth: float,
+	lip_frac: float,
+) -> bool:
+	var z := state.position.y
+	var wall: WallSurface = model.walls.get(state.surface_id)
+	if wall == null:
+		return false
+	var edge := query.edge_at(wall.id, z, "top")
+	if edge == null:
+		return false
+	var lip := clampf(lip_frac, 0.0, 1.0)
+	if (
+		lip > 0.0
+		and state.u >= 1.0 - lip
+		and model.patches.has(edge.to_surface_id)
+	):
+		var source: PipeSurface = model.pipes.get(wall.source_pipe_id)
+		if source == null:
+			return false
+		_mount_patch_from_edge(state, source, model.patches[edge.to_surface_id], z)
+		return true
+	var anchor := query.edge_anchor_sample(edge, z)
+	if anchor.is_empty():
+		return false
+	var world_vh := maxf(along, 0.0) + height_impulse
+	# Keep current height for mid-climb pops; lip snaps to the hang anchor.
+	var h := state.position.z
+	if lip > 0.0 and state.u >= 1.0 - lip:
+		h = float(anchor.height)
+	state.position = Vector3(float(anchor.x), z, h)
 	_enter_air(state, Vector3(0.0, depth, world_vh), edge.id)
 	return true
 

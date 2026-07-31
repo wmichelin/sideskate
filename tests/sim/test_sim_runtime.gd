@@ -17,6 +17,7 @@ func run() -> bool:
 		and _ollie_faces_direction()
 		and _ollie_jump_charge_scales_impulse()
 		and _ollie_height_picks_flat_vs_pipe()
+		and _wall_ollie_hangs_x_locked()
 		and _ollie_jump_caps_at_full_charge()
 		and _ollie_jump_airborne_adds_impulse()
 		and _ollie_single_charge_replenishes_on_ground()
@@ -724,6 +725,71 @@ func _ollie_height_picks_flat_vs_pipe() -> bool:
 		push_error(
 			"ollie pick: pipe vz=%.1f want ~%.1f" % [sim.state.velocity.z, want_pipe]
 		)
+		return false
+	return true
+
+
+## Wall-climb ollie must X-lock (hang) or deck-out — never free-air stick X.
+func _wall_ollie_hangs_x_locked() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
+		push_error("wall ollie: setup")
+		return false
+	var wall: WallSurface = null
+	for id in sim.model.all_wall_ids():
+		wall = sim.model.walls[id]
+		break
+	if wall == null:
+		push_error("wall ollie: no wall")
+		return false
+	var z := (wall.z_min + wall.z_max) * 0.5
+	sim.state.mode = SimState.Mode.GROUNDED
+	sim.state.surface_id = wall.id
+	sim.state.u = 0.92
+	sim.state.v = 0.5
+	sim.state.position = wall.position_at(z, 0.92)
+	sim.state.tangent_velocity = Vector2(200.0, 0.0)
+	sim.state.velocity = Vector3.ZERO
+	sim.state.clear_hang()
+	sim.state.maneuver = null
+	sim.ollie_accel = 0.0
+	sim.ollie_charge_ms = 0.0
+	sim.ollie_height_flat = 100.0
+	sim.ollie_height_pipe = 100.0
+	sim.ollie_lip_frac = 0.50
+	sim.ollie_available = true
+	sim.ollie_charge = 1.0
+	sim.set_input(Vector2.ZERO, false, false, false, true)
+	sim.tick()
+	var top_edge := sim.query.edge_at(wall.id, z, "top")
+	var decked := (
+		sim.state.is_grounded()
+		and sim.model.patches.has(sim.state.surface_id)
+	)
+	if decked:
+		# Lip + top pad → grounded deck/floor is a valid leave.
+		return true
+	if not sim.state.is_hanging():
+		push_error(
+			"wall ollie: expected hang or deck, mode=%s hang=%s surf=%s edge=%s"
+			% [
+				sim.state.mode,
+				sim.state.hang_edge_id,
+				sim.state.surface_id,
+				top_edge.id if top_edge else "?",
+			]
+		)
+		return false
+	for _i in range(8):
+		sim.set_input(Vector2(1, 0), false, false, false, false)
+		sim.tick()
+		if not sim.state.is_hanging():
+			break
+		if absf(sim.state.velocity.x) > 0.5:
+			push_error("wall ollie: hang allowed stick X vx=%.2f" % sim.state.velocity.x)
+			return false
+	if sim.state.is_hanging() and absf(sim.state.velocity.x) > 0.5:
+		push_error("wall ollie: still steering X while hanging")
 		return false
 	return true
 
