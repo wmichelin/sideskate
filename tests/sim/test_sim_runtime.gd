@@ -87,6 +87,7 @@ func run() -> bool:
 		and _air_land_pipe_maps_vx_via_outward()
 		and _air_out_reenter_ramp_not_fake_uphill()
 		and _air_out_reenter_pipe_not_fake_uphill()
+		and _ollie_near_lip_stick_out_no_coping_hang()
 		and _pipe_ollie_below_lip_keeps_peakward_x()
 		and _ramp_adjacent_pipe_z_leave_no_hang()
 		and _ramp_lip_ollie_is_free_air()
@@ -381,6 +382,98 @@ func _air_out_reenter_pipe_not_fake_uphill() -> bool:
 			"air-out pipe reenter: rising/skim reentry seeded uphill %.1f"
 			% landed_along
 		)
+		return false
+	return true
+
+
+## Free-air ollie near the lip + hold outward used to remount mid-ascent with
+## along=0, then stick climb into a soft coping hang / X-lock.
+func _ollie_near_lip_stick_out_no_coping_hang() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_halfpipe.ssk"):
+		push_error("ollie lip stick: setup")
+		return false
+	sim.ollie_height_pipe = 80.0
+	sim.ollie_charge_ms = 0.0
+	sim.ollie_accel = 0.0
+	sim.ollie_lip_frac = 0.50
+	sim.friction = 0.0
+	sim.ramp_friction = 0.0
+	var right: PipeSurface = null
+	for id in sim.model.pipes.keys():
+		var p: PipeSurface = sim.model.pipes[id]
+		if p.side == SimKinds.PipeSide.RIGHT:
+			right = p
+			break
+	if right == null:
+		push_error("ollie lip stick: no right pipe")
+		return false
+	var z := (right.z_min + right.z_max) * 0.5
+	var u0 := 0.48
+	var th := u0 * PI * 0.5
+	sim.state.mode = SimState.Mode.GROUNDED
+	sim.state.surface_id = right.id
+	sim.state.u = u0
+	sim.state.v = 0.5
+	sim.state.tangent_velocity = Vector2(120.0, 0.0)
+	sim.state.velocity = Vector3.ZERO
+	sim.state.position = Vector3(right.x_at_theta(z, th), z, right.height_at_theta(z, th))
+	sim.state.clear_hang()
+	sim.state.maneuver = null
+	sim.state.clear_air_peak()
+	sim.ollie_available = true
+	sim.ollie_charge = 1.0
+	sim.ollie_charge_peak_height = 80.0
+	sim.set_input(Vector2(1.0, 0.0), false, false, false, true)
+	sim.tick()
+	if sim.state.is_hanging():
+		push_error("ollie lip stick: mid-face ollie must not hang")
+		return false
+	var landed := false
+	var land_along := 0.0
+	var land_u := 0.0
+	var saw_hang := false
+	for _i in range(120):
+		sim.set_input(Vector2(1.0, 0.0), false, false)
+		sim.tick()
+		if sim.state.is_hanging():
+			saw_hang = true
+		if not landed and sim.state.is_grounded() and sim.state.surface_id == right.id:
+			landed = true
+			land_along = sim.state.tangent_velocity.x
+			land_u = sim.state.u
+			if land_along > -40.0:
+				push_error(
+					"ollie lip stick: remount must seed downhill, along=%.1f u=%.2f"
+					% [land_along, land_u]
+				)
+				return false
+			# Coast with stick-out: must keep dropping u, never soft-stick at peak.
+			var u_min := land_u
+			for _k in range(30):
+				sim.set_input(Vector2(1.0, 0.0), false, false)
+				sim.tick()
+				if sim.state.is_hanging():
+					push_error("ollie lip stick: soft remount climbed into hang")
+					return false
+				if not sim.state.is_grounded():
+					break
+				u_min = minf(u_min, sim.state.u)
+				if sim.state.u >= 0.99 and absf(sim.state.tangent_velocity.x) < 20.0:
+					push_error("ollie lip stick: stalled at coping")
+					return false
+			if u_min >= land_u - 0.02 and land_u > 0.85:
+				push_error(
+					"ollie lip stick: never rode downhill (u %.2f → min %.2f)"
+					% [land_u, u_min]
+				)
+				return false
+			break
+	if not landed:
+		push_error("ollie lip stick: never remounted pipe")
+		return false
+	if saw_hang:
+		push_error("ollie lip stick: entered hang before remount")
 		return false
 	return true
 

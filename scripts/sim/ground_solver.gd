@@ -297,7 +297,18 @@ func _step_pipe(
 	if state.tangent_velocity.x > 1.0:
 		_launch_from_edge(state, edge, new_z)
 	else:
-		state.tangent_velocity.x = minf(state.tangent_velocity.x, 0.0)
+		# Soft peak stick (along≈0 after a lip remount) felt like hanging on the
+		# coping — shove downhill instead of parking at u=1.
+		state.tangent_velocity.x = -maxf(absf(state.tangent_velocity.x), 80.0)
+		var down_th := PI * 0.5 + state.tangent_velocity.x * delta / radius
+		if down_th < PI * 0.5:
+			state.u = maxf(down_th / (PI * 0.5), 0.0)
+			state.position = Vector3(
+				pipe.x_at_theta(new_z, down_th),
+				new_z,
+				pipe.height_at_theta(new_z, down_th)
+			)
+			_update_facing_pipe(state, pipe)
 
 
 func _step_ramp(

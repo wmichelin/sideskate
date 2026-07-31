@@ -31,10 +31,8 @@ func _slope_along_from_world_vx(surf, world_vx: float) -> float:
 
 
 ## Project free-air world velocity onto the slope tangent (X + height).
-## Using vx alone maps air-out residual outward X to uphill along, so gravity
-## kills speed and feels like friction even with ramp_friction = 0.
-## `launch_id` is the surface this air bout left — same-slope / abutting reentry
-## never seeds uphill while falling.
+## Same-slope reentry (ollie / air-out drop-back) always seeds downhill like hang
+## remount — clamping to 0 let stick-out climb into a weak coping hang / X-lock.
 func _slope_along_from_world_vel(
 	surf, world_vel: Vector3, at: Vector3, launch_id: String = ""
 ) -> float:
@@ -43,15 +41,11 @@ func _slope_along_from_world_vel(
 		return _slope_along_from_world_vx(surf, world_vel.x)
 	var t: Vector3 = proj.tangent_along
 	var along := world_vel.x * t.x + world_vel.z * t.z
-	# Same-slope reentry must never invent climb from residual outward X —
-	# including rising skims (vz≈0) that skip a fall-only clamp and stall at the lip.
-	if along > 0.0 and _slope_land_is_reentry(surf, launch_id, at.y):
-		if world_vel.z < -SimTolerances.CONTACT_EPS:
-			along = minf(0.0, world_vel.z * t.z)
-		else:
-			along = 0.0
-	return along
-
+	if not _slope_land_is_reentry(surf, launch_id, at.y):
+		return along
+	# Hang remount parity: always punch downhill on same-slope return.
+	var impact := maxf(absf(world_vel.z), absf(world_vel.x) * 0.5)
+	return -maxf(impact, 80.0)
 
 
 func _launch_id_for_along(state: SimState) -> String:
@@ -74,6 +68,30 @@ func _slope_land_is_reentry(surf, launch_id: String, z: float) -> bool:
 	if model.pipes.has(launch_id) and model.ramps.has(sid):
 		return _ramp_launch_abuts_pipe(sid, model.pipes[launch_id], z)
 	return false
+
+
+## Ollie / free-air stick into the launch lip while still rising must not remount
+## (seeds along≈0 → stick climbs → weak coping hang). Stay airborne until fall.
+func _rising_same_slope_reentry(state: SimState, surf) -> bool:
+	if state == null or surf == null or state.is_hanging():
+		return false
+	if state.velocity.z <= SimTolerances.CONTACT_EPS:
+		return false
+	return _slope_land_is_reentry(surf, _launch_id_for_along(state), state.position.y)
+
+
+func _contact_slope_surf(contact: Dictionary):
+	var owner := str(contact.get("owner_id", contact.get("surface_id", "")))
+	if owner.is_empty():
+		return null
+	if model.pipes.has(owner):
+		return model.pipes[owner]
+	if model.ramps.has(owner):
+		return model.ramps[owner]
+	if model.walls.has(owner):
+		var wall: WallSurface = model.walls[owner]
+		return model.pipes.get(wall.source_pipe_id)
+	return null
 
 
 func step(
@@ -268,6 +286,8 @@ func _disposition_for_contact(
 	if role == SimKinds.ContactRole.LIP_COLUMN:
 		if state.velocity.z > SimTolerances.CONTACT_EPS * 10.0:
 			return SimKinds.ContactDisposition.CORRIDOR
+		if _rising_same_slope_reentry(state, _contact_slope_surf(contact)):
+			return SimKinds.ContactDisposition.CORRIDOR
 		return SimKinds.ContactDisposition.MOUNT
 	# Wall climb face.
 	if kind == "wall" or role == SimKinds.ContactRole.WALL_CLIMB:
@@ -307,6 +327,8 @@ func _disposition_for_contact(
 	# Pipe / ramp body solids.
 	if kind == "pipe" or kind == "ramp":
 		if state.velocity.z > 80.0:
+			return SimKinds.ContactDisposition.CORRIDOR
+		if _rising_same_slope_reentry(state, _contact_slope_surf(contact)):
 			return SimKinds.ContactDisposition.CORRIDOR
 		if state.is_hanging() and kind == "pipe" and _hang_rejects_pipe_hit(state, contact):
 			return SimKinds.ContactDisposition.CORRIDOR
@@ -519,6 +541,8 @@ func _mount_pipe_owner(state: SimState, pipe_id: String, contact: Dictionary) ->
 	if not state.is_hanging() \
 			and _ramp_launch_abuts_pipe(state.air_launch_surface_id, pipe, state.position.y):
 		return false
+	if _rising_same_slope_reentry(state, pipe):
+		return false
 	var vz := state.velocity.y
 	var world_vel := state.velocity
 	var z := state.position.y
@@ -562,6 +586,8 @@ func _mount_pipe_owner(state: SimState, pipe_id: String, contact: Dictionary) ->
 func _mount_ramp_owner(state: SimState, ramp_id: String, contact: Dictionary) -> bool:
 	var ramp: RampSurface = model.ramps.get(ramp_id)
 	if ramp == null:
+		return false
+	if _rising_same_slope_reentry(state, ramp):
 		return false
 	var rproj := ramp.project(state.position.x, state.position.y, state.position.z)
 	if not bool(rproj.get("ok", false)):
@@ -874,6 +900,8 @@ func _snap_onto_solid(state: SimState, hit: Dictionary, from_height: float = NAN
 		var pipe: PipeSurface = model.pipes.get(str(hit.get("surface_id", "")))
 		if pipe == null:
 			return false
+		if _rising_same_slope_reentry(state, pipe):
+			return false
 		var proj := _pipe_proj_for_air_hit(state, pipe, hit)
 		# Lower-story pipe bodies can wrap under upper lips — prefer a same-side
 		# pipe whose surface matches the contact height.
@@ -905,6 +933,8 @@ func _snap_onto_solid(state: SimState, hit: Dictionary, from_height: float = NAN
 			return false
 		var ramp: RampSurface = model.ramps.get(str(hit.get("surface_id", "")))
 		if ramp == null:
+			return false
+		if _rising_same_slope_reentry(state, ramp):
 			return false
 		var rproj := ramp.project(state.position.x, state.position.y, state.position.z)
 		if not bool(rproj.get("ok", false)):
