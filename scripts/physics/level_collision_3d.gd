@@ -172,35 +172,13 @@ func _pipe_back_solid_shape(part) -> Shape3D:
 	return convex
 
 
-## Thin deck top slab (not a full-height prism). Coping-aligned faces stay open so
-## the pipe back remains the continuous wall; non-coping walls use wall parts.
+## Thin deck top slab from triangulated faces (not a convex hull of the outline —
+## concave `#` notches must not solid-fill over the pipe).
 func _deck_top_shape(part) -> Shape3D:
-	var top_h := float(part.meta.get("height", 0.0))
-	var thick_logic := _WorldSpace.meters_to_logic(0.06)
-	var y0 := top_h
-	var y1 := top_h - thick_logic
-	var poly = part.meta.get("poly", PackedVector2Array())
-	var pts := PackedVector3Array()
-	if typeof(poly) == TYPE_PACKED_VECTOR2_ARRAY and poly.size() >= 3:
-		for p in poly:
-			pts.append(_WorldSpace.logical_to_world(p.x, p.y, y0))
-			pts.append(_WorldSpace.logical_to_world(p.x, p.y, y1))
-	else:
-		var ab: AABB = part.aabb()
-		if ab.size.length() < 0.0001:
-			return null
-		var x0 := ab.position.x
-		var x1 := ab.position.x + ab.size.x
-		var z0 := ab.position.z
-		var z1 := ab.position.z + ab.size.z
-		for xz in [Vector2(x0, z0), Vector2(x1, z0), Vector2(x1, z1), Vector2(x0, z1)]:
-			pts.append(Vector3(xz.x, _WorldSpace.logic_to_meters(y0), xz.y))
-			pts.append(Vector3(xz.x, _WorldSpace.logic_to_meters(y1), xz.y))
-	if pts.is_empty():
+	var shape: ConcavePolygonShape3D = part.to_concave_shape()
+	if shape == null:
 		return null
-	var convex := ConvexPolygonShape3D.new()
-	convex.points = pts
-	return convex
+	return shape
 
 
 func _clear() -> void:

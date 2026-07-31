@@ -78,4 +78,86 @@ func run() -> bool:
 			push_error("collision face count != mesh part faces")
 			return false
 
+	if not _notched_deck_top_stays_on_glyphs():
+		return false
+	return true
+
+
+## Concave `#` (shorter mid-row deck) must not fan-fill over the pipe.
+func _notched_deck_top_stays_on_glyphs() -> bool:
+	var text := """ssk 2
+name notch_deck
+---
+layer 0
+height 0
+===)))####
+===)))####
+===)))####
+===)))####
+=====)))##
+===)))####
+@==)))####
+===)))####
+===)))####
+"""
+	var spec := LevelLoader.parse_text(text, "notch_deck")
+	if spec == null:
+		push_error("notch deck: parse %s" % LevelLoader.last_error)
+		return false
+	if spec.decks.is_empty():
+		push_error("notch deck: no decks")
+		return false
+	var deck: Dictionary = spec.decks[0]
+	var cells: Array = deck.get("cells", [])
+	if cells.is_empty():
+		push_error("notch deck: missing cells on deck dict")
+		return false
+	var poly: PackedVector2Array = deck.get("poly", PackedVector2Array())
+	var parts: Array = _LevelGeometry.build_parts(spec, spec.pipes)
+	var deck_top = null
+	for part in parts:
+		if str(part.material_key) == "deck" and str(part.meta.get("face_role", "")) == "top":
+			deck_top = part
+			break
+	if deck_top == null or deck_top.is_empty():
+		push_error("notch deck: missing deck top mesh")
+		return false
+	var WorldSpace := preload("res://scripts/world_space.gd")
+	# Every triangle centroid must sit inside the outline (not over the notch/pipe).
+	var faces: PackedVector3Array = deck_top.faces
+	var i := 0
+	while i + 2 < faces.size():
+		var wa: Vector3 = faces[i]
+		var wb: Vector3 = faces[i + 1]
+		var wc: Vector3 = faces[i + 2]
+		var la: Dictionary = WorldSpace.world_to_logical(wa)
+		var lb: Dictionary = WorldSpace.world_to_logical(wb)
+		var lc: Dictionary = WorldSpace.world_to_logical(wc)
+		var cx := (float(la.x) + float(lb.x) + float(lc.x)) / 3.0
+		var cz := (float(la.z) + float(lb.z) + float(lc.z)) / 3.0
+		if not Geometry2D.is_point_in_polygon(Vector2(cx, cz), poly):
+			push_error(
+				"notch deck: top tri centroid (%.1f,%.1f) outside deck outline (fan fill?)"
+				% [cx, cz]
+			)
+			return false
+		i += 3
+	# Probe the mid-row notch column that is pipe, not `#`.
+	var cw := spec.cell_w
+	var ch := spec.cell_h
+	var H := spec.grid_h
+	var notch_r := 4
+	var notch_c := 7  # in =====)))## the last # starts at col 8; col 7 is last )
+	var probe := Vector2((float(notch_c) + 0.5) * cw, (float(H - 1 - notch_r) + 0.5) * ch)
+	if Geometry2D.is_point_in_polygon(probe, poly):
+		# If outline somehow includes it, mesh must still not cover — but outline
+		# from cells should exclude pipe glyphs.
+		push_error("notch deck: outline includes pipe cell at %s" % probe)
+		return false
+	# Also ensure that cell is not listed as a deck cell.
+	for cell in cells:
+		var ci: Vector2i = cell
+		if ci.x == notch_c and ci.y == notch_r:
+			push_error("notch deck: pipe cell marked as deck")
+			return false
 	return true

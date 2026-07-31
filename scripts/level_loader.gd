@@ -429,6 +429,7 @@ static func _append_layer_geometry(
 		var dpoly := _outline_poly(comp, cw, ch, H)
 		spec.decks.append({
 			"poly": dpoly,
+			"cells": comp.duplicate(),
 			"height": height,
 			"anchors": anchors,
 			"layer": layer_index,
