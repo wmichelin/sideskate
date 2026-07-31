@@ -10,8 +10,8 @@ On grounded ollie release, peak height is `charge_frac ×` one of two tunables:
 
 | Grounded surface | Height used | Default |
 |------------------|-------------|---------|
-| Floor, deck | `ollie_height_flat` | 100 |
-| Pipe, ramp, wall | `ollie_height_pipe` | 100 |
+| Floor, deck | `ollie_height_flat` | 150 |
+| Pipe, ramp, wall | `ollie_height_pipe` | 40 |
 
 - Charge time (`ollie_charge_ms`) stays shared.
 - Lip-band hang path (`ollie_lip_frac`) and free-air vs hang launch path are unchanged; only the height scalar fed into `v = √(2|g|h)` changes.
@@ -20,7 +20,7 @@ On grounded ollie release, peak height is `charge_frac ×` one of two tunables:
 
 ## Wiring
 
-1. **`Player` / `PlayerSim`** — Replace `ollie_height` with `ollie_height_flat` and `ollie_height_pipe` (exports / fields, default 100). Sync from `Player` into `PlayerSim` wherever `ollie_height` is copied today.
+1. **`Player` / `PlayerSim`** — Replace `ollie_height` with `ollie_height_flat` (default 150) and `ollie_height_pipe` (default 40). Sync from `Player` into `PlayerSim` wherever `ollie_height` is copied today.
 2. **`PlayerSim._try_ollie_jump`** — Select height from grounded surface kind before converting to up-speed:
    - `model.patches[surface_id]` with floor kind → flat
    - `model.patches[surface_id]` with deck kind → flat
@@ -41,5 +41,5 @@ On grounded ollie release, peak height is `charge_frac ×` one of two tunables:
 ## Success criteria
 
 - Two TUNING sliders independently change flat vs pipe/ramp/wall ollie peak.
-- Defaults preserve today’s feel (both 100).
+- Defaults: flat 150, pipe 40.
 - Headless suite green, including the new pick regression.

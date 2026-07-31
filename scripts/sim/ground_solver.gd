@@ -656,7 +656,7 @@ func _reject_into_normal(world: Vector3, normal: Vector3) -> Vector3:
 ## not the geometric pipe seam — otherwise the next tick sticky-mounts the wall
 ## and climbs into the upper deck band.
 func _launch_ollie_lip_hang(
-	state: SimState, height_impulse: float, along: float, depth: float
+	state: SimState, height_impulse: float, _along: float, depth: float
 ) -> bool:
 	var z := state.position.y
 	var edge := query.edge_at(state.surface_id, z, "coping")
@@ -670,8 +670,9 @@ func _launch_ollie_lip_hang(
 	var anchor := query.edge_anchor_sample(edge, z)
 	if anchor.is_empty():
 		return false
-	# Toward-coping ride speed becomes vertical like a normal air-out, plus ollie.
-	var world_vh := maxf(along, 0.0) + height_impulse
+	# Ollie supplies the vertical pop — do not add climb along-speed or the
+	# tunable peak height is ignored when riding hard into the lip.
+	var world_vh := height_impulse
 	state.position = Vector3(float(anchor.x), z, float(anchor.height))
 	_enter_air(state, Vector3(0.0, depth, world_vh), edge.id)
 	return true
@@ -682,7 +683,7 @@ func _launch_ollie_lip_hang(
 func _launch_ollie_wall_top(
 	state: SimState,
 	height_impulse: float,
-	along: float,
+	_along: float,
 	depth: float,
 	lip_frac: float,
 ) -> bool:
@@ -707,7 +708,7 @@ func _launch_ollie_wall_top(
 	var anchor := query.edge_anchor_sample(edge, z)
 	if anchor.is_empty():
 		return false
-	var world_vh := maxf(along, 0.0) + height_impulse
+	var world_vh := height_impulse
 	# Keep current height for mid-climb pops; lip snaps to the hang anchor.
 	var h := state.position.z
 	if lip > 0.0 and state.u >= 1.0 - lip:

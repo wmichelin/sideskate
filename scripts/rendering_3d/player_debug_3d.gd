@@ -1,24 +1,28 @@
 class_name PlayerDebug3D
 extends Node3D
 ## 3D motion-vector arrows + head zone label (Body CanvasItem debug is hidden in 3D).
+## Ollie charge is a screen-space bar projected from the interpolated skater visual
+## (same follow target as the camera) so it stays crisp while skating.
 
 @export var player_path: NodePath = NodePath("../Player")
+@export var visual_path: NodePath = NodePath("../PlayerVisual")
 @export var min_speed: float = 8.0
 @export var units_per_speed: float = 0.0008
 @export var min_length: float = 0.18
 @export var max_length: float = 0.90
 @export var head_offset: Vector3 = Vector3(0.0, 0.52, 0.0)
 @export var charge_bar_offset: Vector3 = Vector3(0.0, 0.72, 0.0)
-@export var charge_bar_width: float = 0.42
-@export var charge_bar_height: float = 0.05
+@export var charge_bar_px: Vector2 = Vector2(72.0, 8.0)
 
 var _player: Node
+var _visual: Node3D
 var _head: Label3D
-var _charge_root: Node3D
-var _charge_bg: MeshInstance3D
-var _charge_fill: MeshInstance3D
-var _charge_label: Label3D
+var _charge_layer: CanvasLayer
+var _charge_root: Control
+var _charge_fill: ColorRect
+var _charge_label: Label
 var _arrows: Dictionary = {}
+var _last_charge_frac: float = -1.0
 
 
 func _ready() -> void:
@@ -26,7 +30,10 @@ func _ready() -> void:
 	if not DebugTools.is_available():
 		queue_free()
 		return
+	# After PlayerVisual + CameraRig so unproject uses this frame's pose/camera.
+	process_priority = 100
 	_player = get_node_or_null(player_path)
+	_visual = get_node_or_null(visual_path) as Node3D
 	_head = Label3D.new()
 	_head.name = "HeadDebug"
 	_head.billboard = BaseMaterial3D.BILLBOARD_ENABLED
@@ -41,61 +48,76 @@ func _ready() -> void:
 	add_child(_head)
 
 	_setup_charge_bar()
+	tree_exiting.connect(_free_charge_hud)
 
 	_spawn_arrow(MotionVectors.Kind.ACTUAL, Vector3(-12, 48, 0), MotionVectors.debug_color(MotionVectors.Kind.ACTUAL))
 	_spawn_arrow(MotionVectors.Kind.MOMENTUM, Vector3(12, 48, 0), MotionVectors.debug_color(MotionVectors.Kind.MOMENTUM))
 	_spawn_arrow(MotionVectors.Kind.INPUT, Vector3(0, 58, 0), MotionVectors.debug_color(MotionVectors.Kind.INPUT))
 
 
+func _free_charge_hud() -> void:
+	if _charge_layer != null and is_instance_valid(_charge_layer):
+		_charge_layer.queue_free()
+		_charge_layer = null
+		_charge_root = null
+		_charge_fill = null
+		_charge_label = null
+
+
 func _setup_charge_bar() -> void:
-	_charge_root = Node3D.new()
-	_charge_root.name = "OllieChargeBar"
-	_charge_root.position = charge_bar_offset
-	add_child(_charge_root)
+	_free_charge_hud()
+	# Drop any leftover world-space bar from older builds.
+	var legacy := get_node_or_null("OllieChargeBar")
+	if legacy != null:
+		remove_child(legacy)
+		legacy.free()
+	# Clear a HUD left on Main from a previous deferred attach attempt.
+	var scene := get_tree().current_scene
+	if scene != null:
+		var stale := scene.get_node_or_null("OllieChargeHud")
+		if stale != null:
+			stale.free()
 
-	_charge_bg = MeshInstance3D.new()
-	_charge_bg.name = "ChargeBg"
-	_charge_bg.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	_charge_bg.mesh = _quad_mesh(charge_bar_width, charge_bar_height)
-	var bg_mat := StandardMaterial3D.new()
-	bg_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	bg_mat.albedo_color = Color(0.08, 0.1, 0.14, 0.85)
-	bg_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	bg_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-	bg_mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
-	_charge_bg.material_override = bg_mat
-	_charge_root.add_child(_charge_bg)
+	# CanvasLayer ignores parent 3D transform — safe to own it here (adding to
+	# Main during _ready fails while the scene is still setting up children).
+	_charge_layer = CanvasLayer.new()
+	_charge_layer.name = "OllieChargeHud"
+	_charge_layer.layer = 20
+	add_child(_charge_layer)
 
-	_charge_fill = MeshInstance3D.new()
-	_charge_fill.name = "ChargeFill"
-	_charge_fill.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	_charge_fill.mesh = _quad_mesh(charge_bar_width, charge_bar_height)
-	var fill_mat := StandardMaterial3D.new()
-	fill_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	fill_mat.albedo_color = Color(0.95, 0.72, 0.18, 0.95)
-	fill_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	fill_mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-	fill_mat.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
-	_charge_fill.material_override = fill_mat
-	_charge_root.add_child(_charge_fill)
-
-	_charge_label = Label3D.new()
-	_charge_label.name = "ChargeLabel"
-	_charge_label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	_charge_label.font_size = 28
-	_charge_label.modulate = Color(0.98, 0.95, 0.85, 1)
-	_charge_label.outline_size = 4
-	_charge_label.outline_modulate = Color(0, 0, 0, 0.7)
-	_charge_label.position = Vector3(0.0, charge_bar_height + 0.04, 0.0)
-	_charge_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_charge_root.add_child(_charge_label)
+	_charge_root = Control.new()
+	_charge_root.name = "Root"
+	_charge_root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_charge_root.visible = false
+	_charge_layer.add_child(_charge_root)
 
+	_charge_label = Label.new()
+	_charge_label.name = "ChargeLabel"
+	_charge_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_charge_label.add_theme_font_size_override("font_size", 13)
+	_charge_label.add_theme_color_override("font_color", Color(0.98, 0.95, 0.85, 1))
+	_charge_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.9))
+	_charge_label.add_theme_constant_override("outline_size", 2)
+	_charge_label.position = Vector2(0.0, -18.0)
+	_charge_label.size = Vector2(charge_bar_px.x, 16.0)
+	_charge_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_charge_root.add_child(_charge_label)
 
-func _quad_mesh(w: float, h: float) -> QuadMesh:
-	var q := QuadMesh.new()
-	q.size = Vector2(w, h)
-	return q
+	var bg := ColorRect.new()
+	bg.name = "ChargeBg"
+	bg.color = Color(0.08, 0.1, 0.14, 0.92)
+	bg.position = Vector2.ZERO
+	bg.size = charge_bar_px
+	bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_charge_root.add_child(bg)
+
+	_charge_fill = ColorRect.new()
+	_charge_fill.name = "ChargeFill"
+	_charge_fill.color = Color(0.95, 0.72, 0.18, 1.0)
+	_charge_fill.position = Vector2.ZERO
+	_charge_fill.size = Vector2(0.0, charge_bar_px.y)
+	_charge_fill.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_charge_root.add_child(_charge_fill)
 
 
 func _spawn_arrow(kind: MotionVectors.Kind, offset: Vector3, color: Color) -> void:
@@ -125,15 +147,21 @@ func _spawn_arrow(kind: MotionVectors.Kind, offset: Vector3, color: Color) -> vo
 func _process(_delta: float) -> void:
 	if _player == null:
 		_player = get_node_or_null(player_path)
+	if _visual == null:
+		_visual = get_node_or_null(visual_path) as Node3D
 	if _player == null:
 		return
-	var depth: PseudoDepthBody = _player.get_node_or_null("PseudoDepthBody") as PseudoDepthBody
-	if depth == null:
-		return
-	var feet_h := depth.surface_height
-	if bool(_player.get("_airborne")):
-		feet_h = float(_player.get("air_abs_height"))
-	global_position = WorldSpace.logical_to_world(depth.logical_x, depth.logical_z, feet_h)
+	# Keep 3D debug gizmos on the interpolated skater (camera follow target).
+	if _visual != null:
+		global_position = _visual.global_position
+	else:
+		var depth: PseudoDepthBody = _player.get_node_or_null("PseudoDepthBody") as PseudoDepthBody
+		if depth == null:
+			return
+		var feet_h := depth.surface_height
+		if bool(_player.get("_airborne")):
+			feet_h = float(_player.get("air_abs_height"))
+		global_position = WorldSpace.logical_to_world(depth.logical_x, depth.logical_z, feet_h)
 	global_rotation = Vector3.ZERO
 	scale = Vector3.ONE
 
@@ -155,18 +183,36 @@ func _update_charge_bar() -> void:
 	var on := DebugTools.show_ollie_charge
 	if not on or not _player.has_method("ollie_charge_frac"):
 		_charge_root.visible = false
+		_last_charge_frac = -1.0
 		return
-	_charge_root.visible = true
 	var frac := clampf(float(_player.call("ollie_charge_frac")), 0.0, 1.0)
-	_charge_fill.scale = Vector3(maxf(frac, 0.001), 1.0, 1.0)
-	# Grow fill from the left edge of the background.
-	_charge_fill.position.x = -0.5 * charge_bar_width * (1.0 - frac)
-	_charge_label.text = "%d%%" % int(round(frac * 100.0))
-	_charge_fill.visible = frac > 0.001
 	if frac <= 0.001:
-		_charge_fill.scale = Vector3(0.001, 1.0, 1.0)
-		_charge_fill.position.x = -0.5 * charge_bar_width
-		_charge_fill.visible = false
+		_charge_root.visible = false
+		_last_charge_frac = frac
+		return
+
+	var cam := get_viewport().get_camera_3d()
+	if cam == null or _visual == null:
+		_charge_root.visible = false
+		return
+	var head_world := _visual.global_position + charge_bar_offset
+	if cam.is_position_behind(head_world):
+		_charge_root.visible = false
+		return
+
+	var screen: Vector2 = cam.unproject_position(head_world)
+	# Integer pixels — subpixel Control positions soft-blur under MSAA/hiDPI.
+	_charge_root.position = Vector2(
+		roundf(screen.x - charge_bar_px.x * 0.5),
+		roundf(screen.y - charge_bar_px.y * 0.5)
+	)
+	_charge_root.visible = true
+
+	if is_equal_approx(frac, _last_charge_frac):
+		return
+	_last_charge_frac = frac
+	_charge_fill.size = Vector2(charge_bar_px.x * frac, charge_bar_px.y)
+	_charge_label.text = "%d%%" % int(round(frac * 100.0))
 
 
 func _update_arrows() -> void:

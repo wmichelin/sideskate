@@ -263,6 +263,9 @@ func _ready() -> void:
 func _setup_ollie_jump_sliders() -> void:
 	if _body == null:
 		return
+	# Dynamic rows — only create once (script reload / re-ready must not stack copies).
+	if _body.get_node_or_null("OllieChargeMsRow") != null:
+		return
 	var insert_at := 0
 	var ollie_row := _body.get_node_or_null("OllieAccelRow")
 	if ollie_row != null:
@@ -290,7 +293,7 @@ func _setup_ollie_jump_sliders() -> void:
 		0.1,
 		_player,
 		"ollie_height_flat",
-		100.0,
+		150.0,
 		_on_ollie_height_flat_changed,
 		_refresh_ollie_height_flat_label
 	)
@@ -305,7 +308,7 @@ func _setup_ollie_jump_sliders() -> void:
 		0.1,
 		_player,
 		"ollie_height_pipe",
-		100.0,
+		40.0,
 		_on_ollie_height_pipe_changed,
 		_refresh_ollie_height_pipe_label
 	)
@@ -328,6 +331,8 @@ func _setup_ollie_jump_sliders() -> void:
 
 func _setup_ollie_charge_toggle() -> void:
 	if _body == null:
+		return
+	if _body.get_node_or_null("OllieChargeBarRow") != null:
 		return
 	var insert_at := 0
 	var head_row := _body.get_node_or_null("HeadDebugRow")
@@ -355,6 +360,8 @@ func _setup_ollie_charge_toggle() -> void:
 func _setup_apex_facing_slider() -> void:
 	if _body == null:
 		return
+	if _body.get_node_or_null("ApexFacingDelayRow") != null:
+		return
 	var insert_at := 0
 	var fly_row := _body.get_node_or_null("FlyOutRow")
 	if fly_row != null:
@@ -377,6 +384,8 @@ func _setup_apex_facing_slider() -> void:
 
 func _setup_depth_turn_slider() -> void:
 	if _body == null:
+		return
+	if _body.get_node_or_null("DepthTurnRow") != null:
 		return
 	var insert_at := 0
 	var apex_row := _body.get_node_or_null("ApexFacingDelayRow")
@@ -415,6 +424,8 @@ func _apply_3d_panel_visibility() -> void:
 
 func _setup_3d_camera_sliders() -> void:
 	if _camera_rig == null or _body == null:
+		return
+	if _body.get_node_or_null("CamDistRow") != null:
 		return
 	# Insert near the top of the tuning list (after friction block).
 	var insert_at := 0
@@ -484,6 +495,13 @@ func _setup_3d_camera_sliders() -> void:
 
 
 func _make_slider_row(row_name: String, caption: String, index: int) -> Dictionary:
+	var existing := _body.get_node_or_null(row_name) as HBoxContainer if _body else null
+	if existing != null:
+		return {
+			"row": existing,
+			"slider": existing.get_node("Slider") as HSlider,
+			"value": existing.get_node("Value") as Label,
+		}
 	var row := HBoxContainer.new()
 	row.name = row_name
 	row.add_theme_constant_override("separation", 8)
@@ -665,7 +683,8 @@ func _bind_float_slider(
 	if target != null and target.get(prop) != null:
 		v = float(target.get(prop))
 	slider.value = v
-	slider.value_changed.connect(on_changed)
+	if not slider.value_changed.is_connected(on_changed):
+		slider.value_changed.connect(on_changed)
 	refresh.call(v)
 
 

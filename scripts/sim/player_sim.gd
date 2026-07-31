@@ -16,9 +16,9 @@ var ollie_accel: float = 650.0
 ## Full-charge hold time in milliseconds (0 = instantly full while held).
 var ollie_charge_ms: float = 250.0
 ## Peak ollie height at 100% charge on floor/deck (level units).
-var ollie_height_flat: float = 100.0
+var ollie_height_flat: float = 150.0
 ## Peak ollie height at 100% charge on pipe/ramp/wall (level units).
-var ollie_height_pipe: float = 100.0
+var ollie_height_pipe: float = 40.0
 ## Upper pipe/ramp band (fraction of u from the lip) where ollie enters X-locked hang air.
 ## 0.50 = top 50% of the transition (u ≥ 0.50).
 var ollie_lip_frac: float = 0.50

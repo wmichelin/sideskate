@@ -18,6 +18,7 @@ func run() -> bool:
 		and _ollie_jump_charge_scales_impulse()
 		and _ollie_height_picks_flat_vs_pipe()
 		and _wall_ollie_hangs_x_locked()
+		and _pipe_lip_ollie_respects_height_not_along()
 		and _ollie_jump_caps_at_full_charge()
 		and _ollie_jump_airborne_adds_impulse()
 		and _ollie_single_charge_replenishes_on_ground()
@@ -794,6 +795,51 @@ func _wall_ollie_hangs_x_locked() -> bool:
 	return true
 
 
+## Lip-band pipe ollie peak comes from ollie_height_pipe only — not climb along.
+func _pipe_lip_ollie_respects_height_not_along() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_halfpipe.ssk"):
+		push_error("lip ollie height: setup")
+		return false
+	var pipe: PipeSurface = null
+	for id in sim.model.all_pipe_ids():
+		pipe = sim.model.pipes[id]
+		break
+	if pipe == null:
+		push_error("lip ollie height: no pipe")
+		return false
+	sim.ollie_accel = 0.0
+	sim.ollie_charge_ms = 0.0
+	sim.ollie_height_flat = 150.0
+	sim.ollie_height_pipe = 40.0
+	sim.ollie_lip_frac = 0.50
+	var z := (pipe.z_min + pipe.z_max) * 0.5
+	var u := 0.92
+	var th := u * PI * 0.5
+	sim.state.mode = SimState.Mode.GROUNDED
+	sim.state.surface_id = pipe.id
+	sim.state.u = u
+	sim.state.v = 0.5
+	sim.state.tangent_velocity = Vector2(400.0, 0.0)
+	sim.state.position = Vector3(pipe.x_at_theta(z, th), z, pipe.height_at_theta(z, th))
+	sim.ollie_available = true
+	sim.ollie_charge = 1.0
+	sim.set_input(Vector2.ZERO, false, false, false, true)
+	sim.tick()
+	if not sim.state.is_hanging():
+		push_error("lip ollie height: expected hang")
+		return false
+	var g := absf(SimTolerances.GRAVITY)
+	var want := sqrt(2.0 * g * 40.0) - g * SimTolerances.FIXED_DT
+	if absf(sim.state.velocity.z - want) > 2.0:
+		push_error(
+			"lip ollie height: vz=%.1f want ~%.1f (along must not stack)"
+			% [sim.state.velocity.z, want]
+		)
+		return false
+	return true
+
+
 func _ollie_jump_caps_at_full_charge() -> bool:
 	var sim := PlayerSim.new()
 	if not sim.setup_from_path("res://tests/levels/sim/sim_halfpipe.ssk"):
@@ -1043,11 +1089,11 @@ func _ollie_on_pipe_lip_enters_hang() -> bool:
 	if absf(sim.state.velocity.x) > 0.01:
 		push_error("hang ollie must lock vx, got %s" % sim.state.velocity.x)
 		return false
-	var expected_vh := 200.0 + sqrt(2.0 * absf(SimTolerances.GRAVITY) * 40.0) \
+	var expected_vh := sqrt(2.0 * absf(SimTolerances.GRAVITY) * 40.0) \
 			+ SimTolerances.GRAVITY * SimTolerances.FIXED_DT
 	if absf(sim.state.velocity.z - expected_vh) > 10.0:
 		push_error(
-			"lip hang vh expected ~%s (along+ollie) got %s" % [expected_vh, sim.state.velocity.z]
+			"lip hang vh expected ~%s (ollie height only) got %s" % [expected_vh, sim.state.velocity.z]
 		)
 		return false
 	var lock_x := pipe.coping_x_at(z)
