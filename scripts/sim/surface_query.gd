@@ -618,43 +618,50 @@ func _deck_feature_wall(patch: SupportPatch, x: float, z: float, h: float, thick
 
 
 func _near_any_coping_x(x: float, z: float) -> bool:
+	# Capsule band — ALIGN_EPS alone left a Reject-freeze strip just outside the lip.
+	var band := SimTolerances.CAPSULE_RADIUS
 	for pipe_id in model.all_pipe_ids():
 		var pipe: PipeSurface = model.pipes[pipe_id]
 		if z < pipe.z_min - 0.01 or z > pipe.z_max + 0.01:
 			continue
 		var cx := pipe.coping_x_at(z)
-		if not is_nan(cx) and absf(x - cx) <= SimTolerances.ALIGN_EPS:
+		if not is_nan(cx) and absf(x - cx) <= band:
 			return true
 	for ramp_id in model.all_ramp_ids():
 		var ramp: RampSurface = model.ramps[ramp_id]
 		if z < ramp.z_min - 0.01 or z > ramp.z_max + 0.01:
 			continue
 		var rcx := ramp.coping_x_at(z)
-		if not is_nan(rcx) and absf(x - rcx) <= SimTolerances.ALIGN_EPS:
+		if not is_nan(rcx) and absf(x - rcx) <= band:
 			return true
 	return false
 
 
 func _deck_edge_is_coping_aligned(a: Vector2, b: Vector2, eps: float = 0.75) -> bool:
 	# Vertical edges that sit on a pipe/ramp coping stay open (slope back owns them).
+	# Sample along the edge Z — a single mid sample misses when `@` / run splits
+	# put a narrower pipe under the edge midpoint while neighbors still match.
 	if absf(a.x - b.x) > eps:
 		return false
 	var cx := (a.x + b.x) * 0.5
 	var z0 := minf(a.y, b.y)
 	var z1 := maxf(a.y, b.y)
-	var mid_z := (z0 + z1) * 0.5
-	for pipe_id in model.all_pipe_ids():
-		var pipe: PipeSurface = model.pipes[pipe_id]
-		if mid_z < pipe.z_min - 0.01 or mid_z > pipe.z_max + 0.01:
-			continue
-		if absf(pipe.coping_x_at(mid_z) - cx) <= eps:
-			return true
-	for ramp_id in model.all_ramp_ids():
-		var ramp: RampSurface = model.ramps[ramp_id]
-		if mid_z < ramp.z_min - 0.01 or mid_z > ramp.z_max + 0.01:
-			continue
-		if absf(ramp.coping_x_at(mid_z) - cx) <= eps:
-			return true
+	var zs: Array[float] = [
+		z0, lerpf(z0, z1, 0.25), lerpf(z0, z1, 0.5), lerpf(z0, z1, 0.75), z1,
+	]
+	for z in zs:
+		for pipe_id in model.all_pipe_ids():
+			var pipe: PipeSurface = model.pipes[pipe_id]
+			if z < pipe.z_min - 0.01 or z > pipe.z_max + 0.01:
+				continue
+			if absf(pipe.coping_x_at(z) - cx) <= eps:
+				return true
+		for ramp_id in model.all_ramp_ids():
+			var ramp: RampSurface = model.ramps[ramp_id]
+			if z < ramp.z_min - 0.01 or z > ramp.z_max + 0.01:
+				continue
+			if absf(ramp.coping_x_at(z) - cx) <= eps:
+				return true
 	return false
 
 

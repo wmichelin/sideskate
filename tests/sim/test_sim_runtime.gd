@@ -64,6 +64,7 @@ func run() -> bool:
 		and _hang_depth_transfer_lands_edge_floor()
 		and _hang_depth_transfer_lands_edge_lava()
 		and _deck_ride_off_falls_acid_mounts()
+		and _right_pipe_deck_slow_leave_lands_floor()
 		and _layered_deck_back_ride_off_stays_free()
 		and _map_edge_deck_no_void_exit()
 		and _layered_outer_coping_seam_stays_anchored()
@@ -3801,14 +3802,16 @@ func _deck_ride_off_falls_acid_mounts() -> bool:
 				% [sim.state.air_launch_surface_id, sim.state.u]
 			)
 			return false
+		# Bowl floor before any pipe Mount — success. (A further grounded tick at
+		# the pipe's bottom lip can remount u≈0; that is not the sticky pad exit.)
 		if saw_air and sim.state.is_grounded() and not sim.model.pipes.has(sim.state.surface_id):
-			break ## floor / void in the bowl
+			return true
 		if not sim.state.alive:
-			break
+			return true
 	if not saw_air:
 		push_error("deck drop: never left deck into air")
 		return false
-	# Keep falling without transfer — must not stick to the abutting pipe.
+	# Still airborne: keep falling — must not stick to the abutting pipe.
 	for _j in range(120):
 		sim.set_input(Vector2.ZERO, false, false)
 		sim.tick()
@@ -3820,6 +3823,87 @@ func _deck_ride_off_falls_acid_mounts() -> bool:
 		if not sim.state.alive:
 			return true
 	return true
+
+
+## ===)))#### : slow left coast off the outward deck must not Reject-freeze on
+## the deck open-side cage, and must land the bowl floor (not void).
+func _right_pipe_deck_slow_leave_lands_floor() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_right_pipe_deck_floor.ssk"):
+		push_error("right deck leave: setup")
+		return false
+	var deck: SupportPatch = null
+	for pid in sim.model.patches.keys():
+		var p: SupportPatch = sim.model.patches[pid]
+		if int(p.kind) == SimKinds.SurfaceKind.DECK:
+			deck = p
+			break
+	if deck == null:
+		push_error("right deck leave: no deck")
+		return false
+	var pipe: PipeSurface = null
+	for id in sim.model.pipes.keys():
+		var p: PipeSurface = sim.model.pipes[id]
+		if p.side != SimKinds.PipeSide.RIGHT:
+			continue
+		if pipe == null or absf(p.coping_x_at((p.z_min + p.z_max) * 0.5) - deck.x_min) \
+				< absf(pipe.coping_x_at((pipe.z_min + pipe.z_max) * 0.5) - deck.x_min):
+			pipe = p
+	if pipe == null:
+		push_error("right deck leave: no right pipe")
+		return false
+	var z := 50.0
+	if z < pipe.z_min or z > pipe.z_max:
+		z = (pipe.z_min + pipe.z_max) * 0.5
+	var cx := pipe.coping_x_at(z)
+	sim.state.mode = SimState.Mode.GROUNDED
+	sim.state.surface_id = deck.id
+	sim.state.u = 0.0
+	sim.state.v = 0.0
+	sim.state.position = Vector3(cx + 5.0, z, deck.height)
+	sim.state.tangent_velocity = Vector2(-180.0, 0.0)
+	sim.state.velocity = Vector3.ZERO
+	sim.state.set_facing_side("l")
+	sim.state.clear_hang()
+	sim.state.maneuver = null
+	var saw_air := false
+	var stuck_h := deck.height
+	var stuck_ticks := 0
+	for _i in range(240):
+		sim.set_input(Vector2.ZERO, false, false)
+		sim.tick()
+		if sim.state.is_airborne():
+			saw_air = true
+			if absf(sim.state.position.z - stuck_h) < 0.5 \
+					and absf(sim.state.velocity.x) < 1.0:
+				stuck_ticks += 1
+			else:
+				stuck_h = sim.state.position.z
+				stuck_ticks = 0
+			if stuck_ticks > 30:
+				push_error(
+					"right deck leave: freeze near lip x=%.1f h=%.1f launch=%s"
+					% [sim.state.position.x, sim.state.position.z, sim.state.air_launch_surface_id]
+				)
+				return false
+		if sim.state.surface_id == "__void_floor__" or sim.state.position.z < -50.0:
+			push_error(
+				"right deck leave: void x=%.1f h=%.1f"
+				% [sim.state.position.x, sim.state.position.z]
+			)
+			return false
+		if sim.state.is_grounded() and sim.model.patches.has(sim.state.surface_id):
+			var land: SupportPatch = sim.model.patches[sim.state.surface_id]
+			if int(land.kind) == SimKinds.SurfaceKind.FLOOR and not land.lethal:
+				if not saw_air:
+					push_error("right deck leave: grounded floor without air")
+					return false
+				return true
+	push_error(
+		"right deck leave: never floored mode=%s surf=%s pos=%s"
+		% [sim.state.mode, sim.state.surface_id, sim.state.position]
+	)
+	return false
 
 
 func _layered_deck_back_ride_off_stays_free() -> bool:

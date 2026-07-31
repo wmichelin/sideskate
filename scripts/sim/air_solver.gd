@@ -174,6 +174,12 @@ func _disposition_for_contact(
 	if kind == "bounds" or role == SimKinds.ContactRole.BOUNDS:
 		if reason == "slope outer back" and _can_land_slope_back(state, contact):
 			return SimKinds.ContactDisposition.MOUNT
+		# Leaving a `#` pad this bout: its open-side cage must not Reject-freeze
+		# the ledge fall into the abutting bowl (coping-aligned edges can miss
+		# when a pipe run splits under the deck edge mid-Z sample).
+		if reason == "deck open side" \
+				and state.air_launch_surface_id == str(contact.get("surface_id", "")):
+			return SimKinds.ContactDisposition.CORRIDOR
 		return SimKinds.ContactDisposition.REJECT
 	# Deck ride-off onto an abutting pipe/ramp/wall: ledge fall / acid only —
 	# never ordinary Mount (including lip column after a slow coast off the pad).
@@ -233,7 +239,10 @@ func _disposition_for_contact(
 
 
 ## This air bout left an outward `#` deck onto its abutting slope — ordinary
-## pipe/ramp/wall Mount is illegal (acid transfer only).
+## lip / support-top Mount is illegal (ledge fall / acid only). Pipe/ramp body
+## solids are blocked only while still on the outward/deck side of the coping;
+## bowl-side body Mounts stay legal so `===)))####` can land the arc (the path
+## to the floor crosses pipe X).
 func _deck_ride_off_blocks_slope_contact(state: SimState, contact: Dictionary) -> bool:
 	var launch := state.air_launch_surface_id
 	if launch.is_empty() or not model.patches.has(launch):
@@ -241,28 +250,35 @@ func _deck_ride_off_blocks_slope_contact(state: SimState, contact: Dictionary) -
 	var pad: SupportPatch = model.patches[launch]
 	if int(pad.kind) != SimKinds.SurfaceKind.DECK:
 		return false
+	var kind := str(contact.get("kind", ""))
 	var owner := str(contact.get("owner_id", contact.get("surface_id", "")))
 	if owner.is_empty():
 		return false
 	var z := state.position.y
+	var coping_id := ""
 	if model.pipes.has(owner):
-		return _slope_span_has_outward_deck(model.pipes[owner].coping_id, launch, z)
-	if model.ramps.has(owner):
-		return _slope_span_has_outward_deck(model.ramps[owner].coping_id, launch, z)
-	if model.walls.has(owner):
+		coping_id = model.pipes[owner].coping_id
+	elif model.ramps.has(owner):
+		coping_id = model.ramps[owner].coping_id
+	elif model.walls.has(owner):
 		var wall: WallSurface = model.walls[owner]
 		var pipe: PipeSurface = model.pipes.get(wall.source_pipe_id)
 		if pipe == null:
 			return false
-		return _slope_span_has_outward_deck(pipe.coping_id, launch, z)
-	# support_top may still name the slope via support_kind + surface_id.
-	if str(contact.get("kind", "")) == "support_top":
+		coping_id = pipe.coping_id
+	elif kind == "support_top":
 		var sk := int(contact.get("support_kind", -1))
 		if sk == SimKinds.SurfaceKind.PIPE and model.pipes.has(owner):
-			return _slope_span_has_outward_deck(model.pipes[owner].coping_id, launch, z)
-		if sk == SimKinds.SurfaceKind.RAMP and model.ramps.has(owner):
-			return _slope_span_has_outward_deck(model.ramps[owner].coping_id, launch, z)
-	return false
+			coping_id = model.pipes[owner].coping_id
+		elif sk == SimKinds.SurfaceKind.RAMP and model.ramps.has(owner):
+			coping_id = model.ramps[owner].coping_id
+	if coping_id.is_empty() or not _slope_span_has_outward_deck(coping_id, launch, z):
+		return false
+	# Body hit past the lip (bowl side) is an ordinary land, not the sticky pad exit.
+	if (kind == "pipe" or kind == "ramp") \
+			and not _deck_ride_off_still_outward(coping_id, state.position.x, z):
+		return false
+	return true
 
 
 func _slope_span_has_outward_deck(coping_id: String, deck_id: String, z: float) -> bool:
@@ -273,6 +289,18 @@ func _slope_span_has_outward_deck(coping_id: String, deck_id: String, z: float) 
 		return false
 	var span: CopingSpan = cope.span_at_z(z)
 	return span != null and span.outward_deck_id == deck_id
+
+
+## True while X is still on the outward/deck side of the coping (sticky band).
+func _deck_ride_off_still_outward(coping_id: String, x: float, z: float) -> bool:
+	var cope: CopingEdge = model.copings.get(coping_id)
+	if cope == null:
+		return true
+	var samp := cope.sample_at_z(z)
+	if samp.is_empty():
+		return true
+	var cx := float(samp.coping_x)
+	return (x - cx) * float(cope.outward_sign) > -SimTolerances.CAPSULE_RADIUS
 
 
 func _can_land_slope_back(state: SimState, contact: Dictionary) -> bool:
