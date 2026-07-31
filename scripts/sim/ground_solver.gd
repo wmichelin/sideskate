@@ -622,11 +622,8 @@ func launch_height_impulse(
 			var t: Vector3 = proj.tangent_along
 			var n: Vector3 = proj.normal
 			# World-up is the ollie alone — do not add t.z*along (that was a
-			# slope-exit launch). Carry lip-ward / bowl-ward X only: peak-ward
-			# ride speed drills under a rising incline even after a tall pop.
+			# slope-exit launch). Carry full along → world X (peak-ward included).
 			var wx := t.x * along
-			if absf(n.x) > 0.001 and wx * n.x < 0.0:
-				wx = 0.0
 			world = Vector3(wx, depth, height_impulse)
 			world = _reject_into_normal(world, n)
 			if n.length_squared() > 0.0001:

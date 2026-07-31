@@ -84,6 +84,7 @@ func run() -> bool:
 		and _feature_walls_block_endcaps_and_sides()
 		and _air_land_ramp_keeps_uphill_along()
 		and _air_land_pipe_maps_vx_via_outward()
+		and _pipe_ollie_below_lip_keeps_peakward_x()
 	)
 
 
@@ -1218,12 +1219,71 @@ func _ollie_on_pipe_pops_world_up_not_along_tangent() -> bool:
 			% [expected_vh, old_launch_vh + SimTolerances.GRAVITY * SimTolerances.FIXED_DT, sim.state.velocity.z]
 		)
 		return false
-	# Climbing (peak-ward) X is dropped — it drills under the pipe body.
-	# Lip-ward carry still keeps t.x*along.
-	if absf(sim.state.velocity.x) > 20.0:
+	# Climbing (peak-ward) X is carried through free-air takeoff.
+	var want_vx := t.x * along
+	if sim.state.velocity.x * want_vx <= 0.0 or absf(sim.state.velocity.x) < absf(want_vx) * 0.5:
 		push_error(
-			"climbing pipe ollie should drop peak-ward X, got vx=%s (t.x*along=%s)"
-			% [sim.state.velocity.x, t.x * along]
+			"climbing pipe ollie should keep peak-ward X ~%s, got vx=%s"
+			% [want_vx, sim.state.velocity.x]
+		)
+		return false
+	return true
+
+
+func _pipe_ollie_below_lip_keeps_peakward_x() -> bool:
+	# Grounded on ), u below lip band, peak-ward along → free-air ollie keeps +X.
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_halfpipe.ssk"):
+		push_error("pipe ollie peakward: setup")
+		return false
+	sim.ollie_accel = 0.0
+	sim.ollie_charge_ms = 0.0
+	sim.ollie_height_flat = 80.0
+	sim.ollie_height_pipe = 80.0
+	sim.ollie_lip_frac = 0.50
+	var right: PipeSurface = null
+	for id in sim.model.pipes.keys():
+		var p: PipeSurface = sim.model.pipes[id]
+		if p.side == SimKinds.PipeSide.RIGHT:
+			right = p
+			break
+	if right == null:
+		push_error("pipe ollie peakward: missing right pipe")
+		return false
+	var z := (right.z_min + right.z_max) * 0.5
+	var u := 0.35
+	var th := u * PI * 0.5
+	var along := 420.0
+	sim.state.mode = SimState.Mode.GROUNDED
+	sim.state.surface_id = right.id
+	sim.state.u = u
+	sim.state.v = 0.5
+	sim.state.tangent_velocity = Vector2(along, 0.0)
+	sim.state.position = Vector3(right.x_at_theta(z, th), z, right.height_at_theta(z, th))
+	sim.ollie_available = true
+	var proj := right.project(sim.state.position.x, sim.state.position.y, sim.state.position.z)
+	if not bool(proj.get("ok", false)):
+		push_error("pipe ollie peakward: project failed")
+		return false
+	var t: Vector3 = proj.tangent_along
+	var want_wx := t.x * along
+	if want_wx <= 1.0:
+		push_error("pipe ollie peakward: fixture need peak-ward +X, got want %.1f" % want_wx)
+		return false
+	sim.set_input(Vector2.ZERO, false, false, true, false)
+	sim.tick()
+	sim.set_input(Vector2.ZERO, false, false, false, true)
+	sim.tick()
+	if not sim.state.is_airborne():
+		push_error("pipe ollie peakward: should be airborne")
+		return false
+	if sim.state.is_hanging() or not sim.state.hang_edge_id.is_empty():
+		push_error("pipe ollie peakward: must be free-air, not hang")
+		return false
+	if sim.state.velocity.x <= 20.0:
+		push_error(
+			"pipe ollie peakward: expected +vx keep, got %.1f (want ~%.1f)"
+			% [sim.state.velocity.x, want_wx]
 		)
 		return false
 	return true
@@ -1442,9 +1502,9 @@ func _ollie_climbing_ramp_stays_above_solid() -> bool:
 	if not sim.state.is_airborne():
 		push_error("climbing ramp ollie should leave")
 		return false
-	# Peak-ward carry must be dropped; leftover into-normal is rejected.
-	if absf(sim.state.velocity.x) > 30.0:
-		push_error("climbing ramp ollie should not keep peak-ward X, vx=%s" % sim.state.velocity.x)
+	# Peak-ward ride X is retained on free-air slope ollie (spec).
+	if sim.state.velocity.x <= 30.0:
+		push_error("climbing ramp ollie should keep peak-ward +X, vx=%s" % sim.state.velocity.x)
 		return false
 	# Stay free of the ramp body for the whole bout (or remount cleanly).
 	for _i in range(90):
