@@ -159,10 +159,13 @@ func _try_ollie_jump() -> void:
 
 
 ## Floor/deck → flat height; pipe/ramp/wall → pipe height. Unknown → flat.
+## Airborne release (charged on ground, then air-out) uses the launch surface.
 func _ollie_peak_height_for_surface() -> float:
-	if state == null or not state.is_grounded() or model == null:
+	if state == null or model == null:
 		return ollie_height_flat
 	var sid := state.surface_id
+	if sid.is_empty() and state.is_airborne():
+		sid = state.air_launch_surface_id
 	if model.pipes.has(sid) or model.ramps.has(sid) or model.walls.has(sid):
 		return ollie_height_pipe
 	if model.patches.has(sid):

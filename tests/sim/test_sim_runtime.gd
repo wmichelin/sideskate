@@ -17,6 +17,7 @@ func run() -> bool:
 		and _ollie_faces_direction()
 		and _ollie_jump_charge_scales_impulse()
 		and _ollie_height_picks_flat_vs_pipe()
+		and _ollie_airborne_release_uses_launch_pipe_height()
 		and _wall_ollie_hangs_x_locked()
 		and _pipe_lip_ollie_respects_height_not_along()
 		and _ollie_jump_caps_at_full_charge()
@@ -85,6 +86,7 @@ func run() -> bool:
 		and _air_land_ramp_keeps_uphill_along()
 		and _air_land_pipe_maps_vx_via_outward()
 		and _air_out_reenter_ramp_not_fake_uphill()
+		and _air_out_reenter_pipe_not_fake_uphill()
 		and _pipe_ollie_below_lip_keeps_peakward_x()
 		and _ramp_adjacent_pipe_z_leave_no_hang()
 		and _ramp_lip_ollie_is_free_air()
@@ -237,6 +239,99 @@ func _air_out_reenter_ramp_not_fake_uphill() -> bool:
 		push_error(
 			"air-out reenter: downhill coast lost speed %.1f → %.1f (friction0)"
 			% [a0, sim.state.tangent_velocity.x]
+		)
+		return false
+	return true
+
+
+func _air_out_reenter_pipe_not_fake_uphill() -> bool:
+	# Near-lip free-air drop-in with residual outward +vx: must not seed climb
+	# (near-horizontal tangent + fall ≈ fake uphill → stall at peak / friction).
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_halfpipe.ssk"):
+		push_error("air-out pipe reenter: setup")
+		return false
+	sim.ramp_friction = 0.0
+	sim.friction = 0.0
+	var right: PipeSurface = null
+	for id in sim.model.pipes.keys():
+		var p: PipeSurface = sim.model.pipes[id]
+		if p.side == SimKinds.PipeSide.RIGHT:
+			right = p
+			break
+	if right == null:
+		push_error("air-out pipe reenter: missing right pipe")
+		return false
+	var z := (right.z_min + right.z_max) * 0.5
+	var u := 0.90
+	var th := u * PI * 0.5
+	sim.state.mode = SimState.Mode.AIRBORNE
+	sim.state.surface_id = ""
+	sim.state.clear_hang()
+	sim.state.maneuver = null
+	sim.state.free_air_upright = true
+	sim.state.air_launch_surface_id = right.id
+	sim.state.position = Vector3(
+		right.x_at_theta(z, th), z, right.height_at_theta(z, th) + 12.0
+	)
+	sim.state.velocity = Vector3(200.0, 0.0, -250.0)
+	sim.state.note_air_height(sim.state.position.z)
+	var landed_along := NAN
+	var landed_u := NAN
+	for _i in range(60):
+		sim.set_input(Vector2.ZERO, false, false)
+		sim.tick()
+		if sim.state.is_grounded() and sim.state.surface_id == right.id:
+			landed_along = sim.state.tangent_velocity.x
+			landed_u = sim.state.u
+			break
+	if is_nan(landed_along):
+		push_error("air-out pipe reenter: never landed")
+		return false
+	if landed_along > 20.0:
+		push_error(
+			"air-out pipe reenter: fall-dominant near-lip must not seed uphill (along=%.1f u=%.2f)"
+			% [landed_along, landed_u]
+		)
+		return false
+	var a0 := landed_along
+	for _j in range(15):
+		sim.set_input(Vector2.ZERO, false, false)
+		sim.tick()
+		if not sim.state.is_grounded():
+			break
+	if sim.state.is_grounded() and a0 <= 0.0 and sim.state.tangent_velocity.x > a0 + 8.0:
+		push_error(
+			"air-out pipe reenter: coast lost downhill %.1f → %.1f"
+			% [a0, sim.state.tangent_velocity.x]
+		)
+		return false
+	# Strong residual outward + moderate fall near lip (fall_frac ~0.45) — still
+	# must not invent climb.
+	sim.state.mode = SimState.Mode.AIRBORNE
+	sim.state.surface_id = ""
+	sim.state.clear_hang()
+	sim.state.maneuver = null
+	sim.state.air_launch_surface_id = right.id
+	sim.state.position = Vector3(
+		right.x_at_theta(z, th), z, right.height_at_theta(z, th) + 10.0
+	)
+	sim.state.velocity = Vector3(300.0, 0.0, -150.0)
+	sim.state.note_air_height(sim.state.position.z)
+	landed_along = NAN
+	for _k in range(60):
+		sim.set_input(Vector2.ZERO, false, false)
+		sim.tick()
+		if sim.state.is_grounded() and sim.state.surface_id == right.id:
+			landed_along = sim.state.tangent_velocity.x
+			break
+	if is_nan(landed_along):
+		push_error("air-out pipe reenter: moderate-fall case never landed")
+		return false
+	if landed_along > 20.0:
+		push_error(
+			"air-out pipe reenter: moderate fall near-lip seeded uphill %.1f"
+			% landed_along
 		)
 		return false
 	return true
@@ -883,6 +978,79 @@ func _ollie_height_picks_flat_vs_pipe() -> bool:
 		push_error(
 			"ollie pick: pipe vz=%.1f want ~%.1f" % [sim.state.velocity.z, want_pipe]
 		)
+		return false
+	return true
+
+
+## Charge on pipe, air-out, release while airborne — still uses ollie_height_pipe.
+func _ollie_airborne_release_uses_launch_pipe_height() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_halfpipe.ssk"):
+		push_error("air ollie: setup")
+		return false
+	sim.ollie_accel = 0.0
+	sim.ollie_charge_ms = 0.0
+	# Flat taller than pipe — airborne bug used flat and overshot.
+	sim.ollie_height_flat = 150.0
+	sim.ollie_height_pipe = 60.0
+	sim.ollie_lip_frac = 0.50
+	var pipe: PipeSurface = null
+	for id in sim.model.pipes.keys():
+		var p: PipeSurface = sim.model.pipes[id]
+		if p.side == SimKinds.PipeSide.RIGHT:
+			pipe = p
+			break
+	if pipe == null:
+		push_error("air ollie: no right pipe")
+		return false
+	var z := (pipe.z_min + pipe.z_max) * 0.5
+	var u := 0.99
+	var th := u * PI * 0.5
+	sim.state.mode = SimState.Mode.GROUNDED
+	sim.state.surface_id = pipe.id
+	sim.state.u = u
+	sim.state.v = 0.5
+	sim.state.tangent_velocity = Vector2(280.0, 0.0)
+	sim.state.position = Vector3(pipe.x_at_theta(z, th), z, pipe.height_at_theta(z, th))
+	sim.state.clear_hang()
+	sim.ollie_available = true
+	sim.ollie_charge = 1.0
+	# Hold charge into hang air-out.
+	var hung := false
+	for _i in range(30):
+		sim.set_input(Vector2(1.0, 0.0), false, false, true, false)
+		sim.tick()
+		if sim.state.is_hanging() or (
+			sim.state.is_airborne() and not sim.state.air_launch_surface_id.is_empty()
+		):
+			hung = true
+			break
+	if not hung:
+		push_error("air ollie: never left pipe into air")
+		return false
+	if not sim.ollie_available or sim.ollie_charge < 0.99:
+		push_error(
+			"air ollie: charge should survive into air (avail=%s charge=%.2f)"
+			% [sim.ollie_available, sim.ollie_charge]
+		)
+		return false
+	var vz_before := sim.state.velocity.z
+	sim.set_input(Vector2.ZERO, false, false, false, true)
+	sim.tick()
+	var g := absf(SimTolerances.GRAVITY)
+	var dt := SimTolerances.FIXED_DT
+	var pop := sim.state.velocity.z - (vz_before - g * dt)
+	# Release adds pipe height pop on top of ballistic integrate this tick.
+	var want_pop := sqrt(2.0 * g * 60.0)
+	var flat_pop := sqrt(2.0 * g * 150.0)
+	if absf(pop - want_pop) > 8.0:
+		push_error(
+			"air ollie: pop=%.1f want pipe ~%.1f (not flat ~%.1f) vz=%s before=%.1f"
+			% [pop, want_pop, flat_pop, sim.state.velocity.z, vz_before]
+		)
+		return false
+	if absf(pop - flat_pop) < 8.0:
+		push_error("air ollie: used flat height instead of pipe")
 		return false
 	return true
 

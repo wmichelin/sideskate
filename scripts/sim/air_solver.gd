@@ -31,12 +31,25 @@ func _slope_along_from_world_vx(surf, world_vx: float) -> float:
 ## Project free-air world velocity onto the slope tangent (X + height).
 ## Using vx alone maps air-out residual outward X to uphill along, so gravity
 ## kills speed and feels like friction even with ramp_friction = 0.
+## Near the lip the tangent is nearly horizontal, so a hard fall still projects
+## almost no downhill from vz while residual +vx invents climb — clamp that.
 func _slope_along_from_world_vel(surf, world_vel: Vector3, at: Vector3) -> float:
 	var proj: Dictionary = surf.project(at.x, at.y, at.z)
-	if bool(proj.get("ok", false)):
-		var t: Vector3 = proj.tangent_along
-		return world_vel.x * t.x + world_vel.z * t.z
-	return _slope_along_from_world_vx(surf, world_vel.x)
+	if not bool(proj.get("ok", false)):
+		return _slope_along_from_world_vx(surf, world_vel.x)
+	var t: Vector3 = proj.tangent_along
+	var along := world_vel.x * t.x + world_vel.z * t.z
+	# Fall reentry must not seed uphill. Near the lip t is nearly horizontal so
+	# residual outward X invents climb while vz barely projects — friction feel.
+	# Mild horizontal skate-ons (low fall fraction on the lower face) keep climb.
+	if along > 0.0 and world_vel.z < -SimTolerances.CONTACT_EPS:
+		var speed := world_vel.length()
+		if speed > 1.0:
+			var fall_frac := absf(world_vel.z) / speed
+			var upper_face := absf(t.z) < 0.55
+			if fall_frac >= 0.45 or (upper_face and fall_frac >= 0.28):
+				along = minf(0.0, world_vel.z * t.z)
+	return along
 
 
 func step(
