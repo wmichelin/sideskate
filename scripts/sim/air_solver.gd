@@ -10,6 +10,8 @@ var ground: GroundSolver
 ## Live caps from PlayerSim (absolute |vx| / depth stick scale).
 var _max_speed: float = 880.0
 var _max_speed_z: float = 400.0
+## `air_launch_surface_id` at the start of this air tick (reentry along seeding).
+var _bout_launch_id: String = ""
 
 
 func _init(
@@ -31,25 +33,47 @@ func _slope_along_from_world_vx(surf, world_vx: float) -> float:
 ## Project free-air world velocity onto the slope tangent (X + height).
 ## Using vx alone maps air-out residual outward X to uphill along, so gravity
 ## kills speed and feels like friction even with ramp_friction = 0.
-## Near the lip the tangent is nearly horizontal, so a hard fall still projects
-## almost no downhill from vz while residual +vx invents climb — clamp that.
-func _slope_along_from_world_vel(surf, world_vel: Vector3, at: Vector3) -> float:
+## `launch_id` is the surface this air bout left — same-slope / abutting reentry
+## never seeds uphill while falling.
+func _slope_along_from_world_vel(
+	surf, world_vel: Vector3, at: Vector3, launch_id: String = ""
+) -> float:
 	var proj: Dictionary = surf.project(at.x, at.y, at.z)
 	if not bool(proj.get("ok", false)):
 		return _slope_along_from_world_vx(surf, world_vel.x)
 	var t: Vector3 = proj.tangent_along
 	var along := world_vel.x * t.x + world_vel.z * t.z
-	# Fall reentry must not seed uphill. Near the lip t is nearly horizontal so
-	# residual outward X invents climb while vz barely projects — friction feel.
-	# Mild horizontal skate-ons (low fall fraction on the lower face) keep climb.
-	if along > 0.0 and world_vel.z < -SimTolerances.CONTACT_EPS:
-		var speed := world_vel.length()
-		if speed > 1.0:
-			var fall_frac := absf(world_vel.z) / speed
-			var upper_face := absf(t.z) < 0.55
-			if fall_frac >= 0.45 or (upper_face and fall_frac >= 0.28):
-				along = minf(0.0, world_vel.z * t.z)
+	# Same-slope reentry must never invent climb from residual outward X —
+	# including rising skims (vz≈0) that skip a fall-only clamp and stall at the lip.
+	if along > 0.0 and _slope_land_is_reentry(surf, launch_id, at.y):
+		if world_vel.z < -SimTolerances.CONTACT_EPS:
+			along = minf(0.0, world_vel.z * t.z)
+		else:
+			along = 0.0
 	return along
+
+
+
+func _launch_id_for_along(state: SimState) -> String:
+	if not _bout_launch_id.is_empty():
+		return _bout_launch_id
+	if state != null:
+		return state.air_launch_surface_id
+	return ""
+
+
+func _slope_land_is_reentry(surf, launch_id: String, z: float) -> bool:
+	if launch_id.is_empty() or surf == null:
+		return false
+	var sid := str(surf.id)
+	if launch_id == sid:
+		return true
+	# Z-adjacent ramp ↔ pipe at the same footprint.
+	if model.ramps.has(launch_id) and model.pipes.has(sid):
+		return _ramp_launch_abuts_pipe(launch_id, model.pipes[sid], z)
+	if model.pipes.has(launch_id) and model.ramps.has(sid):
+		return _ramp_launch_abuts_pipe(sid, model.pipes[launch_id], z)
+	return false
 
 
 func step(
@@ -63,6 +87,8 @@ func step(
 		return
 	_max_speed = maxf(max_speed, 0.0)
 	_max_speed_z = maxf(max_speed_z, 0.0)
+	# Freeze launch id for this tick so mid-tick clears cannot lose reentry context.
+	_bout_launch_id = state.air_launch_surface_id
 	if state.has_maneuver():
 		_step_maneuver(state, wish, delta)
 		return
@@ -509,7 +535,7 @@ func _mount_pipe_owner(state: SimState, pipe_id: String, contact: Dictionary) ->
 		state.v = float(proj.v)
 		state.position = proj.point
 		state.tangent_velocity = Vector2(
-			_slope_along_from_world_vel(pipe, world_vel, state.position), vz
+			_slope_along_from_world_vel(pipe, world_vel, state.position, _launch_id_for_along(state)), vz
 		)
 		state.velocity = Vector3.ZERO
 		state.clear_hang()
@@ -525,7 +551,7 @@ func _mount_pipe_owner(state: SimState, pipe_id: String, contact: Dictionary) ->
 	state.v = clampf((z - pipe.z_min) / maxf(pipe.z_max - pipe.z_min, 0.001), 0.0, 1.0)
 	state.position = Vector3(pipe.x_at_theta(z, theta), z, pipe.height_at_theta(z, theta))
 	state.tangent_velocity = Vector2(
-		_slope_along_from_world_vel(pipe, world_vel, state.position), vz
+		_slope_along_from_world_vel(pipe, world_vel, state.position, _launch_id_for_along(state)), vz
 	)
 	state.velocity = Vector3.ZERO
 	state.clear_hang()
@@ -546,7 +572,7 @@ func _mount_ramp_owner(state: SimState, ramp_id: String, contact: Dictionary) ->
 	state.v = float(rproj.v)
 	state.position = rproj.point
 	state.tangent_velocity = Vector2(
-		_slope_along_from_world_vel(ramp, state.velocity, state.position), state.velocity.y
+		_slope_along_from_world_vel(ramp, state.velocity, state.position, _launch_id_for_along(state)), state.velocity.y
 	)
 	state.velocity = Vector3.ZERO
 	state.clear_hang()
@@ -867,7 +893,7 @@ func _snap_onto_solid(state: SimState, hit: Dictionary, from_height: float = NAN
 		state.v = float(proj.v)
 		state.position = proj.point
 		state.tangent_velocity = Vector2(
-			_slope_along_from_world_vel(pipe, state.velocity, state.position), vz
+			_slope_along_from_world_vel(pipe, state.velocity, state.position, _launch_id_for_along(state)), vz
 		)
 		state.velocity = Vector3.ZERO
 		state.clear_hang()
@@ -892,7 +918,7 @@ func _snap_onto_solid(state: SimState, hit: Dictionary, from_height: float = NAN
 		state.v = float(rproj.v)
 		state.position = rproj.point
 		state.tangent_velocity = Vector2(
-			_slope_along_from_world_vel(ramp, state.velocity, state.position), vz
+			_slope_along_from_world_vel(ramp, state.velocity, state.position, _launch_id_for_along(state)), vz
 		)
 		state.velocity = Vector3.ZERO
 		state.clear_hang()
@@ -946,7 +972,7 @@ func _snap_onto_solid(state: SimState, hit: Dictionary, from_height: float = NAN
 					state.v = float(projection.v)
 					state.position = projection.point
 					state.tangent_velocity = Vector2(
-						_slope_along_from_world_vel(partner, state.velocity, state.position), vz
+						_slope_along_from_world_vel(partner, state.velocity, state.position, _launch_id_for_along(state)), vz
 					)
 					state.velocity = Vector3.ZERO
 					state.clear_hang()
@@ -1222,7 +1248,7 @@ func _try_land_through_slope_back(state: SimState, hit: Dictionary, from_height:
 		state.v = float(proj.v)
 		state.position = proj.point
 		state.tangent_velocity = Vector2(
-			_slope_along_from_world_vel(pipe, state.velocity, state.position), vz
+			_slope_along_from_world_vel(pipe, state.velocity, state.position, _launch_id_for_along(state)), vz
 		)
 		state.velocity = Vector3.ZERO
 		state.clear_hang()
@@ -1240,7 +1266,7 @@ func _try_land_through_slope_back(state: SimState, hit: Dictionary, from_height:
 		state.v = float(rproj.v)
 		state.position = rproj.point
 		state.tangent_velocity = Vector2(
-			_slope_along_from_world_vel(ramp, state.velocity, state.position), vz
+			_slope_along_from_world_vel(ramp, state.velocity, state.position, _launch_id_for_along(state)), vz
 		)
 		state.velocity = Vector3.ZERO
 		state.clear_hang()
@@ -1483,7 +1509,7 @@ func _try_land(state: SimState, from_height: float = NAN) -> void:
 			state.v = float(proj.v)
 			state.position = proj.point
 			state.tangent_velocity = Vector2(
-				_slope_along_from_world_vel(pipe, world_vel, state.position) if pipe != null else world_vel.x,
+				_slope_along_from_world_vel(pipe, world_vel, state.position, _launch_id_for_along(state)) if pipe != null else world_vel.x,
 				vz
 			)
 	elif int(top.kind) == SimKinds.SurfaceKind.RAMP:
@@ -1493,7 +1519,7 @@ func _try_land(state: SimState, from_height: float = NAN) -> void:
 		state.v = float(rproj.v)
 		state.position = rproj.point
 		state.tangent_velocity = Vector2(
-			_slope_along_from_world_vel(ramp, world_vel, state.position) if ramp != null else world_vel.x,
+			_slope_along_from_world_vel(ramp, world_vel, state.position, _launch_id_for_along(state)) if ramp != null else world_vel.x,
 			vz
 		)
 	else:

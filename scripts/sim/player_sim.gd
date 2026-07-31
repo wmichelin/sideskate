@@ -32,6 +32,8 @@ var ollie_pressed: bool = false
 var ollie_just_released: bool = false
 ## Hold meter in [0, 1] while charging an available ollie.
 var ollie_charge: float = 0.0
+## Peak height snapshotted while grounded charging — kept through airborne release.
+var ollie_charge_peak_height: float = 0.0
 ## Single jump charge — spent on release jump, restored on any grounded contact.
 var ollie_available: bool = true
 var debug: SimDebugSnapshot
@@ -74,6 +76,7 @@ func _finish_setup() -> bool:
 	_seed_checkpoint_from_state()
 	ollie_available = state != null and state.is_grounded()
 	ollie_charge = 0.0
+	ollie_charge_peak_height = 0.0
 	debug = SimDebugSnapshot.new()
 	trace = SimTrace.new(model.model_hash)
 	trace.record(state, Vector2.ZERO, false)
@@ -119,6 +122,8 @@ func tick(delta: float = SimTolerances.FIXED_DT) -> void:
 	else:
 		air.step(state, last_wish, delta, max_speed, max_speed_z)
 	_replenish_ollie_on_ground()
+	# Refresh charge peak after surface changes this tick (floor→pipe mount).
+	_refresh_ollie_charge_peak()
 	_apply_lava_kill()
 	_note_checkpoint()
 	_assert_finite()
@@ -134,10 +139,13 @@ func _update_ollie_charge(delta: float) -> void:
 		return
 	if not ollie_pressed or not ollie_available:
 		ollie_charge = 0.0
+		ollie_charge_peak_height = 0.0
 		return
 	# Hold meter only builds while grounded — cannot start charging in air.
+	# Peak height is snapshotted on the grounded surface and kept through air-out.
 	if state == null or not state.is_grounded():
 		return
+	ollie_charge_peak_height = _ollie_peak_height_for_surface()
 	if ollie_charge_ms <= 0.0:
 		ollie_charge = 1.0
 		return
@@ -148,10 +156,24 @@ func _try_ollie_jump() -> void:
 	if not ollie_just_released:
 		return
 	var frac := ollie_charge
+	var peak := ollie_charge_peak_height
 	ollie_charge = 0.0
+	ollie_charge_peak_height = 0.0
 	if not ollie_available:
 		return
-	var height := frac * _ollie_peak_height_for_surface()
+	# Airborne release: launch surface wins over a stale flat snapshot from
+	# earlier floor charging (hold through floor→pipe→air-out).
+	if state != null and state.is_airborne() and model != null:
+		var sid := state.air_launch_surface_id
+		if model.pipes.has(sid) or model.ramps.has(sid) or model.walls.has(sid):
+			peak = ollie_height_pipe
+		elif model.patches.has(sid):
+			peak = ollie_height_flat
+		elif peak <= 0.0:
+			peak = _ollie_peak_height_for_surface()
+	elif peak <= 0.0:
+		peak = _ollie_peak_height_for_surface()
+	var height := frac * peak
 	if height <= 0.0:
 		return
 	ollie_available = false
@@ -174,6 +196,14 @@ func _ollie_peak_height_for_surface() -> float:
 				or int(patch.kind) == SimKinds.SurfaceKind.FLOOR:
 			return ollie_height_flat
 	return ollie_height_flat
+
+
+func _refresh_ollie_charge_peak() -> void:
+	if not ollie_pressed or not ollie_available:
+		return
+	if state == null or not state.is_grounded():
+		return
+	ollie_charge_peak_height = _ollie_peak_height_for_surface()
 
 
 func _replenish_ollie_on_ground() -> void:
@@ -444,6 +474,7 @@ func respawn() -> void:
 		trace.record(state, Vector2.ZERO, false)
 	ollie_available = state != null and state.is_grounded()
 	ollie_charge = 0.0
+	ollie_charge_peak_height = 0.0
 
 
 func pose_dict() -> Dictionary:

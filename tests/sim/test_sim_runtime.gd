@@ -328,9 +328,57 @@ func _air_out_reenter_pipe_not_fake_uphill() -> bool:
 	if is_nan(landed_along):
 		push_error("air-out pipe reenter: moderate-fall case never landed")
 		return false
+	# Same-slope reentry with soft fall + strong outward X must still clamp.
+	sim.state.mode = SimState.Mode.AIRBORNE
+	sim.state.surface_id = ""
+	sim.state.clear_hang()
+	sim.state.maneuver = null
+	sim.state.air_launch_surface_id = right.id
+	sim.state.position = Vector3(
+		right.x_at_theta(z, th), z, right.height_at_theta(z, th) + 8.0
+	)
+	sim.state.velocity = Vector3(400.0, 0.0, -90.0)
+	sim.state.note_air_height(sim.state.position.z)
+	landed_along = NAN
+	for _n in range(60):
+		sim.set_input(Vector2.ZERO, false, false)
+		sim.tick()
+		if sim.state.is_grounded() and sim.state.surface_id == right.id:
+			landed_along = sim.state.tangent_velocity.x
+			break
+	if is_nan(landed_along):
+		push_error("air-out pipe reenter: soft-fall reentry never landed")
+		return false
 	if landed_along > 20.0:
 		push_error(
-			"air-out pipe reenter: moderate fall near-lip seeded uphill %.1f"
+			"air-out pipe reenter: same-slope soft fall seeded uphill %.1f"
+			% landed_along
+		)
+		return false
+	# Rising skim remount (vz soft / still climbing into face) must not invent climb.
+	sim.state.mode = SimState.Mode.AIRBORNE
+	sim.state.surface_id = ""
+	sim.state.clear_hang()
+	sim.state.maneuver = null
+	sim.state.air_launch_surface_id = right.id
+	var th_hi := 0.72 * PI * 0.5
+	sim.state.position = Vector3(
+		right.x_at_theta(z, th_hi), z, right.height_at_theta(z, th_hi) + 4.0
+	)
+	sim.state.velocity = Vector3(280.0, 0.0, 40.0)
+	sim.state.note_air_height(sim.state.position.z + 10.0)
+	# Force a snap-style land via falling next ticks after apex.
+	sim.state.velocity.z = -20.0
+	landed_along = NAN
+	for _r in range(40):
+		sim.set_input(Vector2(1.0, 0.0), false, false)
+		sim.tick()
+		if sim.state.is_grounded() and sim.state.surface_id == right.id:
+			landed_along = sim.state.tangent_velocity.x
+			break
+	if not is_nan(landed_along) and landed_along > 20.0:
+		push_error(
+			"air-out pipe reenter: rising/skim reentry seeded uphill %.1f"
 			% landed_along
 		)
 		return false
@@ -1014,8 +1062,7 @@ func _ollie_airborne_release_uses_launch_pipe_height() -> bool:
 	sim.state.position = Vector3(pipe.x_at_theta(z, th), z, pipe.height_at_theta(z, th))
 	sim.state.clear_hang()
 	sim.ollie_available = true
-	sim.ollie_charge = 1.0
-	# Hold charge into hang air-out.
+	# Hold into hang so charge snapshot locks pipe height while grounded.
 	var hung := false
 	for _i in range(30):
 		sim.set_input(Vector2(1.0, 0.0), false, false, true, false)
@@ -1028,19 +1075,20 @@ func _ollie_airborne_release_uses_launch_pipe_height() -> bool:
 	if not hung:
 		push_error("air ollie: never left pipe into air")
 		return false
-	if not sim.ollie_available or sim.ollie_charge < 0.99:
+	if sim.ollie_charge_peak_height < sim.ollie_height_pipe - 0.1:
 		push_error(
-			"air ollie: charge should survive into air (avail=%s charge=%.2f)"
-			% [sim.ollie_available, sim.ollie_charge]
+			"air ollie: charge peak should be pipe height, got %.1f"
+			% sim.ollie_charge_peak_height
 		)
 		return false
+	# Even if launch id is wiped, snapshot must still drive pipe height.
+	sim.state.air_launch_surface_id = ""
 	var vz_before := sim.state.velocity.z
 	sim.set_input(Vector2.ZERO, false, false, false, true)
 	sim.tick()
 	var g := absf(SimTolerances.GRAVITY)
 	var dt := SimTolerances.FIXED_DT
 	var pop := sim.state.velocity.z - (vz_before - g * dt)
-	# Release adds pipe height pop on top of ballistic integrate this tick.
 	var want_pop := sqrt(2.0 * g * 60.0)
 	var flat_pop := sqrt(2.0 * g * 150.0)
 	if absf(pop - want_pop) > 8.0:
