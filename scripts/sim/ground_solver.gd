@@ -389,8 +389,12 @@ func _launch_from_ramp_peak(state: SimState, ramp: RampSurface, z: float) -> voi
 	var world_vx := along * t.x
 	var world_vh := along * t.z
 	var world_vz := state.tangent_velocity.y
-	# Nudge past the coping so feet clear the peak before ballistic flight.
-	var peak_x := ramp.coping_x_at(z) + ramp.outward_sign() * SimTolerances.CAPSULE_RADIUS
+	# Nudge clear of the outer-back feature band (thickness = capsule) so the
+	# first air tick is not embedded and Reject-frozen on the launch slope.
+	var peak_x := (
+		ramp.coping_x_at(z)
+		+ ramp.outward_sign() * (SimTolerances.CAPSULE_RADIUS + SimTolerances.CONTACT_EPS)
+	)
 	state.position = Vector3(peak_x, z, ramp.height_at_theta(z, PI * 0.5))
 	_enter_air(state, Vector3(world_vx, world_vz, world_vh), "")
 
@@ -885,6 +889,15 @@ func _mount_pipe_at(state: SimState, x: float, z: float, world_vx: float) -> boo
 
 
 func _mount_slope_at(state: SimState, x: float, z: float, world_vx: float) -> bool:
+	# Closest height among pipe+ramp hits. Prefer ramps on a height tie when the
+	# rider was / launched from a ramp so loft-seam dual hits cannot steal hang.
+	var prefer_ramp := model.ramps.has(state.surface_id) \
+		or model.ramps.has(state.air_launch_surface_id)
+	var best_id := ""
+	var best_proj: Dictionary = {}
+	var best_out := 1.0
+	var best_dh := INF
+	var best_is_ramp := false
 	for pipe_id in model.pipes.keys():
 		var pipe: PipeSurface = model.pipes[pipe_id]
 		if not pipe.contains_xz(x, z):
@@ -892,15 +905,14 @@ func _mount_slope_at(state: SimState, x: float, z: float, world_vx: float) -> bo
 		var proj := pipe.project(x, z, state.position.z)
 		if not bool(proj.get("ok", false)):
 			continue
-		state.mode = SimState.Mode.GROUNDED
-		state.surface_id = pipe.id
-		state.u = float(proj.u)
-		state.v = float(proj.v)
-		state.position = proj.point
-		state.tangent_velocity.x = world_vx * pipe.outward_sign()
-		state.velocity = Vector3.ZERO
-		state.clear_hang()
-		return true
+		var dh := absf(float(proj.point.z) - state.position.z)
+		if not _slope_mount_beats(dh, false, best_dh, best_is_ramp, prefer_ramp):
+			continue
+		best_id = pipe.id
+		best_proj = proj
+		best_out = pipe.outward_sign()
+		best_dh = dh
+		best_is_ramp = false
 	for ramp_id in model.ramps.keys():
 		var ramp: RampSurface = model.ramps[ramp_id]
 		if not ramp.contains_xz(x, z):
@@ -908,16 +920,38 @@ func _mount_slope_at(state: SimState, x: float, z: float, world_vx: float) -> bo
 		var rproj := ramp.project(x, z, state.position.z)
 		if not bool(rproj.get("ok", false)):
 			continue
-		state.mode = SimState.Mode.GROUNDED
-		state.surface_id = ramp.id
-		state.u = float(rproj.u)
-		state.v = float(rproj.v)
-		state.position = rproj.point
-		state.tangent_velocity.x = world_vx * ramp.outward_sign()
-		state.velocity = Vector3.ZERO
-		state.clear_hang()
+		var rdh := absf(float(rproj.point.z) - state.position.z)
+		if not _slope_mount_beats(rdh, true, best_dh, best_is_ramp, prefer_ramp):
+			continue
+		best_id = ramp.id
+		best_proj = rproj
+		best_out = ramp.outward_sign()
+		best_dh = rdh
+		best_is_ramp = true
+	if best_id.is_empty() or best_proj.is_empty():
+		return false
+	state.mode = SimState.Mode.GROUNDED
+	state.surface_id = best_id
+	state.u = float(best_proj.u)
+	state.v = float(best_proj.v)
+	state.position = best_proj.point
+	state.tangent_velocity.x = world_vx * best_out
+	state.velocity = Vector3.ZERO
+	state.clear_hang()
+	return true
+
+
+func _slope_mount_beats(
+	dh: float, is_ramp: bool, best_dh: float, best_is_ramp: bool, prefer_ramp: bool
+) -> bool:
+	if dh < best_dh - 0.001:
 		return true
-	return false
+	if absf(dh - best_dh) > 0.001:
+		return false
+	# Height tie.
+	if prefer_ramp:
+		return is_ramp and not best_is_ramp
+	return best_dh >= INF
 
 
 func _is_slope_kind(kind: int) -> bool:

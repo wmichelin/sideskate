@@ -206,6 +206,11 @@ func _disposition_for_contact(
 	if kind == "bounds" or role == SimKinds.ContactRole.BOUNDS:
 		if reason == "slope outer back" and _can_land_slope_back(state, contact):
 			return SimKinds.ContactDisposition.MOUNT
+		# Peak leave / free-air exit: do not Reject-freeze X on the launch slope's
+		# own outer back (reads as lip/X-lock on >>). Same for a Z-adjacent
+		# same-footprint hang pipe that shares the coping X.
+		if reason == "slope outer back" and _slope_outer_back_is_launch_exit(state, contact):
+			return SimKinds.ContactDisposition.CORRIDOR
 		# Leaving a `#` pad this bout: its open-side cage must not Reject-freeze
 		# the ledge fall into the abutting bowl (coping-aligned edges can miss
 		# when a pipe run splits under the deck edge mid-Z sample).
@@ -342,6 +347,23 @@ func _can_land_slope_back(state: SimState, contact: Dictionary) -> bool:
 	return model.pipes.has(sid) or model.ramps.has(sid)
 
 
+## True when this outer-back hit belongs to the slope we just left (or its
+## Z-adjacent same-footprint pipe). Corridor so peak leave keeps outward X.
+func _slope_outer_back_is_launch_exit(state: SimState, contact: Dictionary) -> bool:
+	var launch := state.air_launch_surface_id
+	if launch.is_empty() or state.is_hanging():
+		return false
+	var sid := str(contact.get("surface_id", ""))
+	if sid.is_empty():
+		return false
+	if launch == sid:
+		return true
+	# >> peak leave near )): shared coping X, pipe outer back must not X-freeze.
+	if model.ramps.has(launch) and model.pipes.has(sid):
+		return _ramp_launch_abuts_pipe(launch, model.pipes[sid], state.position.y)
+	return false
+
+
 func _deck_mount_gates_ok(state: SimState, contact: Dictionary, from_height: float) -> bool:
 	if state.is_hanging():
 		return false
@@ -453,6 +475,10 @@ func _wall_inbound_upper_partner_ok(state: SimState, contact: Dictionary) -> boo
 func _mount_pipe_owner(state: SimState, pipe_id: String, contact: Dictionary) -> bool:
 	var pipe: PipeSurface = model.pipes.get(pipe_id)
 	if pipe == null:
+		return false
+	# Ramp Z-leave / seam skim must not force-lip onto the abutting hang pipe.
+	if not state.is_hanging() \
+			and _ramp_launch_abuts_pipe(state.air_launch_surface_id, pipe, state.position.y):
 		return false
 	var vz := state.velocity.y
 	var world_vel := state.velocity
@@ -966,6 +992,10 @@ func _pipe_snap_allowed(state: SimState, pipe: PipeSurface, proj: Dictionary) ->
 		if source != null and pipe.side != source.side:
 			return false
 	else:
+		# Z-adjacent same-footprint ramp leave must stay free-air — remounting
+		# the hang pipe reintroduces X-lock / fly-out beside >> / )).
+		if _ramp_launch_abuts_pipe(state.air_launch_surface_id, pipe, state.position.y):
+			return false
 		# Deck ledge leave onto this pipe's outward `#` — acid only, even on lip.
 		if _slope_span_has_outward_deck(
 			pipe.coping_id, state.air_launch_surface_id, state.position.y
@@ -1003,6 +1033,42 @@ func _pipe_snap_allowed(state: SimState, pipe: PipeSurface, proj: Dictionary) ->
 		"proj": proj,
 	}
 	return not _pick_ordinary_land(state, [cand]).is_empty()
+
+
+## True when free-air began on a ramp that Z-abuts this same-side / same-footprint
+## pipe (shared loft seam). Used to block hang-pipe steal after ramp Z-leave.
+func _ramp_launch_abuts_pipe(launch_id: String, pipe: PipeSurface, z: float) -> bool:
+	if launch_id.is_empty() or pipe == null:
+		return false
+	if not model.ramps.has(launch_id):
+		return false
+	var ramp: RampSurface = model.ramps[launch_id]
+	if ramp.side != pipe.side:
+		return false
+	var abut_eps := model.cell_h * 0.5 + 1.0
+	var overlap := minf(ramp.z_max, pipe.z_max) - maxf(ramp.z_min, pipe.z_min)
+	if overlap < -abut_eps:
+		return false
+	var z_lo := maxf(ramp.z_min, pipe.z_min)
+	var z_hi := minf(ramp.z_max, pipe.z_max)
+	var z_probe := z
+	if z_hi >= z_lo:
+		z_probe = clampf(z, z_lo, z_hi)
+	elif absf(ramp.z_min - pipe.z_max) <= abut_eps:
+		z_probe = ramp.z_min
+	elif absf(ramp.z_max - pipe.z_min) <= abut_eps:
+		z_probe = ramp.z_max
+	else:
+		return false
+	var rcx := ramp.coping_x_at(z_probe)
+	var pcx := pipe.coping_x_at(z_probe)
+	if is_nan(rcx):
+		rcx = ramp.coping_x_at(clampf(z_probe, ramp.z_min, ramp.z_max))
+	if is_nan(pcx):
+		pcx = pipe.coping_x_at(clampf(z_probe, pipe.z_min, pipe.z_max))
+	if is_nan(rcx) or is_nan(pcx):
+		return false
+	return absf(rcx - pcx) <= SimTolerances.ALIGN_EPS
 
 
 ## Rejected pipe/deck/wall contact: push out and kill only into-solid speed.
@@ -1726,6 +1792,8 @@ func _pick_ordinary_land(state: SimState, candidates: Array) -> Dictionary:
 		var pipe2: PipeSurface = c.get("pipe")
 		if pipe2 == null:
 			continue
+		if _ramp_launch_abuts_pipe(state.air_launch_surface_id, pipe2, state.position.y):
+			continue
 		# Free air: drop-in from outward side, or same-facing travel from the bowl.
 		# Deck-backed OPEN from clearly outward needs acid — skip ordinary land.
 		# On the coping column itself, the pipe still owns the land.
@@ -1765,6 +1833,8 @@ func _free_air_coping_pipe_candidate(state: SimState, candidates: Array) -> Dict
 			continue
 		var pipe: PipeSurface = c.get("pipe")
 		if pipe == null:
+			continue
+		if _ramp_launch_abuts_pipe(state.air_launch_surface_id, pipe, z):
 			continue
 		var cx := pipe.coping_x_at(z)
 		if is_nan(cx):

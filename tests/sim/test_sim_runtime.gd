@@ -88,6 +88,7 @@ func run() -> bool:
 		and _pipe_ollie_below_lip_keeps_peakward_x()
 		and _ramp_adjacent_pipe_z_leave_no_hang()
 		and _ramp_lip_ollie_is_free_air()
+		and _ramp_peak_beside_pipe_keeps_outward_x()
 	)
 
 
@@ -1348,6 +1349,7 @@ func _pipe_ollie_below_lip_keeps_peakward_x() -> bool:
 
 func _ramp_adjacent_pipe_z_leave_no_hang() -> bool:
 	# >> abutting )) in Z at matching peak/cope height must not steal into pipe hang.
+	# Drive toward the shared loft seam (ramp.z_min == pipe.z_max), not away from it.
 	var sim := PlayerSim.new()
 	if not sim.setup_from_path("res://tests/levels/sim/sim_ramp_pipe_adj.ssk"):
 		push_error("ramp-pipe adj: setup")
@@ -1367,20 +1369,20 @@ func _ramp_adjacent_pipe_z_leave_no_hang() -> bool:
 	if ramp == null or pipe == null:
 		push_error("ramp-pipe adj: missing right ramp/pipe")
 		return false
-	# Near ramp peak, depth toward the pipe span.
-	var z := ramp.z_max - 1.0
+	# Near ramp peak, depth toward the pipe span (shared loft seam).
+	var z := ramp.z_min + 5.0
 	var u := 0.95
 	var th := u * PI * 0.5
 	sim.state.mode = SimState.Mode.GROUNDED
 	sim.state.surface_id = ramp.id
 	sim.state.u = u
-	sim.state.v = 0.9
-	sim.state.tangent_velocity = Vector2(120.0, 400.0)
+	sim.state.v = 0.1
+	sim.state.tangent_velocity = Vector2(80.0, -400.0)
 	sim.state.position = Vector3(ramp.x_at_theta(z, th), z, ramp.height_at_theta(z, th))
 	sim.state.clear_hang()
 	var left_ramp := false
 	for _i in range(90):
-		sim.set_input(Vector2(0.2, 1.0), false, false)
+		sim.set_input(Vector2(0.2, -1.0), false, false)
 		sim.tick()
 		if sim.state.is_hanging() or not sim.state.hang_edge_id.is_empty():
 			push_error(
@@ -1393,22 +1395,23 @@ func _ramp_adjacent_pipe_z_leave_no_hang() -> bool:
 			return false
 		if sim.state.is_airborne() or sim.state.surface_id != ramp.id:
 			left_ramp = true
+			# Keep watching — free-air remount onto the abutting pipe was the bug.
 			break
 	if not left_ramp:
 		push_error("ramp-pipe adj: never left ramp (u=%.2f z=%.1f)" % [
 			sim.state.u, sim.state.position.y
 		])
 		return false
-	# Stay free of hang for a few more ticks.
-	for _j in range(12):
-		sim.set_input(Vector2.ZERO, false, false)
+	# Stay free of hang / abutting-pipe steal for more ticks after leave.
+	for _j in range(40):
+		sim.set_input(Vector2(0.2, -1.0), false, false)
 		sim.tick()
 		if sim.state.is_hanging() or not sim.state.hang_edge_id.is_empty():
 			push_error("ramp-pipe adj: hang engaged after leave")
 			return false
-		if sim.state.surface_id == pipe.id and sim.state.is_grounded():
-			# Free-air remount onto pipe is ok; hang is not.
-			break
+		if sim.state.surface_id == pipe.id:
+			push_error("ramp-pipe adj: remounted adjacent pipe after Z leave")
+			return false
 	return true
 
 
@@ -1453,6 +1456,61 @@ func _ramp_lip_ollie_is_free_air() -> bool:
 		push_error("ramp lip ollie: must not X-lock hang")
 		return false
 	return true
+
+
+func _ramp_peak_beside_pipe_keeps_outward_x() -> bool:
+	# User layout: >> above )) — ride off peak must keep +X (not outer-back freeze).
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_ramp_peak_fly.ssk"):
+		push_error("ramp peak fly: setup")
+		return false
+	var ramp: RampSurface = null
+	for id in sim.model.ramps.keys():
+		var r: RampSurface = sim.model.ramps[id]
+		if r.side == SimKinds.PipeSide.RIGHT:
+			ramp = r
+			break
+	if ramp == null:
+		push_error("ramp peak fly: missing ramp")
+		return false
+	var z := (ramp.z_min + ramp.z_max) * 0.5
+	var u := 0.85
+	var th := u * PI * 0.5
+	sim.state.mode = SimState.Mode.GROUNDED
+	sim.state.surface_id = ramp.id
+	sim.state.u = u
+	sim.state.v = 0.5
+	sim.state.tangent_velocity = Vector2(200.0, 0.0)
+	sim.state.position = Vector3(ramp.x_at_theta(z, th), z, ramp.height_at_theta(z, th))
+	sim.state.clear_hang()
+	var launch_x := 0.0
+	var left := false
+	for _i in range(40):
+		sim.set_input(Vector2(1.0, 0.0), false, false)
+		sim.tick()
+		if sim.state.is_hanging():
+			push_error("ramp peak fly: hang")
+			return false
+		if sim.state.is_airborne():
+			if not left:
+				left = true
+				launch_x = sim.state.position.x
+			elif sim.state.velocity.x <= 1.0:
+				push_error(
+					"ramp peak fly: VX frozen (vx=%.1f x=%.1f)"
+					% [sim.state.velocity.x, sim.state.position.x]
+				)
+				return false
+			elif sim.state.position.x > launch_x + 20.0:
+				return true
+	if not left:
+		push_error("ramp peak fly: never left")
+		return false
+	push_error(
+		"ramp peak fly: did not advance past peak (x=%.1f launch=%.1f)"
+		% [sim.state.position.x, launch_x]
+	)
+	return false
 
 
 func _ollie_on_pipe_lip_enters_hang() -> bool:
@@ -5341,6 +5399,7 @@ func _ramp_peak_free_air_launch() -> bool:
 	)
 	sim.state.clear_hang()
 	var launched := false
+	var launch_x := 0.0
 	for _i in range(120):
 		sim.set_input(Vector2(1, 0), false, false)
 		sim.tick()
@@ -5349,6 +5408,7 @@ func _ramp_peak_free_air_launch() -> bool:
 			return false
 		if sim.state.is_airborne():
 			launched = true
+			launch_x = sim.state.position.x
 			break
 	if not launched:
 		push_error("ramp peak: never launched (u=%.2f grounded=%s)" % [
@@ -5361,12 +5421,25 @@ func _ramp_peak_free_air_launch() -> bool:
 	if sim.state.velocity.x <= 1.0:
 		push_error("ramp peak: expected outward +X, got %s" % sim.state.velocity)
 		return false
-	# Stay free-air for a few ticks — no sticky remount at peak height.
-	for _j in range(6):
-		sim.set_input(Vector2.ZERO, false, false)
+	# Keep holding outward — outer-back feature wall must not zero VX (felt like
+	# lip/X-lock on the ramp itself).
+	for _j in range(8):
+		sim.set_input(Vector2(1, 0), false, false)
 		sim.tick()
 		if sim.state.is_hanging():
 			push_error("ramp peak: hang engaged after launch")
+			return false
+		if sim.state.is_airborne() and sim.state.velocity.x <= 1.0:
+			push_error(
+				"ramp peak: outward X frozen after leave (vx=%.1f x=%.1f)"
+				% [sim.state.velocity.x, sim.state.position.x]
+			)
+			return false
+		if sim.state.is_airborne() and sim.state.position.x <= launch_x + 0.5 and _j >= 2:
+			push_error(
+				"ramp peak: X not advancing past peak (x=%.1f launch=%.1f)"
+				% [sim.state.position.x, launch_x]
+			)
 			return false
 	return true
 
