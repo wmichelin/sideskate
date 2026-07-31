@@ -66,7 +66,7 @@ Stick → wish. Per axis:
 
 **Deck back ride-off:** crosses the one-sided backing wall into ordinary free air. It never mounts the wall or creates an implicit acid drop.
 
-**Transfer:** press transfer when `next acid / spine` has a candidate. Normal gravity. Progress is **time-phased** through the ballistic apex: accept → apex (0→0.5) → dest lip (0.5→1), so lean/X do not stall when `vz≈0`. Lateral X and lean follow that (upright at apex; finishes on lip touch). Keeps facing; zeros `vx` on arrival; re-anchors hang on that open edge. Depth (logical Z) stays free. Lean rolls start → upright → dest (never the inverted backflip half). If accepted while already falling, starts upright (0.5).
+**Transfer:** press transfer when `next acid / spine` has a candidate. Normal gravity. Progress is **time-phased** 0→1 from accept (never pre-seeded — that snaps lean/X). Lean is upright at the ballistic apex (`apex_frac`); if already falling, upright at mid-pull. Lateral X follows the same clock; finishes on lip touch. Keeps facing; zeros `vx` on arrival; re-anchors hang on that open edge. Depth (logical Z) stays free. Lean rolls start → upright → dest (never the inverted backflip half).
 
 Hang stores `hang_edge_id` (and launch id for lock/apex); it clears on fly-out, land, or return. Leaving the launch Z span retargets onto a colinear same-side OPEN edge or keeps a synthetic X-lock across the gap — it does not free-air / level out. Depth-transfer before apex keeps takeoff orientation. Fly-out plans never retarget mid-flight. At hang apex on the launch span, facing turns around the character's centered local Y axis into the source pipe over `APEX_FACING_DELAY`.
 

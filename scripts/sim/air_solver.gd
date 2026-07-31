@@ -1208,7 +1208,7 @@ func _step_maneuver(state: SimState, wish: Vector2, delta: float) -> void:
 	_step_free(state, wish, delta)
 
 
-## Transfer: progress from feet height (pose.z) only — never from lateral X.
+## Transfer: time-phased progress 0→1 — never from lateral X.
 ## Lateral X + lean are outputs of that progress. Completes on lip touch.
 func _step_transfer(
 	state: SimState, wish: Vector2, delta: float, plan: ManeuverPlan

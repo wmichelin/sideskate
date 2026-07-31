@@ -52,8 +52,8 @@ func try_transfer(state: SimState) -> Dictionary:
 	plan.travel_sign = signf(land_x - state.position.x)
 	if plan.travel_sign == 0.0:
 		plan.travel_sign = -1.0 if state.facing == "l" else 1.0
-	# Time-phased: rise_time → upright at apex; land_time → lip. Height must
-	# not drive progress (stalls when vz≈0). Already falling → rise_time 0.
+	# Time-phased 0→1 from accept (never pre-seed mid progress — that snaps).
+	# Upright lean at ballistic apex; if already falling, upright at mid pull.
 	var g_abs := absf(SimTolerances.GRAVITY)
 	var vz0 := plan.start_velocity.z
 	plan.rise_time = vz0 / g_abs if vz0 > 0.0 else 0.0
@@ -69,7 +69,11 @@ func try_transfer(state: SimState) -> Dictionary:
 		plan.land_time = plan.rise_time + _ballistic_time_to_height(
 			apex_h, 0.0, plan.land_height, SimTolerances.GRAVITY
 		)
-	plan.progress = 0.5 if plan.rise_time <= 0.0 else 0.0
+	if plan.rise_time > 0.0001 and plan.land_time > 0.0001:
+		plan.apex_frac = clampf(plan.rise_time / plan.land_time, 0.0, 1.0)
+	else:
+		plan.apex_frac = 0.5
+	plan.progress = 0.0
 	return {"ok": true, "plan": plan}
 
 

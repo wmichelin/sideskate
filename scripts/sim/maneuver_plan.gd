@@ -27,10 +27,12 @@ var hold_facing: String = ""
 ## Destination lip lean (radians) — presentation lerps carry tilt toward this.
 var tilt_end: float = 0.0
 ## Live 0…1 pull progress (updated each transfer tick; presentation reads this).
-## 0 at accept → 0.5 at ballistic apex (upright) → 1 at expected lip time.
+## Always starts at 0 — never pre-seeded to upright / mid-X.
 var progress: float = 0.0
 ## Seconds from accept to ballistic apex (0 if already falling).
 var rise_time: float = 0.0
+## Progress value where lean is upright (ballistic apex, or 0.5 if already falling).
+var apex_frac: float = 0.5
 
 
 func kind_name() -> String:
@@ -47,19 +49,12 @@ func is_complete() -> bool:
 	return elapsed >= land_time - 0.0001
 
 
-## Time-phased progress: 0 at accept, 0.5 at apex, 1 at land_time.
-## Height must not drive this — dh/dt≈0 at apex stalls the lean/X.
-## Lateral X is an output of this — never an input. Lip touch forces 1.
+## Time-phased progress 0→1 over land_time. Lateral X is an output — never an
+## input. Lip touch forces 1. Do not start mid-range (that snaps lean/X).
+## NOTE: never use CONTACT_EPS here — that constant is spatial (~1.5), not time.
 func transfer_progress_at_elapsed(t: float) -> float:
-	var tt := maxf(t, 0.0)
-	if rise_time > SimTolerances.CONTACT_EPS:
-		if tt < rise_time:
-			return 0.5 * clampf(tt / rise_time, 0.0, 1.0)
-		var fall_span := maxf(land_time - rise_time, SimTolerances.CONTACT_EPS)
-		return 0.5 + 0.5 * clampf((tt - rise_time) / fall_span, 0.0, 1.0)
-	# Already falling: upright at accept, lean in over land_time.
-	var span := maxf(land_time, SimTolerances.CONTACT_EPS)
-	return 0.5 + 0.5 * clampf(tt / span, 0.0, 1.0)
+	var span := maxf(land_time, 0.0001)
+	return clampf(maxf(t, 0.0) / span, 0.0, 1.0)
 
 
 func to_dict() -> Dictionary:
@@ -72,6 +67,7 @@ func to_dict() -> Dictionary:
 		"elapsed": elapsed,
 		"progress": progress,
 		"rise_time": rise_time,
+		"apex_frac": apex_frac,
 		"land_x": land_x,
 		"land_height": land_height,
 		"travel_sign": travel_sign,

@@ -4065,7 +4065,7 @@ func _transfer_shared_x_spine_reanchors_hang() -> bool:
 			return false
 		if sim.state.has_maneuver():
 			var pcur: ManeuverPlan = sim.state.maneuver
-			if pcur.progress > 0.2 and pcur.progress < 0.85 \
+			if pcur.progress > 0.15 and pcur.progress < 0.95 \
 					and sim.state.position.z > dest_h + 8.0:
 				saw_mid_progress = true
 		sim.set_input(Vector2.ZERO, false, false)

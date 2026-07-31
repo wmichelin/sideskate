@@ -213,12 +213,13 @@ func _sync_from_sim() -> void:
 				_transfer_tilt_start = _carry_tilt
 				_transfer_tilt_end = tplan.tilt_end
 				_transfer_tilt_active = true
-			# Time-phased 0→0.5→1 (upright at apex). Never the inverted half.
+			# Start lean → upright at apex_frac → dest. Always from progress 0.
 			var tt := tplan.progress
-			if tt < 0.5:
-				tilt = lerp_angle(_transfer_tilt_start, 0.0, tt * 2.0)
+			var apex := clampf(tplan.apex_frac, 0.001, 0.999)
+			if tt < apex:
+				tilt = lerp_angle(_transfer_tilt_start, 0.0, tt / apex)
 			else:
-				tilt = lerp_angle(0.0, _transfer_tilt_end, (tt - 0.5) * 2.0)
+				tilt = lerp_angle(0.0, _transfer_tilt_end, (tt - apex) / (1.0 - apex))
 			_carry_tilt = tilt
 		elif st.free_air_upright:
 			# Air-out hang / ollie keep surface lean. Fly-out / deck-out stands upright.
