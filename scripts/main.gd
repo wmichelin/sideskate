@@ -26,17 +26,12 @@ func _setup_environment() -> void:
 		we.environment = env
 	# Keep soft key shadows — deck wood vs floor blue-grey needs the contrast.
 	# Cap distance so spine_demo's 100m farm does not cascade the whole park.
-	# Bias / blend splits: side-lay casts sit near-coplanar with the floor and
-	# otherwise stripe from acne + hard cascade seams.
 	var key := get_node_or_null("World3D/KeyLight") as DirectionalLight3D
 	if key != null:
 		key.shadow_enabled = true
 		key.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_2_SPLITS
-		key.directional_shadow_blend_splits = true
 		key.directional_shadow_max_distance = 28.0
-		key.shadow_blur = 1.0
-		key.shadow_normal_bias = 3.5
-		key.shadow_bias = 0.12
+		key.shadow_blur = 0.8
 
 
 func _input(event: InputEvent) -> void:

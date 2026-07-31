@@ -10,6 +10,8 @@ extends Node3D
 
 var _body: MeshInstance3D
 var _facing_mark: MeshInstance3D
+## Invisible caster while fallen — sits slightly higher so CSM isn't coplanar/striped.
+var _fall_shadow_proxy: MeshInstance3D
 var _depth: PseudoDepthBody
 var _player: Node
 
@@ -42,6 +44,15 @@ func _build_meshes() -> void:
 	_facing_mark.material_override = fmat
 	_facing_mark.position = Vector3(body_size.x * 0.5 + 0.01, 0.0, 0.0)
 	_body.add_child(_facing_mark)
+
+	_fall_shadow_proxy = MeshInstance3D.new()
+	_fall_shadow_proxy.name = "FallShadowProxy"
+	var pbox := BoxMesh.new()
+	pbox.size = body_size
+	_fall_shadow_proxy.mesh = pbox
+	_fall_shadow_proxy.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+	_fall_shadow_proxy.visible = false
+	add_child(_fall_shadow_proxy)
 
 ## Flat triangle in the XZ plane pointing +X (tip), extruded slightly in Y.
 func _make_facing_triangle(length: float, width: float, thickness: float) -> ArrayMesh:
@@ -103,10 +114,11 @@ func apply_pose(pose: LogicalPose) -> void:
 		_player != null and _player.has_method("is_falling") and bool(_player.call("is_falling"))
 	)
 	var body_yaw := pose.facing_yaw + pose.depth_turn_yaw
+	var tilt := pose.surface_tilt
 	# Fall side-lean pivots at the feet, so the body AABB digs into the ride
 	# surface — lift so the lowest mesh point rests on the contact plane.
 	if falling:
-		world_position.y += _lean_clearance_lift(pose.surface_tilt, body_yaw)
+		world_position.y += _lean_clearance_lift(tilt, body_yaw)
 	if is_inside_tree():
 		global_position = world_position
 	else:
@@ -115,16 +127,40 @@ func apply_pose(pose: LogicalPose) -> void:
 	# Surface lean pivots at the feet. The apex facing change pivots separately
 	# around the body center's local Y axis, keeping the skater's lean while
 	# turning through depth.
-	rotation = Vector3(0.0, 0.0, pose.surface_tilt)
+	rotation = Vector3(0.0, 0.0, tilt)
 	var face := signf(pose.facing_h) if pose.facing_h != 0.0 else 1.0
+	var body_pos := Vector3(0.0, body_size.y * 0.5, 0.0)
+	var body_basis_yaw := Vector3(0.0, body_yaw, 0.0)
+	var body_scl := Vector3(-face, 1.0, 1.0)
 	if _body:
 		# Facing +logical X is screen-right after WorldSpace X mirror.
-		_body.scale = Vector3(-face, 1.0, 1.0)
-		_body.position = Vector3(0.0, body_size.y * 0.5, 0.0)
-		_body.rotation = Vector3(0.0, body_yaw, 0.0)
-		_body.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		_body.scale = body_scl
+		_body.position = body_pos
+		_body.rotation = body_basis_yaw
+		# Visual sits on the floor; casting from that pose stripes. Proxy casts instead.
+		_body.cast_shadow = (
+			GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			if falling
+			else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+		)
 		if _facing_mark != null:
 			_facing_mark.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	if _fall_shadow_proxy != null:
+		if falling:
+			# Extra world-Y above the visual so the cast clears the floor (no acne).
+			const PROXY_EXTRA := 0.07
+			var s := sin(tilt)
+			var c := cos(tilt)
+			_fall_shadow_proxy.position = body_pos + Vector3(PROXY_EXTRA * s, PROXY_EXTRA * c, 0.0)
+			_fall_shadow_proxy.rotation = body_basis_yaw
+			_fall_shadow_proxy.scale = body_scl
+			_fall_shadow_proxy.visible = true
+			_fall_shadow_proxy.cast_shadow = (
+				GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+			)
+		else:
+			_fall_shadow_proxy.visible = false
+			_fall_shadow_proxy.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
 
 ## World-Y lift so a Z-tilted body AABB's lowest corner sits on the feet plane.
@@ -147,8 +183,8 @@ func _lean_clearance_lift(tilt: float, body_yaw: float) -> float:
 				# Root tilt about Z.
 				var wy: float = rx * s + ry * c
 				min_y = minf(min_y, wy)
-	# Clear of the floor enough that CSM doesn't stripe (acne / cascade seams).
-	return maxf(0.0, -min_y) + 0.04
+	# Visual clearance only — shadow proxy handles CSM gap separately.
+	return maxf(0.0, -min_y) + 0.02
 
 
 func _build_live_pose() -> LogicalPose:
