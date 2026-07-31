@@ -41,10 +41,8 @@ Free-air landings on the coping column (or its bowl side) prefer that pipe over 
 outward `#` pad — floor ollies that meet the lip drop into the bowl, they do not sticky-mount
 the deck with zero coast. Past the coping into the deck remains ordinary deck land / fly-out.
 Floor/deck ollies still rising must not Mount a foreign pipe/ramp body (skim until fall).
-A descending flat→slope land always seeds downhill along (like same-slope remount) so
-high-u +vx hits drop into the bowl instead of climbing out into hang / air-out.
-Map-edge AABB / bounds over an edge pipe/ramp coping must not start a fall bout —
-fall lockout would zero along after the lip mount and feel like a sticky launch.
+A descending flat→slope land with near-zero projected along seeds downhill so high-u apex
+hits drop in rather than perch.
 
 ### Air-out landing
 

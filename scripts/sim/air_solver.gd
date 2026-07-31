@@ -33,24 +33,23 @@ func _slope_along_from_world_vx(surf, world_vx: float) -> float:
 ## Project free-air world velocity onto the slope tangent (X + height).
 ## Same-slope reentry (ollie / air-out drop-back) always seeds downhill like hang
 ## remount — clamping to 0 let stick-out climb into a weak coping hang / X-lock.
-## Floor/deck launches onto a foreign slope also punch downhill: near-lip +vx
-## otherwise seeds huge uphill along and `_launch_from_edge` yeets into hang.
 func _slope_along_from_world_vel(
 	surf, world_vel: Vector3, at: Vector3, launch_id: String = ""
 ) -> float:
-	var punch_down := (
-		_slope_land_is_reentry(surf, launch_id, at.y) or _launch_is_flat_pad(launch_id)
-	)
-	var impact := maxf(absf(world_vel.z), absf(world_vel.x) * 0.5)
 	var proj: Dictionary = surf.project(at.x, at.y, at.z)
 	if not bool(proj.get("ok", false)):
-		if punch_down:
-			return -maxf(impact, 80.0)
 		return _slope_along_from_world_vx(surf, world_vel.x)
 	var t: Vector3 = proj.tangent_along
 	var along := world_vel.x * t.x + world_vel.z * t.z
-	if punch_down:
+	if _slope_land_is_reentry(surf, launch_id, at.y):
+		# Hang remount parity: always punch downhill on same-slope return.
+		var impact := maxf(absf(world_vel.z), absf(world_vel.x) * 0.5)
 		return -maxf(impact, 80.0)
+	# Floor/deck ollie onto a foreign slope with near-zero projected along
+	# (apex / vertical drop onto high u) must not perch — drop into the bowl.
+	if _launch_is_flat_pad(launch_id) and absf(along) < 40.0:
+		var flat_impact := maxf(absf(world_vel.z), absf(world_vel.x) * 0.5)
+		return -maxf(flat_impact, 80.0)
 	return along
 
 
@@ -219,11 +218,11 @@ func _step_free(state: SimState, wish: Vector2, delta: float) -> void:
 	state.position = to
 	_ensure_air_outside_slopes(state)
 	state.position.y = clampf(state.position.y, 0.05, maxf(model.depth - 0.05, 0.05))
-	# Free-air AABB rim: bail unless bordering deck (edge fly-out) or an edge
-	# pipe/ramp coping sits on that rim (floor ollie / peak leave / hang).
+	# Free-air AABB rim: bail unless bordering deck (edge fly-out) or leaving an
+	# edge pipe/ramp whose coping sits on that rim (ollie / peak leave).
 	if rim_clamp and not state.falling and state.alive \
 			and not _air_rim_has_border_deck(state, to) \
-			and not _air_rim_has_edge_slope(to):
+			and not _air_rim_is_launch_slope_edge(state, to):
 		state.request_fall = true
 		if absf(raw_to.x - to.x) > 0.0001:
 			state.velocity.x = 0.0
@@ -245,32 +244,24 @@ func _air_rim_has_border_deck(state: SimState, at: Vector3) -> bool:
 	return int((model.patches[sid] as SupportPatch).kind) == SimKinds.SurfaceKind.DECK
 
 
-## Any ))) / ((( / >> coping on the park AABB rim — free-air leave / floor ollie
-## into that lip must not wipe out (fall lock would freeze the subsequent mount).
-func _air_rim_has_edge_slope(at: Vector3) -> bool:
-	var on_east := at.x >= model.width - 1.0
-	var on_west := at.x <= 1.0
-	if not on_east and not on_west:
+## Edge ))) / ((( / >> at the park AABB — free-air leave must not wipe out.
+func _air_rim_is_launch_slope_edge(state: SimState, at: Vector3) -> bool:
+	var launch := state.air_launch_surface_id
+	if launch.is_empty():
+		return false
+	var surf = model.pipes.get(launch)
+	if surf == null:
+		surf = model.ramps.get(launch)
+	if surf == null:
+		return false
+	var cx := float(surf.coping_x_at(at.y))
+	if is_nan(cx):
 		return false
 	var band := maxf(model.cell_w * 2.0, SimTolerances.CAPSULE_RADIUS * 4.0)
-	for id in model.pipes.keys():
-		var pipe: PipeSurface = model.pipes[id]
-		var pcx := float(pipe.coping_x_at(at.y))
-		if is_nan(pcx):
-			continue
-		if on_east and absf(pcx - model.width) <= band:
-			return true
-		if on_west and absf(pcx) <= band:
-			return true
-	for id in model.ramps.keys():
-		var ramp: RampSurface = model.ramps[id]
-		var rcx := float(ramp.coping_x_at(at.y))
-		if is_nan(rcx):
-			continue
-		if on_east and absf(rcx - model.width) <= band:
-			return true
-		if on_west and absf(rcx) <= band:
-			return true
+	if at.x >= model.width - 1.0 and absf(cx - model.width) <= band:
+		return true
+	if at.x <= 1.0 and absf(cx) <= band:
+		return true
 	return false
 
 
@@ -800,9 +791,6 @@ func _contact_requests_fall(state: SimState, contact: Dictionary) -> bool:
 	if reason == "deck open side" and state.air_launch_surface_id == sid:
 		return false
 	if kind == "bounds" or role == SimKinds.ContactRole.BOUNDS:
-		# Edge pipe/ramp coping on this rim — playable lip, not a level-wall bail.
-		if state != null and _air_rim_has_edge_slope(state.position):
-			return false
 		return true
 	if kind == "feature_wall":
 		return true
