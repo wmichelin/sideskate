@@ -54,7 +54,7 @@ Stick → wish. Per axis:
 |------|-------|---|--------|
 | **Air-out** | Leave a compiled open pipe/wall edge with along | Locked to that edge anchor | Ballistic |
 | **Free** (fly-out / deck-out) | Outward X-dominant stick in `FLY_OUT_ABOVE`, or ride-off | Unlocked; ballistic (no friction — stick steers only while held) | Gravity only |
-| **Maneuver** | Accepted fly-out plan (spine/acid removed) | Plan owns pose | Plan owns pose |
+| **Maneuver** | Fly-out unlock, or transfer-button X-lerp | Plan owns X (transfer) / unlock seed (fly-out) | Gravity (transfer) / plan seed (fly-out) |
 
 **Fly-out / deck-out:** same unlock — clear X-lock, keep rising height, seed outward free-air X from climb/air speed, and **reset surface lean upright**. Stick must be outward to accept; after unlock X is ballistic. Cross-story walls gate the height window on the connected upper lip; outward stick stays with the source-pipe climb direction.
 
@@ -66,7 +66,7 @@ Stick → wish. Per axis:
 
 **Deck back ride-off:** crosses the one-sided backing wall into ordinary free air. It never mounts the wall or creates an implicit acid drop.
 
-**Spine / Acid:** removed pending reimplementation on the single-owner air contact stream.
+**Transfer:** press transfer when `next acid / spine` has a candidate. Normal gravity. Progress is **time-phased** through the ballistic apex: accept → apex (0→0.5) → dest lip (0.5→1), so lean/X do not stall when `vz≈0`. Lateral X and lean follow that (upright at apex; finishes on lip touch). Keeps facing; zeros `vx` on arrival; re-anchors hang on that open edge. Depth (logical Z) stays free. Lean rolls start → upright → dest (never the inverted backflip half). If accepted while already falling, starts upright (0.5).
 
 Hang stores `hang_edge_id` (and launch id for lock/apex); it clears on fly-out, land, or return. Leaving the launch Z span retargets onto a colinear same-side OPEN edge or keeps a synthetic X-lock across the gap — it does not free-air / level out. Depth-transfer before apex keeps takeoff orientation. Fly-out plans never retarget mid-flight. At hang apex on the launch span, facing turns around the character's centered local Y axis into the source pipe over `APEX_FACING_DELAY`.
 
@@ -110,7 +110,7 @@ Tunable sim values sync into `SimTolerances` / `PlayerSim` each physics tick. Ca
 | [`sim/surface_query.gd`](../scripts/sim/surface_query.gd) | Separate support projection, edge lookup, and deterministic swept solid contact |
 | [`sim/ground_solver.gd`](../scripts/sim/ground_solver.gd) | Grounded + wall climb + seams |
 | [`sim/air_solver.gd`](../scripts/sim/air_solver.gd) | Free air + maneuvers |
-| [`sim/maneuver_planner.gd`](../scripts/sim/maneuver_planner.gd) | Fly-out plans (spine/acid TBD) |
+| [`sim/maneuver_planner.gd`](../scripts/sim/maneuver_planner.gd) | Fly-out + transfer X-lerp plans |
 | [`sim/sim_tolerances.gd`](../scripts/sim/sim_tolerances.gd) | Epsilons, gravity, cast ranges |
 | [`player.gd`](../scripts/player.gd) | Input → tick → pose sync |
 | [`ramp_level.gd`](../scripts/ramp_level.gd) | Load `.ssk`, projection helpers, debug sample |

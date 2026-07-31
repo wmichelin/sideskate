@@ -27,7 +27,7 @@ Logical axes in this document: **X** left/right, **Z** near/far, **height** up. 
 |------|-------|---------|
 | **Air-out** | hang | Leave a compiled open edge with **X locked** to its anchor. Motion is height (+ optionally Z) only. Stick does **not** unlock X. Keeps surface lean. |
 | **Fly-out** | **deck-out** (same action) | Exit X-lock and travel **away** from the pipe: left on a left pipe, right on a right pipe (world outward). Free-air XZ control after unlock. Resets presentation lean upright. |
-| **Spine / Acid** | — | **Removed** (pending reimplementation on the single-owner air contact stream). Opposite-pipe transfer and deck→pipe remount are not available. |
+| **Transfer** | spine / acid pull | Transfer button while a next-spine candidate exists (facing half-plane, opposite side, above target lip). Normal gravity; time-phased progress accept→apex→lip (0→0.5→1, upright at apex, no height stall); lateral X + lean follow (finishes on touch); facing held; `vx` cleared on arrival; re-anchors air-out hang. Logical Z (depth) stays free-air. Deck→pipe remount still TBD. |
 
 ### Fly-out / deck-out activation
 
@@ -91,7 +91,7 @@ A transition occurs only via:
 | Airborne (air-out) | Grounded | Descend through the retained anchor to its source pipe/wall only |
 | Airborne (air-out) | Airborne (free) | **Fly-out** (X-dominant outward stick in `FLY_OUT_ABOVE` window) |
 | Airborne (free) | Grounded | Ordinary descending land; pipes only if same-facing as travel (never opposite); decks only on a descending crossing of the pad top |
-| Airborne | Airborne+plan | **Fly-out** unlock only (`ManeuverPlan.FLY_OUT`) |
+| Airborne / grounded | Airborne+plan | **Fly-out** unlock (`FLY_OUT`) or **transfer** X-lerp (`TRANSFER`) on button + candidate |
 | Any | Crash | Grounded lava only |
 
 Invisible world-border walls sit on the park AABB faces (X and Z) so you cannot leave the support footprint and fall out. Edge pipe copings on `x=0` / `x=width` remain rideable. Unplayable `space`, one-sided pipe interiors, **deck volumes** (below the ride top), and compiled wall/backing volumes are solid containment. An invisible `__void_floor__` patch at `VOID_FLOOR` catches fall-through when no other support remains. `#` decks are ride-on-top only. Map-edge decks/floors are walls.

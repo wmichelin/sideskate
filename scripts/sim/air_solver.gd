@@ -1191,7 +1191,9 @@ func _ensure_air_outside_slopes(state: SimState) -> void:
 
 func _step_maneuver(state: SimState, wish: Vector2, delta: float) -> void:
 	var plan: ManeuverPlan = state.maneuver
-	# Fly-out unlock only — spine/acid ballistic plans removed.
+	if plan.kind == ManeuverPlan.Kind.TRANSFER:
+		_step_transfer(state, wish, delta, plan)
+		return
 	if plan.kind != ManeuverPlan.Kind.FLY_OUT:
 		state.maneuver = null
 		_step_free(state, wish, delta)
@@ -1204,6 +1206,85 @@ func _step_maneuver(state: SimState, wish: Vector2, delta: float) -> void:
 	state.free_air_upright = true
 	state.note_air_height(state.position.z)
 	_step_free(state, wish, delta)
+
+
+## Transfer: progress from feet height (pose.z) only — never from lateral X.
+## Lateral X + lean are outputs of that progress. Completes on lip touch.
+func _step_transfer(
+	state: SimState, wish: Vector2, delta: float, plan: ManeuverPlan
+) -> void:
+	state.clear_hang()
+	if not plan.hold_facing.is_empty():
+		state.facing = plan.hold_facing
+		# Keep presentation facing with gameplay for the pull (no apex flip).
+		state.visual_facing = plan.hold_facing
+		state.facing_yaw = 0.0
+	var prev_h := state.position.z
+	state.velocity.z += SimTolerances.GRAVITY * delta
+	if absf(wish.y) >= 0.15:
+		state.velocity.y = wish.y * 200.0
+	else:
+		state.velocity.y = 0.0
+	state.velocity.x = 0.0
+	plan.elapsed += delta
+	state.position.y += state.velocity.y * delta
+	state.position.z += state.velocity.z * delta
+	state.position.y = clampf(state.position.y, 0.05, maxf(model.depth - 0.05, 0.05))
+	state.note_air_height(state.position.z)
+	var touched := (
+		prev_h > plan.land_height - SimTolerances.CONTACT_EPS
+		and state.position.z <= plan.land_height + SimTolerances.CONTACT_EPS
+		and state.velocity.z <= 0.0
+	)
+	# Clock through apex at constant rate — never stall when vz≈0.
+	# Cap below 1 until lip touch so a short land_time cannot finish early.
+	var t := plan.transfer_progress_at_elapsed(plan.elapsed)
+	if touched:
+		state.position.z = plan.land_height
+		t = 1.0
+	else:
+		t = minf(t, 0.999)
+	plan.progress = t
+	# Dependent outputs — not drivers.
+	state.position.x = lerpf(plan.start_position.x, plan.land_x, t)
+	if t < 1.0:
+		_assert_air_invariants(state)
+		return
+	state.position.x = plan.land_x
+	state.velocity.x = 0.0
+	state.maneuver = null
+	if _anchor_transfer_dest_hang(state, plan):
+		_assert_air_invariants(state)
+		return
+	_step_free(state, wish, delta)
+
+
+## Switch air-out ownership onto the transfer destination open edge. Shared-X
+## spines (L1 left ↔ L0 wall) need this — X lerp alone does not change lip.
+func _anchor_transfer_dest_hang(state: SimState, plan: ManeuverPlan) -> bool:
+	var edge := query.open_hang_edge_for_coping(plan.dest_coping_id, state.position.y)
+	if edge == null:
+		return false
+	var launch_id := edge.from_surface_id
+	if launch_id.is_empty():
+		return false
+	state.air_launch_surface_id = launch_id
+	state.begin_hang(edge.id)
+	if not plan.hold_facing.is_empty():
+		state.facing = plan.hold_facing
+		state.visual_facing = plan.hold_facing
+		state.facing_yaw = 0.0
+	var anchor := query.edge_anchor_sample(edge, state.position.y)
+	if not anchor.is_empty():
+		state.position.x = float(anchor.x)
+	# Skip apex spin when held facing already points into the dest bowl.
+	var pipe: PipeSurface = model.pipes.get(str(anchor.get("source_pipe_id", "")))
+	if pipe != null:
+		var into := "l" if pipe.outward_sign() > 0.0 else "r"
+		if state.facing == into:
+			state.hang_apex_facing_done = true
+	state.note_air_height(state.position.z)
+	return true
 
 
 func _try_land(state: SimState, from_height: float = NAN) -> void:

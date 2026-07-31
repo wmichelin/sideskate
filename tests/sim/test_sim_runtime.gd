@@ -66,6 +66,8 @@ func run() -> bool:
 		and _deck_ride_off_falls_acid_mounts()
 		and _right_pipe_deck_slow_leave_lands_floor()
 		and _layered_next_spine_keeps_l1_past_l0_lip()
+		and _transfer_button_lerps_x_holds_facing()
+		and _transfer_shared_x_spine_reanchors_hang()
 		and _layered_deck_back_ride_off_stays_free()
 		and _map_edge_deck_no_void_exit()
 		and _layered_outer_coping_seam_stays_anchored()
@@ -3889,6 +3891,211 @@ func _layered_next_spine_keeps_l1_past_l0_lip() -> bool:
 		if str(c.get("id", "")) == self_cope:
 			push_error("next spine: self lip reported after gravity turn %s" % [c])
 			return false
+	return true
+
+
+## Transfer button pulls X onto the next opposite lip, holds facing, clears vx.
+func _transfer_button_lerps_x_holds_facing() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
+		push_error("transfer lerp: setup")
+		return false
+	var left: PipeSurface = sim.model.pipes.get("pipe_2_L0_S0")
+	var l1_right: PipeSurface = sim.model.pipes.get("pipe_5_L1_S1")
+	if left == null or l1_right == null:
+		push_error("transfer lerp: missing pipes")
+		return false
+	var z := 1700.0
+	var cx := float(l1_right.coping_x_at(z))
+	var l1_h := l1_right.height_at_theta(z, PI * 0.5)
+	sim.state.mode = SimState.Mode.AIRBORNE
+	sim.state.surface_id = ""
+	sim.state.air_launch_surface_id = left.id
+	sim.state.position = Vector3(cx + 80.0, z, l1_h + 40.0)
+	sim.state.velocity = Vector3(-250.0, 0.0, 80.0)
+	sim.state.set_facing_side("l")
+	sim.state.clear_hang()
+	sim.state.maneuver = null
+	var cands := sim.query.transfer_candidates(sim.state)
+	if cands.is_empty() or str(cands[0].coping_id) != l1_right.coping_id:
+		push_error("transfer lerp: expected L1 right candidate got %s" % [cands])
+		return false
+	sim.set_input(Vector2.ZERO, false, true)
+	sim.tick()
+	if not sim.state.has_maneuver() \
+			or (sim.state.maneuver as ManeuverPlan).kind != ManeuverPlan.Kind.TRANSFER:
+		push_error(
+			"transfer lerp: no TRANSFER plan reject=%s man=%s"
+			% [sim.state.last_reject, sim.state.maneuver]
+		)
+		return false
+	# Geometric right-lip lean (presentation may rewrite to the long roll path).
+	var want_tilt := -l1_right.outward_sign() * (PI * 0.5)
+	var got_tilt := float((sim.state.maneuver as ManeuverPlan).tilt_end)
+	if absf(wrapf(got_tilt - want_tilt, -PI, PI)) > 0.01:
+		push_error("transfer lerp: tilt_end=%.3f want %.3f" % [got_tilt, want_tilt])
+		return false
+	var plan0: ManeuverPlan = sim.state.maneuver
+	var start_x := plan0.start_position.x
+	var start_h := plan0.start_position.z
+	var dest_h := plan0.land_height
+	var saw_partial := false
+	var prev_prog := -1.0
+	var stall_frames := 0
+	for _i in range(240):
+		sim.set_input(Vector2.ZERO, false, false)
+		sim.tick()
+		if sim.state.facing != "l":
+			push_error("transfer lerp: facing changed to %s" % sim.state.facing)
+			return false
+		if sim.state.has_maneuver():
+			var pcur: ManeuverPlan = sim.state.maneuver
+			var px := sim.state.position.x
+			var h := sim.state.position.z
+			# Progress must keep advancing through the apex (no height stall).
+			if pcur.progress > 0.05 and pcur.progress < 0.95:
+				if prev_prog >= 0.0 and pcur.progress <= prev_prog + 0.00001:
+					stall_frames += 1
+					if stall_frames > 2:
+						push_error(
+							"transfer lerp: progress stalled at %.3f (apex freeze)"
+							% pcur.progress
+						)
+						return false
+				else:
+					stall_frames = 0
+			prev_prog = pcur.progress
+			# Still clearly above the lip → must not already be parked on dest X.
+			if h > dest_h + 8.0 and absf(px - cx) <= SimTolerances.ALIGN_EPS \
+					and absf(start_x - cx) > 10.0:
+				push_error(
+					"transfer lerp: snapped to dest X while still above lip h=%.1f dest_h=%.1f"
+					% [h, dest_h]
+				)
+				return false
+			# Mid-flight must show intermediate X (time-phased, not end snap).
+			if h < start_h - 5.0 and h > dest_h + 8.0:
+				if absf(px - start_x) < 2.0 or absf(px - cx) < 2.0:
+					push_error(
+						"transfer lerp: mid-fall x=%.1f stuck at endpoint (start=%.1f dest=%.1f h=%.1f prog=%.2f)"
+						% [px, start_x, cx, h, pcur.progress]
+					)
+					return false
+				saw_partial = true
+			continue
+		break
+	if not saw_partial:
+		push_error("transfer lerp: never saw mid-lerp X")
+		return false
+	if absf(sim.state.position.x - cx) > SimTolerances.ALIGN_EPS:
+		push_error(
+			"transfer lerp: x=%.1f want cope %.1f" % [sim.state.position.x, cx]
+		)
+		return false
+	if absf(sim.state.velocity.x) > 1.0:
+		push_error("transfer lerp: vx not cleared got %.1f" % sim.state.velocity.x)
+		return false
+	if sim.state.facing != "l":
+		push_error("transfer lerp: facing lost after arrive")
+		return false
+	return true
+
+
+## Shared-X spine (L1 left OPEN → L0 right WALL_EXTENSION): transfer must
+## re-anchor hang onto the L0 wall top — X lerp alone is a no-op at dx=0.
+func _transfer_shared_x_spine_reanchors_hang() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
+		push_error("shared-x transfer: setup")
+		return false
+	var l1l: PipeSurface = sim.model.pipes.get("pipe_4_L1_S0")
+	var l0r: PipeSurface = sim.model.pipes.get("pipe_1_L0_S1")
+	if l1l == null or l0r == null:
+		push_error("shared-x transfer: missing pipes")
+		return false
+	var z := clampf(1800.0, l1l.z_min + 5.0, l1l.z_max - 5.0)
+	var cx := float(l1l.coping_x_at(z))
+	if absf(cx - float(l0r.coping_x_at(z))) > SimTolerances.ALIGN_EPS:
+		push_error("shared-x transfer: expected shared cope X")
+		return false
+	var h_l := l1l.height_at_theta(z, PI * 0.5)
+	var src_edge := sim.query.edge_at(l1l.id, z, "coping")
+	if src_edge == null:
+		push_error("shared-x transfer: missing L1 open edge")
+		return false
+	var dest_edge := sim.query.open_hang_edge_for_coping(l0r.coping_id, z)
+	if dest_edge == null:
+		push_error("shared-x transfer: missing L0 hang edge")
+		return false
+	sim.state.mode = SimState.Mode.AIRBORNE
+	sim.state.surface_id = ""
+	sim.state.air_launch_surface_id = l1l.id
+	sim.state.position = Vector3(cx, z, h_l + 40.0)
+	sim.state.velocity = Vector3(0.0, 0.0, 60.0)
+	sim.state.set_facing_side("l")
+	sim.state.begin_hang(src_edge.id)
+	sim.state.maneuver = null
+	var cands := sim.query.transfer_candidates(sim.state)
+	if cands.is_empty() or str(cands[0].coping_id) != l0r.coping_id:
+		push_error("shared-x transfer: HUD/cands want L0 right got %s" % [cands])
+		return false
+	sim.set_input(Vector2.ZERO, false, true)
+	sim.tick()
+	if not sim.state.has_maneuver() \
+			or (sim.state.maneuver as ManeuverPlan).kind != ManeuverPlan.Kind.TRANSFER:
+		push_error("shared-x transfer: expected TRANSFER plan got reject=%s" % sim.state.last_reject)
+		return false
+	var xplan: ManeuverPlan = sim.state.maneuver
+	var dest_h := float(xplan.land_height)
+	var want_end := -l0r.outward_sign() * (PI * 0.5)
+	if absf(wrapf(float(xplan.tilt_end) - want_end, -PI, PI)) > 0.01:
+		push_error("shared-x transfer: tilt_end should be L0 geometric lean")
+		return false
+	var saw_mid_progress := false
+	# Must still be transferring while clearly above the hang lip.
+	for _i in range(240):
+		if sim.state.is_hanging() and sim.state.hang_edge_id == dest_edge.id:
+			break
+		if not sim.state.has_maneuver() \
+				and sim.state.position.z > dest_h + SimTolerances.CAPSULE_RADIUS:
+			push_error(
+				"shared-x transfer: ended above lip h=%.1f dest=%.1f"
+				% [sim.state.position.z, dest_h]
+			)
+			return false
+		if sim.state.has_maneuver():
+			var pcur: ManeuverPlan = sim.state.maneuver
+			if pcur.progress > 0.2 and pcur.progress < 0.85 \
+					and sim.state.position.z > dest_h + 8.0:
+				saw_mid_progress = true
+		sim.set_input(Vector2.ZERO, false, false)
+		sim.tick()
+	if not saw_mid_progress:
+		push_error("shared-x transfer: never saw mid transfer progress")
+		return false
+	if not sim.state.is_hanging() or sim.state.hang_edge_id != dest_edge.id:
+		push_error(
+			"shared-x transfer: hang=%s want %s reject=%s man=%s"
+			% [
+				sim.state.hang_edge_id,
+				dest_edge.id,
+				sim.state.last_reject,
+				sim.state.maneuver.kind_name() if sim.state.has_maneuver() else "none",
+			]
+		)
+		return false
+	if sim.state.air_launch_surface_id != dest_edge.from_surface_id:
+		push_error(
+			"shared-x transfer: launch=%s want %s"
+			% [sim.state.air_launch_surface_id, dest_edge.from_surface_id]
+		)
+		return false
+	if sim.state.facing != "l":
+		push_error("shared-x transfer: facing changed to %s" % sim.state.facing)
+		return false
+	if absf(sim.state.position.x - cx) > SimTolerances.ALIGN_EPS:
+		push_error("shared-x transfer: x drifted %.2f" % sim.state.position.x)
+		return false
 	return true
 
 

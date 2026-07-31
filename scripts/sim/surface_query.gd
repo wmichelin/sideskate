@@ -180,6 +180,67 @@ func edge_anchor_sample(edge: TopologyEdge, z: float) -> Dictionary:
 	return {}
 
 
+## Next acid/spine targets: facing half-plane, opposite side, above the lip,
+## never the lip you already own. Ranked nearest-first (same order as HUD).
+func transfer_candidates(state: SimState) -> Array:
+	var out: Array = []
+	if model == null or state == null:
+		return out
+	var face_dir := -1.0 if state.facing == "l" else 1.0
+	var skip_side := (
+		SimKinds.PipeSide.LEFT if state.facing == "l" else SimKinds.PipeSide.RIGHT
+	)
+	var skip_cope := self_coping_id_for_transfer(state)
+	for c in copings_in_direction(
+		state.position.x, state.position.y, state.position.z, face_dir
+	):
+		if int(c.side) == skip_side:
+			continue
+		if not skip_cope.is_empty() and str(c.coping_id) == skip_cope:
+			continue
+		if state.position.z <= float(c.height) + SimTolerances.CONTACT_EPS:
+			continue
+		out.append(c)
+	return out
+
+
+func self_coping_id_for_transfer(state: SimState) -> String:
+	for sid in [state.surface_id, state.air_launch_surface_id]:
+		if sid.is_empty():
+			continue
+		if model.pipes.has(sid):
+			return str((model.pipes[sid] as PipeSurface).coping_id)
+		if model.ramps.has(sid):
+			return str((model.ramps[sid] as RampSurface).coping_id)
+		if model.walls.has(sid):
+			return str((model.walls[sid] as WallSurface).source_coping_id)
+	if state.is_hanging() and not state.hang_edge_id.is_empty():
+		var edge: TopologyEdge = model.edges.get(state.hang_edge_id)
+		if edge != null and not edge.coping_id.is_empty():
+			return edge.coping_id
+	return ""
+
+
+## Open hang edge for a transfer destination coping at depth z (wall top or
+## pipe/ramp lip). Null when the coping forbids hang (ramp peaks).
+func open_hang_edge_for_coping(coping_id: String, z: float) -> TopologyEdge:
+	if model == null or coping_id.is_empty():
+		return null
+	var cope: CopingEdge = model.copings.get(coping_id)
+	if cope == null or not cope.allows_hang or not cope.contains_z(z):
+		return null
+	var span := cope.span_at_z(z)
+	if span != null and not span.wall_id.is_empty():
+		var wall_top := edge_at(span.wall_id, z, "top")
+		if wall_top != null and wall_top.kind == SimKinds.EdgeKind.OPEN_COPING:
+			return wall_top
+	if not cope.pipe_id.is_empty():
+		var lip := edge_at(cope.pipe_id, z, "coping")
+		if lip != null and lip.kind == SimKinds.EdgeKind.OPEN_COPING:
+			return lip
+	return null
+
+
 ## Copings in horizontal facing direction from position (layer-agnostic).
 ## direction: -1 left / +1 right. Returns ranked candidate dicts.
 ## Lips at the same X (stacked stories) count as ahead; a capsule-sized

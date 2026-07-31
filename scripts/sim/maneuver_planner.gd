@@ -1,8 +1,6 @@
 class_name ManeuverPlanner
 extends RefCounted
-## Build immutable fly-out plans.
-## Spine / acid transfers intentionally removed — reimplement against the
-## single-owner air contact stream.
+## Build immutable fly-out and transfer (X-lerp to opposite lip) plans.
 
 
 var model: ParkModel
@@ -12,6 +10,106 @@ var query: SurfaceQuery
 func _init(m: ParkModel = null, q: SurfaceQuery = null) -> void:
 	model = m
 	query = q if q != null else SurfaceQuery.new(m)
+
+
+## Transfer button: lerp world X onto the next opposite lip while holding facing.
+func try_transfer(state: SimState) -> Dictionary:
+	if state == null or not state.alive or state.has_maneuver():
+		return _reject("busy")
+	if not state.is_airborne() and not state.is_grounded():
+		return _reject("bad state")
+	var cands := query.transfer_candidates(state)
+	if cands.is_empty():
+		return _reject("no transfer target")
+	var c: Dictionary = cands[0]
+	var dest_id := str(c.coping_id)
+	var cope: CopingEdge = model.copings.get(dest_id)
+	if cope == null:
+		return _reject("bad dest coping")
+	var land_x := float(c.coping_x)
+	var plan := ManeuverPlan.new()
+	plan.kind = ManeuverPlan.Kind.TRANSFER
+	plan.source_coping_id = query.self_coping_id_for_transfer(state)
+	plan.dest_coping_id = dest_id
+	plan.dest_pipe_id = cope.pipe_id
+	plan.start_position = state.position
+	plan.start_velocity = (
+		state.velocity if state.is_airborne()
+		else Vector3(state.tangent_velocity.x, state.tangent_velocity.y, 0.0)
+	)
+	plan.land_x = land_x
+	# Touch height = hang lip (wall top / open cope), not raw geometric pipe lip.
+	plan.land_height = float(c.height)
+	var hang_edge := query.open_hang_edge_for_coping(dest_id, state.position.y)
+	if hang_edge != null:
+		var anchor := query.edge_anchor_sample(hang_edge, state.position.y)
+		if not anchor.is_empty():
+			plan.land_height = float(anchor.height)
+	plan.hold_facing = state.facing
+	# Geometric dest lip lean (matches hang after re-anchor). Presentation
+	# rolls start → upright at apex → dest (never the inverted half).
+	plan.tilt_end = _lip_tilt_for_surface(cope.pipe_id)
+	plan.travel_sign = signf(land_x - state.position.x)
+	if plan.travel_sign == 0.0:
+		plan.travel_sign = -1.0 if state.facing == "l" else 1.0
+	# Time-phased: rise_time → upright at apex; land_time → lip. Height must
+	# not drive progress (stalls when vz≈0). Already falling → rise_time 0.
+	var g_abs := absf(SimTolerances.GRAVITY)
+	var vz0 := plan.start_velocity.z
+	plan.rise_time = vz0 / g_abs if vz0 > 0.0 else 0.0
+	plan.land_time = _ballistic_time_to_height(
+		plan.start_position.z,
+		vz0,
+		plan.land_height,
+		SimTolerances.GRAVITY,
+	)
+	if plan.land_time + 0.0001 < plan.rise_time:
+		# Rising past lip height; still need the fall after apex.
+		var apex_h := plan.start_position.z + vz0 * vz0 / maxf(2.0 * g_abs, 0.001)
+		plan.land_time = plan.rise_time + _ballistic_time_to_height(
+			apex_h, 0.0, plan.land_height, SimTolerances.GRAVITY
+		)
+	plan.progress = 0.5 if plan.rise_time <= 0.0 else 0.0
+	return {"ok": true, "plan": plan}
+
+
+## Smallest t ≥ 0 where h0 + vz0·t + ½g·t² reaches h_land under constant g.
+func _ballistic_time_to_height(h0: float, vz0: float, h_land: float, g: float) -> float:
+	if h0 <= h_land + SimTolerances.CONTACT_EPS:
+		return 0.0
+	var a := 0.5 * g
+	var b := vz0
+	var c := h0 - h_land
+	if absf(a) < 0.0001:
+		if absf(b) < 0.0001:
+			return 0.0
+		var t_lin := -c / b
+		return t_lin if t_lin >= 0.0 else 0.0
+	var disc := b * b - 4.0 * a * c
+	if disc < 0.0:
+		return 0.0
+	var root := sqrt(disc)
+	var t0 := (-b - root) / (2.0 * a)
+	var t1 := (-b + root) / (2.0 * a)
+	var best := INF
+	if t0 >= -0.0001:
+		best = minf(best, maxf(t0, 0.0))
+	if t1 >= -0.0001:
+		best = minf(best, maxf(t1, 0.0))
+	if best >= INF:
+		return 0.0
+	return best
+
+
+## Pipe lip = ±90°; ramp peak = ±45°. Geometric lean −outward×θ (matches hang).
+func _lip_tilt_for_surface(surface_id: String) -> float:
+	if model.pipes.has(surface_id):
+		var pipe: PipeSurface = model.pipes[surface_id]
+		return -pipe.outward_sign() * (PI * 0.5)
+	if model.ramps.has(surface_id):
+		var ramp: RampSurface = model.ramps[surface_id]
+		return -ramp.outward_sign() * (PI * 0.25)
+	return 0.0
 
 
 func try_fly_out(state: SimState, input_x: float, input_z: float) -> Dictionary:

@@ -281,9 +281,29 @@ func _note_checkpoint() -> void:
 
 
 func _try_actions() -> void:
+	if state.has_maneuver():
+		return
+	# Transfer button: X-lerp onto the next opposite lip (same gates as HUD).
+	if action_just:
+		var tr := planner.try_transfer(state)
+		if bool(tr.get("ok", false)):
+			var tplan: ManeuverPlan = tr.plan
+			if state.is_grounded():
+				state.mode = SimState.Mode.AIRBORNE
+				state.surface_id = ""
+				state.velocity = tplan.start_velocity
+				state.tangent_velocity = Vector2.ZERO
+			state.clear_hang()
+			state.maneuver = tplan
+			state.last_reject = ""
+			if not tplan.hold_facing.is_empty():
+				state.facing = tplan.hold_facing
+				state.visual_facing = tplan.hold_facing
+				state.facing_yaw = 0.0
+			return
+		state.last_reject = str(tr.get("reason", ""))
 	# Fly-out: stick-only at OPEN coping while grounded OR hang-airing above it.
-	# Spine / acid transfer acceptance removed — reimplement later.
-	var fly_eligible := not state.has_maneuver() and (
+	var fly_eligible := (
 		(
 			state.is_grounded()
 			and (model.pipes.has(state.surface_id) or model.walls.has(state.surface_id))

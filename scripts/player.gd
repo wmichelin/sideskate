@@ -45,6 +45,10 @@ var _death_busy: bool = false
 var _last_wish: Vector2 = Vector2.ZERO
 ## Last grounded pipe/wall lean — kept while airborne so ollie doesn't snap upright.
 var _carry_tilt: float = 0.0
+## Transfer lean lerp (presentation): start locked on accept, end from plan.tilt_end.
+var _transfer_tilt_active: bool = false
+var _transfer_tilt_start: float = 0.0
+var _transfer_tilt_end: float = 0.0
 
 
 func _ready() -> void:
@@ -201,13 +205,31 @@ func _sync_from_sim() -> void:
 		tilt = -ramp.outward_sign() * (st.u * PI * 0.25)
 		_carry_tilt = tilt
 	elif st.is_airborne():
-		# Air-out hang / ollie keep surface lean. Fly-out / deck-out stands upright.
-		if st.free_air_upright:
+		# Transfer: lerp carry lean toward the destination lip/peak.
+		if st.has_maneuver() and st.maneuver is ManeuverPlan \
+				and (st.maneuver as ManeuverPlan).kind == ManeuverPlan.Kind.TRANSFER:
+			var tplan: ManeuverPlan = st.maneuver
+			if not _transfer_tilt_active:
+				_transfer_tilt_start = _carry_tilt
+				_transfer_tilt_end = tplan.tilt_end
+				_transfer_tilt_active = true
+			# Time-phased 0→0.5→1 (upright at apex). Never the inverted half.
+			var tt := tplan.progress
+			if tt < 0.5:
+				tilt = lerp_angle(_transfer_tilt_start, 0.0, tt * 2.0)
+			else:
+				tilt = lerp_angle(0.0, _transfer_tilt_end, (tt - 0.5) * 2.0)
+			_carry_tilt = tilt
+		elif st.free_air_upright:
+			# Air-out hang / ollie keep surface lean. Fly-out / deck-out stands upright.
+			_transfer_tilt_active = false
 			tilt = 0.0
 			_carry_tilt = 0.0
 		else:
+			_transfer_tilt_active = false
 			tilt = _carry_tilt
 	else:
+		_transfer_tilt_active = false
 		_carry_tilt = 0.0
 	var support_h := p.z
 	if st.is_hanging():
@@ -291,6 +313,8 @@ func _on_death_finished() -> void:
 		_sim.respawn()
 	_death_busy = false
 	_carry_tilt = 0.0
+	_transfer_tilt_active = false
+	_transfer_tilt_end = 0.0
 	_sync_from_sim()
 	_capture_pose_snapshots()
 
