@@ -84,12 +84,13 @@ func run() -> bool:
 		and _feature_walls_block_endcaps_and_sides()
 		and _air_land_ramp_keeps_uphill_along()
 		and _air_land_pipe_maps_vx_via_outward()
+		and _air_out_reenter_ramp_not_fake_uphill()
 		and _pipe_ollie_below_lip_keeps_peakward_x()
 	)
 
 
 func _air_land_ramp_keeps_uphill_along() -> bool:
-	# Free-air above mid >, vx > 0 → land with tangent_velocity.x > 0 (not forced downhill).
+	# Skate onto mid > with mostly horizontal +vx → uphill along (not forced downhill).
 	var sim := PlayerSim.new()
 	if not sim.setup_from_path("res://tests/levels/sim/sim_ramp.ssk"):
 		push_error("air land ramp: setup")
@@ -108,8 +109,9 @@ func _air_land_ramp_keeps_uphill_along() -> bool:
 	sim.state.clear_hang()
 	sim.state.maneuver = null
 	sim.state.free_air_upright = true
-	sim.state.position = Vector3(mid_x, z, mid_h + 60.0)
-	sim.state.velocity = Vector3(220.0, 0.0, -350.0)
+	sim.state.position = Vector3(mid_x, z, mid_h + 25.0)
+	# Strong +X, mild fall — approach from the flat, not an air-out drop-in.
+	sim.state.velocity = Vector3(420.0, 0.0, -80.0)
 	var landed := false
 	for _i in range(90):
 		sim.set_input(Vector2(1, 0), false, false)
@@ -130,7 +132,7 @@ func _air_land_ramp_keeps_uphill_along() -> bool:
 
 
 func _air_land_pipe_maps_vx_via_outward() -> bool:
-	# Free-air above mid ), vx > 0 → along == vx * outward_sign() (not -max(impact, 80)).
+	# Horizontal +vx onto mid ) → uphill along (not -max(impact, 80)).
 	var sim := PlayerSim.new()
 	if not sim.setup_from_path("res://tests/levels/sim/sim_halfpipe.ssk"):
 		push_error("air land pipe: setup")
@@ -148,29 +150,26 @@ func _air_land_pipe_maps_vx_via_outward() -> bool:
 	var th := PI * 0.35
 	var mid_x := right.x_at_theta(z, th)
 	var mid_h := right.height_at_theta(z, th)
-	var vx := 180.0
 	sim.state.mode = SimState.Mode.AIRBORNE
 	sim.state.surface_id = ""
 	sim.state.clear_hang()
 	sim.state.maneuver = null
 	sim.state.free_air_upright = true
-	sim.state.position = Vector3(mid_x, z, mid_h + 60.0)
-	sim.state.velocity = Vector3(vx, 0.0, -350.0)
-	var want := vx * right.outward_sign()
+	sim.state.position = Vector3(mid_x, z, mid_h + 25.0)
+	sim.state.velocity = Vector3(400.0, 0.0, -60.0)
 	var landed := false
 	for _i in range(90):
 		sim.set_input(Vector2(1, 0), false, false)
 		sim.tick()
 		if sim.state.is_grounded() and sim.state.surface_id == right.id:
 			landed = true
-			# Stick may integrate after mount; first grounded tick must not be forced downhill.
-			if sim.state.tangent_velocity.x * want <= 0.0:
+			if sim.state.tangent_velocity.x <= 0.0:
 				push_error(
-					"air land pipe: along sign want %.1f got %.1f"
-					% [want, sim.state.tangent_velocity.x]
+					"air land pipe: expected uphill along, got %.1f"
+					% sim.state.tangent_velocity.x
 				)
 				return false
-			# Must not be the old forced -max(impact, 80) seed (~-350).
+			# Must not be the old forced -max(impact, 80) seed.
 			if sim.state.tangent_velocity.x < -50.0:
 				push_error(
 					"air land pipe: still forced downhill along %.1f"
@@ -180,6 +179,62 @@ func _air_land_pipe_maps_vx_via_outward() -> bool:
 			break
 	if not landed:
 		push_error("air land pipe: never grounded on pipe")
+		return false
+	return true
+
+
+func _air_out_reenter_ramp_not_fake_uphill() -> bool:
+	# Air-out style: residual outward +vx while falling hard onto mid >.
+	# Must project fall onto tangent (downhill), not map vx alone to uphill
+	# (that felt like friction with ramp_friction = 0).
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_ramp.ssk"):
+		push_error("air-out reenter: setup")
+		return false
+	sim.ramp_friction = 0.0
+	sim.friction = 0.0
+	var ramp: RampSurface = sim.model.ramps[sim.model.all_ramp_ids()[0]]
+	var z := (ramp.z_min + ramp.z_max) * 0.5
+	var mid_u := 0.45
+	var th := mid_u * PI * 0.5
+	sim.state.mode = SimState.Mode.AIRBORNE
+	sim.state.surface_id = ""
+	sim.state.clear_hang()
+	sim.state.maneuver = null
+	sim.state.free_air_upright = true
+	sim.state.position = Vector3(
+		ramp.x_at_theta(z, th), z, ramp.height_at_theta(z, th) + 50.0
+	)
+	sim.state.velocity = Vector3(220.0, 0.0, -420.0)
+	var landed_along := NAN
+	for _i in range(90):
+		sim.set_input(Vector2.ZERO, false, false)
+		sim.tick()
+		if sim.state.is_grounded() and sim.state.surface_id == ramp.id:
+			landed_along = sim.state.tangent_velocity.x
+			break
+	if is_nan(landed_along):
+		push_error("air-out reenter: never landed")
+		return false
+	if landed_along > 50.0:
+		push_error(
+			"air-out reenter: falling reentry must not seed large uphill along, got %.1f"
+			% landed_along
+		)
+		return false
+	# With friction 0, downhill coast should not grind toward zero from fake uphill.
+	var a0 := landed_along
+	for _j in range(20):
+		sim.set_input(Vector2.ZERO, false, false)
+		sim.tick()
+		if not sim.state.is_grounded():
+			break
+	if sim.state.is_grounded() and a0 < -1.0 and sim.state.tangent_velocity.x > a0 + 5.0:
+		# Became less downhill (wrong) — gravity should speed downhill.
+		push_error(
+			"air-out reenter: downhill coast lost speed %.1f → %.1f (friction0)"
+			% [a0, sim.state.tangent_velocity.x]
+		)
 		return false
 	return true
 

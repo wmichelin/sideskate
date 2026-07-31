@@ -377,9 +377,17 @@ func _step_ramp(
 
 func _launch_from_ramp_peak(state: SimState, ramp: RampSurface, z: float) -> void:
 	var along := state.tangent_velocity.x
-	var inv := 1.0 / sqrt(2.0)
-	var world_vx := along * ramp.outward_sign() * inv
-	var world_vh := along * inv
+	var proj := ramp.project(
+		ramp.x_at_theta(z, PI * 0.5), z, ramp.height_at_theta(z, PI * 0.5)
+	)
+	var t: Vector3
+	if bool(proj.get("ok", false)):
+		t = proj.tangent_along
+	else:
+		var inv := 1.0 / sqrt(2.0)
+		t = Vector3(ramp.outward_sign() * inv, 0.0, inv)
+	var world_vx := along * t.x
+	var world_vh := along * t.z
 	var world_vz := state.tangent_velocity.y
 	# Nudge past the coping so feet clear the peak before ballistic flight.
 	var peak_x := ramp.coping_x_at(z) + ramp.outward_sign() * SimTolerances.CAPSULE_RADIUS

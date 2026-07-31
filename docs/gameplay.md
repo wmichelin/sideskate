@@ -60,7 +60,11 @@ Stick → wish. Per axis:
 
 **Air-out** (and ollie free air) keep pre-takeoff pipe/wall lean. Do not confuse with fly-out.
 
-**Free-air land on pipe/ramp:** `along = velocity.x * outward_sign()` — approach X is retained (not forced downhill). Hang remount into the bowl still seeds downhill along.
+**Free-air land on pipe/ramp:** along is the projection of world velocity onto the
+slope tangent (X + height). Skating onto a ramp with mostly horizontal speed keeps
+uphill along; falling back in after an air-out / fly-out includes the descent so you
+drop into the bowl instead of seeding fake uphill (which felt like friction). Hang
+remount into the bowl still seeds downhill along.
 
 **Air-out land:** descending through the retained edge returns to its exact source pipe/wall with speed preserved. Never auto-land the opposite-facing transfer target. Same-facing X-aligned pipes still win over flats under the lock. If nothing remountable is under the lock (outside the pipe), land the nearest floor/deck/void and clear hang (drop lip lean / X-lock).
 
