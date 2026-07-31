@@ -10,8 +10,6 @@ extends Node3D
 
 var _body: MeshInstance3D
 var _facing_mark: MeshInstance3D
-## Soft ground blob while fallen — avoids CSM stripe acne from a near-coplanar cast.
-var _fall_shadow: MeshInstance3D
 var _depth: PseudoDepthBody
 var _player: Node
 
@@ -44,23 +42,6 @@ func _build_meshes() -> void:
 	_facing_mark.material_override = fmat
 	_facing_mark.position = Vector3(body_size.x * 0.5 + 0.01, 0.0, 0.0)
 	_body.add_child(_facing_mark)
-
-	_fall_shadow = MeshInstance3D.new()
-	_fall_shadow.name = "FallContactShadow"
-	var plane := PlaneMesh.new()
-	plane.size = Vector2(1.0, 1.0)
-	_fall_shadow.mesh = plane
-	var smat := StandardMaterial3D.new()
-	smat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	smat.albedo_color = Color(0.02, 0.02, 0.04, 0.42)
-	smat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	smat.cull_mode = BaseMaterial3D.CULL_DISABLED
-	smat.render_priority = -1
-	_fall_shadow.material_override = smat
-	_fall_shadow.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	_fall_shadow.visible = false
-	add_child(_fall_shadow)
-
 
 ## Flat triangle in the XZ plane pointing +X (tip), extruded slightly in Y.
 func _make_facing_triangle(length: float, width: float, thickness: float) -> ArrayMesh:
@@ -122,12 +103,10 @@ func apply_pose(pose: LogicalPose) -> void:
 		_player != null and _player.has_method("is_falling") and bool(_player.call("is_falling"))
 	)
 	var body_yaw := pose.facing_yaw + pose.depth_turn_yaw
-	var lift := 0.0
 	# Fall side-lean pivots at the feet, so the body AABB digs into the ride
 	# surface — lift so the lowest mesh point rests on the contact plane.
 	if falling:
-		lift = _lean_clearance_lift(pose.surface_tilt, body_yaw)
-		world_position.y += lift
+		world_position.y += _lean_clearance_lift(pose.surface_tilt, body_yaw)
 	if is_inside_tree():
 		global_position = world_position
 	else:
@@ -143,35 +122,9 @@ func apply_pose(pose: LogicalPose) -> void:
 		_body.scale = Vector3(-face, 1.0, 1.0)
 		_body.position = Vector3(0.0, body_size.y * 0.5, 0.0)
 		_body.rotation = Vector3(0.0, body_yaw, 0.0)
-		# Near-coplanar CSM casts stripe under a side-lay — use the contact blob.
-		_body.cast_shadow = (
-			GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-			if falling
-			else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
-		)
+		_body.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 		if _facing_mark != null:
 			_facing_mark.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	_update_fall_contact_shadow(falling, pose.surface_tilt, lift)
-
-
-func _update_fall_contact_shadow(falling: bool, tilt: float, lift: float) -> void:
-	if _fall_shadow == null:
-		return
-	if not falling:
-		_fall_shadow.visible = false
-		return
-	# Undo root lift+tilt so the blob sits on the floor plane (world Y).
-	var s := sin(tilt)
-	var c := cos(tilt)
-	var dy := -lift + 0.012
-	_fall_shadow.position = Vector3(dy * s, dy * c, 0.0)
-	_fall_shadow.rotation = Vector3(0.0, 0.0, -tilt)
-	var side := absf(s)
-	# Upright footprint → longer ellipse as they roll onto their side.
-	var sx := lerpf(body_size.x * 1.15, body_size.y * 1.05, side)
-	var sz := lerpf(body_size.z * 1.15, maxf(body_size.z, body_size.x) * 1.35, side)
-	_fall_shadow.scale = Vector3(sx, 1.0, sz)
-	_fall_shadow.visible = true
 
 
 ## World-Y lift so a Z-tilted body AABB's lowest corner sits on the feet plane.
@@ -194,8 +147,8 @@ func _lean_clearance_lift(tilt: float, body_yaw: float) -> float:
 				# Root tilt about Z.
 				var wy: float = rx * s + ry * c
 				min_y = minf(min_y, wy)
-	# Rest on top of the surface with a visible clearance (was still grazing).
-	return maxf(0.0, -min_y) + 0.02
+	# Clear of the floor enough that CSM doesn't stripe (acne / cascade seams).
+	return maxf(0.0, -min_y) + 0.04
 
 
 func _build_live_pose() -> LogicalPose:
