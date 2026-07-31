@@ -180,17 +180,18 @@ derives an immutable park model from the grid:
 
 ### Pipe lofts
 
-Same-side contiguous `(` / `)` cells form a pipe component. Per ASCII row, radius =
-run width × `cell_w` (or header `pipe_radius`). Across Z, `lip(z)`, `radius(z)`, and
-`base(z)` are joined with monotone interpolation that does not overshoot. Runtime
-logic never branches on layer index — layers only contribute absolute heights at
-compile time.
+Same-side contiguous `(` / `)` cells form a pipe component. Per ASCII row:
+**footprint** `radius` = run width × `cell_w`; **height** `rise` = run width ×
+`step_height` (default `cell_w`; header `pipe_radius` forces rise only). Across Z,
+`lip(z)`, `radius(z)`, `rise(z)`, and `base(z)` are joined with monotone
+interpolation that does not overshoot. Runtime logic never branches on layer
+index — layers only contribute absolute heights at compile time.
 
 ### Ramp lofts
 
 Same-side contiguous `<` / `>` cells form a triangular ramp component with the same
-footprint/radius rules as pipes. Profile is linear (45° when width equals height rise):
-`u ∈ [0,1]` from lip→peak, `height = base + R·u`, `x` = lip ± `R·u`. Peak leave is
+footprint/rise rules as pipes. Profile is linear (45° when `radius == rise`):
+`u ∈ [0,1]` from lip→peak, `height = base + rise·u`, `x` = lip ± `radius·u`. Peak leave is
 ordinary free air (no hang).
 
 ### Coping classification
