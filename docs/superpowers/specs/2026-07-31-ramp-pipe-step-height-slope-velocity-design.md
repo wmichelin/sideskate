@@ -4,7 +4,7 @@
 
 1. Pipe and ramp **rise** scale with glyph run length via a shared `step_height`, not `cell_w`.
 2. Landing on a pipe/ramp from free air **retains** world X (mapped to along), instead of forcing downhill speed.
-3. Ollieing on a pipe/ramp below the lip band **carries full along → world X** (including peak-ward), instead of zeroing uphill X.
+3. Ollieing on a pipe/ramp **anywhere below the lip / air-out band** **carries full along → world X** (including peak-ward), instead of zeroing uphill X.
 
 ## Geometry — `step_height`
 
@@ -56,13 +56,15 @@ Grounded `_mount_slope_at` already uses `world_vx * outward_sign()` — keep it;
 
 Facing/moving right, land mid `>` (lip left / downhill left): keep positive along (uphill). Gravity still slows and can reverse you; you do not instantly stop and accelerate left.
 
-## Slope ollie velocity (below lip / free-air)
+## Slope ollie velocity (below lip / air-out threshold)
 
 ### Bug
 
-Free-air slope ollie builds `wx = t.x * along`, then zeros peak-ward X when `wx * n.x < 0`. Riding up a pipe and ollieing before hang kills world X.
+Free-air slope ollie builds `wx = t.x * along`, then zeros peak-ward X when `wx * n.x < 0`. Riding up a pipe and ollieing before the automatic air-out / hang band kills world X.
 
 ### Rule
+
+Applies to **any** grounded pipe/ramp ollie that takes the free-air path — i.e. below `ollie_lip_frac` / not entering hang — not only “mid-face” samples:
 
 - `world = (t.x * along, depth, height_impulse)`, then `_reject_into_normal` only.
 - Do **not** zero peak-ward world X.
@@ -84,10 +86,10 @@ Free-air slope ollie builds `wx = t.x * along`, then zeros peak-ward X when `wx 
 1. Compiler: `step_height H` → `>` rise H, `>>` rise 2H; same for `)` / `))`; omit header → H defaults to `cell_w`.
 2. Land: air `+vx` onto mid `>` → `tangent_velocity.x > 0` (not forced negative).
 3. Land: air `+vx` onto mid `)` → along = `vx * outward_sign()`, not `-max(impact, 80)`.
-4. Ollie: grounded on pipe with peak-ward along, release below lip → airborne `velocity.x` keeps peak-ward sign (not ~0).
+4. Ollie: grounded on pipe with peak-ward along, release **below** lip/air-out band → airborne `velocity.x` keeps peak-ward sign (not ~0).
 
 ## Success criteria
 
 - Glyph run magnitude controls pipe/ramp height independently of cell width (via `step_height`).
 - Landing on a slope no longer feels like an instant stop into downhill.
-- Mid-face pipe/ramp ollie preserves ride X through takeoff.
+- Any pipe/ramp ollie below the air-out / hang threshold preserves ride X through takeoff.
