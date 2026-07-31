@@ -51,8 +51,9 @@ Perspective (`perspective_inset`, `far_geometry_scale`, `reference_depth`, `refe
 |-----|----------|---------|
 | `ssk 2` | yes (first line) | Format version |
 | `name` | no | Level id (default: filename) |
-| `pipe_radius` | no | Default pipe radius; else from `()` run width |
+| `pipe_radius` | no | Legacy height override for pipe/ramp rise; footprint still from glyph run × `cell_w` |
 | `deck_height` | no | Override **rise** for all `#` decks (added to layer height) |
+| `step_height` | no | Per-glyph-cell height rise for pipes/ramps (default = `cell_w`) |
 | `spawn_facing` | no | Spawn horizontal facing: `l` or `r` (default `r`) |
 
 `@` may sit on any layer; the skater spawns at that layer’s `height` (`LevelSpec.spawn_height`).
@@ -94,10 +95,12 @@ height 141
 | `.` | Hole (nil) on this layer — fall through | — |
 | `#` | Deck (spine / coping flat) | `layer.height + pipe/ramp rise` |
 | `@` | Spawn + floor | `layer.height` |
-| `(` | Left-facing pipe (lip on **right** edge of run) | `base + R(1−cosθ)` |
-| `)` | Right-facing pipe (lip on **left** edge of run) | `base + R(1−cosθ)` |
-| `<` | Left-facing **ramp** (lip on **right** edge of run) | `base + R·u` (straight incline) |
-| `>` | Right-facing **ramp** (lip on **left** edge of run) | `base + R·u` (straight incline) |
+| `(` | Left-facing pipe (lip on **right** edge of run) | `base + rise·(1−cosθ)` |
+| `)` | Right-facing pipe (lip on **left** edge of run) | `base + rise·(1−cosθ)` |
+| `<` | Left-facing **ramp** (lip on **right** edge of run) | `base + rise·u` (straight incline) |
+| `>` | Right-facing **ramp** (lip on **left** edge of run) | `base + rise·u` (straight incline) |
+
+Pipe/ramp **footprint X** = `run_cells × cell_w`. **Height rise** = `run_cells × step_height` (shared header; default `step_height = cell_w`). Examples: `)` / `>` → 1×H; `))` / `>>` → 2×H. When `step_height ≠ cell_w`, pipes are elliptical (rx ≠ ry) and ramps are not 45°.
 | space | Solid invisible wall (never enter; not a kill) | — |
 
 ## Deck height
@@ -105,7 +108,7 @@ height 141
 For each connected `#` component on a layer:
 
 1. Find 4-neighbor pipe/ramp tiles (`(`, `)`, `<`, or `>`) on that layer  
-2. `rise = max(radius)` of those neighbors (or header `deck_height`)  
+2. `rise = max(neighbor rise)` of those neighbors (or header `deck_height`)  
 3. Deck absolute height = `layer.height + rise`  
 4. Error if no neighboring pipe/ramp and no header override  
 

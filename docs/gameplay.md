@@ -44,9 +44,9 @@ Stick → wish. Per axis:
 
 **Facing** `l`/`r`: follows world X speed when X-dominant. Spawn from `spawn_facing`.
 
-**Ollie** (Space): hold for mild facing accel (skipped while stick brakes opposite) and to charge a jump **while grounded**; release pops up to charge% × `ollie_height_flat` (floor/deck) or `ollie_height_pipe` (pipe/ramp/wall) level units (tunable charge time / heights). One jump charge — spent on release, restored when grounded on any surface. Upper pipe/ramp band (`ollie lip` slider, default top 50%) X-locks into hang air. Air keeps pre-takeoff pipe/ramp lean (no upright snap).
+**Ollie** (Space): hold for mild facing accel (skipped while stick brakes opposite) and to charge a jump **while grounded**; release pops up to charge% × `ollie_height_flat` (floor/deck) or `ollie_height_pipe` (pipe/ramp/wall) level units (tunable charge time / heights). One jump charge — spent on release, restored when grounded on any surface. Below the lip / air-out band on pipes/ramps, free-air takeoff carries full along → world X. Upper pipe/ramp band (`ollie lip` slider, default top 50%) X-locks into hang air. Air keeps pre-takeoff pipe/ramp lean (no upright snap).
 
-**Pipe:** UV along-arc (+along = toward coping), always `u∈[0,1]`; gravity projects onto the tangent. A compiled seam enters a separate `WallSurface`, whose own `u∈[0,1]` runs bottom→top.
+**Pipe:** UV along-arc (+along = toward coping), always `u∈[0,1]`; gravity projects onto the tangent. A compiled seam enters a separate `WallSurface`, whose own `u∈[0,1]` runs bottom→top. Rise scales with glyph run × `step_height` (see `level_format.md`).
 
 ## Air
 
@@ -59,6 +59,8 @@ Stick → wish. Per axis:
 **Fly-out / deck-out:** same unlock — clear X-lock, keep rising height, seed outward free-air X from climb/air speed, and **reset surface lean upright**. Stick must be outward to accept; after unlock X is ballistic. Cross-story walls gate the height window on the connected upper lip; outward stick stays with the source-pipe climb direction.
 
 **Air-out** (and ollie free air) keep pre-takeoff pipe/wall lean. Do not confuse with fly-out.
+
+**Free-air land on pipe/ramp:** `along = velocity.x * outward_sign()` — approach X is retained (not forced downhill). Hang remount into the bowl still seeds downhill along.
 
 **Air-out land:** descending through the retained edge returns to its exact source pipe/wall with speed preserved. Never auto-land the opposite-facing transfer target. Same-facing X-aligned pipes still win over flats under the lock. If nothing remountable is under the lock (outside the pipe), land the nearest floor/deck/void and clear hang (drop lip lean / X-lock).
 
