@@ -180,19 +180,21 @@ func edge_anchor_sample(edge: TopologyEdge, z: float) -> Dictionary:
 	return {}
 
 
-## Copings near position (layer-agnostic). Returns ranked candidate dicts.
-## direction: -1 left / +1 right half-plane; 0 = both ways within range (stacked
-## L1 lips share an L0 cope X — a strict ahead plane drops them at the lip).
+## Copings in horizontal facing direction from position (layer-agnostic).
+## direction: -1 left / +1 right. Returns ranked candidate dicts.
+## Lips at the same X (stacked stories) count as ahead; a capsule-sized
+## overshoot past the plane still counts so crossing a shared cope X does not
+## instantly drop the target.
 func copings_in_direction(
-	x: float, z: float, h: float, direction: float = 0.0, max_cells: int = -1
+	x: float, z: float, h: float, direction: float, max_cells: int = -1
 ) -> Array:
 	var out: Array = []
-	if model == null:
+	if model == null or absf(direction) < 0.001:
 		return out
 	var cells := max_cells if max_cells > 0 else SimTolerances.FACING_COPING_CELLS
 	var max_dist := float(cells) * model.cell_w + SimTolerances.ALIGN_EPS
 	var dir := signf(direction)
-	var half_plane := absf(direction) >= 0.001
+	var behind_slop := SimTolerances.CAPSULE_RADIUS
 	for cid in model.all_coping_ids():
 		var cope: CopingEdge = model.copings[cid]
 		if not cope.contains_z(z):
@@ -203,7 +205,8 @@ func copings_in_direction(
 		var span := cope.span_at_z(z)
 		var cx := float(samp.coping_x)
 		var dx := cx - x
-		if half_plane and dx * dir < -SimTolerances.ALIGN_EPS:
+		# Ahead (dx*dir > 0), coplanar, or slightly behind within capsule slop.
+		if dx * dir < -behind_slop:
 			continue
 		var dist := absf(dx)
 		if dist > max_dist:

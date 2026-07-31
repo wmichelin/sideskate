@@ -33,15 +33,23 @@ func capture(state: SimState, model: ParkModel, query: SurfaceQuery) -> void:
 		if cope:
 			coping_class = cope.class_name_str()
 	candidates.clear()
-	if query != null:
-		# Opposite-facing lips within cast range (either X side). Same-facing
-		# lips are remount/bounce, not acid/spine. Both-ways range keeps a
-		# stacked L1 target after you cross a shared L0 cope X.
+	if query != null and model != null:
+		# Facing half-plane, opposite-facing lips only. Same-facing / own lip are
+		# remount targets, not acid/spine.
+		var face_dir := -1.0 if state.facing == "l" else 1.0
 		var skip_side := (
 			SimKinds.PipeSide.LEFT if state.facing == "l" else SimKinds.PipeSide.RIGHT
 		)
-		for c in query.copings_in_direction(position.x, position.y, position.z, 0.0):
+		var skip_cope := _self_coping_id(state, model)
+		for c in query.copings_in_direction(
+			position.x, position.y, position.z, face_dir
+		):
 			if int(c.side) == skip_side:
+				continue
+			if not skip_cope.is_empty() and str(c.coping_id) == skip_cope:
+				continue
+			# Spine/acid only from above the target lip.
+			if position.z <= float(c.height) + SimTolerances.CONTACT_EPS:
 				continue
 			candidates.append({
 				"id": c.coping_id,
@@ -49,6 +57,24 @@ func capture(state: SimState, model: ParkModel, query: SurfaceQuery) -> void:
 				"class": SimKinds.coping_class_name(int(c.class)),
 				"side": "left" if int(c.side) == SimKinds.PipeSide.LEFT else "right",
 			})
+
+
+## Coping owned by the current / launch slope — not a transfer target.
+func _self_coping_id(state: SimState, model: ParkModel) -> String:
+	for sid in [state.surface_id, state.air_launch_surface_id]:
+		if sid.is_empty():
+			continue
+		if model.pipes.has(sid):
+			return str((model.pipes[sid] as PipeSurface).coping_id)
+		if model.ramps.has(sid):
+			return str((model.ramps[sid] as RampSurface).coping_id)
+		if model.walls.has(sid):
+			return str((model.walls[sid] as WallSurface).source_coping_id)
+	if state.is_hanging() and not state.hang_edge_id.is_empty():
+		var edge: TopologyEdge = model.edges.get(state.hang_edge_id)
+		if edge != null and not edge.coping_id.is_empty():
+			return edge.coping_id
+	return ""
 
 
 func to_dict() -> Dictionary:

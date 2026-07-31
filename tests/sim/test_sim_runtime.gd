@@ -3826,43 +3826,69 @@ func _deck_ride_off_falls_acid_mounts() -> bool:
 	return true
 
 
-## Facing left on L0 left pipe: stacked L1 right lip stays next-spine after the
-## shared cope X (strict ahead half-plane used to drop dist=0 / behind targets).
+## Next-spine: facing cast, opposite side, above target lip; never self lip.
 func _layered_next_spine_keeps_l1_past_l0_lip() -> bool:
 	var sim := PlayerSim.new()
 	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
 		push_error("next spine: setup")
 		return false
 	var left: PipeSurface = sim.model.pipes.get("pipe_2_L0_S0")
-	if left == null:
-		push_error("next spine: missing pipe_2_L0_S0")
+	var l1_right: PipeSurface = sim.model.pipes.get("pipe_5_L1_S1")
+	if left == null or l1_right == null:
+		push_error("next spine: missing layered pipes")
 		return false
 	var z := 1700.0
 	var cx := left.coping_x_at(z)
-	var ch := left.height_at_theta(z, PI * 0.5)
+	var l0_h := left.height_at_theta(z, PI * 0.5)
+	var l1_h := l1_right.height_at_theta(z, PI * 0.5)
+	# Below the L1 lip — must not count an above-facing target.
 	sim.state.mode = SimState.Mode.GROUNDED
 	sim.state.surface_id = left.id
 	sim.state.u = 1.0
-	sim.state.position = Vector3(cx, z, ch)
+	sim.state.position = Vector3(cx, z, l0_h)
 	sim.state.tangent_velocity = Vector2(300.0, 0.0)
 	sim.state.set_facing_side("l")
 	sim.debug.capture(sim.state, sim.model, sim.query)
-	if sim.debug.candidates.is_empty() \
-			or str(sim.debug.candidates[0].get("id", "")) != "coping_pipe_5_L1_S1":
-		push_error("next spine: want L1 right at L0 lip got %s" % [sim.debug.candidates])
-		return false
+	for c in sim.debug.candidates:
+		if str(c.get("id", "")) == l1_right.coping_id:
+			push_error("next spine: L1 counted while below its lip %s" % [c])
+			return false
+	# Above the L1 lip at the shared X — opposite right lip counts.
 	sim.state.mode = SimState.Mode.AIRBORNE
 	sim.state.surface_id = ""
-	sim.state.position = Vector3(cx - 10.0, z, ch + 20.0)
+	sim.state.air_launch_surface_id = left.id
+	sim.state.position = Vector3(cx - SimTolerances.CAPSULE_RADIUS * 0.5, z, l1_h + 20.0)
 	sim.state.velocity = Vector3(-200.0, 0.0, 50.0)
 	sim.state.set_facing_side("l")
 	sim.debug.capture(sim.state, sim.model, sim.query)
 	if sim.debug.candidates.is_empty() \
-			or str(sim.debug.candidates[0].get("id", "")) != "coping_pipe_5_L1_S1":
+			or str(sim.debug.candidates[0].get("id", "")) != l1_right.coping_id:
 		push_error(
-			"next spine: want L1 right past L0 lip got %s" % [sim.debug.candidates]
+			"next spine: want L1 right from above got %s" % [sim.debug.candidates]
 		)
 		return false
+	# Gravity turn on an L1 left pipe: facing right must not report that same lip.
+	var l1_left: PipeSurface = sim.model.pipes.get("pipe_4_L1_S0")
+	if l1_left == null:
+		push_error("next spine: missing pipe_4_L1_S0")
+		return false
+	var z1 := (l1_left.z_min + l1_left.z_max) * 0.5
+	var th: float = 0.7 * PI * 0.5
+	sim.state.mode = SimState.Mode.GROUNDED
+	sim.state.surface_id = l1_left.id
+	sim.state.u = 0.7
+	sim.state.air_launch_surface_id = ""
+	sim.state.position = Vector3(
+		l1_left.x_at_theta(z1, th), z1, l1_left.height_at_theta(z1, th)
+	)
+	sim.state.tangent_velocity = Vector2(-200.0, 0.0)
+	sim.state.set_facing_side("r")
+	sim.debug.capture(sim.state, sim.model, sim.query)
+	var self_cope := l1_left.coping_id
+	for c in sim.debug.candidates:
+		if str(c.get("id", "")) == self_cope:
+			push_error("next spine: self lip reported after gravity turn %s" % [c])
+			return false
 	return true
 
 
