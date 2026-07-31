@@ -1,12 +1,18 @@
 class_name LevelCollision3D
 extends Node3D
-## StaticBody3D colliders from shared MeshPart faces (same source as LevelVisual3D).
+## StaticBody3D colliders from shared MeshPart geometry.
+## Trimesh parts that share face_role + layer bit are merged into one body so
+## pipe farms (spine_demo) do not spawn 200+ PhysicsServer objects.
+
 
 const LevelGeometryScript := preload("res://scripts/mesh/level_geometry.gd")
 const CollisionLayersScript := preload("res://scripts/physics/collision_layers.gd")
 const _WorldSpace := preload("res://scripts/world_space.gd")
 
 @export var level_path: NodePath = NodePath("../../RampLevel")
+## Godot colliders are presentation-only (player mask is 0). Skip on large parks
+## unless a test / tool explicitly enables them.
+@export var build_bodies: bool = false
 
 var _level: RampLevel
 var _body_root: Node3D
@@ -43,11 +49,31 @@ func rebuild() -> void:
 	last_aabb = AABB()
 	_meta_by_owner.clear()
 	var parts: Array = LevelGeometryScript.build_parts(_level.spec, _level.pipes)
+	last_aabb = LevelGeometryScript.merged_aabb(parts)
+	if not build_bodies:
+		return
+	# Merge concave trimeshes by (face_role, collision layer). Keep unique
+	# convex slabs (pipe backs) and AABB floors as individual bodies.
+	var trimesh_batches: Dictionary = {} ## batch_key → {faces, meta, layer_bit}
 	for part in parts:
 		if part == null or not part.has_method("is_empty") or part.is_empty():
 			continue
-		_add_part(part)
-	last_aabb = LevelGeometryScript.merged_aabb(parts)
+		var face_role := str(part.meta.get("face_role", "top"))
+		var zone := str(part.meta.get("zone", ""))
+		if zone == "deck" and face_role == "top":
+			_accumulate_trimesh(trimesh_batches, part, face_role, zone)
+			continue
+		if face_role == "back":
+			_add_pipe_back(part)
+			continue
+		if face_role == "top" or face_role == "lava":
+			_add_aabb_top(part, face_role, zone)
+			continue
+		# ride / endcap / wall / deck_wall → merged concave
+		_accumulate_trimesh(trimesh_batches, part, face_role, zone)
+	for key in trimesh_batches.keys():
+		var batch: Dictionary = trimesh_batches[key]
+		_add_merged_trimesh(batch)
 
 
 func meta_for_collider(collider: Object) -> Dictionary:
@@ -63,53 +89,105 @@ func meta_for_collider(collider: Object) -> Dictionary:
 	return {}
 
 
-func _add_part(part) -> void:
-	var face_role := str(part.meta.get("face_role", "top"))
-	var zone := str(part.meta.get("zone", ""))
-	# Coping-aligned deck wall faces are omitted from the mesh (pipe back owns that
-	# plane). Keep remaining deck walls as colliders — do not solid-fill the volume
-	# (that recreated a catch wall on the open coping face).
-	var body := StaticBody3D.new()
-	body.name = "%s_L%s_%s" % [part.material_key, part.layer, face_role]
-	body.collision_layer = CollisionLayersScript.bit(
+func _accumulate_trimesh(
+	batches: Dictionary, part, face_role: String, zone: String
+) -> void:
+	var layer_bit := CollisionLayersScript.bit(
 		CollisionLayersScript.ride_layers_for_face(face_role)
 	)
+	var key := "%s|%d" % [face_role, layer_bit]
+	if not batches.has(key):
+		batches[key] = {
+			"faces": PackedVector3Array(),
+			"face_role": face_role,
+			"zone": zone,
+			"layer_bit": layer_bit,
+			"material_key": str(part.material_key),
+			"layer": int(part.meta.get("layer", part.layer)),
+		}
+	var faces: PackedVector3Array = batches[key].faces
+	faces.append_array(part.faces)
+	batches[key].faces = faces
+
+
+func _add_merged_trimesh(batch: Dictionary) -> void:
+	var faces: PackedVector3Array = batch.get("faces", PackedVector3Array())
+	if faces.is_empty():
+		return
+	var shape := ConcavePolygonShape3D.new()
+	shape.set_faces(faces)
+	var meta: Dictionary = {
+		"face_role": str(batch.get("face_role", "")),
+		"zone": str(batch.get("zone", "")),
+		"layer": int(batch.get("layer", 0)),
+		"merged": true,
+	}
+	_add_body(
+		"%s_merged_%s" % [str(batch.get("material_key", "mesh")), str(batch.get("face_role", ""))],
+		int(batch.get("layer_bit", 0)),
+		meta,
+		shape,
+		Vector3.ZERO,
+	)
+
+
+func _add_aabb_top(part, face_role: String, zone: String) -> void:
+	var ab: AABB = part.aabb()
+	if ab.size.length() < 0.0001:
+		return
+	var box := BoxShape3D.new()
+	var sz := ab.size
+	sz.y = maxf(sz.y, 0.05)
+	box.size = sz
+	var meta: Dictionary = part.meta.duplicate(true)
+	meta["face_role"] = face_role
+	meta["zone"] = zone
+	_add_body(
+		"%s_L%s_%s" % [part.material_key, part.layer, face_role],
+		CollisionLayersScript.bit(CollisionLayersScript.ride_layers_for_face(face_role)),
+		meta,
+		box,
+		ab.position + sz * 0.5,
+	)
+
+
+func _add_pipe_back(part) -> void:
+	var back := _pipe_back_solid_shape(part)
+	if back == null:
+		return
+	var meta: Dictionary = part.meta.duplicate(true)
+	meta["face_role"] = "back"
+	_add_body(
+		"%s_L%s_back" % [part.material_key, part.layer],
+		CollisionLayersScript.bit(CollisionLayersScript.WORLD_WALL),
+		meta,
+		back,
+		Vector3.ZERO,
+	)
+
+
+func _add_body(
+	body_name: String,
+	layer_bit: int,
+	meta: Dictionary,
+	shape: Shape3D,
+	shape_pos: Vector3,
+) -> void:
+	var body := StaticBody3D.new()
+	body.name = body_name
+	body.collision_layer = layer_bit
 	body.collision_mask = 0
-	body.set_meta("mesh_part_meta", part.meta.duplicate(true))
-	body.set_meta("face_role", face_role)
-	body.set_meta("zone", zone)
-	body.set_meta("layer", int(part.meta.get("layer", part.layer)))
+	body.set_meta("mesh_part_meta", meta.duplicate(true))
+	body.set_meta("face_role", str(meta.get("face_role", "")))
+	body.set_meta("zone", str(meta.get("zone", "")))
+	body.set_meta("layer", int(meta.get("layer", 0)))
 	var cs := CollisionShape3D.new()
 	cs.name = "Shape"
-	if zone == "deck" and face_role == "top":
-		var top := _deck_top_shape(part)
-		if top == null:
-			return
-		cs.shape = top
-	elif face_role == "back":
-		# Thin plane trimeshes tunnel; solid slab thickened outward from coping.
-		var back := _pipe_back_solid_shape(part)
-		if back == null:
-			return
-		cs.shape = back
-	elif face_role == "top" or face_role == "lava":
-		var ab: AABB = part.aabb()
-		if ab.size.length() < 0.0001:
-			return
-		var box := BoxShape3D.new()
-		var sz := ab.size
-		sz.y = maxf(sz.y, 0.05)
-		box.size = sz
-		cs.position = ab.position + sz * 0.5
-		cs.shape = box
-	else:
-		var shape: ConcavePolygonShape3D = part.to_concave_shape()
-		if shape == null:
-			return
-		cs.shape = shape
+	cs.shape = shape
+	cs.position = shape_pos
 	body.add_child(cs)
 	_body_root.add_child(body)
-	_meta_by_owner[body.get_instance_id()] = part.meta.duplicate(true)
+	_meta_by_owner[body.get_instance_id()] = meta.duplicate(true)
 	part_count += 1
 
 
@@ -170,15 +248,6 @@ func _pipe_back_solid_shape(part) -> Shape3D:
 	var convex := ConvexPolygonShape3D.new()
 	convex.points = pts
 	return convex
-
-
-## Thin deck top slab from triangulated faces (not a convex hull of the outline —
-## concave `#` notches must not solid-fill over the pipe).
-func _deck_top_shape(part) -> Shape3D:
-	var shape: ConcavePolygonShape3D = part.to_concave_shape()
-	if shape == null:
-		return null
-	return shape
 
 
 func _clear() -> void:

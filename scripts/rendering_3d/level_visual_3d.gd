@@ -1,6 +1,9 @@
 class_name LevelVisual3D
 extends Node3D
 ## Builds opaque ArrayMeshes from shared MeshPart geometry on `rebuilt`.
+## One MeshInstance per MeshPart — frustum cull drops off-screen spine bays.
+## Do not merge park-wide: wide AABB forces drawing the whole farm.
+
 
 const LevelGeometryScript := preload("res://scripts/mesh/level_geometry.gd")
 
@@ -10,6 +13,7 @@ var _level: RampLevel
 var _mesh_root: Node3D
 var mesh_count: int = 0
 var last_aabb: AABB = AABB()
+var _materials: Dictionary = {} ## material_key → StandardMaterial3D
 
 
 func _ready() -> void:
@@ -44,8 +48,11 @@ func rebuild() -> void:
 		if mesh == null:
 			continue
 		var mi := MeshInstance3D.new()
+		mi.name = "%s_L%s" % [str(part.material_key), str(part.layer)]
 		mi.mesh = mesh
 		mi.material_override = _material_for(str(part.material_key))
+		# Shadows over a 100m park are pure fill cost; analytical play needs none.
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		_mesh_root.add_child(mi)
 		mesh_count += 1
 		var ab: AABB = mesh.get_aabb()
@@ -58,13 +65,16 @@ func rebuild() -> void:
 func _clear_meshes() -> void:
 	if _mesh_root == null:
 		return
-	for c in _mesh_root.get_children():
-		c.queue_free()
+	for child in _mesh_root.get_children():
+		child.queue_free()
 
 
 func _material_for(key: String) -> StandardMaterial3D:
+	if _materials.has(key):
+		return _materials[key]
 	var mat := StandardMaterial3D.new()
-	mat.shading_mode = BaseMaterial3D.SHADING_MODE_PER_PIXEL
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_PER_VERTEX
+	# Double-sided: trough cameras often see deck undersides / thin ride ribbons.
 	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 	match key:
 		"lava":
@@ -86,4 +96,5 @@ func _material_for(key: String) -> StandardMaterial3D:
 			mat.albedo_color = Color(0.32, 0.26, 0.22, 1.0)
 		_:
 			mat.albedo_color = Color(0.32, 0.38, 0.42, 1.0)
+	_materials[key] = mat
 	return mat

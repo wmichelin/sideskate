@@ -36,6 +36,7 @@ func run() -> bool:
 			return false
 		level.apply_spec(spec)
 	vis.call("rebuild")
+	col.set("build_bodies", true)
 	col.call("rebuild")
 	if int(vis.get("mesh_count")) <= 0:
 		push_error("mesh_count == 0 after rebuild")

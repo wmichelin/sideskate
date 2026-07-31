@@ -24,10 +24,40 @@ var walls: Dictionary = {} ## id -> WallSurface
 var copings: Dictionary = {} ## id -> CopingEdge
 var edges: Dictionary = {} ## id -> TopologyEdge
 var playable_mask: PackedByteArray = PackedByteArray()
+## Cached sorted id lists — all_*_ids() used to re-sort every query call.
+var _pipe_ids: Array = []
+var _ramp_ids: Array = []
+var _wall_ids: Array = []
+var _patch_ids: Array = []
+var _coping_ids: Array = []
+var _edge_ids: Array = []
+var _ids_ready: bool = false
 
 
 func is_valid() -> bool:
 	return compile_errors.is_empty()
+
+
+## Call once after compile (or after mutating dictionaries) before queries.
+func rebuild_id_caches() -> void:
+	_pipe_ids = pipes.keys()
+	_pipe_ids.sort()
+	_ramp_ids = ramps.keys()
+	_ramp_ids.sort()
+	_wall_ids = walls.keys()
+	_wall_ids.sort()
+	_patch_ids = patches.keys()
+	_patch_ids.sort()
+	_coping_ids = copings.keys()
+	_coping_ids.sort()
+	_edge_ids = edges.keys()
+	_edge_ids.sort()
+	_ids_ready = true
+
+
+func _ensure_id_caches() -> void:
+	if not _ids_ready:
+		rebuild_id_caches()
 
 
 func get_patch(id: String) -> SupportPatch:
@@ -51,37 +81,33 @@ func get_coping(id: String) -> CopingEdge:
 
 
 func all_patch_ids() -> Array:
-	return patches.keys()
+	_ensure_id_caches()
+	return _patch_ids
 
 
 func all_pipe_ids() -> Array:
-	var keys: Array = pipes.keys()
-	keys.sort()
-	return keys
+	_ensure_id_caches()
+	return _pipe_ids
 
 
 func all_ramp_ids() -> Array:
-	var keys: Array = ramps.keys()
-	keys.sort()
-	return keys
+	_ensure_id_caches()
+	return _ramp_ids
 
 
 func all_wall_ids() -> Array:
-	var keys: Array = walls.keys()
-	keys.sort()
-	return keys
+	_ensure_id_caches()
+	return _wall_ids
 
 
 func all_coping_ids() -> Array:
-	var keys: Array = copings.keys()
-	keys.sort()
-	return keys
+	_ensure_id_caches()
+	return _coping_ids
 
 
 func all_edge_ids() -> Array:
-	var keys: Array = edges.keys()
-	keys.sort()
-	return keys
+	_ensure_id_caches()
+	return _edge_ids
 
 
 func is_playable_cell(col: int, row: int) -> bool:

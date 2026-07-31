@@ -374,16 +374,16 @@ func ollie_charge_frac() -> float:
 
 
 func next_facing_coping_debug() -> String:
-	if _sim == null or _sim.debug == null:
+	if _sim == null or _sim.state == null or _sim.query == null:
 		return "—"
-	var cands: Array = _sim.debug.candidates
+	var cands: Array = _sim.query.transfer_candidates(_sim.state)
 	if cands.is_empty():
 		return "no coping"
 	var c: Dictionary = cands[0]
 	return "%s %s d=%.0f" % [
 		str(c.get("side", "?")),
-		str(c.get("id", "?")),
-		float(c.get("dist", 0.0)),
+		str(c.get("coping_id", c.get("id", "?"))),
+		float(c.get("distance", c.get("dist", 0.0))),
 	]
 
 

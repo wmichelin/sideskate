@@ -1,6 +1,7 @@
 class_name SimDebugSnapshot
 extends RefCounted
 ## Read-only debug capture for HUD / traces.
+## Transfer candidate scan is on-demand (overlay) — not every physics tick.
 
 
 var mode: String = ""
@@ -15,7 +16,7 @@ var maneuver: Dictionary = {}
 var candidates: Array = []
 
 
-func capture(state: SimState, model: ParkModel, query: SurfaceQuery) -> void:
+func capture(state: SimState, model: ParkModel, _query: SurfaceQuery = null) -> void:
 	mode = "grounded" if state.is_grounded() else "airborne"
 	surface_id = state.surface_id
 	position = state.position
@@ -32,15 +33,22 @@ func capture(state: SimState, model: ParkModel, query: SurfaceQuery) -> void:
 		var cope: CopingEdge = model.copings.get(pipe.coping_id)
 		if cope:
 			coping_class = cope.class_name_str()
+	# Do not scan all copings here — spine_demo has 50+ and this ran every tick.
 	candidates.clear()
-	if query != null:
-		for c in query.transfer_candidates(state):
-			candidates.append({
-				"id": c.coping_id,
-				"dist": c.distance,
-				"class": SimKinds.coping_class_name(int(c.class)),
-				"side": "left" if int(c.side) == SimKinds.PipeSide.LEFT else "right",
-			})
+
+
+## On-demand HUD / test fill (not called from PlayerSim.tick).
+func refresh_transfer_candidates(state: SimState, query: SurfaceQuery) -> void:
+	candidates.clear()
+	if state == null or query == null:
+		return
+	for c in query.transfer_candidates(state):
+		candidates.append({
+			"id": c.coping_id,
+			"dist": c.distance,
+			"class": SimKinds.coping_class_name(int(c.class)),
+			"side": "left" if int(c.side) == SimKinds.PipeSide.LEFT else "right",
+		})
 
 
 func to_dict() -> Dictionary:

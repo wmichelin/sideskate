@@ -48,6 +48,7 @@ static func compile_spec(spec: LevelSpec) -> ParkModel:
 	_build_topology_edges(model)
 	_add_void_floor(model)
 	model.model_hash = _hash_model(model)
+	model.rebuild_id_caches()
 	return model
 
 
@@ -191,6 +192,10 @@ static func _compile_pipes(spec: LevelSpec, model: ParkModel) -> void:
 	# Refine variable-width lofts from layer glyphs when widths change along Z.
 	_refine_pipe_lofts_from_glyphs(spec, model)
 	_refine_ramp_lofts_from_glyphs(spec, model)
+	for pipe_id in model.pipes.keys():
+		(model.pipes[pipe_id] as PipeSurface).rebuild_bounds()
+	for ramp_id in model.ramps.keys():
+		(model.ramps[ramp_id] as RampSurface).rebuild_bounds()
 
 
 static func _refine_pipe_lofts_from_glyphs(spec: LevelSpec, model: ParkModel) -> void:

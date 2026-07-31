@@ -3938,6 +3938,7 @@ func _layered_next_spine_keeps_l1_past_l0_lip() -> bool:
 	sim.state.tangent_velocity = Vector2(300.0, 0.0)
 	sim.state.set_facing_side("l")
 	sim.debug.capture(sim.state, sim.model, sim.query)
+	sim.debug.refresh_transfer_candidates(sim.state, sim.query)
 	for c in sim.debug.candidates:
 		if str(c.get("id", "")) == l1_right.coping_id:
 			push_error("next spine: L1 counted while below its lip %s" % [c])
@@ -3950,6 +3951,7 @@ func _layered_next_spine_keeps_l1_past_l0_lip() -> bool:
 	sim.state.velocity = Vector3(-200.0, 0.0, 50.0)
 	sim.state.set_facing_side("l")
 	sim.debug.capture(sim.state, sim.model, sim.query)
+	sim.debug.refresh_transfer_candidates(sim.state, sim.query)
 	if sim.debug.candidates.is_empty() \
 			or str(sim.debug.candidates[0].get("id", "")) != l1_right.coping_id:
 		push_error(
@@ -3973,6 +3975,7 @@ func _layered_next_spine_keeps_l1_past_l0_lip() -> bool:
 	sim.state.tangent_velocity = Vector2(-200.0, 0.0)
 	sim.state.set_facing_side("r")
 	sim.debug.capture(sim.state, sim.model, sim.query)
+	sim.debug.refresh_transfer_candidates(sim.state, sim.query)
 	var self_cope := l1_left.coping_id
 	for c in sim.debug.candidates:
 		if str(c.get("id", "")) == self_cope:

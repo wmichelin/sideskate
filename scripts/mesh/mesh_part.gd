@@ -24,6 +24,16 @@ func append_tri(a: Vector3, b: Vector3, c: Vector3) -> void:
 	faces.append(c)
 
 
+func append_faces(other_faces: PackedVector3Array) -> void:
+	faces.append_array(other_faces)
+
+
+func append_part(other: MeshPart) -> void:
+	if other == null or other.is_empty():
+		return
+	faces.append_array(other.faces)
+
+
 func append_quad(a: Vector3, b: Vector3, c: Vector3, d: Vector3) -> void:
 	## Two triangles a-c-b and a-d-c (WorldSpace X-mirror winding).
 	append_tri(a, c, b)

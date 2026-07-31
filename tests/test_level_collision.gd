@@ -34,15 +34,16 @@ func run() -> bool:
 		level.apply_spec(spec)
 		level.rebuilt.emit()
 
-	col.call("rebuild")
 	vis.call("rebuild")
-	if int(col.get("part_count")) <= 0:
-		push_error("collision part_count == 0")
+	col.set("build_bodies", true)
+	col.call("rebuild")
+	if int(vis.get("mesh_count")) <= 0:
+		push_error("visual mesh_count == 0")
 		main.queue_free()
 		GameSession.pending_level_path = ""
 		return false
-	if int(vis.get("mesh_count")) <= 0:
-		push_error("visual mesh_count == 0")
+	if int(col.get("part_count")) <= 0:
+		push_error("collision part_count == 0")
 		main.queue_free()
 		GameSession.pending_level_path = ""
 		return false

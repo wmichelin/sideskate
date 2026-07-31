@@ -8,6 +8,8 @@ var model: ParkModel
 
 func _init(m: ParkModel = null) -> void:
 	model = m
+	if model != null:
+		model.rebuild_id_caches()
 
 
 ## All supports at (x,z) with height ≤ feet_y + CONTACT_EPS, sorted high→low then id.
@@ -28,8 +30,12 @@ func supports_below(x: float, z: float, feet_y: float) -> Array:
 			"lethal": patch.lethal,
 			"patch": patch,
 		})
-	for pipe_id in model.pipes.keys():
+	for pipe_id in model.all_pipe_ids():
 		var pipe: PipeSurface = model.pipes[pipe_id]
+		if z < pipe.z_min - 0.001 or z > pipe.z_max + 0.001:
+			continue
+		if x < pipe.bound_x_min - 0.001 or x > pipe.bound_x_max + 0.001:
+			continue
 		if not pipe.contains_xz(x, z):
 			continue
 		var proj := pipe.project(x, z, feet_y)
@@ -46,8 +52,12 @@ func supports_below(x: float, z: float, feet_y: float) -> Array:
 			"pipe": pipe,
 			"proj": proj,
 		})
-	for ramp_id in model.ramps.keys():
+	for ramp_id in model.all_ramp_ids():
 		var ramp: RampSurface = model.ramps[ramp_id]
+		if z < ramp.z_min - 0.001 or z > ramp.z_max + 0.001:
+			continue
+		if x < ramp.bound_x_min - 0.001 or x > ramp.bound_x_max + 0.001:
+			continue
 		if not ramp.contains_xz(x, z):
 			continue
 		var rproj := ramp.project(x, z, feet_y)
@@ -408,6 +418,10 @@ func _blocker_at(p: Vector3) -> Dictionary:
 	# Pipe solid interiors are one-sided and exclude the coping boundary.
 	for pipe_id in model.all_pipe_ids():
 		var pipe: PipeSurface = model.pipes[pipe_id]
+		if z < float(pipe.z_min) - 0.001 or z > float(pipe.z_max) + 0.001:
+			continue
+		if x < pipe.bound_x_min - 0.001 or x > pipe.bound_x_max + 0.001:
+			continue
 		if not pipe.contains_solid_xz(x, z):
 			continue
 		var proj := pipe.project(x, z, h)
@@ -425,6 +439,10 @@ func _blocker_at(p: Vector3) -> Dictionary:
 			}
 	for ramp_id in model.all_ramp_ids():
 		var ramp: RampSurface = model.ramps[ramp_id]
+		if z < float(ramp.z_min) - 0.001 or z > float(ramp.z_max) + 0.001:
+			continue
+		if x < ramp.bound_x_min - 0.001 or x > ramp.bound_x_max + 0.001:
+			continue
 		if not ramp.contains_solid_xz(x, z):
 			continue
 		var rproj := ramp.project(x, z, h)
@@ -441,9 +459,7 @@ func _blocker_at(p: Vector3) -> Dictionary:
 				"reason": "through ramp body",
 			}
 	# Deck platforms: solid below the top — ride on top only, never through the base.
-	var patch_ids: Array = model.patches.keys()
-	patch_ids.sort()
-	for patch_id in patch_ids:
+	for patch_id in model.all_patch_ids():
 		var patch: SupportPatch = model.patches[patch_id]
 		if int(patch.kind) != SimKinds.SurfaceKind.DECK:
 			continue
@@ -458,18 +474,7 @@ func _blocker_at(p: Vector3) -> Dictionary:
 		# Wall face owns its full climb band — including the CONTACT_EPS seam
 		# above the bottom. A rear-abutting `#` must not steal that band into a
 		# deck-body rescue (mid-climb snap onto the pad instead of air-out).
-		var wall_owns_boundary := false
-		for wall_id in model.all_wall_ids():
-			var owner: WallSurface = model.walls[wall_id]
-			if not owner.contains_z(z):
-				continue
-			var owner_sample := owner.sample_at_z(z)
-			if absf(x - float(owner_sample.x)) <= 0.001 \
-					and h >= float(owner_sample.bottom_height) - SimTolerances.CONTACT_EPS \
-					and h <= float(owner_sample.top_height) + SimTolerances.CONTACT_EPS:
-				wall_owns_boundary = true
-				break
-		if wall_owns_boundary:
+		if _wall_owns_xz_band(x, z, h):
 			continue
 		return {
 			"kind": "deck",
@@ -519,16 +524,37 @@ func _blocker_at(p: Vector3) -> Dictionary:
 func _feature_wall_at(x: float, z: float, h: float) -> Dictionary:
 	var thick := SimTolerances.CAPSULE_RADIUS
 	for pipe_id in model.all_pipe_ids():
-		var hit := _slope_feature_wall(model.pipes[pipe_id], pipe_id, x, z, h, thick)
+		var pipe: PipeSurface = model.pipes[pipe_id]
+		# Endcaps extend ±thick past the loft span.
+		if z < float(pipe.z_min) - thick or z > float(pipe.z_max) + thick:
+			continue
+		if x < pipe.bound_x_min - thick or x > pipe.bound_x_max + thick:
+			continue
+		if h < pipe.bound_h_min - SimTolerances.CONTACT_EPS \
+				or h > pipe.bound_h_max + SimTolerances.CONTACT_EPS:
+			continue
+		var hit := _slope_feature_wall(pipe, pipe_id, x, z, h, thick)
 		if not hit.is_empty():
 			return hit
 	for ramp_id in model.all_ramp_ids():
-		var rhit := _slope_feature_wall(model.ramps[ramp_id], ramp_id, x, z, h, thick)
+		var ramp: RampSurface = model.ramps[ramp_id]
+		if z < float(ramp.z_min) - thick or z > float(ramp.z_max) + thick:
+			continue
+		if x < ramp.bound_x_min - thick or x > ramp.bound_x_max + thick:
+			continue
+		if h < ramp.bound_h_min - SimTolerances.CONTACT_EPS \
+				or h > ramp.bound_h_max + SimTolerances.CONTACT_EPS:
+			continue
+		var rhit := _slope_feature_wall(ramp, ramp_id, x, z, h, thick)
 		if not rhit.is_empty():
 			return rhit
-	for patch_id in model.patches.keys():
+	for patch_id in model.all_patch_ids():
 		var patch: SupportPatch = model.patches[patch_id]
 		if int(patch.kind) != SimKinds.SurfaceKind.DECK:
+			continue
+		if x < patch.x_min - thick or x > patch.x_max + thick:
+			continue
+		if z < patch.z_min - thick or z > patch.z_max + thick:
 			continue
 		var dhit := _deck_feature_wall(patch, x, z, h, thick)
 		if not dhit.is_empty():
@@ -547,17 +573,17 @@ func _slope_feature_wall(surf, surface_id: String, x: float, z: float, h: float,
 	if h < base - SimTolerances.CONTACT_EPS or h > peak + SimTolerances.CONTACT_EPS:
 		return {}
 	var lip := float(sample.lip_x)
-	var cope := float(surf.coping_x_at(clampf(z, float(surf.z_min), float(surf.z_max))))
-	if is_nan(cope):
-		return {}
+	# Derive cope from this sample — avoid a second sample_at_z via coping_x_at.
+	var cope := lip - radius if int(surf.side) == SimKinds.PipeSide.LEFT else lip + radius
 	var x_lo := minf(lip, cope)
 	var x_hi := maxf(lip, cope)
 	var out := float(surf.outward_sign())
+	var coping_id := str(surf.coping_id)
 	# Outer back wall (beyond coping). Skip when a climbable WallSurface owns the face
 	# or an outward deck backs the coping (deck ride / drop corridor).
 	if z >= float(surf.z_min) - 0.001 and z <= float(surf.z_max) + 0.001:
-		if not _climbable_wall_owns(surface_id, cope, z, h) and not _outward_deck_backs(
-			surface_id, z
+		if not _climbable_wall_owns(coping_id, cope, z, h) and not _outward_deck_backs(
+			coping_id, z
 		):
 			if out > 0.0:
 				if x > cope and x <= cope + thick:
@@ -589,9 +615,10 @@ func _slope_feature_wall(surf, surface_id: String, x: float, z: float, h: float,
 	return {}
 
 
-func _climbable_wall_owns(_source_surface_id: String, cope_x: float, z: float, h: float) -> bool:
-	# Any compiled wall on this coping X owns the exterior climb band — no duplicate
-	# outer-back feature wall (keeps wall-adjacent ride-space probes free).
+func _climbable_wall_owns(_coping_id: String, cope_x: float, z: float, h: float) -> bool:
+	# Any compiled wall on this coping X owns the exterior climb band — including
+	# cross-story walls whose source_coping_id differs from the pipe being probed.
+	# Callers AABB-cull pipes first, so this only runs for nearby faces.
 	for wall_id in model.all_wall_ids():
 		var wall: WallSurface = model.walls[wall_id]
 		if not wall.contains_z(z):
@@ -607,20 +634,26 @@ func _climbable_wall_owns(_source_surface_id: String, cope_x: float, z: float, h
 	return false
 
 
-func _outward_deck_backs(surface_id: String, z: float) -> bool:
-	var surf = null
-	if model.pipes.has(surface_id):
-		surf = model.pipes[surface_id]
-	elif model.ramps.has(surface_id):
-		surf = model.ramps[surface_id]
-	else:
-		return false
-	var coping_id := str(surf.coping_id)
+func _outward_deck_backs(coping_id: String, z: float) -> bool:
 	if coping_id.is_empty() or not model.copings.has(coping_id):
 		return false
 	var coping: CopingEdge = model.copings[coping_id]
 	var span := coping.span_at_z(z)
 	return span != null and not span.outward_deck_id.is_empty()
+
+
+## True when any wall face owns (x,z,h) — used to keep deck-body out of climb bands.
+func _wall_owns_xz_band(x: float, z: float, h: float) -> bool:
+	for wall_id in model.all_wall_ids():
+		var owner: WallSurface = model.walls[wall_id]
+		if not owner.contains_z(z):
+			continue
+		var owner_sample := owner.sample_at_z(z)
+		if absf(x - float(owner_sample.x)) <= 0.001 \
+				and h >= float(owner_sample.bottom_height) - SimTolerances.CONTACT_EPS \
+				and h <= float(owner_sample.top_height) + SimTolerances.CONTACT_EPS:
+			return true
+	return false
 
 
 ## Open (non-coping) deck side walls from base → top.

@@ -10,6 +10,30 @@ var z_max: float = 0.0
 ## Sorted samples along Z: {z, lip_x, radius, base_height}
 var samples: Array = []
 var coping_id: String = ""
+## Conservative AABB over all samples (lip↔cope × base↔peak). Used for query culling.
+var bound_x_min: float = 0.0
+var bound_x_max: float = 0.0
+var bound_h_min: float = 0.0
+var bound_h_max: float = 0.0
+
+
+## Recompute AABB after samples are filled / mutated.
+func rebuild_bounds() -> void:
+	bound_x_min = INF
+	bound_x_max = -INF
+	bound_h_min = INF
+	bound_h_max = -INF
+	if samples.is_empty():
+		return
+	for s in samples:
+		var lip := float(s.lip_x)
+		var r := float(s.radius)
+		var base := float(s.base_height)
+		var cope := lip - r if side == SimKinds.PipeSide.LEFT else lip + r
+		bound_x_min = minf(bound_x_min, minf(lip, cope))
+		bound_x_max = maxf(bound_x_max, maxf(lip, cope))
+		bound_h_min = minf(bound_h_min, base)
+		bound_h_max = maxf(bound_h_max, base + r)
 
 
 func sample_at_z(z: float) -> Dictionary:

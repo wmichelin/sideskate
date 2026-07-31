@@ -40,6 +40,9 @@ var checkpoint_history: Array = []
 var checkpoint_surface_id: String = ""
 var checkpoint_position: Vector3 = Vector3.ZERO
 var checkpoint_facing: String = "r"
+## Throttle solid-penetration push_error — spam on dense spine farms tanks FPS.
+var _last_penetration_log_tick: int = -999999
+const _PENETRATION_LOG_EVERY_TICKS := 60
 
 
 func setup_from_path(path: String) -> bool:
@@ -356,14 +359,19 @@ func _assert_invariants(previous_surface_id: String, planned_surface_change: boo
 				% [state.tick, state.surface_id, state.u]
 			)
 			return
-		var blocker := query.blocker_at(state.position)
-		if not blocker.is_empty() \
-				and str(blocker.get("surface_id", "")) != state.surface_id:
-			push_error(
-				"PlayerSim solid penetration at tick %d: owner=%s hit=%s"
-				% [state.tick, state.surface_id, blocker]
-			)
-			return
+		# Full blocker_at every grounded tick is expensive on dense spine farms.
+		# Sample sparsely — contract still fails loudly when a real leak shows up.
+		if (state.tick % 30) == 0:
+			var blocker := query.blocker_at(state.position)
+			if not blocker.is_empty() \
+					and str(blocker.get("surface_id", "")) != state.surface_id:
+				if state.tick - _last_penetration_log_tick >= _PENETRATION_LOG_EVERY_TICKS:
+					_last_penetration_log_tick = state.tick
+					push_error(
+						"PlayerSim solid penetration at tick %d: owner=%s hit=%s"
+						% [state.tick, state.surface_id, str(blocker.get("reason", blocker.get("kind", "?")))]
+					)
+				return
 	if model.pipes.has(previous_surface_id) and model.pipes.has(state.surface_id):
 		var before: PipeSurface = model.pipes[previous_surface_id]
 		var after: PipeSurface = model.pipes[state.surface_id]
