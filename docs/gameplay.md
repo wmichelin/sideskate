@@ -123,6 +123,10 @@ Tunable sim values sync into `SimTolerances` / `PlayerSim` each physics tick. Ca
 | [`physics/level_collision_3d.gd`](../scripts/physics/level_collision_3d.gd) | Visual/blocker trimeshes (not gameplay authority) |
 | [`rendering_3d/*`](../scripts/rendering_3d/) | Park mesh + pose presenter + camera |
 
+### Fall bout
+
+`PlayerSim.begin_fall()` (dev invoke: **Y** / InputMap `fall`) starts a soft wipeout: clears hang/maneuver/ollie charge, ignores stick/transfer/ollie, keeps analytical collision + gravity, lerps planar X/depth to 0 over `fall_stop_duration`, leans onto the facing side over `fall_anim_duration`, and recovers upright with zero velocity after `fall_duration` once grounded (if duration ends in air, stay locked until land). Debug TUNING exposes the three durations and a head countdown bar (`show_fall_cooldown`).
+
 Analytical suites: [`tests/sim/`](../tests/sim/).
 
 ## Behavioral invariants

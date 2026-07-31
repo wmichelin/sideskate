@@ -28,6 +28,9 @@ const BODY_CYLINDER_H_M := 0.22
 @export_range(0.0, 45.0, 0.5) var depth_turn_degrees: float = 18.0
 @export var facing_coping_cells: int = 3
 @export var acid_coping_cells: int = 16
+@export_range(0.0, 5.0, 0.01) var fall_anim_duration: float = 0.15
+@export_range(0.0, 5.0, 0.01) var fall_stop_duration: float = 0.35
+@export_range(0.0, 10.0, 0.01) var fall_duration: float = 1.0
 
 var depth: PseudoDepthBody
 var facing_h: String = "r"
@@ -129,6 +132,8 @@ func _physics_process(_delta: float) -> void:
 	var ollie_down := Input.is_action_pressed("ollie")
 	var ollie_released := Input.is_action_just_released("ollie")
 	_sync_tuning_to_sim()
+	if Input.is_action_just_pressed("fall"):
+		_sim.begin_fall()
 	_sim.set_input(wish, action_down, action_edge, ollie_down, ollie_released)
 	# Always fixed-step — never inherit a render-tied physics delta.
 	_sim.tick(SimTolerances.FIXED_DT)
@@ -152,6 +157,9 @@ func _sync_tuning_to_sim() -> void:
 	_sim.brake = brake
 	_sim.friction = friction
 	_sim.ramp_friction = ramp_friction
+	_sim.fall_anim_duration = fall_anim_duration
+	_sim.fall_stop_duration = fall_stop_duration
+	_sim.fall_duration = fall_duration
 	SimTolerances.GRAVITY = gravity_ms2 * SimTolerances.LOGIC_PER_METER
 	SimTolerances.FLY_OUT_ABOVE = fly_out_above_coping
 	SimTolerances.APEX_FACING_DELAY = apex_facing_delay
@@ -235,6 +243,13 @@ func _sync_from_sim() -> void:
 	else:
 		_transfer_tilt_active = false
 		_carry_tilt = 0.0
+	if st.falling:
+		# Fall bout owns visual lean — roll onto facing side.
+		var af := _sim.fall_anim_frac()
+		var target := st.fall_lean_sign * (PI * 0.5)
+		tilt = lerpf(0.0, target, af)
+		_carry_tilt = tilt
+		_transfer_tilt_active = false
 	var support_h := p.z
 	if st.is_hanging():
 		var support_edge: TopologyEdge = _sim.model.edges.get(st.hang_edge_id)
@@ -374,6 +389,16 @@ func ollie_charge_frac() -> float:
 	if not _sim.ollie_available:
 		return 0.0
 	return clampf(_sim.ollie_charge, 0.0, 1.0)
+
+
+func fall_cooldown_frac() -> float:
+	if _sim == null:
+		return 0.0
+	return _sim.fall_cooldown_frac()
+
+
+func is_falling() -> bool:
+	return _sim != null and _sim.state != null and _sim.state.falling
 
 
 func next_facing_coping_debug() -> String:

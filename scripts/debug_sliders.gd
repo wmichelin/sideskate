@@ -210,6 +210,8 @@ func _ready() -> void:
 	_head_debug_check.toggled.connect(_on_head_debug_toggled)
 
 	_setup_ollie_charge_toggle()
+	_setup_fall_cooldown_toggle()
+	_setup_fall_duration_sliders()
 
 	_fps_check.button_pressed = DebugTools.show_fps
 	_fps_check.focus_mode = Control.FOCUS_NONE
@@ -355,6 +357,88 @@ func _setup_ollie_charge_toggle() -> void:
 	row.add_child(check)
 	_body.add_child(row)
 	_body.move_child(row, mini(insert_at, _body.get_child_count() - 1))
+
+
+func _setup_fall_cooldown_toggle() -> void:
+	if _body == null:
+		return
+	if _body.get_node_or_null("FallCooldownBarRow") != null:
+		return
+	var insert_at := 0
+	var ollie_row := _body.get_node_or_null("OllieChargeBarRow")
+	if ollie_row != null:
+		insert_at = ollie_row.get_index() + 1
+	var row := HBoxContainer.new()
+	row.name = "FallCooldownBarRow"
+	row.add_theme_constant_override("separation", 8)
+	var cap := Label.new()
+	cap.name = "Caption"
+	cap.text = "fall cooldown bar"
+	cap.add_theme_font_size_override("font_size", 12)
+	cap.add_theme_color_override("font_color", Color(0.75, 0.8, 0.88, 1))
+	var check := CheckButton.new()
+	check.name = "Check"
+	check.focus_mode = Control.FOCUS_NONE
+	check.button_pressed = DebugTools.show_fall_cooldown
+	check.toggled.connect(_on_fall_cooldown_bar_toggled)
+	row.add_child(cap)
+	row.add_child(check)
+	_body.add_child(row)
+	_body.move_child(row, mini(insert_at, _body.get_child_count() - 1))
+
+
+func _setup_fall_duration_sliders() -> void:
+	if _body == null:
+		return
+	if _body.get_node_or_null("FallAnimDurationRow") != null:
+		return
+	var insert_at := 0
+	var toggle_row := _body.get_node_or_null("FallCooldownBarRow")
+	if toggle_row != null:
+		insert_at = toggle_row.get_index() + 1
+	var anim_row := _make_slider_row("FallAnimDurationRow", "fall anim", insert_at)
+	_bind_float_slider(
+		anim_row["slider"],
+		0.0,
+		5.0,
+		0.01,
+		_player,
+		"fall_anim_duration",
+		0.15,
+		_on_fall_anim_duration_changed,
+		_refresh_fall_anim_duration_label
+	)
+	anim_row["slider"].focus_mode = Control.FOCUS_NONE
+	var stop_row := _make_slider_row(
+		"FallStopDurationRow", "fall stop", anim_row["row"].get_index() + 1
+	)
+	_bind_float_slider(
+		stop_row["slider"],
+		0.0,
+		5.0,
+		0.01,
+		_player,
+		"fall_stop_duration",
+		0.35,
+		_on_fall_stop_duration_changed,
+		_refresh_fall_stop_duration_label
+	)
+	stop_row["slider"].focus_mode = Control.FOCUS_NONE
+	var dur_row := _make_slider_row(
+		"FallDurationRow", "fall duration", stop_row["row"].get_index() + 1
+	)
+	_bind_float_slider(
+		dur_row["slider"],
+		0.0,
+		10.0,
+		0.01,
+		_player,
+		"fall_duration",
+		1.0,
+		_on_fall_duration_changed,
+		_refresh_fall_duration_label
+	)
+	dur_row["slider"].focus_mode = Control.FOCUS_NONE
 
 
 func _setup_apex_facing_slider() -> void:
@@ -984,6 +1068,55 @@ func _on_head_debug_toggled(on: bool) -> void:
 
 func _on_ollie_charge_bar_toggled(on: bool) -> void:
 	DebugTools.set_show_ollie_charge(on)
+
+
+func _on_fall_cooldown_bar_toggled(on: bool) -> void:
+	DebugTools.set_show_fall_cooldown(on)
+
+
+func _on_fall_anim_duration_changed(v: float) -> void:
+	if _player != null:
+		_player.set("fall_anim_duration", v)
+	_refresh_fall_anim_duration_label(v)
+
+
+func _refresh_fall_anim_duration_label(v: float) -> void:
+	var row := _body.get_node_or_null("FallAnimDurationRow") if _body else null
+	if row == null:
+		return
+	var lab: Label = row.get_node_or_null("Value")
+	if lab != null:
+		lab.text = "%.2fs" % v
+
+
+func _on_fall_stop_duration_changed(v: float) -> void:
+	if _player != null:
+		_player.set("fall_stop_duration", v)
+	_refresh_fall_stop_duration_label(v)
+
+
+func _refresh_fall_stop_duration_label(v: float) -> void:
+	var row := _body.get_node_or_null("FallStopDurationRow") if _body else null
+	if row == null:
+		return
+	var lab: Label = row.get_node_or_null("Value")
+	if lab != null:
+		lab.text = "%.2fs" % v
+
+
+func _on_fall_duration_changed(v: float) -> void:
+	if _player != null:
+		_player.set("fall_duration", v)
+	_refresh_fall_duration_label(v)
+
+
+func _refresh_fall_duration_label(v: float) -> void:
+	var row := _body.get_node_or_null("FallDurationRow") if _body else null
+	if row == null:
+		return
+	var lab: Label = row.get_node_or_null("Value")
+	if lab != null:
+		lab.text = "%.2fs" % v
 
 
 func _on_fps_toggled(on: bool) -> void:

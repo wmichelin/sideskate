@@ -180,6 +180,18 @@ func _update_head() -> void:
 func _update_charge_bar() -> void:
 	if _charge_root == null:
 		return
+	# Fall countdown takes the head bar while falling; otherwise ollie charge.
+	if DebugTools.show_fall_cooldown and _player.has_method("is_falling") \
+			and bool(_player.call("is_falling")) and _player.has_method("fall_cooldown_frac"):
+		var falling_frac := clampf(float(_player.call("fall_cooldown_frac")), 0.0, 1.0)
+		_draw_head_bar(
+			falling_frac,
+			true,
+			Color(0.45, 0.72, 0.95, 1.0),
+			"%d%%" % int(round(falling_frac * 100.0))
+		)
+		return
+
 	var on := DebugTools.show_ollie_charge
 	if not on or not _player.has_method("ollie_charge_frac"):
 		_charge_root.visible = false
@@ -190,7 +202,15 @@ func _update_charge_bar() -> void:
 		_charge_root.visible = false
 		_last_charge_frac = frac
 		return
+	_draw_head_bar(
+		frac,
+		false,
+		Color(0.95, 0.72, 0.18, 1.0),
+		"%d%%" % int(round(frac * 100.0))
+	)
 
+
+func _draw_head_bar(frac: float, force_show: bool, fill_color: Color, label_text: String) -> void:
 	var cam := get_viewport().get_camera_3d()
 	if cam == null or _visual == null:
 		_charge_root.visible = false
@@ -201,18 +221,19 @@ func _update_charge_bar() -> void:
 		return
 
 	var screen: Vector2 = cam.unproject_position(head_world)
-	# Integer pixels — subpixel Control positions soft-blur under MSAA/hiDPI.
 	_charge_root.position = Vector2(
 		roundf(screen.x - charge_bar_px.x * 0.5),
 		roundf(screen.y - charge_bar_px.y * 0.5)
 	)
 	_charge_root.visible = true
-
-	if is_equal_approx(frac, _last_charge_frac):
+	_charge_fill.color = fill_color
+	_charge_label.text = label_text
+	var draw_key := frac + (10.0 if force_show else 0.0)
+	if is_equal_approx(draw_key, _last_charge_frac) and _charge_fill.size.x >= 0.0:
+		_charge_fill.size = Vector2(charge_bar_px.x * frac, charge_bar_px.y)
 		return
-	_last_charge_frac = frac
+	_last_charge_frac = draw_key
 	_charge_fill.size = Vector2(charge_bar_px.x * frac, charge_bar_px.y)
-	_charge_label.text = "%d%%" % int(round(frac * 100.0))
 
 
 func _update_arrows() -> void:
