@@ -317,7 +317,27 @@ func zone_debug_label() -> String:
 		if st.has_maneuver() and st.maneuver is ManeuverPlan:
 			return "air %s" % (st.maneuver as ManeuverPlan).kind_name()
 		return "air"
-	return "gnd %s" % st.surface_id
+	var side := _surface_side_label(st.surface_id)
+	if side.is_empty():
+		return "gnd %s" % st.surface_id
+	return "gnd %s %s" % [side, st.surface_id]
+
+
+## Pipe/ramp open side: "left" / "right". Walls use their source surface.
+func _surface_side_label(surface_id: String) -> String:
+	if _sim == null or _sim.model == null or surface_id.is_empty():
+		return ""
+	var model: ParkModel = _sim.model
+	if model.pipes.has(surface_id):
+		var pipe: PipeSurface = model.pipes[surface_id]
+		return "left" if pipe.side == SimKinds.PipeSide.LEFT else "right"
+	if model.ramps.has(surface_id):
+		var ramp: RampSurface = model.ramps[surface_id]
+		return "left" if ramp.side == SimKinds.PipeSide.LEFT else "right"
+	if model.walls.has(surface_id):
+		var wall: WallSurface = model.walls[surface_id]
+		return _surface_side_label(wall.source_pipe_id)
+	return ""
 
 
 func ollie_charge_frac() -> float:
@@ -335,7 +355,11 @@ func next_facing_coping_debug() -> String:
 	if cands.is_empty():
 		return "no coping"
 	var c: Dictionary = cands[0]
-	return "%s d=%.0f" % [str(c.get("id", "?")), float(c.get("dist", 0.0))]
+	return "%s %s d=%.0f" % [
+		str(c.get("side", "?")),
+		str(c.get("id", "?")),
+		float(c.get("dist", 0.0)),
+	]
 
 
 func motion_world(kind: int) -> Vector3:

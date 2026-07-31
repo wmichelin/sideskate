@@ -136,8 +136,8 @@ func _airborne_debug() -> String:
 
 func _next_coping_debug_line() -> String:
 	if _player == null:
-		return "Next coping: —\n"
+		return "next acid / spine: —\n"
 	var label := "—"
 	if _player.has_method("next_facing_coping_debug"):
 		label = str(_player.call("next_facing_coping_debug"))
-	return "Next coping: %s\n" % label
+	return "next acid / spine: %s\n" % label
