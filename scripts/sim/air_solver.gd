@@ -41,35 +41,11 @@ func _slope_along_from_world_vel(
 		return _slope_along_from_world_vx(surf, world_vel.x)
 	var t: Vector3 = proj.tangent_along
 	var along := world_vel.x * t.x + world_vel.z * t.z
-	if _slope_land_is_reentry(surf, launch_id, at.y):
-		# Hang remount parity: always punch downhill on same-slope return.
-		var impact := maxf(absf(world_vel.z), absf(world_vel.x) * 0.5)
-		return -maxf(impact, 80.0)
-	# Floor/deck ollie onto a foreign slope with near-zero projected along
-	# (apex / vertical drop onto high u) must not perch — drop into the bowl.
-	if _launch_is_flat_pad(launch_id) and absf(along) < 40.0:
-		var flat_impact := maxf(absf(world_vel.z), absf(world_vel.x) * 0.5)
-		return -maxf(flat_impact, 80.0)
-	return along
-
-
-## True when this air bout launched from a FLOOR / DECK patch (not a slope).
-func _launch_is_flat_pad(launch_id: String) -> bool:
-	if launch_id.is_empty() or not model.patches.has(launch_id):
-		return false
-	var pad: SupportPatch = model.patches[launch_id]
-	var k := int(pad.kind)
-	return k == SimKinds.SurfaceKind.FLOOR or k == SimKinds.SurfaceKind.DECK
-
-
-## Floor/deck ollie into a foreign slope while still rising must not Mount
-## (high-u perch → sticky lip / air-out). Stay free until descending.
-func _rising_flat_launch_slope(state: SimState) -> bool:
-	if state == null or state.is_hanging():
-		return false
-	if state.velocity.z <= SimTolerances.CONTACT_EPS:
-		return false
-	return _launch_is_flat_pad(_launch_id_for_along(state))
+	if not _slope_land_is_reentry(surf, launch_id, at.y):
+		return along
+	# Hang remount parity: always punch downhill on same-slope return.
+	var impact := maxf(absf(world_vel.z), absf(world_vel.x) * 0.5)
+	return -maxf(impact, 80.0)
 
 
 func _launch_id_for_along(state: SimState) -> String:
@@ -367,8 +343,6 @@ func _disposition_for_contact(
 	if role == SimKinds.ContactRole.LIP_COLUMN:
 		if state.velocity.z > SimTolerances.CONTACT_EPS * 10.0:
 			return SimKinds.ContactDisposition.CORRIDOR
-		if _rising_flat_launch_slope(state):
-			return SimKinds.ContactDisposition.CORRIDOR
 		if _rising_same_slope_reentry(state, _contact_slope_surf(contact)):
 			return SimKinds.ContactDisposition.CORRIDOR
 		return SimKinds.ContactDisposition.MOUNT
@@ -410,8 +384,6 @@ func _disposition_for_contact(
 	# Pipe / ramp body solids.
 	if kind == "pipe" or kind == "ramp":
 		if state.velocity.z > 80.0:
-			return SimKinds.ContactDisposition.CORRIDOR
-		if _rising_flat_launch_slope(state):
 			return SimKinds.ContactDisposition.CORRIDOR
 		if _rising_same_slope_reentry(state, _contact_slope_surf(contact)):
 			return SimKinds.ContactDisposition.CORRIDOR
@@ -648,8 +620,6 @@ func _mount_pipe_owner(state: SimState, pipe_id: String, contact: Dictionary) ->
 		return false
 	if _rising_same_slope_reentry(state, pipe):
 		return false
-	if _rising_flat_launch_slope(state):
-		return false
 	var vz := state.velocity.y
 	var world_vel := state.velocity
 	var z := state.position.y
@@ -695,8 +665,6 @@ func _mount_ramp_owner(state: SimState, ramp_id: String, contact: Dictionary) ->
 	if ramp == null:
 		return false
 	if _rising_same_slope_reentry(state, ramp):
-		return false
-	if _rising_flat_launch_slope(state):
 		return false
 	var rproj := ramp.project(state.position.x, state.position.y, state.position.z)
 	if not bool(rproj.get("ok", false)):
@@ -1036,8 +1004,6 @@ func _snap_onto_solid(state: SimState, hit: Dictionary, from_height: float = NAN
 			return false
 		if _rising_same_slope_reentry(state, pipe):
 			return false
-		if _rising_flat_launch_slope(state):
-			return false
 		var proj := _pipe_proj_for_air_hit(state, pipe, hit)
 		# Lower-story pipe bodies can wrap under upper lips — prefer a same-side
 		# pipe whose surface matches the contact height.
@@ -1071,8 +1037,6 @@ func _snap_onto_solid(state: SimState, hit: Dictionary, from_height: float = NAN
 		if ramp == null:
 			return false
 		if _rising_same_slope_reentry(state, ramp):
-			return false
-		if _rising_flat_launch_slope(state):
 			return false
 		var rproj := ramp.project(state.position.x, state.position.y, state.position.z)
 		if not bool(rproj.get("ok", false)):
