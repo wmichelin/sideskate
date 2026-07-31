@@ -15,8 +15,10 @@ var max_speed_z: float = 400.0
 var ollie_accel: float = 650.0
 ## Full-charge hold time in milliseconds (0 = instantly full while held).
 var ollie_charge_ms: float = 250.0
-## Peak ollie height at 100% charge (level units). Converted to up-speed via gravity.
-var ollie_height: float = 100.0
+## Peak ollie height at 100% charge on floor/deck (level units).
+var ollie_height_flat: float = 100.0
+## Peak ollie height at 100% charge on pipe/ramp/wall (level units).
+var ollie_height_pipe: float = 100.0
 ## Upper pipe/ramp band (fraction of u from the lip) where ollie enters X-locked hang air.
 ## 0.50 = top 50% of the transition (u ≥ 0.50).
 var ollie_lip_frac: float = 0.50
@@ -148,11 +150,26 @@ func _try_ollie_jump() -> void:
 	ollie_charge = 0.0
 	if not ollie_available:
 		return
-	var height := frac * ollie_height
+	var height := frac * _ollie_peak_height_for_surface()
 	if height <= 0.0:
 		return
 	ollie_available = false
 	_apply_height_impulse(_up_speed_for_height(height))
+
+
+## Floor/deck → flat height; pipe/ramp/wall → pipe height. Unknown → flat.
+func _ollie_peak_height_for_surface() -> float:
+	if state == null or not state.is_grounded() or model == null:
+		return ollie_height_flat
+	var sid := state.surface_id
+	if model.pipes.has(sid) or model.ramps.has(sid) or model.walls.has(sid):
+		return ollie_height_pipe
+	if model.patches.has(sid):
+		var patch: SupportPatch = model.patches[sid]
+		if int(patch.kind) == SimKinds.SurfaceKind.DECK \
+				or int(patch.kind) == SimKinds.SurfaceKind.FLOOR:
+			return ollie_height_flat
+	return ollie_height_flat
 
 
 func _replenish_ollie_on_ground() -> void:

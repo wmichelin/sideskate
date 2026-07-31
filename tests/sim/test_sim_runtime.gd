@@ -16,6 +16,7 @@ func run() -> bool:
 		and _pipe_along_wish_and_lip_exit()
 		and _ollie_faces_direction()
 		and _ollie_jump_charge_scales_impulse()
+		and _ollie_height_picks_flat_vs_pipe()
 		and _ollie_jump_caps_at_full_charge()
 		and _ollie_jump_airborne_adds_impulse()
 		and _ollie_single_charge_replenishes_on_ground()
@@ -633,7 +634,8 @@ func _ollie_jump_charge_scales_impulse() -> bool:
 		return false
 	sim.ollie_accel = 0.0
 	sim.ollie_charge_ms = 500.0
-	sim.ollie_height = 40.0
+	sim.ollie_height_flat = 40.0
+	sim.ollie_height_pipe = 40.0
 	sim.state.tangent_velocity = Vector2.ZERO
 	var h0 := sim.state.position.z
 	# Hold for half the charge window (15 frames @ 60Hz ≈ 250ms).
@@ -660,6 +662,72 @@ func _ollie_jump_charge_scales_impulse() -> bool:
 	return true
 
 
+## Unequal flat/pipe heights: floor release uses flat, pipe release uses pipe.
+func _ollie_height_picks_flat_vs_pipe() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_halfpipe.ssk"):
+		push_error("ollie pick: setup")
+		return false
+	sim.ollie_accel = 0.0
+	sim.ollie_charge_ms = 0.0
+	sim.ollie_height_flat = 40.0
+	sim.ollie_height_pipe = 100.0
+	sim.ollie_lip_frac = 0.0
+	# Floor pop.
+	if not sim.model.patches.has(sim.state.surface_id):
+		push_error("ollie pick: expected floor at spawn got %s" % sim.state.surface_id)
+		return false
+	sim.ollie_available = true
+	sim.ollie_charge = 1.0
+	sim.set_input(Vector2.ZERO, false, false, false, true)
+	sim.tick()
+	if not sim.state.is_airborne():
+		push_error("ollie pick: floor should air")
+		return false
+	var g := absf(SimTolerances.GRAVITY)
+	var dt := SimTolerances.FIXED_DT
+	# Air step applies gravity in the same release tick.
+	var want_flat := sqrt(2.0 * g * 40.0) - g * dt
+	if absf(sim.state.velocity.z - want_flat) > 1.0:
+		push_error(
+			"ollie pick: floor vz=%.1f want ~%.1f" % [sim.state.velocity.z, want_flat]
+		)
+		return false
+	# Remount a pipe below lip band and pop with full pipe height.
+	var pipe: PipeSurface = null
+	for pid in sim.model.all_pipe_ids():
+		pipe = sim.model.pipes[pid]
+		break
+	if pipe == null:
+		push_error("ollie pick: no pipe")
+		return false
+	var z := (pipe.z_min + pipe.z_max) * 0.5
+	var th := 0.25 * PI * 0.5
+	sim.state.mode = SimState.Mode.GROUNDED
+	sim.state.surface_id = pipe.id
+	sim.state.u = 0.25
+	sim.state.v = 0.5
+	sim.state.position = Vector3(pipe.x_at_theta(z, th), z, pipe.height_at_theta(z, th))
+	sim.state.velocity = Vector3.ZERO
+	sim.state.tangent_velocity = Vector2.ZERO
+	sim.state.clear_hang()
+	sim.state.maneuver = null
+	sim.ollie_available = true
+	sim.ollie_charge = 1.0
+	sim.set_input(Vector2.ZERO, false, false, false, true)
+	sim.tick()
+	if not sim.state.is_airborne():
+		push_error("ollie pick: pipe should air")
+		return false
+	var want_pipe := sqrt(2.0 * g * 100.0) - g * dt
+	if absf(sim.state.velocity.z - want_pipe) > 5.0:
+		push_error(
+			"ollie pick: pipe vz=%.1f want ~%.1f" % [sim.state.velocity.z, want_pipe]
+		)
+		return false
+	return true
+
+
 func _ollie_jump_caps_at_full_charge() -> bool:
 	var sim := PlayerSim.new()
 	if not sim.setup_from_path("res://tests/levels/sim/sim_halfpipe.ssk"):
@@ -667,7 +735,8 @@ func _ollie_jump_caps_at_full_charge() -> bool:
 		return false
 	sim.ollie_accel = 0.0
 	sim.ollie_charge_ms = 200.0
-	sim.ollie_height = 40.0
+	sim.ollie_height_flat = 40.0
+	sim.ollie_height_pipe = 40.0
 	sim.state.tangent_velocity = Vector2.ZERO
 	var h0 := sim.state.position.z
 	# Hold well past full charge.
@@ -710,7 +779,8 @@ func _ollie_jump_airborne_adds_impulse() -> bool:
 		return false
 	sim.ollie_accel = 0.0
 	sim.ollie_charge_ms = 0.0
-	sim.ollie_height = 40.0
+	sim.ollie_height_flat = 40.0
+	sim.ollie_height_pipe = 40.0
 	sim.state.tangent_velocity = Vector2.ZERO
 	# Charge must start on ground.
 	sim.set_input(Vector2.ZERO, false, false, true, false)
@@ -756,7 +826,8 @@ func _ollie_single_charge_replenishes_on_ground() -> bool:
 		return false
 	sim.ollie_accel = 0.0
 	sim.ollie_charge_ms = 0.0
-	sim.ollie_height = 40.0
+	sim.ollie_height_flat = 40.0
+	sim.ollie_height_pipe = 40.0
 	sim.state.tangent_velocity = Vector2.ZERO
 	var pad_id := sim.state.surface_id
 	var pad_h := sim.state.position.z
@@ -818,7 +889,8 @@ func _ollie_on_pipe_pops_world_up_not_along_tangent() -> bool:
 		return false
 	sim.ollie_accel = 0.0
 	sim.ollie_charge_ms = 0.0
-	sim.ollie_height = 40.0
+	sim.ollie_height_flat = 40.0
+	sim.ollie_height_pipe = 40.0
 	var pipe := _left_pipe(sim.model)
 	if pipe == null:
 		push_error("missing left pipe")
@@ -875,7 +947,8 @@ func _ollie_on_pipe_lip_enters_hang() -> bool:
 		return false
 	sim.ollie_accel = 0.0
 	sim.ollie_charge_ms = 0.0
-	sim.ollie_height = 40.0
+	sim.ollie_height_flat = 40.0
+	sim.ollie_height_pipe = 40.0
 	sim.ollie_lip_frac = 0.15
 	var pipe := _left_pipe(sim.model)
 	if pipe == null:
@@ -947,7 +1020,8 @@ func _ollie_short_deck_return_no_tunnel() -> bool:
 	sim.ollie_accel = 0.0
 	sim.ollie_charge_ms = 0.0
 	# Peak ~10u — below DECK_LAND_MIN_ABOVE (20) but a real same-pad return.
-	sim.ollie_height = 10.0
+	sim.ollie_height_flat = 10.0
+	sim.ollie_height_pipe = 10.0
 	sim.ollie_available = true
 	sim.ollie_charge = 1.0
 	sim.set_input(Vector2.ZERO, false, false, false, true)
@@ -986,7 +1060,8 @@ func _ollie_pipe_low_vx_descending_remounts() -> bool:
 		return false
 	sim.ollie_accel = 0.0
 	sim.ollie_charge_ms = 0.0
-	sim.ollie_height = 30.0
+	sim.ollie_height_flat = 30.0
+	sim.ollie_height_pipe = 30.0
 	sim.ollie_lip_frac = 0.0 ## force free-air pop, not hang
 	var pipe := _left_pipe(sim.model)
 	if pipe == null:
@@ -1033,7 +1108,8 @@ func _ollie_climbing_ramp_stays_above_solid() -> bool:
 	sim.ollie_accel = 0.0
 	sim.ollie_charge_ms = 0.0
 	# Short pop + max climb — old launch drilled under the rising incline.
-	sim.ollie_height = 40.0
+	sim.ollie_height_flat = 40.0
+	sim.ollie_height_pipe = 40.0
 	sim.ollie_lip_frac = 0.0
 	var ramp: RampSurface = null
 	for rid in sim.model.ramps.keys():
@@ -1100,7 +1176,8 @@ func _ollie_into_pipe_with_stick_stays_outside() -> bool:
 		return false
 	sim.ollie_accel = 0.0
 	sim.ollie_charge_ms = 0.0
-	sim.ollie_height = 80.0
+	sim.ollie_height_flat = 80.0
+	sim.ollie_height_pipe = 80.0
 	sim.ollie_lip_frac = 0.0
 	var z := (pipe.z_min + pipe.z_max) * 0.5
 	var u := 0.4
@@ -1175,7 +1252,8 @@ func _ramp_ollie_onto_abutting_deck_no_freeze() -> bool:
 		return false
 	sim.ollie_accel = 0.0
 	sim.ollie_charge_ms = 0.0
-	sim.ollie_height = 40.0
+	sim.ollie_height_flat = 40.0
+	sim.ollie_height_pipe = 40.0
 	sim.ollie_lip_frac = 0.0
 	var z := (ramp.z_min + ramp.z_max) * 0.5
 	var u := 0.85
@@ -2044,7 +2122,8 @@ func _l0_pipe_ollie_not_stuck_on_l1_deck() -> bool:
 	sim.state.set_facing_side("r")
 	sim.ollie_accel = 0.0
 	sim.ollie_charge_ms = 0.0
-	sim.ollie_height = 120.0
+	sim.ollie_height_flat = 120.0
+	sim.ollie_height_pipe = 120.0
 	sim.ollie_lip_frac = 0.50
 	sim.ollie_available = true
 	sim.ollie_charge = 1.0

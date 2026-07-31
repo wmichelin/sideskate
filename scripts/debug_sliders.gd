@@ -280,23 +280,38 @@ func _setup_ollie_jump_sliders() -> void:
 		_refresh_ollie_charge_ms_label
 	)
 	charge_row["slider"].focus_mode = Control.FOCUS_NONE
-	var impulse_row := _make_slider_row(
-		"OllieHeightRow", "ollie height", charge_row["row"].get_index() + 1
+	var flat_row := _make_slider_row(
+		"OllieHeightFlatRow", "ollie height flat", charge_row["row"].get_index() + 1
 	)
 	_bind_float_slider(
-		impulse_row["slider"],
+		flat_row["slider"],
 		0.0,
 		200.0,
 		0.1,
 		_player,
-		"ollie_height",
+		"ollie_height_flat",
 		100.0,
-		_on_ollie_height_changed,
-		_refresh_ollie_height_label
+		_on_ollie_height_flat_changed,
+		_refresh_ollie_height_flat_label
 	)
-	impulse_row["slider"].focus_mode = Control.FOCUS_NONE
+	flat_row["slider"].focus_mode = Control.FOCUS_NONE
+	var pipe_row := _make_slider_row(
+		"OllieHeightPipeRow", "ollie height pipe", flat_row["row"].get_index() + 1
+	)
+	_bind_float_slider(
+		pipe_row["slider"],
+		0.0,
+		200.0,
+		0.1,
+		_player,
+		"ollie_height_pipe",
+		100.0,
+		_on_ollie_height_pipe_changed,
+		_refresh_ollie_height_pipe_label
+	)
+	pipe_row["slider"].focus_mode = Control.FOCUS_NONE
 	var lip_row := _make_slider_row(
-		"OllieLipFracRow", "ollie lip", impulse_row["row"].get_index() + 1
+		"OllieLipFracRow", "ollie lip", pipe_row["row"].get_index() + 1
 	)
 	var lip_slider: HSlider = lip_row["slider"]
 	lip_slider.min_value = 0.0
@@ -718,14 +733,26 @@ func _refresh_ollie_charge_ms_label(v: float) -> void:
 		row.text = "%.0f ms" % v
 
 
-func _on_ollie_height_changed(v: float) -> void:
+func _on_ollie_height_flat_changed(v: float) -> void:
 	if _player != null:
-		_player.set("ollie_height", v)
-	_refresh_ollie_height_label(v)
+		_player.set("ollie_height_flat", v)
+	_refresh_ollie_height_flat_label(v)
 
 
-func _refresh_ollie_height_label(v: float) -> void:
-	var row := _body.get_node_or_null("OllieHeightRow/Value") as Label if _body else null
+func _refresh_ollie_height_flat_label(v: float) -> void:
+	var row := _body.get_node_or_null("OllieHeightFlatRow/Value") as Label if _body else null
+	if row != null:
+		row.text = "%.1f u" % v
+
+
+func _on_ollie_height_pipe_changed(v: float) -> void:
+	if _player != null:
+		_player.set("ollie_height_pipe", v)
+	_refresh_ollie_height_pipe_label(v)
+
+
+func _refresh_ollie_height_pipe_label(v: float) -> void:
+	var row := _body.get_node_or_null("OllieHeightPipeRow/Value") as Label if _body else null
 	if row != null:
 		row.text = "%.1f u" % v
 
