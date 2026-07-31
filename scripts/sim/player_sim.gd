@@ -36,6 +36,10 @@ var ollie_charge: float = 0.0
 var ollie_charge_peak_height: float = 0.0
 ## Single jump charge — spent on release jump, restored on any grounded contact.
 var ollie_available: bool = true
+## Fall bout tunables (seconds). Synced from Player debug exports.
+var fall_anim_duration: float = 0.15
+var fall_stop_duration: float = 0.35
+var fall_duration: float = 1.0
 var debug: SimDebugSnapshot
 var trace: SimTrace
 ## Safe floor/deck pose history for lava respawn. Oldest sample in the window
@@ -96,19 +100,67 @@ func set_input(
 	ollie_just_released = ollie_released
 
 
+## Start a fall bout (Y key / business logic). No-op if already falling or dead.
+func begin_fall() -> void:
+	if state == null or not state.alive or state.falling:
+		return
+	state.clear_hang()
+	state.maneuver = null
+	ollie_charge = 0.0
+	ollie_charge_peak_height = 0.0
+	ollie_pressed = false
+	ollie_just_released = false
+	action_just = false
+	last_wish = Vector2.ZERO
+	state.falling = true
+	state.fall_elapsed = 0.0
+	state.fall_lean_sign = 1.0 if state.facing == "r" else -1.0
+	if state.is_airborne():
+		state.fall_start_vx = state.velocity.x
+		state.fall_start_vy = state.velocity.y
+	else:
+		state.fall_start_vx = state.tangent_velocity.x
+		state.fall_start_vy = state.tangent_velocity.y
+
+
+## Remaining lockout fraction 1→0 over fall_duration (0 while waiting for land after).
+func fall_cooldown_frac() -> float:
+	if state == null or not state.falling:
+		return 0.0
+	if fall_duration <= 0.0:
+		return 0.0
+	return clampf(1.0 - state.fall_elapsed / fall_duration, 0.0, 1.0)
+
+
+## Side-lean progress 0→1 over fall_anim_duration.
+func fall_anim_frac() -> float:
+	if state == null or not state.falling:
+		return 0.0
+	if fall_anim_duration <= 0.0:
+		return 1.0
+	return clampf(state.fall_elapsed / fall_anim_duration, 0.0, 1.0)
+
+
 func tick(delta: float = SimTolerances.FIXED_DT) -> void:
 	if state == null or not state.alive:
 		return
 	var previous_surface_id := state.surface_id
 	state.tick += 1
-	_update_ollie_charge(delta)
-	_try_ollie_jump()
-	_try_actions()
+	var falling := state.falling
+	var wish := Vector2.ZERO if falling else last_wish
+	if falling:
+		ollie_just_released = false
+		action_just = false
+		ollie_pressed = false
+	else:
+		_update_ollie_charge(delta)
+		_try_ollie_jump()
+		_try_actions()
 	var planned_surface_change := state.has_maneuver()
 	if state.is_grounded():
 		ground.step(
 			state,
-			last_wish,
+			wish,
 			delta,
 			accel,
 			max_speed,
@@ -116,11 +168,13 @@ func tick(delta: float = SimTolerances.FIXED_DT) -> void:
 			brake,
 			friction,
 			ramp_friction,
-			ollie_pressed,
+			false if falling else ollie_pressed,
 			ollie_accel,
 		)
 	else:
-		air.step(state, last_wish, delta, max_speed, max_speed_z)
+		air.step(state, wish, delta, max_speed, max_speed_z)
+	if falling:
+		_tick_fall(delta)
 	_replenish_ollie_on_ground()
 	# Refresh charge peak after surface changes this tick (floor→pipe mount).
 	_refresh_ollie_charge_peak()
@@ -129,9 +183,32 @@ func tick(delta: float = SimTolerances.FIXED_DT) -> void:
 	_assert_finite()
 	_assert_invariants(previous_surface_id, planned_surface_change)
 	debug.capture(state, model, query)
-	trace.record(state, last_wish, action_just)
+	trace.record(state, wish, action_just)
 	action_just = false
 	ollie_just_released = false
+
+
+func _tick_fall(delta: float) -> void:
+	if state == null or not state.falling:
+		return
+	state.fall_elapsed += delta
+	var stop_t := 1.0
+	if fall_stop_duration > 0.0:
+		stop_t = clampf(state.fall_elapsed / fall_stop_duration, 0.0, 1.0)
+	var vx := lerpf(state.fall_start_vx, 0.0, stop_t)
+	var vy := lerpf(state.fall_start_vy, 0.0, stop_t)
+	if state.is_airborne():
+		state.velocity.x = vx
+		state.velocity.y = vy
+	else:
+		state.tangent_velocity.x = vx
+		state.tangent_velocity.y = vy
+		state.velocity = Vector3.ZERO
+	if state.fall_elapsed >= fall_duration and state.is_grounded():
+		state.tangent_velocity = Vector2.ZERO
+		state.velocity = Vector3.ZERO
+		state.clear_fall()
+		ollie_available = true
 
 
 func _update_ollie_charge(delta: float) -> void:
@@ -244,6 +321,7 @@ func _apply_lava_kill() -> void:
 		if model.patches.has(state.surface_id):
 			var patch: SupportPatch = model.patches[state.surface_id]
 			if patch.lethal:
+				state.clear_fall()
 				state.alive = false
 		return
 	state.surface_id = str(hit.surface_id)
@@ -253,6 +331,7 @@ func _apply_lava_kill() -> void:
 	state.tangent_velocity = Vector2.ZERO
 	state.velocity = Vector3.ZERO
 	state.clear_hang()
+	state.clear_fall()
 	state.alive = false
 
 
@@ -453,6 +532,7 @@ func respawn() -> void:
 		state.maneuver = null
 		state.clear_hang()
 		state.clear_air_peak()
+		state.clear_fall()
 		state.last_reject = ""
 		state.set_facing_side(face)
 		var px := clampf(pos.x, patch.x_min + 0.05, patch.x_max - 0.05)
@@ -466,6 +546,7 @@ func respawn() -> void:
 		state.alive = true
 		state.maneuver = null
 		state.clear_hang()
+		state.clear_fall()
 		state.last_reject = ""
 		_seed_checkpoint_from_state()
 	if debug != null:

@@ -50,6 +50,14 @@ var alive: bool = true
 var tick: int = 0
 ## Debug: last rejection reasons.
 var last_reject: String = ""
+## Fall bout — not a motion mode. Input lock + planar stop + side lean.
+var falling: bool = false
+var fall_elapsed: float = 0.0
+## +1 facing r, −1 facing l — presentation lean sign at fall enter.
+var fall_lean_sign: float = 1.0
+## Captured planar speeds at fall enter (air: world vx/vy; ground: tangent).
+var fall_start_vx: float = 0.0
+var fall_start_vy: float = 0.0
 
 
 func is_grounded() -> bool:
@@ -104,6 +112,18 @@ func clear_air_peak() -> void:
 	air_peak_height = -INF
 	air_launch_surface_id = ""
 	free_air_upright = false
+
+
+func is_falling() -> bool:
+	return falling
+
+
+func clear_fall() -> void:
+	falling = false
+	fall_elapsed = 0.0
+	fall_lean_sign = 1.0
+	fall_start_vx = 0.0
+	fall_start_vy = 0.0
 
 
 func to_dict() -> Dictionary:

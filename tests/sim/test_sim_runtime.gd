@@ -92,7 +92,198 @@ func run() -> bool:
 		and _ramp_adjacent_pipe_z_leave_no_hang()
 		and _ramp_lip_ollie_is_free_air()
 		and _ramp_peak_beside_pipe_keeps_outward_x()
+		and _fall_clears_hang_ignores_wish()
+		and _fall_stops_planar_keeps_gravity()
+		and _fall_air_waits_for_land_then_recovers()
+		and _fall_midair_still_collides_pipe()
 	)
+
+
+func _fall_clears_hang_ignores_wish() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_halfpipe.ssk"):
+		push_error("fall hang: setup")
+		return false
+	sim.friction = 0.0
+	sim.ramp_friction = 0.0
+	var left: PipeSurface = null
+	for id in sim.model.pipes.keys():
+		var p: PipeSurface = sim.model.pipes[id]
+		if p.side == SimKinds.PipeSide.LEFT:
+			left = p
+			break
+	if left == null:
+		push_error("fall hang: no left pipe")
+		return false
+	var z := (left.z_min + left.z_max) * 0.5
+	var edge := sim.query.edge_at(left.id, z, "coping")
+	if edge == null:
+		push_error("fall hang: no coping edge")
+		return false
+	sim.state.mode = SimState.Mode.AIRBORNE
+	sim.state.surface_id = ""
+	sim.state.begin_hang(edge.id)
+	sim.state.position = Vector3(left.coping_x_at(z), z, left.height_at_theta(z, PI * 0.5) + 40.0)
+	sim.state.velocity = Vector3(0.0, 0.0, 200.0)
+	sim.begin_fall()
+	if sim.state.is_hanging():
+		push_error("fall hang: hang must clear")
+		return false
+	if not sim.state.falling:
+		push_error("fall hang: expected falling")
+		return false
+	# Stick outward must not invent climb — wish ignored while falling.
+	var u0 := NAN
+	for _i in range(25):
+		sim.set_input(Vector2(-1.0, 0.0), false, false)
+		sim.tick()
+		if sim.state.is_grounded() and sim.state.surface_id == left.id:
+			if is_nan(u0):
+				u0 = sim.state.u
+			elif sim.state.u > u0 + 0.08 and sim.state.tangent_velocity.x > 30.0:
+				push_error(
+					"fall hang: stick-out climbed along while falling u %.2f→%.2f"
+					% [u0, sim.state.u]
+				)
+				return false
+	return true
+
+
+func _fall_stops_planar_keeps_gravity() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_halfpipe.ssk"):
+		push_error("fall stop: setup")
+		return false
+	sim.fall_stop_duration = 0.35
+	sim.fall_duration = 2.0
+	sim.state.mode = SimState.Mode.AIRBORNE
+	sim.state.surface_id = ""
+	sim.state.clear_hang()
+	sim.state.maneuver = null
+	sim.state.free_air_upright = true
+	sim.state.position = Vector3(sim.model.spawn_x, sim.model.spawn_z, 180.0)
+	sim.state.velocity = Vector3(200.0, 80.0, 100.0)
+	sim.state.note_air_height(sim.state.position.z)
+	var z0 := sim.state.position.z
+	sim.begin_fall()
+	var ticks := int(ceil(sim.fall_stop_duration / SimTolerances.FIXED_DT)) + 2
+	for _i in range(ticks):
+		sim.set_input(Vector2.ZERO, false, false)
+		sim.tick()
+		if not sim.state.is_airborne():
+			break
+	if not sim.state.falling:
+		push_error("fall stop: should still be falling")
+		return false
+	if sim.state.is_airborne():
+		if absf(sim.state.velocity.x) > 5.0 or absf(sim.state.velocity.y) > 5.0:
+			push_error(
+				"fall stop: planar not near zero vx=%.1f vy=%.1f"
+				% [sim.state.velocity.x, sim.state.velocity.y]
+			)
+			return false
+		if sim.state.position.z >= z0 - 1.0:
+			push_error(
+				"fall stop: gravity should drop height %.1f → %.1f"
+				% [z0, sim.state.position.z]
+			)
+			return false
+	return true
+
+
+func _fall_air_waits_for_land_then_recovers() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_halfpipe.ssk"):
+		push_error("fall recover: setup")
+		return false
+	sim.fall_anim_duration = 0.05
+	sim.fall_stop_duration = 0.1
+	sim.fall_duration = 0.2
+	sim.friction = 0.0
+	sim.state.mode = SimState.Mode.AIRBORNE
+	sim.state.surface_id = ""
+	sim.state.clear_hang()
+	sim.state.maneuver = null
+	sim.state.free_air_upright = true
+	sim.state.position = Vector3(sim.model.spawn_x, sim.model.spawn_z, 220.0)
+	sim.state.velocity = Vector3(0.0, 0.0, 50.0)
+	sim.state.note_air_height(sim.state.position.z)
+	sim.begin_fall()
+	var saw_post_duration_air := false
+	for _i in range(200):
+		sim.set_input(Vector2(1.0, 0.0), false, false)
+		sim.tick()
+		if sim.state.falling and sim.state.fall_elapsed >= sim.fall_duration \
+				and sim.state.is_airborne():
+			saw_post_duration_air = true
+		if not sim.state.falling and sim.state.is_grounded():
+			if not saw_post_duration_air:
+				# Short fall may land before duration — still require recover clean.
+				pass
+			if sim.state.velocity.length() > 0.5 \
+					or sim.state.tangent_velocity.length() > 0.5:
+				push_error("fall recover: expected zero vel")
+				return false
+			# Wish should work again.
+			var x0 := sim.state.position.x
+			for _k in range(30):
+				sim.set_input(Vector2(1.0, 0.0), false, false)
+				sim.tick()
+			if absf(sim.state.position.x - x0) < 1.0 \
+					and absf(sim.state.tangent_velocity.x) < 10.0:
+				push_error("fall recover: input still locked after recover")
+				return false
+			return true
+	push_error("fall recover: never recovered grounded")
+	return false
+
+
+func _fall_midair_still_collides_pipe() -> bool:
+	# Falling into a pipe body must not tunnel past coping below peak.
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_halfpipe.ssk"):
+		push_error("fall collide: setup")
+		return false
+	sim.fall_duration = 3.0
+	sim.fall_stop_duration = 0.5
+	var right: PipeSurface = null
+	for id in sim.model.pipes.keys():
+		var p: PipeSurface = sim.model.pipes[id]
+		if p.side == SimKinds.PipeSide.RIGHT:
+			right = p
+			break
+	if right == null:
+		push_error("fall collide: no right pipe")
+		return false
+	var z := (right.z_min + right.z_max) * 0.5
+	var cx := right.coping_x_at(z)
+	var peak := right.height_at_theta(z, PI * 0.5)
+	sim.state.mode = SimState.Mode.AIRBORNE
+	sim.state.surface_id = ""
+	sim.state.clear_hang()
+	sim.state.maneuver = null
+	sim.state.free_air_upright = true
+	sim.state.air_launch_surface_id = ""
+	# Approach from bowl side toward coping, below peak.
+	sim.state.position = Vector3(cx - 80.0, z, peak - 25.0)
+	sim.state.velocity = Vector3(400.0, 0.0, -50.0)
+	sim.state.note_air_height(sim.state.position.z + 10.0)
+	sim.begin_fall()
+	for _i in range(90):
+		sim.set_input(Vector2(1.0, 0.0), false, false)
+		sim.tick()
+		if not sim.state.falling and not sim.state.is_grounded():
+			push_error("fall collide: fall cleared without ground")
+			return false
+		if sim.state.is_airborne() and sim.state.position.z < peak - 5.0 \
+				and sim.state.position.x > cx + SimTolerances.CAPSULE_RADIUS:
+			push_error(
+				"fall collide: tunneled past coping at %s" % sim.state.position
+			)
+			return false
+		if sim.state.is_grounded():
+			break
+	return true
 
 
 func _air_land_ramp_keeps_uphill_along() -> bool:
