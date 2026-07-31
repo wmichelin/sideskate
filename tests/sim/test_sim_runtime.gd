@@ -86,6 +86,8 @@ func run() -> bool:
 		and _air_land_pipe_maps_vx_via_outward()
 		and _air_out_reenter_ramp_not_fake_uphill()
 		and _pipe_ollie_below_lip_keeps_peakward_x()
+		and _ramp_adjacent_pipe_z_leave_no_hang()
+		and _ramp_lip_ollie_is_free_air()
 	)
 
 
@@ -1340,6 +1342,115 @@ func _pipe_ollie_below_lip_keeps_peakward_x() -> bool:
 			"pipe ollie peakward: expected +vx keep, got %.1f (want ~%.1f)"
 			% [sim.state.velocity.x, want_wx]
 		)
+		return false
+	return true
+
+
+func _ramp_adjacent_pipe_z_leave_no_hang() -> bool:
+	# >> abutting )) in Z at matching peak/cope height must not steal into pipe hang.
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_ramp_pipe_adj.ssk"):
+		push_error("ramp-pipe adj: setup")
+		return false
+	var ramp: RampSurface = null
+	var pipe: PipeSurface = null
+	for id in sim.model.ramps.keys():
+		var r: RampSurface = sim.model.ramps[id]
+		if r.side == SimKinds.PipeSide.RIGHT:
+			ramp = r
+			break
+	for id in sim.model.pipes.keys():
+		var p: PipeSurface = sim.model.pipes[id]
+		if p.side == SimKinds.PipeSide.RIGHT:
+			pipe = p
+			break
+	if ramp == null or pipe == null:
+		push_error("ramp-pipe adj: missing right ramp/pipe")
+		return false
+	# Near ramp peak, depth toward the pipe span.
+	var z := ramp.z_max - 1.0
+	var u := 0.95
+	var th := u * PI * 0.5
+	sim.state.mode = SimState.Mode.GROUNDED
+	sim.state.surface_id = ramp.id
+	sim.state.u = u
+	sim.state.v = 0.9
+	sim.state.tangent_velocity = Vector2(120.0, 400.0)
+	sim.state.position = Vector3(ramp.x_at_theta(z, th), z, ramp.height_at_theta(z, th))
+	sim.state.clear_hang()
+	var left_ramp := false
+	for _i in range(90):
+		sim.set_input(Vector2(0.2, 1.0), false, false)
+		sim.tick()
+		if sim.state.is_hanging() or not sim.state.hang_edge_id.is_empty():
+			push_error(
+				"ramp-pipe adj: hang/X-lock after Z leave (surf=%s hang=%s)"
+				% [sim.state.surface_id, sim.state.hang_edge_id]
+			)
+			return false
+		if sim.state.surface_id == pipe.id:
+			push_error("ramp-pipe adj: auto-mounted adjacent pipe")
+			return false
+		if sim.state.is_airborne() or sim.state.surface_id != ramp.id:
+			left_ramp = true
+			break
+	if not left_ramp:
+		push_error("ramp-pipe adj: never left ramp (u=%.2f z=%.1f)" % [
+			sim.state.u, sim.state.position.y
+		])
+		return false
+	# Stay free of hang for a few more ticks.
+	for _j in range(12):
+		sim.set_input(Vector2.ZERO, false, false)
+		sim.tick()
+		if sim.state.is_hanging() or not sim.state.hang_edge_id.is_empty():
+			push_error("ramp-pipe adj: hang engaged after leave")
+			return false
+		if sim.state.surface_id == pipe.id and sim.state.is_grounded():
+			# Free-air remount onto pipe is ok; hang is not.
+			break
+	return true
+
+
+func _ramp_lip_ollie_is_free_air() -> bool:
+	# Upper-band ramp ollie must free-air (no X-lock), even beside a pipe.
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_ramp_pipe_adj.ssk"):
+		push_error("ramp lip ollie: setup")
+		return false
+	sim.ollie_accel = 0.0
+	sim.ollie_charge_ms = 0.0
+	sim.ollie_height_flat = 60.0
+	sim.ollie_height_pipe = 60.0
+	sim.ollie_lip_frac = 0.50
+	var ramp: RampSurface = null
+	for id in sim.model.ramps.keys():
+		var r: RampSurface = sim.model.ramps[id]
+		if r.side == SimKinds.PipeSide.RIGHT:
+			ramp = r
+			break
+	if ramp == null:
+		push_error("ramp lip ollie: missing ramp")
+		return false
+	var z := (ramp.z_min + ramp.z_max) * 0.5
+	var u := 0.92
+	var th := u * PI * 0.5
+	sim.state.mode = SimState.Mode.GROUNDED
+	sim.state.surface_id = ramp.id
+	sim.state.u = u
+	sim.state.v = 0.5
+	sim.state.tangent_velocity = Vector2(200.0, 0.0)
+	sim.state.position = Vector3(ramp.x_at_theta(z, th), z, ramp.height_at_theta(z, th))
+	sim.ollie_available = true
+	sim.set_input(Vector2.ZERO, false, false, true, false)
+	sim.tick()
+	sim.set_input(Vector2.ZERO, false, false, false, true)
+	sim.tick()
+	if not sim.state.is_airborne():
+		push_error("ramp lip ollie: should leave ramp")
+		return false
+	if sim.state.is_hanging() or not sim.state.hang_edge_id.is_empty():
+		push_error("ramp lip ollie: must not X-lock hang")
 		return false
 	return true
 

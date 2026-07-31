@@ -20,6 +20,7 @@ var ollie_height_flat: float = 150.0
 ## Peak ollie height at 100% charge on pipe/ramp/wall (level units).
 var ollie_height_pipe: float = 100.0
 ## Upper pipe/ramp band (fraction of u from the lip) where ollie enters X-locked hang air.
+## Ramps ignore this — peak/ollie leave is always free air.
 ## 0.50 = top 50% of the transition (u ≥ 0.50).
 var ollie_lip_frac: float = 0.50
 var brake: float = 1250.0

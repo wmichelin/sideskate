@@ -606,10 +606,10 @@ func launch_height_impulse(
 	var along := state.tangent_velocity.x
 	var depth := state.tangent_velocity.y
 	var lip := clampf(lip_frac, 0.0, 1.0)
-	if lip > 0.0 and state.u >= 1.0 - lip:
-		if model.pipes.has(state.surface_id) or model.ramps.has(state.surface_id):
-			if _launch_ollie_lip_hang(state, height_impulse, along, depth):
-				return
+	# Lip-band hang is pipe-only. Ramps always free-air pop (no X-lock / fly-out).
+	if lip > 0.0 and state.u >= 1.0 - lip and model.pipes.has(state.surface_id):
+		if _launch_ollie_lip_hang(state, height_impulse, along, depth):
+			return
 	# Wall climb ollie: never free-air with stick X — deck-out or hang.
 	if model.walls.has(state.surface_id):
 		if _launch_ollie_wall_top(state, height_impulse, along, depth, lip):
@@ -659,10 +659,11 @@ func _reject_into_normal(world: Vector3, normal: Vector3) -> Vector3:
 	return world
 
 
-## Upper pipe/ramp ollie → coping-anchored hang (vx locked, height free).
+## Upper pipe ollie → coping-anchored hang (vx locked, height free).
 ## WALL_EXTENSION: X locks to the wall-top lip. Takeoff Z stays put; any gap up
 ## to that lip is converted to clearance speed so `ollie_height_pipe` still adds
 ## peak *above* the lip (snapping Z there used to eat the pop).
+## Ramps never use this path — peak leave is free air only.
 func _launch_ollie_lip_hang(
 	state: SimState, height_impulse: float, _along: float, depth: float
 ) -> bool:
@@ -778,24 +779,30 @@ func _leave_slope_at_z_end(state: SimState, surf, proposed_z: float) -> bool:
 	var outward := float(surf.outward_sign())
 	var world_vx := state.tangent_velocity.x * outward
 	var world_vz := state.tangent_velocity.y
+	var leaving_ramp := model.ramps.has(state.surface_id)
 	var top := query.top_support(x, proposed_z, h + SimTolerances.CONTACT_EPS)
 	if not top.is_empty() and absf(float(top.height) - h) <= SimTolerances.SEAM_EPS:
-		state.surface_id = str(top.surface_id)
-		state.position = Vector3(x, proposed_z, float(top.height))
-		if _is_slope_kind(int(top.kind)):
-			var proj: Dictionary = top.proj
-			state.u = float(proj.u)
-			state.v = float(proj.v)
-			state.position = proj.point
-			state.tangent_velocity.x = world_vx * _slope_outward(state.surface_id)
-		else:
-			state.u = 0.0
-			state.v = 0.0
-			state.tangent_velocity = Vector2(world_vx, world_vz)
-		if top.get("lethal", false):
-			state.alive = false
-		_update_facing(state)
-		return true
+		var dest_id := str(top.surface_id)
+		# Ramp peaks match adjacent pipe coping height; auto-mounting the pipe
+		# steals the rider into hang / fly-out. Ramps only seam onto flats/ramps.
+		var dest_is_pipe := model.pipes.has(dest_id)
+		if not (leaving_ramp and dest_is_pipe):
+			state.surface_id = dest_id
+			state.position = Vector3(x, proposed_z, float(top.height))
+			if _is_slope_kind(int(top.kind)):
+				var proj: Dictionary = top.proj
+				state.u = float(proj.u)
+				state.v = float(proj.v)
+				state.position = proj.point
+				state.tangent_velocity.x = world_vx * _slope_outward(state.surface_id)
+			else:
+				state.u = 0.0
+				state.v = 0.0
+				state.tangent_velocity = Vector2(world_vx, world_vz)
+			if top.get("lethal", false):
+				state.alive = false
+			_update_facing(state)
+			return true
 	if not model.is_traversable_xz(x, proposed_z):
 		return false
 	# Step past endcap wall thickness so leave-into-air is not immediately bounced.
