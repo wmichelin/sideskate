@@ -60,10 +60,10 @@ Suggested defaults are starting points only.
 
 ### Side lean (presentation)
 
-- Over `fall_anim_duration`, lerp fall roll to **±90° toward current facing** at enter (`l` one way, `r` the other).
-- While falling, fall roll **owns** visual lean (replaces normal surface-tilt presentation lean).
-- Fall lean pivots at the feet contact; the 3D presenter **lifts** the visual along world Y so the tilted body AABB rests on top of the surface (no mesh bleed-through).
-- On recovery: return to normal surface tilt / upright presentation.
+- On fall enter, hide the kinematic box and drop a single presentation `RigidBody3D` box (same size) that collides with park StaticBodies (`LevelCollision3D.build_bodies`).
+- Seeded with sim world velocity + a mild tip onto the facing side — not a multi-limb ragdoll.
+- Never writes `PlayerSim` / analytical contact. Recovery freezes the fall box and shows the upright kinematic skater at sim feet.
+- Camera keeps tracking sim feet while the box flops.
 - Anim finishing early does not unlock input.
 
 ### Recovery
@@ -105,7 +105,7 @@ Mirror the ollie charge bar in `scripts/rendering_3d/player_debug_3d.gd`.
 | `SimState` | Fall bout fields (`falling`, elapsed, captured planar vel, facing for lean) |
 | `PlayerSim` | `begin_fall()`, tick fall timers / stop lerp / recovery / input gate |
 | `player.gd` | Y → `begin_fall()`; export durations; sync tuning; expose fall frac for HUD/lean |
-| `LogicalPose` / pose sync / 3D presenter | Fall roll channel |
+| `LogicalPose` / pose sync / 3D presenter | Fall → single `RigidBody3D` box vs park colliders |
 | `debug_tools.gd` / `debug_sliders.gd` | Durations + show_fall_cooldown |
 | `player_debug_3d.gd` | Countdown bar |
 | `project.godot` | `fall` action → Y |

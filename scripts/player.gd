@@ -243,14 +243,9 @@ func _sync_from_sim() -> void:
 	else:
 		_transfer_tilt_active = false
 		_carry_tilt = 0.0
-	# Contact-plane lean (ramp/pipe) before fall overrides display tilt.
+	# Contact-plane lean (ramp/pipe). Fall visual is a physics box (presenter).
 	var support_tilt := tilt
 	if st.falling:
-		# Fall bout owns visual lean — roll onto facing side.
-		var af := _sim.fall_anim_frac()
-		var target := st.fall_lean_sign * (PI * 0.5)
-		tilt = lerpf(0.0, target, af)
-		_carry_tilt = tilt
 		_transfer_tilt_active = false
 	var support_h := p.z
 	if st.is_hanging():
@@ -272,6 +267,8 @@ func _sync_from_sim() -> void:
 		depth.support_height = support_h
 		depth.surface_tilt = tilt
 		depth.support_tilt = support_tilt
+		depth.fall_pitch = 0.0
+		depth.fall_twist = 0.0
 		depth.apply()
 	global_position = _WorldSpace.logical_to_world(p.x, p.y, p.z)
 	collision_mask = 0
@@ -402,6 +399,12 @@ func fall_cooldown_frac() -> float:
 
 func is_falling() -> bool:
 	return _sim != null and _sim.state != null and _sim.state.falling
+
+
+func fall_lean_sign() -> float:
+	if _sim == null or _sim.state == null:
+		return 1.0
+	return _sim.state.fall_lean_sign
 
 
 func next_facing_coping_debug() -> String:

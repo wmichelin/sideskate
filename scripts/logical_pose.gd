@@ -9,6 +9,9 @@ var support_height: float = 0.0
 var surface_tilt: float = 0.0
 ## Contact plane lean for fall clearance (ramp/pipe normal); see PseudoDepthBody.
 var support_tilt: float = 0.0
+## Fall tumble extras (ragdoll presentation).
+var fall_pitch: float = 0.0
+var fall_twist: float = 0.0
 var airborne: bool = false
 var facing_h: float = 1.0
 ## Centered local-Y hang-apex turn (0 settled; ±π faces opposite).
@@ -25,6 +28,8 @@ func copy_from_depth(depth: PseudoDepthBody, facing: float = 1.0, layer: int = 0
 	support_height = depth.support_height
 	surface_tilt = depth.surface_tilt
 	support_tilt = depth.support_tilt
+	fall_pitch = depth.fall_pitch
+	fall_twist = depth.fall_twist
 	airborne = depth.airborne
 	facing_h = facing
 	facing_yaw = 0.0
@@ -40,6 +45,8 @@ func duplicate_pose() -> LogicalPose:
 	p.support_height = support_height
 	p.surface_tilt = surface_tilt
 	p.support_tilt = support_tilt
+	p.fall_pitch = fall_pitch
+	p.fall_twist = fall_twist
 	p.airborne = airborne
 	p.facing_h = facing_h
 	p.facing_yaw = facing_yaw
@@ -64,6 +71,8 @@ static func lerp_poses(a: LogicalPose, b: LogicalPose, t: float) -> LogicalPose:
 	out.support_height = lerpf(a.support_height, b.support_height, u)
 	out.surface_tilt = lerp_angle(a.surface_tilt, b.surface_tilt, u)
 	out.support_tilt = lerp_angle(a.support_tilt, b.support_tilt, u)
+	out.fall_pitch = lerp_angle(a.fall_pitch, b.fall_pitch, u)
+	out.fall_twist = lerp_angle(a.fall_twist, b.fall_twist, u)
 	out.airborne = b.airborne if u >= 0.5 else a.airborne
 	var equivalent_turn_handoff := (
 		a.facing_h * b.facing_h < 0.0

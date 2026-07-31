@@ -90,6 +90,7 @@ menu_back={
 3d_physics/layer_3="world_wall"
 3d_physics/layer_4="lava"
 3d_physics/layer_5="playable_bounds"
+3d_physics/layer_6="ragdoll"
 
 [physics]
 

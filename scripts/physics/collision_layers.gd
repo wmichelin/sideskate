@@ -7,6 +7,8 @@ const WORLD_RIDE := 2
 const WORLD_WALL := 3
 const LAVA := 4
 const PLAYABLE_BOUNDS := 5
+## Presentation fall box only — never feeds PlayerSim.
+const RAGDOLL := 6
 
 
 static func bit(layer: int) -> int:

@@ -10,8 +10,8 @@ const CollisionLayersScript := preload("res://scripts/physics/collision_layers.g
 const _WorldSpace := preload("res://scripts/world_space.gd")
 
 @export var level_path: NodePath = NodePath("../../RampLevel")
-## Godot colliders are presentation-only (player mask is 0). Skip on large parks
-## unless a test / tool explicitly enables them.
+## Godot colliders are presentation-only (player mask is 0). Enabled in main for
+## fall-box contact; tests may toggle. Skip on huge parks if cost bites.
 @export var build_bodies: bool = false
 
 var _level: RampLevel

@@ -53,6 +53,7 @@ level_path = NodePath("../../RampLevel")
 [node name="LevelCollision3D" type="Node3D" parent="World3D"]
 script = ExtResource("18_col3d")
 level_path = NodePath("../../RampLevel")
+build_bodies = true
 
 [node name="PlayerVisual" type="Node3D" parent="World3D"]
 script = ExtResource("14_pose3d")
