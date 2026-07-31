@@ -39,7 +39,7 @@ Glyphs: `=` / `#` / `x` solid; `.` hole (fall to lower support or invisible void
 
 Stick → wish. Per axis:
 
-- **X / along:** Neutral → **coast** (`friction` / `ramp_friction`; default 0). Opposite → **brake**. Aligned → **accel** toward max (default accel 3250, max X 880).
+- **X / along:** Neutral → **coast** (`friction` / `ramp_friction`; default 0). Opposite → **brake**. Aligned → **accel** toward max (default accel 3250, max X 880). `max_speed_x` is an absolute `|vx|` / along ceiling (air + pipe gravity included).
 - **Z (depth):** Zero momentum — velocity = stick × max Z (default 400); release stops immediately.
 
 **Facing** `l`/`r`: follows world X speed when X-dominant. Spawn from `spawn_facing`.

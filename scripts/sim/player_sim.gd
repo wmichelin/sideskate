@@ -111,7 +111,7 @@ func tick(delta: float = SimTolerances.FIXED_DT) -> void:
 			ollie_accel,
 		)
 	else:
-		air.step(state, last_wish, delta)
+		air.step(state, last_wish, delta, max_speed, max_speed_z)
 	_replenish_ollie_on_ground()
 	_apply_lava_kill()
 	_note_checkpoint()

@@ -133,6 +133,7 @@ func _step_patch(
 	# Depth has no momentum: stick drives Z velocity; release snaps to 0.
 	state.tangent_velocity.y = _integrate_depth(wish.y, max_speed_z)
 	_apply_ollie_world_x(state, wish, delta, max_speed, ollie, ollie_accel)
+	_clamp_along_speed(state, max_speed)
 	var next := state.position + Vector3(
 		state.tangent_velocity.x * delta,
 		state.tangent_velocity.y * delta,
@@ -247,6 +248,7 @@ func _step_pipe(
 	state.tangent_velocity.x += g_along * delta
 	state.tangent_velocity.y = _integrate_depth(wish.y, max_speed_z)
 	_apply_ollie_pipe(state, pipe, wish, delta, max_speed, ollie, ollie_accel)
+	_clamp_along_speed(state, max_speed)
 	var sample := pipe.sample_at_z(state.position.y)
 	var radius := float(sample.radius)
 	if radius <= 0.001:
@@ -321,6 +323,7 @@ func _step_ramp(
 	state.tangent_velocity.x += g_along * delta
 	state.tangent_velocity.y = _integrate_depth(wish.y, max_speed_z)
 	_apply_ollie_slope(state, ramp.outward_sign(), wish, delta, max_speed, ollie, ollie_accel)
+	_clamp_along_speed(state, max_speed)
 	var sample := ramp.sample_at_z(state.position.y)
 	var radius := float(sample.radius)
 	if radius <= 0.001:
@@ -420,6 +423,7 @@ func _step_wall(
 	state.tangent_velocity.x += SimTolerances.GRAVITY * delta
 	state.tangent_velocity.y = _integrate_depth(wish.y, max_speed_z)
 	_apply_ollie_pipe(state, source, wish, delta, max_speed, ollie, ollie_accel)
+	_clamp_along_speed(state, max_speed)
 	var new_z := _clamp_park_depth(state.position.y + state.tangent_velocity.y * delta)
 	if not wall.contains_z(new_z):
 		var source_edge := query.edge_at(source.id, new_z, "coping")
@@ -1043,6 +1047,12 @@ func _update_facing_slope(state: SimState, surface_id: String) -> void:
 	var world_vx := state.tangent_velocity.x * _slope_outward(surface_id)
 	if absf(world_vx) > 1.0:
 		state.set_facing_side("r" if world_vx > 0.0 else "l")
+
+
+## Hard ceiling on along / world-X speed (gravity and seeds included).
+func _clamp_along_speed(state: SimState, max_speed: float) -> void:
+	var cap := maxf(max_speed, 0.0)
+	state.tangent_velocity.x = clampf(state.tangent_velocity.x, -cap, cap)
 
 
 ## Per-axis grounded control: coast (friction), brake only when stick opposes vel, else accel.

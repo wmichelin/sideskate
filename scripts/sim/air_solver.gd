@@ -7,6 +7,11 @@ var model: ParkModel
 var query: SurfaceQuery
 var planner: ManeuverPlanner
 var ground: GroundSolver
+## Live caps from PlayerSim (absolute |vx| / depth stick scale).
+var _max_speed: float = 880.0
+var _max_speed_z: float = 400.0
+
+
 func _init(
 	m: ParkModel = null,
 	q: SurfaceQuery = null,
@@ -19,9 +24,17 @@ func _init(
 	ground = g if g != null else GroundSolver.new(m, query)
 
 
-func step(state: SimState, wish: Vector2, delta: float) -> void:
+func step(
+	state: SimState,
+	wish: Vector2,
+	delta: float,
+	max_speed: float = 880.0,
+	max_speed_z: float = 400.0,
+) -> void:
 	if not state.is_airborne() or not state.alive:
 		return
+	_max_speed = maxf(max_speed, 0.0)
+	_max_speed_z = maxf(max_speed_z, 0.0)
 	if state.has_maneuver():
 		_step_maneuver(state, wish, delta)
 		return
@@ -119,18 +132,22 @@ func _stream_has_later_mount(
 
 func _integrate_air_wish(state: SimState, wish: Vector2, delta: float) -> void:
 	var w := wish
+	var max_x := _max_speed
+	var max_z := _max_speed_z
 	if state.is_hanging():
 		state.velocity.x = 0.0
-		state.velocity.y = 0.0 if absf(w.y) < 0.15 else w.y * 200.0
+		state.velocity.y = 0.0 if absf(w.y) < 0.15 else w.y * max_z
 	else:
 		if absf(w.x) >= 0.15:
-			var target := w.x * 400.0
+			var target := clampf(w.x, -1.0, 1.0) * max_x
 			var vx := state.velocity.x
 			if w.x * vx < 0.0:
 				state.velocity.x = move_toward(vx, target, 800.0 * delta)
 			elif absf(vx) < absf(target):
 				state.velocity.x = move_toward(vx, target, 800.0 * delta)
-		state.velocity.y = 0.0 if absf(w.y) < 0.15 else w.y * 200.0
+		state.velocity.y = 0.0 if absf(w.y) < 0.15 else w.y * max_z
+	# Absolute ceiling — gravity/ballistic/seeds may not exceed max_speed X.
+	state.velocity.x = clampf(state.velocity.x, -max_x, max_x)
 	state.velocity.z += SimTolerances.GRAVITY * delta
 
 
@@ -1201,6 +1218,7 @@ func _step_maneuver(state: SimState, wish: Vector2, delta: float) -> void:
 	# Unlock into free air with the plan's outward seed; stick may steer after.
 	# Fly-out / deck-out stands the skater upright (no carried pipe lean).
 	state.velocity = plan.start_velocity
+	state.velocity.x = clampf(state.velocity.x, -_max_speed, _max_speed)
 	state.maneuver = null
 	state.clear_hang()
 	state.free_air_upright = true
@@ -1222,7 +1240,7 @@ func _step_transfer(
 	var prev_h := state.position.z
 	state.velocity.z += SimTolerances.GRAVITY * delta
 	if absf(wish.y) >= 0.15:
-		state.velocity.y = wish.y * 200.0
+		state.velocity.y = wish.y * _max_speed_z
 	else:
 		state.velocity.y = 0.0
 	state.velocity.x = 0.0

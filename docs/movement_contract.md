@@ -159,9 +159,9 @@ Wall faces are one-sided. Riding off a deck through its backing wall enters ordi
 
 ## Velocity rules
 
-- Grounded X / along: integrate control. Neutral stick coasts (`friction` / `ramp_friction`); stick opposite velocity brakes (`brake`); aligned stick accelerates (`accel`). Cap at max speeds.
-- Grounded / air **depth (Z)**: zero momentum — velocity is stick × max speed; release snaps to 0.
-- Free-air **X**: ballistic — no friction/coast decay; stick steers only while held (accelerate toward wish or brake when opposite). Aligned stick must **not** slow existing `|vx|` toward a lower wish cap. Release conserves vx. Height integrates gravity only.
+- Grounded X / along: integrate control. Neutral stick coasts (`friction` / `ramp_friction`); stick opposite velocity brakes (`brake`); aligned stick accelerates (`accel`). **`max_speed` is an absolute `|vx|` / along ceiling** (gravity on pipes/walls included).
+- Grounded / air **depth (Z)**: zero momentum — velocity is stick × `max_speed_z`; release snaps to 0.
+- Free-air **X**: ballistic — no friction/coast decay; stick steers toward `wish × max_speed` (or brakes when opposite). Aligned stick must **not** slow existing `|vx|` toward a lower wish fraction, but `|vx|` is hard-clamped to `max_speed`. Release conserves vx within that cap. Height integrates gravity only.
 - Seam crossing: transport world tangent speed onto the destination surface; no dead-stop.
 - Pipe→wall and wall→pipe seams preserve tangent speed and consume the crossing once.
 - Air-out leave: seed vertical from wall/pipe tangent; `vx = 0`; retain and lock to the launch edge anchor until fly-out / return (depth may retarget onto a colinear same-side OPEN edge or hold a synthetic X-lock across a gap). Once per hang, after vertical apex **while still on the launch Z span** with no depth stick, facing turns around the character's centered local Y axis into the source pipe over `APEX_FACING_DELAY` (0 = instant). Leaving the launch span or holding depth keeps takeoff orientation.

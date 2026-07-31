@@ -28,6 +28,7 @@ func run() -> bool:
 		and _ramp_ollie_onto_abutting_deck_no_freeze()
 		and _coast_with_zero_friction()
 		and _air_no_x_friction()
+		and _max_speed_x_is_absolute_ceiling()
 		and _wall_extension_climbs()
 		and _layered_deck_back_air_outs_at_upper_lip()
 		and _upper_deck_flyout_hold_right_decks_out()
@@ -1315,6 +1316,92 @@ func _air_no_x_friction() -> bool:
 				% [vx0, sim.state.velocity.x]
 			)
 			return false
+	return true
+
+
+## max_speed_x is an absolute |vx| / along ceiling (air + gravity on slopes).
+func _max_speed_x_is_absolute_ceiling() -> bool:
+	var air := PlayerSim.new()
+	if not air.setup_from_path("res://tests/levels/sim/sim_open_fly.ssk"):
+		push_error("max speed air: setup")
+		return false
+	air.max_speed = 300.0
+	air.state.mode = SimState.Mode.AIRBORNE
+	air.state.surface_id = ""
+	air.state.clear_hang()
+	air.state.maneuver = null
+	air.state.position = Vector3(air.model.width * 0.5, air.model.depth * 0.5, 400.0)
+	air.state.velocity = Vector3(700.0, 0.0, 0.0)
+	air.set_input(Vector2.ZERO, false, false, false)
+	air.tick()
+	if absf(air.state.velocity.x) > air.max_speed + 0.01:
+		push_error(
+			"max speed air: ballistic vx not clamped, got %.1f cap %.1f"
+			% [air.state.velocity.x, air.max_speed]
+		)
+		return false
+	# Stick target uses max_speed (was hardcoded 400).
+	air.max_speed = 1000.0
+	air.state.position.z = 800.0
+	air.state.velocity = Vector3(0.0, 0.0, 400.0)
+	for _i in range(60):
+		air.state.position.z = maxf(air.state.position.z, 500.0)
+		air.set_input(Vector2(1, 0), false, false, false)
+		air.tick()
+		if not air.state.is_airborne():
+			push_error("max speed air: landed while accelerating")
+			return false
+	if air.state.velocity.x < 450.0:
+		push_error(
+			"max speed air: stick should exceed old 400 hardcode, got %.1f"
+			% air.state.velocity.x
+		)
+		return false
+	if air.state.velocity.x > air.max_speed + 0.01:
+		push_error(
+			"max speed air: stick overshot cap, got %.1f"
+			% air.state.velocity.x
+		)
+		return false
+	var pipe := PlayerSim.new()
+	if not pipe.setup_from_path("res://tests/levels/sim/sim_halfpipe.ssk"):
+		push_error("max speed pipe: setup")
+		return false
+	var left: PipeSurface = null
+	for id in pipe.model.pipes:
+		var p: PipeSurface = pipe.model.pipes[id]
+		if p.outward_sign() < 0.0:
+			left = p
+			break
+	if left == null:
+		push_error("max speed pipe: no left pipe")
+		return false
+	pipe.max_speed = 200.0
+	pipe.state.mode = SimState.Mode.GROUNDED
+	pipe.state.surface_id = left.id
+	pipe.state.u = 0.55
+	var z_mid := (left.z_min + left.z_max) * 0.5
+	pipe.state.position = Vector3(
+		left.x_at_theta(z_mid, pipe.state.u * PI * 0.5),
+		z_mid,
+		left.height_at_theta(z_mid, pipe.state.u * PI * 0.5)
+	)
+	# Into-bowl along: gravity adds speed that must still hard-cap.
+	pipe.state.tangent_velocity = Vector2(-500.0, 0.0)
+	pipe.set_input(Vector2.ZERO, false, false, false)
+	pipe.tick()
+	if not pipe.state.is_grounded() or pipe.state.surface_id != left.id:
+		push_error(
+			"max speed pipe: left surface mid-tick mode=%s surf=%s"
+			% [pipe.state.mode, pipe.state.surface_id]
+		)
+		return false
+	if absf(pipe.state.tangent_velocity.x) > pipe.max_speed + 0.01:
+		push_error(
+			"max speed pipe: along not clamped, got %.1f cap %.1f"
+			% [pipe.state.tangent_velocity.x, pipe.max_speed]
+		)
+		return false
 	return true
 
 
