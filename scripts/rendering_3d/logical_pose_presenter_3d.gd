@@ -123,12 +123,7 @@ func apply_pose(pose: LogicalPose) -> void:
 		_body.scale = Vector3(-face, 1.0, 1.0)
 		_body.position = Vector3(0.0, body_size.y * 0.5, 0.0)
 		_body.rotation = Vector3(0.0, body_yaw, 0.0)
-		# Side-lay casts a huge floating blob under the key light — off while down.
-		_body.cast_shadow = (
-			GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-			if falling
-			else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
-		)
+		_body.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 		if _facing_mark != null:
 			_facing_mark.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 
