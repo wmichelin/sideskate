@@ -78,8 +78,9 @@ func run() -> bool:
 		and _hang_persists_off_edge_z_span()
 		and _hang_depth_transfer_lands_edge_floor()
 		and _hang_depth_transfer_lands_edge_lava()
-		and _deck_ride_off_falls_acid_mounts()
+		and _deck_skate_off_to_left_pipe_no_wipeout()
 		and _right_pipe_deck_slow_leave_lands_floor()
+		and _joint_wipeout_fall_tip_stays_approach()
 		and _layered_next_spine_keeps_l1_past_l0_lip()
 		and _transfer_button_lerps_x_holds_facing()
 		and _transfer_shared_x_spine_reanchors_hang()
@@ -6655,77 +6656,103 @@ func _hang_depth_transfer_lands_edge_lava() -> bool:
 	return false
 
 
-## ####((( : ride deck toward pipe → fall like a ledge (no auto-stick).
-## Slow coast off the ledge is the regression — a fast approach can overshoot the
-## lip onto the bowl floor and miss the sticky Mount window.
-## Acid remount coverage removed with the transfer planner; re-add when reimplemented.
-func _deck_ride_off_falls_acid_mounts() -> bool:
+## ####(((===== skate-off: free air then with-slope Mount — never wipeout.
+func _deck_skate_off_to_left_pipe_no_wipeout() -> bool:
 	var sim := PlayerSim.new()
-	if not sim.setup_from_path("res://tests/levels/sim/sim_deck_backed.ssk"):
-		push_error("deck drop: setup")
-		return false
-	var left := _left_pipe(sim.model)
-	if left == null:
-		return false
-	var left_cope: CopingEdge = sim.model.copings[left.coping_id]
-	var deck_span := left_cope.span_at_z((left.z_min + left.z_max) * 0.5)
-	if deck_span == null or deck_span.outward_deck_id.is_empty():
-		push_error("deck drop: left pipe should have outward deck")
+	if not sim.setup_from_path("res://tests/levels/sim/deck_to_left_pipe.ssk"):
+		push_error("deck skate-off: setup")
 		return false
 	var deck: SupportPatch = null
-	for pid in sim.model.patches.keys():
-		var p: SupportPatch = sim.model.patches[pid]
+	var pipe: PipeSurface = null
+	for id in sim.model.patches.keys():
+		var p: SupportPatch = sim.model.patches[id]
 		if int(p.kind) == SimKinds.SurfaceKind.DECK:
 			deck = p
 			break
-	if deck == null:
-		push_error("deck drop: no deck")
+	for id in sim.model.pipes.keys():
+		var pp: PipeSurface = sim.model.pipes[id]
+		if int(pp.side) == SimKinds.PipeSide.LEFT:
+			pipe = pp
+			break
+	if deck == null or pipe == null:
+		push_error("deck skate-off: missing deck/pipe")
 		return false
 	var z := (deck.z_min + deck.z_max) * 0.5
-	var cx := left.coping_x_at(z)
-	var left_id := left.id
-	# Slow coast from just outside the coping — the sticky path that fast +X missed.
+	var cx := pipe.coping_x_at(z)
 	sim.state.mode = SimState.Mode.GROUNDED
 	sim.state.surface_id = deck.id
-	sim.state.u = 0.0
-	sim.state.v = 0.0
 	sim.state.position = Vector3(cx - 5.0, z, deck.height)
-	sim.state.tangent_velocity = Vector2(200.0, 0.0)
-	sim.state.velocity = Vector3.ZERO
+	sim.state.tangent_velocity = Vector2(180.0, 0.0)
+	sim.state.facing = "r"
 	sim.state.clear_hang()
-	sim.state.maneuver = null
 	var saw_air := false
-	for _i in range(90):
+	for i in range(90):
+		# Coast — stick accel clears the arc without ride-face contact.
 		sim.set_input(Vector2.ZERO, false, false)
 		sim.tick()
-		if sim.state.is_airborne():
-			saw_air = true
-		if sim.state.is_grounded() and sim.state.surface_id == left_id:
+		if sim.state.falling:
 			push_error(
-				"deck drop: stuck to pipe without acid (launch=%s u=%.2f)"
-				% [sim.state.air_launch_surface_id, sim.state.u]
+				"deck skate-off: wipeout on leave i=%s x=%.1f h=%.1f sid=%s"
+				% [i, sim.state.position.x, sim.state.position.z, sim.state.surface_id]
 			)
 			return false
-		# Bowl floor before any pipe Mount — success. (A further grounded tick at
-		# the pipe's bottom lip can remount u≈0; that is not the sticky pad exit.)
-		if saw_air and sim.state.is_grounded() and not sim.model.pipes.has(sim.state.surface_id):
+		if sim.state.is_airborne():
+			saw_air = true
+		if saw_air and sim.state.is_grounded() and sim.state.surface_id == pipe.id:
 			return true
-		if not sim.state.alive:
-			return true
-	if not saw_air:
-		push_error("deck drop: never left deck into air")
+	push_error(
+		"deck skate-off: never mounted pipe mode=%s sid=%s pos=%s air=%s"
+		% [sim.state.mode, sim.state.surface_id, sim.state.position, saw_air]
+	)
+	return false
+
+
+## Joint wipeout parks on approach side with lean away from the face.
+func _joint_wipeout_fall_tip_stays_approach() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
+		push_error("wipeout park: setup")
 		return false
-	# Still airborne: keep falling — must not stick to the abutting pipe.
-	for _j in range(120):
-		sim.set_input(Vector2.ZERO, false, false)
+	sim.fall_duration = 5.0
+	sim.fall_stop_duration = 0.85
+	var wall: WallSurface = sim.model.walls.get("wall_span_coping_pipe_1_L0_S1_0")
+	if wall == null:
+		push_error("wipeout park: missing wall")
+		return false
+	var z := 250.0
+	var ws: Dictionary = wall.sample_at_z(z)
+	var wx := float(ws.x)
+	var top := float(ws.top_height)
+	var bottom := float(ws.bottom_height)
+	# Mid climb-band — below the wall bottom hits pipe solids with facing lean.
+	var h := (bottom + top) * 0.5
+	sim.state.mode = SimState.Mode.AIRBORNE
+	sim.state.surface_id = ""
+	sim.state.clear_hang()
+	sim.state.free_air_upright = true
+	sim.state.air_launch_surface_id = "floor_0_L0"
+	sim.state.facing = "r"
+	sim.state.position = Vector3(wx - 40.0, z, h)
+	sim.state.velocity = Vector3(500.0, 0.0, -40.0)
+	sim.state.note_air_height(sim.state.position.z)
+	var fell := false
+	for _i in range(50):
+		sim.set_input(Vector2(1, 0), false, false)
 		sim.tick()
-		if sim.state.is_grounded() and sim.state.surface_id == left_id:
-			push_error("deck drop: ordinary land stuck to deck-backed pipe without acid")
-			return false
-		if sim.state.is_grounded() and not sim.model.pipes.has(sim.state.surface_id):
-			return true
-		if not sim.state.alive:
-			return true
+		if sim.state.falling:
+			fell = true
+			if sim.state.fall_lean_sign >= 0.0:
+				push_error("wipeout park: lean into wall %.1f" % sim.state.fall_lean_sign)
+				return false
+			if sim.state.position.x > wx - SimTolerances.WALL_REJECT_CLEAR + 0.5:
+				push_error(
+					"wipeout park: feet past clear x=%.1f wx=%.1f"
+					% [sim.state.position.x, wx]
+				)
+				return false
+	if not fell:
+		push_error("wipeout park: never fell")
+		return false
 	return true
 
 

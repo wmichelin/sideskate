@@ -123,7 +123,113 @@ func is_launch_outward_deck(
 	return span != null and span.outward_deck_id == deck_id
 
 
+## Coping span at `z` lists `deck_id` as the outward `#` for `slope_id` (pipe/ramp/wall).
+func deck_abuts_slope(deck_id: String, slope_id: String, z: float) -> bool:
+	if model == null or deck_id.is_empty() or slope_id.is_empty():
+		return false
+	if not model.patches.has(deck_id):
+		return false
+	if int((model.patches[deck_id] as SupportPatch).kind) != SimKinds.SurfaceKind.DECK:
+		return false
+	var coping_id := ""
+	if model.pipes.has(slope_id):
+		coping_id = (model.pipes[slope_id] as PipeSurface).coping_id
+	elif model.ramps.has(slope_id):
+		coping_id = (model.ramps[slope_id] as RampSurface).coping_id
+	elif model.walls.has(slope_id):
+		var wall: WallSurface = model.walls[slope_id]
+		var pipe: PipeSurface = model.pipes.get(wall.source_pipe_id) as PipeSurface
+		if pipe == null:
+			return false
+		coping_id = pipe.coping_id
+		var ws: Dictionary = wall.sample_at_z(z)
+		if not ws.is_empty():
+			var pad: SupportPatch = model.patches[deck_id]
+			var wx := float(ws.x)
+			if (
+				absf(pad.x_min - wx) <= SimTolerances.ALIGN_EPS
+				or absf(pad.x_max - wx) <= SimTolerances.ALIGN_EPS
+			):
+				return true
+	else:
+		return false
+	var cope: CopingEdge = model.copings.get(coping_id)
+	if cope == null:
+		return false
+	var span: CopingSpan = cope.span_at_z(z)
+	return span != null and span.outward_deck_id == deck_id
+
+
+## Pipe / ramp / wall-source-pipe owning this contact (empty if none).
+func contact_slope_id(contact: Dictionary) -> String:
+	if model == null or contact.is_empty():
+		return ""
+	var owner := str(contact.get("owner_id", contact.get("surface_id", "")))
+	if owner.is_empty():
+		return ""
+	if model.pipes.has(owner) or model.ramps.has(owner):
+		return owner
+	if model.walls.has(owner):
+		var wall: WallSurface = model.walls[owner]
+		if not wall.source_pipe_id.is_empty() and model.pipes.has(wall.source_pipe_id):
+			return wall.source_pipe_id
+		return owner
+	if str(contact.get("kind", "")) == "support_top":
+		var sk := int(contact.get("support_kind", -1))
+		if sk == SimKinds.SurfaceKind.PIPE or sk == SimKinds.SurfaceKind.RAMP:
+			return owner
+	return ""
+
+
+## Traveling with a slope: same-slope reentry, or deck-leave onto an abutting
+## pipe/ramp while planar motion is into-bowl / near-vertical.
+func is_with_slope(state: SimState, contact: Dictionary, ctx: Dictionary = {}) -> bool:
+	if state == null or model == null:
+		return false
+	var pipe := contact_pipe(contact)
+	if pipe != null and is_same_slope_reentry(state, pipe, ctx):
+		return true
+	var launch := str(ctx.get("launch_id", ""))
+	if launch.is_empty():
+		launch = state.air_launch_surface_id
+	if launch.is_empty():
+		return false
+	var slope_id := contact_slope_id(contact)
+	if slope_id.is_empty() and pipe != null:
+		slope_id = pipe.id
+	if slope_id.is_empty():
+		return false
+	if launch == slope_id:
+		return _planar_travels_with_slope(state, slope_id)
+	if not model.patches.has(launch):
+		return false
+	if int((model.patches[launch] as SupportPatch).kind) != SimKinds.SurfaceKind.DECK:
+		return false
+	var z := state.position.y
+	if deck_abuts_slope(launch, slope_id, z):
+		return _planar_travels_with_slope(state, slope_id)
+	if pipe != null and pipe.id != slope_id and deck_abuts_slope(launch, pipe.id, z):
+		return _planar_travels_with_slope(state, pipe.id)
+	return false
+
+
+## Into-bowl half-plane of the slope (or near-zero planar X for a drop-in).
+func _planar_travels_with_slope(state: SimState, slope_id: String) -> bool:
+	var out := NAN
+	if model.pipes.has(slope_id):
+		out = float((model.pipes[slope_id] as PipeSurface).outward_sign())
+	elif model.ramps.has(slope_id):
+		out = float((model.ramps[slope_id] as RampSurface).outward_sign())
+	if is_nan(out):
+		return false
+	var vx := state.velocity.x
+	if absf(vx) <= SimTolerances.CONTACT_EPS * 20.0:
+		return true
+	return vx * out < 0.0
+
+
 ## Free-air into a foreign pipe's upper ollie-lip band → crash wall (never Mount).
+## With-slope leave/land (deck abut leave, same-slope reentry) is never foreign-lip.
 func is_foreign_pipe_lip_crash(
 	state: SimState, contact: Dictionary, ctx: Dictionary = {}
 ) -> bool:
@@ -133,6 +239,8 @@ func is_foreign_pipe_lip_crash(
 	if pipe == null:
 		return false
 	if is_same_slope_reentry(state, pipe, ctx):
+		return false
+	if is_with_slope(state, contact, ctx):
 		return false
 	var u := float(ctx.get("u", NAN))
 	if is_nan(u):

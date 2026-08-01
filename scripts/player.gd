@@ -442,6 +442,12 @@ func fall_lean_sign() -> float:
 	return _sim.state.fall_lean_sign
 
 
+func fall_anim_frac() -> float:
+	if _sim == null:
+		return 0.0
+	return _sim.fall_anim_frac()
+
+
 func next_facing_coping_debug() -> String:
 	if _sim == null or _sim.state == null or _sim.query == null:
 		return "—"

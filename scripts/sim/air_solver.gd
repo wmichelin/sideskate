@@ -341,8 +341,8 @@ func _disposition_for_contact(
 				and state.air_launch_surface_id == str(contact.get("surface_id", "")):
 			return SimKinds.ContactDisposition.CORRIDOR
 		return SimKinds.ContactDisposition.REJECT
-	# Deck ride-off onto an abutting pipe/ramp/wall: ledge fall / acid only —
-	# never ordinary Mount (including lip column after a slow coast off the pad).
+	# Deck leave onto abutting slope: Corridor only when *not* with-slope (into-
+	# face / skim). With-slope ride-face contact Mounts below.
 	if _deck_ride_off_blocks_slope_contact(state, contact):
 		return SimKinds.ContactDisposition.CORRIDOR
 	# OPEN corridor from outward — acid only, never ordinary mount.
@@ -454,17 +454,20 @@ func _reject_blocks_later_mount(state: SimState, contact: Dictionary) -> bool:
 	return false
 
 
-## This air bout left an outward `#` deck onto its abutting slope — ordinary
-## lip / support-top Mount is illegal (ledge fall / acid only). Pipe/ramp body
-## solids are blocked only while still on the outward/deck side of the coping;
-## bowl-side body Mounts stay legal so `===)))####` can land the arc (the path
-## to the floor crosses pipe X).
+## This air bout left an outward `#` onto a slope that is *not* with-slope travel
+## (into-face / skim): Corridor so we do not sticky-Mount the lip. With-slope
+## deck leave → abutting ride face may Mount. Bowl-side body Mounts stay legal
+## so `===)))####` can land the arc toward the floor.
 func _deck_ride_off_blocks_slope_contact(state: SimState, contact: Dictionary) -> bool:
 	var launch := state.air_launch_surface_id
 	if launch.is_empty() or not model.patches.has(launch):
 		return false
 	var pad: SupportPatch = model.patches[launch]
 	if int(pad.kind) != SimKinds.SurfaceKind.DECK:
+		return false
+	if crash != null and crash.is_with_slope(
+		state, contact, {"launch_id": launch}
+	):
 		return false
 	var kind := str(contact.get("kind", ""))
 	var owner := str(contact.get("owner_id", contact.get("surface_id", "")))
@@ -829,6 +832,14 @@ func _reject_air_contact(state: SimState, contact: Dictionary, from: Vector3) ->
 	var normal: Vector3 = contact.get("normal", Vector3.ZERO)
 	if _contact_requests_fall(state, contact):
 		state.request_fall = true
+		# Default lean to approach side before specialized park paths refine it.
+		if not state.fall_lean_locked:
+			var approach := signf(from.x - state.position.x)
+			if absf(approach) < 0.001:
+				approach = signf(normal.x)
+			if absf(approach) < 0.001:
+				approach = -1.0 if state.facing == "r" else 1.0
+			state.stamp_fall_lean(approach)
 	if kind == "bounds" or kind == "feature_wall":
 		_resolve_bounds_hit(state, contact, from)
 		_ensure_air_outside_slopes(state)

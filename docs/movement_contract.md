@@ -118,9 +118,13 @@ intersecting), **Corridor** (continue to the next event). Hang remounts only the
 retained source; foreign lips under the X-lock are Corridor. `supports_below`
 fills UV/height for a chosen Mount — it is not a competing lander.
 
-Outward `#` remains `OPEN`; riding its deck off onto an abutting pipe does **not**
-auto-mount — fall like a ledge (deck→pipe remount TBD). The exact pipe coping is
-not inside either pipe solid; contact still returns a stable feature / owner id,
+Outward `#` remains `OPEN`. Skating off that deck toward an abutting pipe/ramp is
+**with-slope leave**: free air with `air_launch` = the deck (never wipeout on
+leave), Corridor over the abutting slope, then **Mount** on descending ride-face
+contact while traveling into-bowl. Foreign-lip Reject applies only to **into-face**
+hits. Into-face wall/bounds Rejects park on the approach side at
+`WALL_REJECT_CLEAR` with lean away from the face. The exact pipe coping is not
+inside either pipe solid; contact still returns a stable feature / owner id,
 surface, projection, normal, and time.
 
 ## Tolerances (`SimTolerances`)

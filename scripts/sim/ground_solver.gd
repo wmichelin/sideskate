@@ -122,7 +122,8 @@ func _step_patch(
 		return
 	var on_deck := int(patch.kind) == SimKinds.SurfaceKind.DECK
 	# Floor under an embedded pipe/ramp mounts the slope. Decks never auto-stick
-	# to a pipe/ramp — ride-off falls (acid drop is the transfer button).
+	# while grounded — open-side leave is free air (`air_launch` = deck); air
+	# with-slope then Mounts the abutting ride face (acid drop stays transfer).
 	if not on_deck:
 		if _mount_slope_at(state, state.position.x, state.position.y, state.tangent_velocity.x):
 			_update_facing_slope(state, state.surface_id)
@@ -156,7 +157,8 @@ func _step_patch(
 		_update_facing(state)
 		return
 	next = contained.pos
-	# Entering a pipe/ramp footprint from floor → mount. From deck → fall (acid only).
+	# Entering a pipe/ramp footprint from floor → mount. From deck → free air
+	# (with-slope Mount happens in AirSolver — never request_fall here).
 	if not on_deck:
 		if _mount_slope_at(state, next.x, next.y, state.tangent_velocity.x):
 			_update_facing_slope(state, state.surface_id)
@@ -168,7 +170,7 @@ func _step_patch(
 	# Left patch — try seam to neighboring support or air.
 	var top := query.top_support(next.x, next.y, patch.height + SimTolerances.CONTACT_EPS)
 	if not top.is_empty() and absf(float(top.height) - patch.height) <= SimTolerances.SEAM_EPS:
-		# Deck → pipe/ramp at matching lip height is not a seam; acid drop only.
+		# Deck → pipe/ramp at matching lip height is not a seam; free-air leave.
 		if on_deck and _is_slope_kind(int(top.kind)):
 			_enter_air(state, Vector3(state.tangent_velocity.x, state.tangent_velocity.y, 0.0))
 			return

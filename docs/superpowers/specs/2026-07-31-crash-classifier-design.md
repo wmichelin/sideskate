@@ -35,7 +35,7 @@ Guiding intuition (not implemented as a general orientation engine this pass): i
 | Level walls (`bounds` / `ContactRole.BOUNDS`) | Free air or grounded | fall (existing carve-outs below) |
 | Deck walls / volumes (`feature_wall`, deck solid) | Free air or grounded | fall |
 | Ramp **or pipe** outer-back (`feature_wall` reason `"slope outer back"`, ground contain equivalent) | Free air or grounded; not hang remount | fall unless launch-exit / intentional deck-back carve-out |
-| Foreign **pipe** in upper ollie-lip band (`u ≥ 1 - ollie_lip_frac`) | Free air; lip column / body / support_top owning that pipe | **Reject + fall — never Mount** |
+| Foreign **pipe** in upper ollie-lip band (`u ≥ 1 - ollie_lip_frac`), **into-face** only (not with-slope; see [with-slope leave/land](2026-08-01-with-slope-leave-land-wipeout-design.md)) | Free air; lip column / body / support_top owning that pipe | **Reject + fall — never Mount** |
 | Hang + floor/deck **solid or clip** | Hang / X-lock; capsule intersects floor or deck solid (not only clean descending flat Mount) | fall |
 | Hang descending land onto floor or deck | Hang air | fall (already shipped; classifier owns the rule) |
 
