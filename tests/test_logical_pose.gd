@@ -122,7 +122,9 @@ func _centered_y_turn_presentation() -> bool:
 		push_error("Y-turn presentation: apex and depth turns must share local Y")
 		presenter.free()
 		return false
-	var expect_body_y := presenter.board_size.y + presenter.body_size.y * 0.5
+	var expect_body_y := (
+		presenter.board_clearance + presenter.board_size.y + presenter.body_size.y * 0.5
+	)
 	if absf(body.position.y - expect_body_y) > 0.001:
 		push_error("Y-turn presentation: body should stand on board top, got %s" % body.position.y)
 		presenter.free()
@@ -133,8 +135,11 @@ func _centered_y_turn_presentation() -> bool:
 		presenter.free()
 		return false
 	var board_bottom := board.position.y - presenter.board_size.y * 0.5
-	if board_bottom < -0.0001:
-		push_error("Y-turn presentation: board clipped below support plane (%s)" % board_bottom)
+	if board_bottom < presenter.board_clearance - 0.0001:
+		push_error(
+			"Y-turn presentation: board bottom %s below clearance %s"
+			% [board_bottom, presenter.board_clearance]
+		)
 		presenter.free()
 		return false
 	pose.board_yaw = 0.7

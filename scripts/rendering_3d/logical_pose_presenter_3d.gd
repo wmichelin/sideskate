@@ -11,6 +11,8 @@ const CollisionLayersScript := preload("res://scripts/physics/collision_layers.g
 ## Placeholder skater size in meters. Root origin is the feet / ground contact.
 @export var body_size: Vector3 = Vector3(0.18, 0.40, 0.14)
 @export var board_size: Vector3 = Vector3(0.40, 0.05, 0.14)
+## Keep the board bottom this far above the feet/support plane (avoids floor Z-fight).
+@export_range(0.0, 0.05, 0.001) var board_clearance: float = 0.012
 
 var _body: MeshInstance3D
 var _facing_mark: MeshInstance3D
@@ -63,8 +65,8 @@ func _build_meshes() -> void:
 	var box := BoxMesh.new()
 	box.size = body_size
 	_body.mesh = box
-	# Stand on the board top (board bottom sits on the feet/support plane).
-	_body.position = Vector3(0.0, board_size.y + body_size.y * 0.5, 0.0)
+	# Stand on the board top (board floats board_clearance above support).
+	_body.position = Vector3(0.0, board_clearance + board_size.y + body_size.y * 0.5, 0.0)
 	_body.material_override = _body_mat
 	add_child(_body)
 
@@ -81,8 +83,8 @@ func _build_meshes() -> void:
 
 	_board = Node3D.new()
 	_board.name = "Board"
-	# Bottom of board sits on the feet/support plane (never below surface).
-	_board.position = Vector3(0.0, board_size.y * 0.5, 0.0)
+	# Board bottom stays board_clearance above the feet/support plane.
+	_board.position = Vector3(0.0, board_clearance + board_size.y * 0.5, 0.0)
 	add_child(_board)
 
 	var board_half_size := Vector3(board_size.x * 0.5, board_size.y, board_size.z)
@@ -234,9 +236,9 @@ func apply_pose(pose: LogicalPose) -> void:
 		position = world_position
 	scale = Vector3.ONE
 
-	# Board on support plane; rider stands on the board top.
-	var board_pos := Vector3(0.0, board_size.y * 0.5, 0.0)
-	var body_pos := Vector3(0.0, board_size.y + body_size.y * 0.5, 0.0)
+	# Board above support plane; rider stands on the board top.
+	var board_pos := Vector3(0.0, board_clearance + board_size.y * 0.5, 0.0)
+	var body_pos := Vector3(0.0, board_clearance + board_size.y + body_size.y * 0.5, 0.0)
 	var body_basis_yaw := Vector3(0.0, body_yaw, 0.0)
 	var body_scl := Vector3(-face, 1.0, 1.0)
 	if _body and _body.visible:
@@ -291,7 +293,7 @@ func _start_fall_bodies(pose: LogicalPose, feet_world: Vector3) -> void:
 	var impact_point: Vector3 = impact.get("point", Vector3.ZERO)
 	var impact_normal: Vector3 = impact.get("normal", Vector3.ZERO)
 	# Rider stood on the board top while riding — start tumble from that contact.
-	var rider_feet := feet_world + basis * Vector3(0.0, board_size.y, 0.0)
+	var rider_feet := feet_world + basis * Vector3(0.0, board_clearance + board_size.y, 0.0)
 	_rider_fall.global_transform = _rider_fall.transform_for_planes(
 		rider_feet, basis, support_point, support_normal, impact_point, impact_normal
 	)
@@ -310,9 +312,10 @@ func _start_fall_bodies(pose: LogicalPose, feet_world: Vector3) -> void:
 
 	var board_yaw := pose.board_yaw + pose.depth_turn_yaw
 	var board_basis := Basis.from_euler(Vector3(0.0, board_yaw, tilt + lean * deg_to_rad(25.0)))
-	# Board bottom on the support/feet plane (same as riding — never below surface).
+	# Board bottom above the support/feet plane (same clearance as riding).
+	var board_feet := feet_world + board_basis * Vector3(0.0, board_clearance, 0.0)
 	_board_fall.global_transform = _board_fall.transform_for_planes(
-		feet_world, board_basis, support_point, support_normal, impact_point, impact_normal
+		board_feet, board_basis, support_point, support_normal, impact_point, impact_normal
 	)
 	_board_fall.linear_velocity = vel * 0.85
 	_board_fall.angular_velocity = board_basis * Vector3(0.0, lean * 3.0, -lean * 2.0)
