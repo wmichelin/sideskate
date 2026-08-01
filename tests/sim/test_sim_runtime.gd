@@ -78,7 +78,8 @@ func run() -> bool:
 		and _hang_persists_off_edge_z_span()
 		and _hang_depth_transfer_lands_edge_floor()
 		and _hang_depth_transfer_lands_edge_lava()
-		and _deck_skate_off_to_left_pipe_no_wipeout()
+		and _deck_ride_off_rejects_pre_surface_pipe_contact()
+		and _deck_ride_off_mounts_only_on_descending_surface_crossing()
 		and _right_pipe_deck_slow_leave_lands_floor()
 		and _joint_wipeout_fall_tip_stays_approach()
 		and _layered_next_spine_keeps_l1_past_l0_lip()
@@ -6656,27 +6657,36 @@ func _hang_depth_transfer_lands_edge_lava() -> bool:
 	return false
 
 
-## ####(((===== skate-off: free air then with-slope Mount — never wipeout.
-func _deck_skate_off_to_left_pipe_no_wipeout() -> bool:
+## Fixture setup for deck launch into an abutting left pipe.
+func _deck_left_pipe_setup() -> Dictionary:
 	var sim := PlayerSim.new()
 	if not sim.setup_from_path("res://tests/levels/sim/deck_to_left_pipe.ssk"):
-		push_error("deck skate-off: setup")
-		return false
+		return {}
 	var deck: SupportPatch = null
 	var pipe: PipeSurface = null
 	for id in sim.model.patches.keys():
 		var p: SupportPatch = sim.model.patches[id]
 		if int(p.kind) == SimKinds.SurfaceKind.DECK:
 			deck = p
-			break
 	for id in sim.model.pipes.keys():
 		var pp: PipeSurface = sim.model.pipes[id]
 		if int(pp.side) == SimKinds.PipeSide.LEFT:
 			pipe = pp
-			break
 	if deck == null or pipe == null:
-		push_error("deck skate-off: missing deck/pipe")
+		return {}
+	return {"sim": sim, "deck": deck, "pipe": pipe}
+
+
+## A deck edge does not proximity-mount its abutting pipe before the falling
+## segment has crossed that pipe's sampled ride surface.
+func _deck_ride_off_rejects_pre_surface_pipe_contact() -> bool:
+	var setup := _deck_left_pipe_setup()
+	if setup.is_empty():
+		push_error("deck contact: setup")
 		return false
+	var sim: PlayerSim = setup.sim
+	var deck: SupportPatch = setup.deck
+	var pipe: PipeSurface = setup.pipe
 	var z := (deck.z_min + deck.z_max) * 0.5
 	var cx := pipe.coping_x_at(z)
 	sim.state.mode = SimState.Mode.GROUNDED
@@ -6686,24 +6696,54 @@ func _deck_skate_off_to_left_pipe_no_wipeout() -> bool:
 	sim.state.facing = "r"
 	sim.state.clear_hang()
 	var saw_air := false
-	for i in range(90):
-		# Coast — stick accel clears the arc without ride-face contact.
+	for tick in range(12):
+		sim.set_input(Vector2.ZERO, false, false)
+		sim.tick()
+		saw_air = saw_air or sim.state.is_airborne()
+		if sim.state.is_grounded() and sim.state.surface_id == pipe.id:
+			push_error("deck contact: proximity-mounted pipe at tick %s" % tick)
+			return false
+		if sim.state.falling:
+			return saw_air
+	push_error("deck contact: pre-surface pipe face never rejected")
+	return false
+
+
+## The same deck launch may Mount once gravity carries its free-air segment
+## through the sampled pipe ride surface from above.
+func _deck_ride_off_mounts_only_on_descending_surface_crossing() -> bool:
+	var setup := _deck_left_pipe_setup()
+	if setup.is_empty():
+		push_error("deck crossing: setup")
+		return false
+	var sim: PlayerSim = setup.sim
+	var deck: SupportPatch = setup.deck
+	var pipe: PipeSurface = setup.pipe
+	var z := (deck.z_min + deck.z_max) * 0.5
+	var theta := 0.45 * PI * 0.5
+	var x := pipe.x_at_theta(z, theta)
+	var ride_h := pipe.height_at_theta(z, theta)
+	sim.state.mode = SimState.Mode.AIRBORNE
+	sim.state.surface_id = ""
+	sim.state.air_launch_surface_id = deck.id
+	sim.state.position = Vector3(x, z, ride_h + 18.0)
+	sim.state.velocity = Vector3(0.0, 0.0, -240.0)
+	sim.state.note_air_height(sim.state.position.z)
+	for tick in range(20):
 		sim.set_input(Vector2.ZERO, false, false)
 		sim.tick()
 		if sim.state.falling:
-			push_error(
-				"deck skate-off: wipeout on leave i=%s x=%.1f h=%.1f sid=%s"
-				% [i, sim.state.position.x, sim.state.position.z, sim.state.surface_id]
-			)
+			push_error("deck crossing: fell instead of mounting at tick %s" % tick)
 			return false
-		if sim.state.is_airborne():
-			saw_air = true
-		if saw_air and sim.state.is_grounded() and sim.state.surface_id == pipe.id:
+		if sim.state.is_grounded():
+			if sim.state.surface_id != pipe.id:
+				push_error(
+					"deck crossing: landed %s, want %s"
+					% [sim.state.surface_id, pipe.id]
+				)
+				return false
 			return true
-	push_error(
-		"deck skate-off: never mounted pipe mode=%s sid=%s pos=%s air=%s"
-		% [sim.state.mode, sim.state.surface_id, sim.state.position, saw_air]
-	)
+	push_error("deck crossing: never mounted sampled ride surface")
 	return false
 
 
