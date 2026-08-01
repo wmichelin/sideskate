@@ -7,6 +7,7 @@ func run() -> bool:
 		_lerp_midpoint()
 		and _lerp_flags()
 		and _centered_y_turn_presentation()
+		and _board_yaw_tracker_rules()
 		and _fall_box_stays_above_support_planes()
 		and _fall_box_stays_on_impact_approach_side()
 		and _fall_camera_tracks_x_locks_yz()
@@ -110,6 +111,39 @@ func _centered_y_turn_presentation() -> bool:
 		push_error("Y-turn presentation: body center moved during turn")
 		return false
 	presenter.free()
+	return true
+
+
+func _board_yaw_tracker_rules() -> bool:
+	var t := BoardYawTracker.new()
+	if absf(t.tick(1.0, 0.0, true) - 0.0) > 0.001:
+		push_error("snap right should be 0")
+		return false
+	# Facing flip alone: no change
+	var y0 := t.tick(-1.0, 0.0, false)
+	if absf(y0) > 0.001:
+		push_error("facing flip must not change board_yaw, got %s" % y0)
+		return false
+	# Apex co-rotation: facing_yaw 0 → -PI
+	var y1 := t.tick(-1.0, -PI * 0.5, false)
+	if absf(y1 - (-PI * 0.5)) > 0.01:
+		push_error("apex mid delta failed: %s" % y1)
+		return false
+	var y2 := t.tick(-1.0, -PI, false)
+	if absf(y2 - (-PI)) > 0.01:
+		push_error("apex end delta failed: %s" % y2)
+		return false
+	# Handoff: facing_yaw -PI → 0 must not spin the board back
+	var y3 := t.tick(1.0, 0.0, false)
+	if absf(y3 - (-PI)) > 0.01 and absf(y3 - PI) > 0.01:
+		# -PI and PI are equivalent orientation; accept either
+		push_error("handoff must keep board orientation, got %s" % y3)
+		return false
+	# Depth turn is NOT the tracker's job — ensure force_snap restore
+	var y4 := t.tick(1.0, 0.0, true)
+	if absf(y4) > 0.001:
+		push_error("force_snap right failed: %s" % y4)
+		return false
 	return true
 
 
