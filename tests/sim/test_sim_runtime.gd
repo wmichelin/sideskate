@@ -81,6 +81,7 @@ func run() -> bool:
 		and _deck_ride_off_corridors_seam_support_contact()
 		and _deck_ride_off_mounts_only_on_descending_surface_crossing()
 		and _deck_ride_off_rejects_actual_pipe_solid()
+		and _falling_deck_launch_rejects_abutting_l1_pipe()
 		and _right_pipe_deck_slow_leave_lands_floor()
 		and _joint_wipeout_fall_tip_stays_approach()
 		and _layered_next_spine_keeps_l1_past_l0_lip()
@@ -6792,6 +6793,93 @@ func _deck_ride_off_rejects_actual_pipe_solid() -> bool:
 			return true
 	push_error("deck solid: never rejected pipe solid")
 	return false
+
+
+## A deck-launched fall must Reject the abutting L1 pipe — never Corridor/Mount
+## through its solid while falling.
+func _falling_deck_launch_rejects_abutting_l1_pipe() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
+		push_error("falling L1 deck launch: setup")
+		return false
+	var target: PipeSurface = null
+	var launch_deck: SupportPatch = null
+	for id in sim.model.pipes.keys():
+		var pipe: PipeSurface = sim.model.pipes[id]
+		if int(pipe.side) != SimKinds.PipeSide.LEFT:
+			continue
+		if not pipe.id.contains("_L1_"):
+			continue
+		var z := (pipe.z_min + pipe.z_max) * 0.5
+		var cope: CopingEdge = sim.model.copings.get(pipe.coping_id)
+		var span: CopingSpan = cope.span_at_z(z) if cope != null else null
+		if span == null or span.outward_deck_id.is_empty():
+			continue
+		var deck: SupportPatch = sim.model.patches.get(span.outward_deck_id)
+		if deck != null and deck.height > 0.0:
+			target = pipe
+			launch_deck = deck
+			break
+	if target == null or launch_deck == null:
+		push_error("falling L1 deck launch: no L1 left pipe with outward deck")
+		return false
+	var z := (target.z_min + target.z_max) * 0.5
+	var outward := target.outward_sign()
+	var cope_x := target.coping_x_at(z)
+	sim.state.mode = SimState.Mode.AIRBORNE
+	sim.state.surface_id = ""
+	sim.state.air_launch_surface_id = launch_deck.id
+	sim.state.position = Vector3(cope_x + outward * 5.0, z, launch_deck.height)
+	sim.state.velocity = Vector3(-outward * 180.0, 0.0, -80.0)
+	sim.state.note_air_height(sim.state.position.z)
+	sim.begin_fall()
+	var saw_reject_contact := false
+	var start_x := sim.state.position.x
+	for _tick in range(90):
+		sim.set_input(Vector2.ZERO, false, false)
+		sim.tick()
+		if sim.state.is_grounded() and sim.state.surface_id == target.id:
+			push_error(
+				"falling L1 deck launch: mounted abutting pipe mid-fall sid=%s"
+				% target.id
+			)
+			return false
+		# Deck-seam Corridor while falling lets the bout walk the solid column
+		# above the ride surface — reject that containment breach.
+		if sim.state.falling \
+				and target.contains_solid_xz(sim.state.position.x, z) \
+				and sim.state.position.z < target.bound_h_max - SimTolerances.PIPE_TOP_SKIM_BAND:
+			push_error(
+				"falling L1 deck launch: Corridored through abutting pipe solid x=%.1f h=%.1f"
+				% [sim.state.position.x, sim.state.position.z]
+			)
+			return false
+		var proj := target.project(sim.state.position.x, z, sim.state.position.z)
+		if bool(proj.get("ok", false)) and sim.state.position.z < float(proj.point.z) - 0.01:
+			push_error(
+				"falling L1 deck launch: tunneled below ride surface h=%.1f ride=%.1f"
+				% [sim.state.position.z, float(proj.point.z)]
+			)
+			return false
+		# Far-side crossing through the pipe volume is also a containment fail.
+		var far_side := (
+			(outward < 0.0 and sim.state.position.x > cope_x + 40.0)
+			or (outward > 0.0 and sim.state.position.x < cope_x - 40.0)
+		)
+		if sim.state.falling and far_side:
+			push_error(
+				"falling L1 deck launch: crossed far side of pipe start_x=%.1f x=%.1f"
+				% [start_x, sim.state.position.x]
+			)
+			return false
+		if sim.state.falling and sim.state.position.x != start_x:
+			# Bounce/park back on the approach deck counts as having contacted.
+			if absf(sim.state.position.x - start_x) > 1.0:
+				saw_reject_contact = true
+	if not saw_reject_contact and not sim.state.falling:
+		push_error("falling L1 deck launch: fall cleared without abutting contact")
+		return false
+	return true
 
 
 ## Joint wipeout parks on approach side with lean away from the face.

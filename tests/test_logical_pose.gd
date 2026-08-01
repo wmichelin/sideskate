@@ -3,7 +3,13 @@ extends RefCounted
 
 
 func run() -> bool:
-	return _lerp_midpoint() and _lerp_flags() and _centered_y_turn_presentation()
+	return (
+		_lerp_midpoint()
+		and _lerp_flags()
+		and _centered_y_turn_presentation()
+		and _fall_box_stays_above_support_planes()
+		and _fall_box_stays_on_impact_approach_side()
+	)
 
 
 func _lerp_midpoint() -> bool:
@@ -93,4 +99,69 @@ func _centered_y_turn_presentation() -> bool:
 		push_error("Y-turn presentation: body center moved during turn")
 		return false
 	presenter.free()
+	return true
+
+
+func _box_corners(xf: Transform3D, size: Vector3) -> Array[Vector3]:
+	var out: Array[Vector3] = []
+	for sx in [-1.0, 1.0]:
+		for sy in [-1.0, 1.0]:
+			for sz in [-1.0, 1.0]:
+				out.append(xf * Vector3(
+					sx * size.x * 0.5,
+					sy * size.y * 0.5,
+					sz * size.z * 0.5
+				))
+	return out
+
+
+func _assert_box_on_plane(
+	xf: Transform3D, size: Vector3, point: Vector3, normal: Vector3, label: String
+) -> bool:
+	for corner in _box_corners(xf, size):
+		if normal.dot(corner - point) < -0.0001:
+			push_error("%s: FallBox crossed plane at %s" % [label, corner])
+			return false
+	return true
+
+
+func _fall_box_stays_above_support_planes() -> bool:
+	var constraint := FallBoxConstraint.new()
+	constraint.box_size = Vector3(0.18, 0.40, 0.14)
+	var basis := Basis.from_euler(Vector3(0.0, 0.0, deg_to_rad(55.0)))
+	var xf := constraint.transform_for_planes(
+		Vector3.ZERO, basis, Vector3.ZERO, Vector3.UP, Vector3.ZERO, Vector3.ZERO
+	)
+	if not _assert_box_on_plane(xf, constraint.box_size, Vector3.ZERO, Vector3.UP, "flat"):
+		constraint.free()
+		return false
+	var tilt_n := Vector3(0.6, 0.0, 0.8).normalized()
+	xf = constraint.transform_for_planes(
+		Vector3.ZERO, basis, Vector3.ZERO, tilt_n, Vector3.ZERO, Vector3.ZERO
+	)
+	if not _assert_box_on_plane(xf, constraint.box_size, Vector3.ZERO, tilt_n, "tilted"):
+		constraint.free()
+		return false
+	constraint.free()
+	return true
+
+
+func _fall_box_stays_on_impact_approach_side() -> bool:
+	var constraint := FallBoxConstraint.new()
+	constraint.box_size = Vector3(0.18, 0.40, 0.14)
+	var basis := Basis.from_euler(Vector3(0.0, 0.0, deg_to_rad(55.0)))
+	var impact_point := Vector3(-0.2, 0.0, 0.0)
+	var impact_normal := Vector3(1.0, 0.0, 0.0)
+	var xf := constraint.transform_for_planes(
+		Vector3.ZERO, basis, Vector3.ZERO, Vector3.UP, impact_point, impact_normal
+	)
+	if not _assert_box_on_plane(xf, constraint.box_size, Vector3.ZERO, Vector3.UP, "impact support"):
+		constraint.free()
+		return false
+	if not _assert_box_on_plane(
+		xf, constraint.box_size, impact_point, impact_normal, "impact approach"
+	):
+		constraint.free()
+		return false
+	constraint.free()
 	return true
