@@ -44,6 +44,10 @@ func is_crash(state: SimState, contact: Dictionary, ctx: Dictionary = {}) -> boo
 		return true
 	if kind == "bounds" or role == SimKinds.ContactRole.BOUNDS:
 		return true
+	# Free-air into an open climb wall / lip fence (no abutting outward `#`).
+	# Deck-backed wall tops stay fly-out / deck-out playable.
+	if kind == "wall" or role == SimKinds.ContactRole.WALL_CLIMB:
+		return _wall_is_open_fence(sid, state.position.y)
 	if kind == "feature_wall":
 		# Open-side cage of the launch slope's own air-out `#` is not a wipeout.
 		if is_launch_outward_deck(state, sid, ctx):
@@ -60,6 +64,34 @@ func is_crash(state: SimState, contact: Dictionary, ctx: Dictionary = {}) -> boo
 	if is_foreign_pipe_lip_crash(state, contact, ctx):
 		return true
 	return false
+
+
+## Climb wall with no abutting outward `#` — free-air smash / lip fence wipeout.
+func _wall_is_open_fence(wall_id: String, z: float) -> bool:
+	if model == null or wall_id.is_empty() or not model.walls.has(wall_id):
+		return false
+	var wall: WallSurface = model.walls[wall_id]
+	var ws: Dictionary = wall.sample_at_z(z)
+	if ws.is_empty():
+		return true
+	var wx := float(ws.x)
+	var cope: CopingEdge = model.copings.get(wall.source_coping_id)
+	if cope != null:
+		var span: CopingSpan = cope.span_at_z(z)
+		if span != null and not span.outward_deck_id.is_empty():
+			return false
+	for pid in model.patches.keys():
+		var pad: SupportPatch = model.patches[pid]
+		if int(pad.kind) != SimKinds.SurfaceKind.DECK:
+			continue
+		if z < pad.z_min - SimTolerances.ALIGN_EPS or z > pad.z_max + SimTolerances.ALIGN_EPS:
+			continue
+		if (
+			absf(pad.x_min - wx) <= SimTolerances.ALIGN_EPS
+			or absf(pad.x_max - wx) <= SimTolerances.ALIGN_EPS
+		):
+			return false
+	return true
 
 
 ## Free-air into the outward `#` that backs the launch pipe/ramp coping.
@@ -105,6 +137,10 @@ func is_foreign_pipe_lip_crash(
 	var u := float(ctx.get("u", NAN))
 	if is_nan(u):
 		u = estimate_pipe_u(pipe, state.position)
+	if is_nan(u):
+		# Outside the projectable solid (common on the outer back) — still a
+		# lip-band crash when height sits in the upper ollie band.
+		u = estimate_pipe_u_from_height(pipe, state.position.y, state.position.z)
 	if is_nan(u):
 		return false
 	return u >= 1.0 - clampf(ollie_lip_frac, 0.0, 1.0)
@@ -185,7 +221,28 @@ func estimate_pipe_u(pipe: PipeSurface, at: Vector3) -> float:
 	var proj := pipe.project(at.x, at.y, at.z)
 	if bool(proj.get("ok", false)):
 		return float(proj.u)
-	return NAN
+	return estimate_pipe_u_from_height(pipe, at.y, at.z)
+
+
+## Recover pipe `u` from height when XZ sits outside the projectable solid
+## (outer-back approaches). Pipe: h = base + rise·(1 − cos(u·π/2)).
+func estimate_pipe_u_from_height(pipe: PipeSurface, z: float, h: float) -> float:
+	if pipe == null:
+		return NAN
+	var z_ref := clampf(z, pipe.z_min, pipe.z_max - 0.001)
+	var sample: Dictionary = pipe.sample_at_z(z_ref)
+	if sample.is_empty():
+		return NAN
+	var base := float(sample.base_height)
+	var rise := float(sample.get("rise", sample.radius))
+	if rise < 0.001:
+		return NAN
+	if h < base - SimTolerances.CONTACT_EPS:
+		return NAN
+	# Clamp into the loft so slightly-above-peak hits still read as lip u.
+	var t := clampf((h - base) / rise, 0.0, 1.0)
+	var cos_th := clampf(1.0 - t, -1.0, 1.0)
+	return acos(cos_th) / (PI * 0.5)
 
 
 func _hang_flat_crash(state: SimState, contact: Dictionary, ctx: Dictionary) -> bool:

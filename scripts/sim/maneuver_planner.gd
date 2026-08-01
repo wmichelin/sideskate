@@ -199,13 +199,17 @@ func try_fly_out(state: SimState, input_x: float, input_z: float) -> Dictionary:
 	var ahead_col := cell.x + (1 if out > 0.0 else -1)
 	if not model.is_playable_cell(ahead_col, cell.y):
 		return _reject("no outward playable cell")
-	# Must not tunnel through another pipe body at this height.
+	# Must not tunnel through a foreign pipe/wall at this height. The climb /
+	# union wall on this coping is the fly-out plane itself (including the
+	# geometric top band) — never treat it as a blocked corridor.
 	var ahead_x := float(samp.coping_x) + out * model.cell_w
 	var clear := query.sweep_capsule(
 		pos, Vector3(ahead_x, pos.y, pos.z)
 	)
 	if not clear.is_empty() and str(clear.get("kind", "")) in ["wall", "pipe"]:
-		return _reject("outward corridor blocked")
+		var hit_sid := str(clear.get("surface_id", ""))
+		if not _fly_out_hit_is_own_coping_wall(pipe, cope, hit_sid):
+			return _reject("outward corridor blocked")
 	var plan := ManeuverPlan.new()
 	plan.kind = ManeuverPlan.Kind.FLY_OUT
 	plan.source_coping_id = cope.id
@@ -222,6 +226,24 @@ func try_fly_out(state: SimState, input_x: float, input_z: float) -> Dictionary:
 	plan.land_time = 0.0 ## immediate free-air unlock
 	plan.travel_sign = out
 	return {"ok": true, "plan": plan}
+
+
+## Wall on this pipe's coping (source or upper-partner joint) — fly-out leave plane.
+func _fly_out_hit_is_own_coping_wall(
+	pipe: PipeSurface, cope: CopingEdge, hit_sid: String
+) -> bool:
+	if pipe == null or cope == null or hit_sid.is_empty() or model == null:
+		return false
+	if not model.walls.has(hit_sid):
+		return false
+	var wall: WallSurface = model.walls[hit_sid]
+	if wall.source_coping_id == cope.id:
+		return true
+	if wall.source_pipe_id == pipe.id:
+		return true
+	if wall.upper_partner_pipe_id == pipe.id:
+		return true
+	return false
 
 
 func _reject(reason: String) -> Dictionary:

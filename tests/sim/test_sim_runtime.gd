@@ -20,6 +20,13 @@ func run() -> bool:
 		and _ollie_airborne_release_uses_launch_pipe_height()
 		and _wall_ollie_hangs_x_locked()
 		and _pipe_lip_ollie_respects_height_not_along()
+		and _layered_wall_lip_ollie_peak_is_ollie_height_above_lip()
+		and _layered_ollie_into_l1_pipe_back_crashes()
+		and _layered_floor_ollie_into_joint_rear_falls_clear()
+		and _layered_past_joint_fall_does_not_tunnel_partner()
+		and _layered_joint_crash_fall_leans_away_from_wall()
+		and _layered_union_wall_crash_does_not_tunnel()
+		and _layered_union_open_lips_fly_out()
 		and _ollie_jump_caps_at_full_charge()
 		and _ollie_jump_airborne_adds_impulse()
 		and _ramp_air_ollie_peak_matches_lip_ollie()
@@ -61,7 +68,7 @@ func run() -> bool:
 		and _spine_deck_solid_from_floor()
 		and _land_snaps_out_of_pipe_solid()
 		and _no_auto_opposite_pipe_snap()
-		and _layered_inbound_right_pipe_lands()
+		and _layered_outer_wall_crashes_not_warp()
 		and _layered_hole_not_invisible_wall()
 		and _deck_hash_no_pin_from_floor()
 		and _l0_lava_gap_no_phantom_wall_climb()
@@ -2238,11 +2245,8 @@ func _pipe_lip_ollie_respects_height_not_along() -> bool:
 		var anchor := sim.query.edge_anchor_sample(edge, z)
 		if not anchor.is_empty():
 			hang_z = float(anchor.height)
-	var gap := hang_z - takeoff_h
-	var clearance := 0.0
-	if gap > 0.5:
-		clearance = sqrt(2.0 * g * gap)
-	var want := sqrt(2.0 * g * 100.0) + clearance \
+	# One ballistic vz to hang_z + ollie_height (not clearance-vz + ollie-vz).
+	var want := sqrt(2.0 * g * maxf((hang_z + 100.0) - takeoff_h, 0.0)) \
 			+ SimTolerances.GRAVITY * SimTolerances.FIXED_DT
 	if absf(sim.state.velocity.z - want) > 2.0:
 		push_error(
@@ -2259,6 +2263,562 @@ func _pipe_lip_ollie_respects_height_not_along() -> bool:
 		push_error(
 			"pipe height slider dead: peak@20=%.1f peak@120=%.1f"
 			% [peak_lo, peak_hi]
+		)
+		return false
+	return true
+
+
+## Free-air into an open L1 pipe outer back must fall — never warp through the
+## shell onto the ride surface (u≈1 skating down). Deck-backed L1 pipes hide
+## that face behind `#`; open islands expose it.
+func _layered_ollie_into_l1_pipe_back_crashes() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
+		push_error("l1 back crash: setup")
+		return false
+	sim.fall_duration = 5.0
+	var l1: PipeSurface = sim.model.pipes.get("pipe_8_L1_S0")
+	if l1 == null:
+		push_error("l1 back crash: missing open L1 left pipe")
+		return false
+	var z := clampf(250.0, l1.z_min + 5.0, l1.z_max - 5.0)
+	var cope_x := l1.coping_x_at(z)
+	var peak := l1.height_at_theta(z, PI * 0.5)
+	var out := l1.outward_sign()
+	var floor_id := "floor_5_L1"
+	if not sim.model.patches.has(floor_id):
+		push_error("l1 back crash: no L1 floor near open pipe")
+		return false
+	sim.state.mode = SimState.Mode.AIRBORNE
+	sim.state.surface_id = ""
+	sim.state.clear_hang()
+	sim.state.maneuver = null
+	sim.state.air_launch_surface_id = floor_id
+	sim.state.free_air_upright = true
+	sim.state.position = Vector3(cope_x + out * 40.0, z, peak + 20.0)
+	sim.state.velocity = Vector3(-out * 180.0, 0.0, -280.0)
+	sim.state.note_air_height(sim.state.position.z)
+	for _i in range(90):
+		sim.set_input(Vector2(-out, 0.0), false, false)
+		sim.tick()
+		if sim.state.is_grounded() and sim.state.surface_id == l1.id:
+			push_error(
+				"l1 back crash: warped onto L1 pipe u=%.2f pos=%s"
+				% [sim.state.u, sim.state.position]
+			)
+			return false
+		if sim.state.falling:
+			return true
+	push_error(
+		"l1 back crash: never fell mode=%s surf=%s pos=%s"
+		% [sim.state.mode, sim.state.surface_id, sim.state.position]
+	)
+	return false
+
+
+## Floor ollie toward L0 right pipe (not on it yet) into the L1/joint rear must
+## fall on the approach side of the joint — not teleport through the pipe column
+## to the opposite lip, and not cross past the coping into L1.
+func _layered_floor_ollie_into_joint_rear_falls_clear() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
+		push_error("joint rear fall: setup")
+		return false
+	sim.fall_duration = 5.0
+	sim.fall_stop_duration = 0.85
+	sim.ollie_height_flat = 160.0
+	sim.ollie_charge_ms = 0.0
+	sim.ollie_available = true
+	sim.ollie_charge = 1.0
+	var l0: PipeSurface = sim.model.pipes.get("pipe_1_L0_S1")
+	if l0 == null:
+		push_error("joint rear fall: missing L0 right pipe")
+		return false
+	var z := 250.0
+	var wx := l0.coping_x_at(z)
+	var lip := l0.bound_x_min
+	sim.state.mode = SimState.Mode.GROUNDED
+	sim.state.surface_id = "floor_0_L0"
+	sim.state.position = Vector3(wx - 250.0, z, 0.0)
+	sim.state.tangent_velocity = Vector2(420.0, 0.0)
+	sim.state.facing = "r"
+	var fell := false
+	var fall_x_min := INF
+	var fall_x_max := -INF
+	for i in range(120):
+		sim.set_input(Vector2(1, 0), false, false, i < 3, i == 3)
+		sim.tick()
+		if sim.state.falling:
+			fell = true
+			fall_x_min = minf(fall_x_min, sim.state.position.x)
+			fall_x_max = maxf(fall_x_max, sim.state.position.x)
+			if sim.state.position.x > wx + SimTolerances.CONTACT_EPS:
+				push_error(
+					"joint rear fall: tunneled past joint x=%.1f wx=%.1f h=%.1f"
+					% [sim.state.position.x, wx, sim.state.position.z]
+				)
+				return false
+		if fell and sim.state.is_grounded():
+			# Must not have been walked across the bowl to the opposite lip.
+			if fall_x_max - fall_x_min > (wx - lip) * 0.55:
+				push_error(
+					"joint rear fall: walked through pipe column min=%.1f max=%.1f lip=%.1f wx=%.1f"
+					% [fall_x_min, fall_x_max, lip, wx]
+				)
+				return false
+			if sim.state.position.x > wx + SimTolerances.CONTACT_EPS:
+				push_error(
+					"joint rear fall: landed past joint x=%.1f wx=%.1f sid=%s"
+					% [sim.state.position.x, wx, sim.state.surface_id]
+				)
+				return false
+			return true
+	if not fell:
+		push_error(
+			"joint rear fall: never fell mode=%s pos=%s"
+			% [sim.state.mode, sim.state.position]
+		)
+		return false
+	push_error(
+		"joint rear fall: fell but never landed clear pos=%s"
+		% sim.state.position
+	)
+	return false
+
+
+## Joint/rear crash fall must flop away from the wall (approach side), with feet
+## clear of the face — facing-into-wall lean parked the fall RigidBody in mesh.
+func _layered_joint_crash_fall_leans_away_from_wall() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
+		push_error("joint lean: setup")
+		return false
+	sim.fall_duration = 5.0
+	sim.fall_stop_duration = 0.85
+	var wall: WallSurface = sim.model.walls.get("wall_span_coping_pipe_1_L0_S1_0")
+	if wall == null:
+		push_error("joint lean: missing wall")
+		return false
+	var z := 250.0
+	var ws: Dictionary = wall.sample_at_z(z)
+	var wx := float(ws.x)
+	var top := float(ws.top_height)
+	sim.state.mode = SimState.Mode.AIRBORNE
+	sim.state.surface_id = ""
+	sim.state.clear_hang()
+	sim.state.maneuver = null
+	sim.state.free_air_upright = true
+	sim.state.air_launch_surface_id = "floor_0_L0"
+	sim.state.facing = "r"
+	sim.state.position = Vector3(wx - 40.0, z, top - 25.0)
+	sim.state.velocity = Vector3(500.0, 0.0, -80.0)
+	sim.state.note_air_height(sim.state.position.z)
+	for _i in range(40):
+		sim.set_input(Vector2(1, 0), false, false)
+		sim.tick()
+		if sim.state.falling:
+			if sim.state.fall_lean_sign >= 0.0:
+				push_error(
+					"joint lean: expected approach lean < 0 got %.1f (facing into wall)"
+					% sim.state.fall_lean_sign
+				)
+				return false
+			if sim.state.position.x > wx - SimTolerances.WALL_REJECT_CLEAR + 0.5:
+				push_error(
+					"joint lean: feet inside clear band x=%.1f wx=%.1f clear=%.1f"
+					% [sim.state.position.x, wx, SimTolerances.WALL_REJECT_CLEAR]
+				)
+				return false
+			return true
+	push_error("joint lean: never fell")
+	return false
+
+
+## Past the joint coping while falling must bounce on the approach side — never
+## walk +X through the partner pipe solid to the far lip.
+func _layered_past_joint_fall_does_not_tunnel_partner() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
+		push_error("past joint fall: setup")
+		return false
+	sim.fall_duration = 5.0
+	sim.fall_stop_duration = 0.85
+	var l0: PipeSurface = sim.model.pipes.get("pipe_1_L0_S1")
+	var l1: PipeSurface = sim.model.pipes.get("pipe_8_L1_S0")
+	if l0 == null or l1 == null:
+		push_error("past joint fall: missing pipes")
+		return false
+	var z := 250.0
+	var wx := l0.coping_x_at(z)
+	sim.state.mode = SimState.Mode.AIRBORNE
+	sim.state.surface_id = ""
+	sim.state.clear_hang()
+	sim.state.maneuver = null
+	sim.state.free_air_upright = true
+	sim.state.air_launch_surface_id = "floor_0_L0"
+	sim.state.facing = "r"
+	sim.state.falling = true
+	sim.state.fall_elapsed = 0.0
+	sim.state.fall_start_vx = 400.0
+	sim.state.fall_start_vy = 0.0
+	sim.state.position = Vector3(wx + 5.0, z, 90.0)
+	sim.state.velocity = Vector3(400.0, 0.0, -120.0)
+	sim.state.note_air_height(90.0)
+	for _i in range(40):
+		sim.set_input(Vector2(1, 0), false, false)
+		sim.tick()
+		if sim.state.position.x > wx + 40.0:
+			push_error(
+				"past joint fall: tunneled into L1 x=%.1f wx=%.1f h=%.1f s1=%s"
+				% [
+					sim.state.position.x,
+					wx,
+					sim.state.position.z,
+					l1.contains_solid_xz(sim.state.position.x, z),
+				]
+			)
+			return false
+	return true
+
+
+## L→R into the L0/L1 union wall must fall and stay on the bowl side — fall_start
+## planar must not reinject through a wrong wall normal (partner outward).
+func _layered_union_wall_crash_does_not_tunnel() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
+		push_error("union wall: setup")
+		return false
+	sim.fall_duration = 5.0
+	sim.fall_stop_duration = 0.85
+	var wall: WallSurface = sim.model.walls.get("wall_span_coping_pipe_2_L0_S0_0")
+	if wall == null or wall.upper_partner_pipe_id.is_empty():
+		push_error("union wall: missing L0→L1 right wall")
+		return false
+	var z := 250.0
+	var ws: Dictionary = wall.sample_at_z(z)
+	var wx := float(ws.x)
+	var top := float(ws.top_height)
+	sim.state.mode = SimState.Mode.AIRBORNE
+	sim.state.surface_id = ""
+	sim.state.clear_hang()
+	sim.state.maneuver = null
+	sim.state.free_air_upright = true
+	sim.state.air_launch_surface_id = "floor_5_L1"
+	sim.state.facing = "r"
+	sim.state.position = Vector3(wx - 50.0, z, top - 30.0)
+	sim.state.velocity = Vector3(300.0, 0.0, -100.0)
+	sim.state.note_air_height(sim.state.position.z)
+	var fell := false
+	for _i in range(100):
+		sim.set_input(Vector2(1, 0), false, false)
+		sim.tick()
+		if sim.state.falling:
+			fell = true
+		if sim.state.position.x > wx + SimTolerances.CONTACT_EPS:
+			push_error(
+				"union wall: tunneled past face x=%.1f wx=%.1f fall=%s vx=%.1f start=%.1f"
+				% [
+					sim.state.position.x,
+					wx,
+					sim.state.falling,
+					sim.state.velocity.x,
+					sim.state.fall_start_vx,
+				]
+			)
+			return false
+	if not fell:
+		push_error("union wall: never fell")
+		return false
+	return true
+
+
+## Regression: L0↔L1 open union lips must stick-fly-out past the joint.
+## Failure modes this pins (do not reintroduce):
+## - try_fly_out rejects "outward corridor blocked" on the own joint wall
+## - above-top wall lip fence keeps corridor blocked forever after the lip frame
+## - unlock then Reject on the lip seam before X clears the coping
+func _layered_union_open_lips_fly_out() -> bool:
+	var z := 250.0
+	if not _union_fly_out_pipe_clears_joint("pipe_9_L1_S1", z):
+		return false
+	if not _union_fly_out_pipe_clears_joint("pipe_8_L1_S0", z):
+		return false
+	if not _union_fly_out_wall_clears_joint("wall_span_coping_pipe_1_L0_S1_0", z):
+		return false
+	if not _union_fly_out_wall_clears_joint("wall_span_coping_pipe_2_L0_S0_0", z):
+		return false
+	return true
+
+
+func _union_fly_out_pipe_clears_joint(pipe_id: String, z: float) -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
+		push_error("union fly-out: setup")
+		return false
+	var pipe: PipeSurface = sim.model.pipes.get(pipe_id)
+	if pipe == null:
+		push_error("union fly-out: missing %s" % pipe_id)
+		return false
+	var out := pipe.outward_sign()
+	var wx := pipe.coping_x_at(z)
+	var lip_h := pipe.height_at_theta(z, PI * 0.5)
+	# Planner must accept at lip and above — own joint wall is not a corridor block.
+	if not _planner_fly_out_ok_at_hang(sim, pipe, wx, z, lip_h, out, pipe_id):
+		return false
+	if not _planner_fly_out_ok_at_hang(sim, pipe, wx, z, lip_h + 20.0, out, pipe_id):
+		return false
+	var u := 0.95
+	var th := u * PI * 0.5
+	sim.state.mode = SimState.Mode.GROUNDED
+	sim.state.surface_id = pipe.id
+	sim.state.u = u
+	sim.state.v = 0.5
+	sim.state.position = Vector3(pipe.x_at_theta(z, th), z, pipe.height_at_theta(z, th))
+	sim.state.tangent_velocity = Vector2(600.0, 0.0)
+	sim.state.facing = "r" if out > 0.0 else "l"
+	sim.state.clear_hang()
+	sim.state.falling = false
+	sim.state.request_fall = false
+	return _stick_fly_out_clears_coping(sim, wx, out, pipe_id)
+
+
+func _union_fly_out_wall_clears_joint(wall_id: String, z: float) -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
+		push_error("union wall fly-out: setup")
+		return false
+	var wall: WallSurface = sim.model.walls.get(wall_id)
+	if wall == null or wall.upper_partner_pipe_id.is_empty():
+		push_error("union wall fly-out: missing joint %s" % wall_id)
+		return false
+	var src: PipeSurface = sim.model.pipes.get(wall.source_pipe_id)
+	if src == null:
+		push_error("union wall fly-out: no source for %s" % wall_id)
+		return false
+	var out := src.outward_sign()
+	var ws: Dictionary = wall.sample_at_z(z)
+	var wx := float(ws.x)
+	var top := float(ws.top_height)
+	if not _planner_fly_out_ok_at_wall_hang(sim, wall, src, wx, z, top, out, wall_id):
+		return false
+	if not _planner_fly_out_ok_at_wall_hang(
+		sim, wall, src, wx, z, top + 20.0, out, wall_id
+	):
+		return false
+	sim.state.mode = SimState.Mode.GROUNDED
+	sim.state.surface_id = wall.id
+	sim.state.u = 0.9
+	sim.state.v = 0.5
+	sim.state.position = wall.position_at(z, 0.9)
+	sim.state.tangent_velocity = Vector2(700.0, 0.0)
+	sim.state.facing = "r" if out > 0.0 else "l"
+	sim.state.clear_hang()
+	sim.state.falling = false
+	sim.state.request_fall = false
+	var hung := false
+	for _i in range(40):
+		sim.set_input(Vector2.ZERO, false, false)
+		sim.tick()
+		if sim.state.is_hanging():
+			hung = true
+			break
+	if not hung:
+		push_error("union wall fly-out: %s never hung" % wall_id)
+		return false
+	return _stick_fly_out_clears_coping(sim, wx, out, wall_id)
+
+
+func _planner_fly_out_ok_at_hang(
+	sim: PlayerSim,
+	pipe: PipeSurface,
+	wx: float,
+	z: float,
+	h: float,
+	out: float,
+	tag: String,
+) -> bool:
+	var hang_id := ""
+	for eid in sim.model.edges.keys():
+		var e: TopologyEdge = sim.model.edges[eid]
+		var samp: Dictionary = sim.query.edge_anchor_sample(e, z)
+		if str(samp.get("source_surface_id", "")) == pipe.id:
+			hang_id = eid
+			break
+	if hang_id.is_empty():
+		push_error("union fly-out: %s no hang edge" % tag)
+		return false
+	sim.state.mode = SimState.Mode.AIRBORNE
+	sim.state.surface_id = ""
+	sim.state.begin_hang(hang_id)
+	sim.state.air_launch_surface_id = pipe.id
+	sim.state.position = Vector3(wx, z, h)
+	sim.state.velocity = Vector3(0.0, 0.0, 180.0)
+	sim.state.facing = "r" if out > 0.0 else "l"
+	sim.state.falling = false
+	sim.state.request_fall = false
+	var fo: Dictionary = sim.planner.try_fly_out(sim.state, out, 0.0)
+	if not bool(fo.get("ok", false)):
+		push_error(
+			"union fly-out: planner blocked %s at h=%.1f reason=%s"
+			% [tag, h, fo.get("reason", "")]
+		)
+		return false
+	return true
+
+
+func _planner_fly_out_ok_at_wall_hang(
+	sim: PlayerSim,
+	wall: WallSurface,
+	src: PipeSurface,
+	wx: float,
+	z: float,
+	h: float,
+	out: float,
+	tag: String,
+) -> bool:
+	var hang_id := ""
+	for eid in sim.model.edges.keys():
+		var e: TopologyEdge = sim.model.edges[eid]
+		var samp: Dictionary = sim.query.edge_anchor_sample(e, z)
+		if str(samp.get("source_surface_id", "")) == wall.id \
+				and absf(float(samp.get("height", -1.0)) - float(wall.sample_at_z(z).top_height)) < 1.0:
+			hang_id = eid
+			break
+	if hang_id.is_empty():
+		# Fall back to source pipe coping edge at the same X.
+		for eid2 in sim.model.edges.keys():
+			var e2: TopologyEdge = sim.model.edges[eid2]
+			var samp2: Dictionary = sim.query.edge_anchor_sample(e2, z)
+			if str(samp2.get("source_pipe_id", "")) == src.id \
+					and absf(float(samp2.get("x", -999.0)) - wx) < 1.0:
+				hang_id = eid2
+				break
+	if hang_id.is_empty():
+		push_error("union wall fly-out: %s no hang edge" % tag)
+		return false
+	sim.state.mode = SimState.Mode.AIRBORNE
+	sim.state.surface_id = ""
+	sim.state.begin_hang(hang_id)
+	sim.state.air_launch_surface_id = wall.id
+	sim.state.position = Vector3(wx, z, h)
+	sim.state.velocity = Vector3(0.0, 0.0, 180.0)
+	sim.state.facing = "r" if out > 0.0 else "l"
+	sim.state.falling = false
+	sim.state.request_fall = false
+	var fo: Dictionary = sim.planner.try_fly_out(sim.state, out, 0.0)
+	if not bool(fo.get("ok", false)):
+		push_error(
+			"union wall fly-out: planner blocked %s at h=%.1f reason=%s"
+			% [tag, h, fo.get("reason", "")]
+		)
+		return false
+	return true
+
+
+## Hold outward stick: unlock free air and clear past coping X without falling.
+func _stick_fly_out_clears_coping(
+	sim: PlayerSim, wx: float, out: float, tag: String
+) -> bool:
+	var unlocked := false
+	var cleared := false
+	for _i in range(24):
+		sim.set_input(Vector2(out, 0.0), false, false)
+		sim.tick()
+		if sim.state.falling:
+			push_error(
+				"union fly-out: %s fell during fly-out x=%.1f h=%.1f rej=%s"
+				% [tag, sim.state.position.x, sim.state.position.z, sim.state.last_reject]
+			)
+			return false
+		if sim.state.is_airborne() and not sim.state.is_hanging() \
+				and sim.state.velocity.x * out > 1.0:
+			unlocked = true
+		if unlocked and (sim.state.position.x - wx) * out > 8.0:
+			cleared = true
+			break
+	if not unlocked:
+		push_error(
+			"union fly-out: %s never unlocked reject=%s hang=%s"
+			% [tag, sim.state.last_reject, sim.state.is_hanging()]
+		)
+		return false
+	if not cleared:
+		push_error(
+			"union fly-out: %s unlocked but never cleared coping x=%.1f wx=%.1f h=%.1f"
+			% [tag, sim.state.position.x, wx, sim.state.position.z]
+		)
+		return false
+	return true
+
+
+## Layered L0→wall lip ollie must peak at wall-top + ollie_height_pipe.
+## Adding clearance-vz + ollie-vz overshoots by 2√(gap·h) — feels "way higher".
+func _layered_wall_lip_ollie_peak_is_ollie_height_above_lip() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
+		push_error("layered wall ollie: setup")
+		return false
+	var pipe: PipeSurface = sim.model.pipes.get("pipe_1_L0_S1")
+	if pipe == null:
+		push_error("layered wall ollie: missing L0 right pipe")
+		return false
+	var cope: CopingEdge = sim.model.copings[pipe.coping_id]
+	if cope.coping_class != SimKinds.CopingClass.WALL_EXTENSION:
+		push_error("layered wall ollie: expected WALL_EXTENSION")
+		return false
+	var z := clampf(1000.0, pipe.z_min + 5.0, pipe.z_max - 5.0)
+	var span := cope.span_at_z(z)
+	if span == null or not sim.model.walls.has(span.wall_id):
+		push_error("layered wall ollie: wall span missing")
+		return false
+	var wall: WallSurface = sim.model.walls[span.wall_id]
+	var hang_z := float(wall.sample_at_z(z).top_height)
+	var ollie_h := 100.0
+	sim.ollie_accel = 0.0
+	sim.ollie_charge_ms = 0.0
+	sim.ollie_height_flat = 150.0
+	sim.ollie_height_pipe = ollie_h
+	sim.ollie_lip_frac = 0.50
+	var u := 0.92
+	var th := u * PI * 0.5
+	var takeoff_h := pipe.height_at_theta(z, th)
+	sim.state.mode = SimState.Mode.GROUNDED
+	sim.state.surface_id = pipe.id
+	sim.state.u = u
+	sim.state.v = 0.5
+	sim.state.tangent_velocity = Vector2(400.0, 0.0)
+	sim.state.position = Vector3(pipe.x_at_theta(z, th), z, takeoff_h)
+	sim.state.clear_hang()
+	sim.state.maneuver = null
+	sim.state.velocity = Vector3.ZERO
+	sim.ollie_available = true
+	sim.ollie_charge = 1.0
+	sim.set_input(Vector2.ZERO, false, false, false, true)
+	sim.tick()
+	if not sim.state.is_hanging():
+		push_error("layered wall ollie: expected hang air-out")
+		return false
+	var peak_z := sim.state.position.z
+	for _i in range(200):
+		sim.set_input(Vector2.ZERO, false, false)
+		sim.tick()
+		peak_z = maxf(peak_z, sim.state.position.z)
+		if sim.state.velocity.z < 0.0 and sim.state.position.z < peak_z - 1.0:
+			break
+	var want := hang_z + ollie_h
+	# Additive vz bug peaks near want + 2√(gap·h) — reject that overshoot.
+	var gap := maxf(hang_z - takeoff_h, 0.0)
+	var bogus := want + 2.0 * sqrt(maxf(gap * ollie_h, 0.0))
+	if peak_z > want + 35.0:
+		push_error(
+			"layered wall ollie: apex %.1f want ~%.1f (bogus additive ~%.1f)"
+			% [peak_z, want, bogus]
+		)
+		return false
+	if peak_z < want - 40.0:
+		push_error(
+			"layered wall ollie: apex %.1f too low (want ~%.1f)"
+			% [peak_z, want]
 		)
 		return false
 	return true
@@ -2995,13 +3555,12 @@ func _ollie_on_pipe_lip_enters_hang() -> bool:
 		if not anchor.is_empty():
 			hang_z = float(anchor.height)
 	var g := absf(SimTolerances.GRAVITY)
-	var gap := hang_z - takeoff_h
-	var clearance := 0.0 if gap <= 0.5 else sqrt(2.0 * g * gap)
-	var expected_vh := sqrt(2.0 * g * 40.0) + clearance \
+	var expected_vh := sqrt(2.0 * g * maxf((hang_z + 40.0) - takeoff_h, 0.0)) \
 			+ SimTolerances.GRAVITY * SimTolerances.FIXED_DT
 	if absf(sim.state.velocity.z - expected_vh) > 10.0:
 		push_error(
-			"lip hang vh expected ~%s (ollie+clearance) got %s" % [expected_vh, sim.state.velocity.z]
+			"lip hang vh expected ~%s (ballistic to lip+ollie) got %s"
+			% [expected_vh, sim.state.velocity.z]
 		)
 		return false
 	var lock_x := pipe.coping_x_at(z)
@@ -5289,13 +5848,15 @@ func _no_auto_opposite_pipe_snap() -> bool:
 	return true
 
 
-func _layered_inbound_right_pipe_lands() -> bool:
-	# layered_demo L1 right: approach from outside (−X + descending) must mount,
-	# not freeze airborne with zero velocity against the coping / wall-extension.
+func _layered_outer_wall_crashes_not_warp() -> bool:
+	# layered_demo L1 right outer wall: free-air smash must fall (crash shell),
+	# never freeze with vx≈0 and never warp onto the upper partner pipe lip.
+	# upper_partner_pipe_id is transfer-only.
 	var sim := PlayerSim.new()
 	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
 		push_error("inbound: setup")
 		return false
+	sim.fall_duration = 5.0
 	var right: PipeSurface = null
 	for id in sim.model.pipes.keys():
 		var p: PipeSurface = sim.model.pipes[id]
@@ -5320,18 +5881,21 @@ func _layered_inbound_right_pipe_lands() -> bool:
 	sim.state.facing = "l"
 	sim.state.position = Vector3(cx + 40.0, z, lip_h + 40.0)
 	sim.state.velocity = Vector3(-220.0, 0.0, -280.0)
-	var grounded := false
 	for _i in range(90):
 		sim.set_input(Vector2(-1, 0), false, false)
 		sim.tick()
 		if not sim.state.alive:
 			push_error("inbound: died")
 			return false
-		if sim.state.is_grounded():
-			grounded = true
-			break
+		if sim.state.is_grounded() and sim.state.surface_id == right.id:
+			push_error(
+				"inbound: warped onto L1 pipe u=%.2f (partner lip seat)"
+				% sim.state.u
+			)
+			return false
 		if (
 			sim.state.is_airborne()
+			and not sim.state.falling
 			and absf(sim.state.velocity.x) < 1.0
 			and absf(sim.state.velocity.z) < 1.0
 			and absf(sim.state.position.z - lip_h) < 30.0
@@ -5341,19 +5905,13 @@ func _layered_inbound_right_pipe_lands() -> bool:
 				% [sim.state.velocity.x, sim.state.velocity.z, sim.state.position.z]
 			)
 			return false
-	if not grounded:
-		push_error(
-			"inbound: never grounded mode=%s sid=%s h=%.1f"
-			% [sim.state.mode, sim.state.surface_id, sim.state.position.z]
-		)
-		return false
-	if sim.state.surface_id != right.id:
-		push_error(
-			"inbound: expected L1 right pipe, got %s"
-			% sim.state.surface_id
-		)
-		return false
-	return true
+		if sim.state.falling:
+			return true
+	push_error(
+		"inbound: never fell mode=%s sid=%s h=%.1f"
+		% [sim.state.mode, sim.state.surface_id, sim.state.position.z]
+	)
+	return false
 
 
 func _layered_hole_not_invisible_wall() -> bool:

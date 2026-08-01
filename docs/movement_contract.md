@@ -109,7 +109,7 @@ Compiled span owners (non-overlapping) on each coping span:
 | `LIP_COLUMN` | Coping column / bowl-side lip (pipe or wall) | **Mount** when descending |
 | `OUTWARD_DECK` | Abutting `#` pad clearly outward of coping | **Mount** if deck land gates pass; else **Reject** (exterior, no `vz=0` freeze) |
 | `OPEN_CORRIDOR` | Deck-backed `OPEN` / `SHARED_SPINE` from clearly outward | **Corridor** (acid only; no ordinary mount) |
-| `WALL_CLIMB` | Explicit wall face | **Mount** hang source / inbound upper partner; else **Reject** or outward-exit **Corridor** |
+| `WALL_CLIMB` | Explicit wall face | **Mount** hang source / free-air remount of launch wall; else **Reject** or outward-exit **Corridor**. `upper_partner_pipe_id` is transfer-only — never free-air Mount (outer-back smash must not lip-seat the upper pipe) |
 | `HANG_ANCHOR` | Retained air-out edge | **Mount** source pipe/wall |
 
 Three dispositions only: **Mount** (ground on that owner), **Reject** (stay

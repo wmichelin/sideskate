@@ -118,7 +118,11 @@ func begin_fall() -> void:
 	last_wish = Vector2.ZERO
 	state.falling = true
 	state.fall_elapsed = 0.0
-	state.fall_lean_sign = 1.0 if state.facing == "r" else -1.0
+	# Wall/feature crashes stamp approach-side lean so the fall box flops away
+	# from the impact face (facing-into-wall used to tip the RigidBody into mesh).
+	if not state.fall_lean_locked:
+		state.fall_lean_sign = 1.0 if state.facing == "r" else -1.0
+	state.fall_lean_locked = false
 	if state.is_airborne():
 		state.fall_start_vx = state.velocity.x
 		state.fall_start_vy = state.velocity.y
@@ -156,6 +160,10 @@ func tick(delta: float = SimTolerances.FIXED_DT) -> void:
 		ollie_just_released = false
 		action_just = false
 		ollie_pressed = false
+		# Planar schedule before solvers so Reject/depenetrate can cut into-wall
+		# speed. _tick_fall must not reinject fall_start afterward (that tunneled
+		# through L0/L1 union walls after a crash).
+		_apply_fall_planar()
 	else:
 		_update_ollie_charge(delta)
 		_try_ollie_jump()
@@ -184,6 +192,7 @@ func tick(delta: float = SimTolerances.FIXED_DT) -> void:
 		state.request_fall = false
 		begin_fall()
 		falling = state.falling
+		_apply_fall_planar()
 	if falling or state.falling:
 		_tick_fall(delta)
 	_replenish_ollie_on_ground()
@@ -199,10 +208,10 @@ func tick(delta: float = SimTolerances.FIXED_DT) -> void:
 	ollie_just_released = false
 
 
-func _tick_fall(delta: float) -> void:
+## Time-based planar stop envelope (does not advance fall_elapsed).
+func _apply_fall_planar() -> void:
 	if state == null or not state.falling:
 		return
-	state.fall_elapsed += delta
 	var stop_t := 1.0
 	if fall_stop_duration > 0.0:
 		stop_t = clampf(state.fall_elapsed / fall_stop_duration, 0.0, 1.0)
@@ -215,6 +224,55 @@ func _tick_fall(delta: float) -> void:
 		state.tangent_velocity.x = vx
 		state.tangent_velocity.y = vy
 		state.velocity = Vector3.ZERO
+
+
+## After solvers: keep collision-cut planar speed and shrink the fall envelope so
+## later ticks cannot reinject into-wall motion.
+func _absorb_fall_planar_after_collision() -> void:
+	if state == null or not state.falling:
+		return
+	var stop_t := 1.0
+	if fall_stop_duration > 0.0:
+		stop_t = clampf(state.fall_elapsed / fall_stop_duration, 0.0, 1.0)
+	var remain := maxf(1.0 - stop_t, 0.001)
+	if state.is_airborne():
+		var cur_x := state.velocity.x
+		var cur_y := state.velocity.y
+		var tgt_x := lerpf(state.fall_start_vx, 0.0, stop_t)
+		var tgt_y := lerpf(state.fall_start_vy, 0.0, stop_t)
+		state.velocity.x = _fall_planar_keep_collision(cur_x, tgt_x)
+		state.velocity.y = _fall_planar_keep_collision(cur_y, tgt_y)
+		state.fall_start_vx = state.velocity.x / remain
+		state.fall_start_vy = state.velocity.y / remain
+	else:
+		var cur_tx := state.tangent_velocity.x
+		var cur_ty := state.tangent_velocity.y
+		var tgt_tx := lerpf(state.fall_start_vx, 0.0, stop_t)
+		var tgt_ty := lerpf(state.fall_start_vy, 0.0, stop_t)
+		state.tangent_velocity.x = _fall_planar_keep_collision(cur_tx, tgt_tx)
+		state.tangent_velocity.y = _fall_planar_keep_collision(cur_ty, tgt_ty)
+		state.fall_start_vx = state.tangent_velocity.x / remain
+		state.fall_start_vy = state.tangent_velocity.y / remain
+		state.velocity = Vector3.ZERO
+
+
+## Prefer post-collision planar when it is closer to zero than the schedule
+## (same sign). Opposite/zero collision results clear the axis.
+func _fall_planar_keep_collision(current: float, target: float) -> float:
+	if absf(target) <= 0.0001:
+		return 0.0
+	if current * target <= 0.0:
+		return 0.0
+	if absf(current) < absf(target):
+		return current
+	return target
+
+
+func _tick_fall(delta: float) -> void:
+	if state == null or not state.falling:
+		return
+	_absorb_fall_planar_after_collision()
+	state.fall_elapsed += delta
 	# Checkpoint teleport — do not wait for a land. Crash walls (foreign lip,
 	# bounds, deck solids) can Reject forever with planar stop, leaving the
 	# skater airborne and never grounded.

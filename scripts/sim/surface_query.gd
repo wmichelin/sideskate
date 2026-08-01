@@ -335,15 +335,25 @@ func sweep_capsule(from: Vector3, to: Vector3) -> Dictionary:
 	var steps := maxi(1, int(ceil(motion.length() / maxf(SimTolerances.CAPSULE_RADIUS * 0.5, 1.0))))
 	var earliest := _wall_sweep_contact(from, to)
 	var earliest_t := float(earliest.get("t", INF))
+	var wall_sweep_id := str(earliest.get("surface_id", ""))
 	for i in range(1, steps + 1):
 		var t := float(i) / float(steps)
 		var p := from.lerp(to, t)
 		var hit := _blocker_at(p)
-		if not hit.is_empty() and t < earliest_t:
-			earliest_t = t
-			earliest = hit
-			earliest["t"] = t
-			earliest["point"] = p
+		if hit.is_empty() or t >= earliest_t:
+			continue
+		# Keep approach-correct wall_sweep normals — on_face point samples use a
+		# bowl-inward normal that false-Corridors through the face.
+		if (
+			str(hit.get("kind", "")) == "wall"
+			and not wall_sweep_id.is_empty()
+			and str(hit.get("surface_id", "")) == wall_sweep_id
+		):
+			continue
+		earliest_t = t
+		earliest = hit
+		earliest["t"] = t
+		earliest["point"] = p
 	return earliest
 
 
@@ -376,10 +386,23 @@ func _wall_sweep_contact(from: Vector3, to: Vector3) -> Dictionary:
 		if not wall.contains_z(point.y):
 			continue
 		ws = wall.sample_at_z(point.y)
-		if point.z < float(ws.bottom_height) - SimTolerances.CONTACT_EPS \
-				or point.z > float(ws.top_height) + SimTolerances.CONTACT_EPS:
+		var bottom := float(ws.bottom_height)
+		var top := float(ws.top_height)
+		# Climb band only — match blocker_at: open at/above top − CONTACT_EPS so
+		# stick fly-out / deck-out are not Rejected on the lip seam. Mid-band
+		# below that still stops free-air smashes through the L0↔L1 joint.
+		if point.z < bottom - SimTolerances.CONTACT_EPS:
+			continue
+		if point.z >= top - SimTolerances.CONTACT_EPS:
 			continue
 		var cope: CopingEdge = model.copings[wall.source_coping_id]
+		# Push back toward the side we approached from. Source/partner outward is
+		# unreliable on stacked opposite-facing L0/L1 pipes (wrong side tunnels).
+		var side := signf(from.x - wx)
+		if absf(side) < 0.001:
+			side = signf(point.x - wx)
+		if absf(side) < 0.001:
+			side = -float(cope.outward_sign)
 		best_t = t
 		best = {
 			"kind": "wall",
@@ -387,7 +410,7 @@ func _wall_sweep_contact(from: Vector3, to: Vector3) -> Dictionary:
 			"surface_id": wall.id,
 			"coping_id": wall.source_coping_id,
 			"projection": wall.position_at(point.y, wall.u_at_height(point.y, point.z)),
-			"normal": Vector3(-cope.outward_sign, 0.0, 0.0),
+			"normal": Vector3(side, 0.0, 0.0),
 			"point": point,
 			"t": t,
 			"reason": "wall surface crossing",
@@ -511,27 +534,34 @@ func _blocker_at(p: Vector3) -> Dictionary:
 		var ws := wall.sample_at_z(z)
 		var wx := float(ws.x)
 		var cope: CopingEdge = model.copings[wall.source_coping_id]
-		if h >= float(ws.top_height) - SimTolerances.CONTACT_EPS:
+		var bottom := float(ws.bottom_height)
+		var top := float(ws.top_height)
+		if h <= bottom + SimTolerances.CONTACT_EPS:
 			continue
-		if h <= float(ws.bottom_height) + SimTolerances.CONTACT_EPS:
-			continue
+		var source_out := float(cope.outward_sign)
 		var on_face := absf(x - wx) <= 0.001
+		# Above geometric top is open (stick fly-out / transfer / deck-out).
+		# Mid-band face + backing stay solid so joint smashes cannot tunnel.
+		if h >= top - SimTolerances.CONTACT_EPS:
+			continue
 		var in_backing := false
 		if not wall.top_support_id.is_empty():
 			var patch: SupportPatch = model.patches.get(wall.top_support_id)
 			in_backing = (
 				patch != null
-				and (x - wx) * cope.outward_sign >= -SimTolerances.CONTACT_EPS
+				and (x - wx) * source_out >= -SimTolerances.CONTACT_EPS
 				and patch.contains_xz(x, z)
 			)
 		if on_face or in_backing:
+			# Embedded: bowl-inward from source coping. Sweep/Reject override with
+			# approach side so stacked L0/L1 faces cannot Corridor-tunnel.
 			return {
 				"kind": "wall",
 				"feature_id": wall.id,
 				"surface_id": wall.id,
 				"coping_id": wall.source_coping_id,
 				"projection": wall.position_at(z, wall.u_at_height(z, h)),
-				"normal": Vector3(-cope.outward_sign, 0.0, 0.0),
+				"normal": Vector3(-source_out, 0.0, 0.0),
 				"reason": "wall extension",
 			}
 	return {}
@@ -885,7 +915,8 @@ func annotate_contact_ownership(hit: Dictionary, at: Vector3) -> Dictionary:
 		out["owner_id"] = span.outward_owner_id
 		return out
 	# Deck-backed OPEN from clearly outward is acid-only (no ordinary mount).
-	# OPEN without an outward deck still mounts inbound from outside.
+	# OPEN without an outward deck: outer face is still a solid (wall / feature);
+	# free-air must not lip-seat via upper_partner (transfer-only).
 	if (
 		span.is_open_corridor
 		and clearly_outward

@@ -708,9 +708,9 @@ func _reject_into_normal(world: Vector3, normal: Vector3) -> Vector3:
 
 
 ## Upper pipe ollie → coping-anchored hang (vx locked, height free).
-## WALL_EXTENSION: X locks to the wall-top lip. Takeoff Z stays put; any gap up
-## to that lip is converted to clearance speed so `ollie_height_pipe` still adds
-## peak *above* the lip (snapping Z there used to eat the pop).
+## WALL_EXTENSION: X locks to the wall-top lip. Takeoff Z stays put; one ballistic
+## vz clears to the lip *and* adds `ollie_height_pipe` above it (adding clearance
+## speed + ollie speed overshoots by 2√(gap·h) — huge on tall story walls).
 ## Ramps never use this path — peak leave is free air only.
 func _launch_ollie_lip_hang(
 	state: SimState, height_impulse: float, _along: float, depth: float
@@ -735,8 +735,8 @@ func _launch_ollie_lip_hang(
 	if not is_nan(clear_z) and takeoff_z < clear_z:
 		takeoff_z = clear_z
 	var hang_z := float(anchor.height)
-	# Ollie pop + ballistic clearance to the hang lip. Climb along never stacks.
-	var world_vh := height_impulse + _up_speed_for_height_gap(hang_z - takeoff_z)
+	# Single ballistic: peak at hang lip + ollie rise. Climb along never stacks.
+	var world_vh := _ballistic_up_to_peak(takeoff_z, hang_z, height_impulse)
 	state.position = Vector3(lock_x, z, takeoff_z)
 	_enter_air(state, Vector3(0.0, depth, world_vh), edge.id)
 	return true
@@ -796,10 +796,26 @@ func _launch_ollie_wall_top(
 		return false
 	var takeoff_z := state.position.z
 	var hang_z := float(anchor.height)
-	var world_vh := height_impulse + _up_speed_for_height_gap(hang_z - takeoff_z)
+	var world_vh := _ballistic_up_to_peak(takeoff_z, hang_z, height_impulse)
 	state.position = Vector3(float(anchor.x), z, takeoff_z)
 	_enter_air(state, Vector3(0.0, depth, world_vh), edge.id)
 	return true
+
+
+## Up-speed so ballistic peak is `hang_z + ollie_rise`, where `height_impulse` is
+## the ollie-only up-speed (√(2|g|h)). Never add clearance-vz + ollie-vz.
+func _ballistic_up_to_peak(takeoff_z: float, hang_z: float, height_impulse: float) -> float:
+	var ollie_h := _height_from_up_speed(height_impulse)
+	var target := hang_z + ollie_h
+	return _up_speed_for_height_gap(target - takeoff_z)
+
+
+## Recover peak rise from an up-speed under current gravity.
+func _height_from_up_speed(up_speed: float) -> float:
+	var g := absf(SimTolerances.GRAVITY)
+	if up_speed <= 0.0 or g < 0.001:
+		return 0.0
+	return (up_speed * up_speed) / (2.0 * g)
 
 
 ## Extra up-speed to clear a vertical gap (0 when already at/above the lip).
@@ -810,7 +826,6 @@ func _up_speed_for_height_gap(gap: float) -> float:
 	if g < 0.001:
 		return 0.0
 	return sqrt(2.0 * g * gap)
-
 
 ## Keep pipe depth inside both the pipe loft and the park AABB (inset from faces).
 func _clamp_world_depth(pipe: PipeSurface, z: float) -> float:

@@ -190,6 +190,13 @@ func _start_fall_box(feet_world: Vector3, body_yaw: float, face: float, tilt: fl
 	if _player != null and _player.has_method("motion_world"):
 		vel = (_player.call("motion_world", MotionVectors.Kind.ACTUAL) as Vector3).limit_length(8.0)
 	var kick := lean if lean != 0.0 else 1.0
+	# World X = −logical X. Offset spawn along lean (away from wall crashes) so
+	# the RigidBody does not start inside the impact trimesh.
+	var clear_m := maxf(body_size.x * 0.75, 0.14)
+	feet_world += Vector3(-kick * clear_m, 0.04, 0.0)
+	# Drop into-impact lateral seed (facing into a wall used to tunnel the box).
+	if vel.x * (-kick) > 0.0:
+		vel.x = 0.0
 	var yaw := body_yaw + (PI if face < 0.0 else 0.0)
 	# Start already tipping (~55°) so gravity + spin finish the flop — upright
 	# plant + tiny torque just stood there against floor friction.
@@ -197,17 +204,16 @@ func _start_fall_box(feet_world: Vector3, body_yaw: float, face: float, tilt: fl
 	var basis := Basis.from_euler(Vector3(0.0, yaw, tip))
 	# Pivot near the downhill feet edge so the box rotates onto its side.
 	var center := feet_world + basis * Vector3(0.0, body_size.y * 0.5, 0.0)
-	center += Vector3(0.0, 0.04, 0.0)
 	_fall_box.global_transform = Transform3D(basis, center)
 	_fall_box.linear_velocity = vel + basis * Vector3(kick * 0.6, 0.15, 0.0)
-	# World-Z angular vel tips onto the facing side (matches local roll).
+	# World-Z angular vel tips onto the lean side (matches local roll).
 	_fall_box.angular_velocity = basis * Vector3(0.0, 0.0, -kick * 8.0)
 	_fall_box.freeze = false
 	_fall_box.sleeping = false
 	_fall_box.visible = true
 	if _body:
 		_body.visible = false
-	# Extra shove at the top so it commits past vertical.
+	# Extra shove at the top so it commits past vertical — away from impact.
 	_fall_box.apply_impulse(
 		basis * Vector3(kick * 1.4, 0.0, 0.0),
 		basis * Vector3(0.0, body_size.y * 0.35, 0.0)
