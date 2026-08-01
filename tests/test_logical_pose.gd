@@ -27,6 +27,8 @@ func _lerp_midpoint() -> bool:
 	b.support_height = 50.0
 	b.surface_tilt = PI * 0.5
 	b.depth_turn_yaw = 0.4
+	a.board_yaw = 0.0
+	b.board_yaw = PI
 	var mid := LogicalPose.lerp_poses(a, b, 0.5)
 	if absf(mid.logical_x - 50.0) > 0.01:
 		push_error("lerp x: %s" % mid.logical_x)
@@ -39,6 +41,14 @@ func _lerp_midpoint() -> bool:
 		return false
 	if absf(mid.depth_turn_yaw - 0.2) > 0.01:
 		push_error("lerp depth turn: %s" % mid.depth_turn_yaw)
+		return false
+	# lerp_angle(0, PI, 0.5) is ±PI/2 on Godot 4.7 (equal-length shortest paths).
+	var half_turn := PI * 0.5
+	if (
+		absf(angle_difference(mid.board_yaw, half_turn)) > 0.01
+		and absf(angle_difference(mid.board_yaw, -half_turn)) > 0.01
+	):
+		push_error("lerp board_yaw: %s" % mid.board_yaw)
 		return false
 	return true
 

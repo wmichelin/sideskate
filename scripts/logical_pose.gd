@@ -18,6 +18,8 @@ var facing_h: float = 1.0
 var facing_yaw: float = 0.0
 ## Subtle local-Y steering turn from Z-stick input.
 var depth_turn_yaw: float = 0.0
+## Persistent presentation board yaw (local Y in lean frame). Independent of facing.
+var board_yaw: float = 0.0
 var active_layer: int = 0
 
 
@@ -51,6 +53,7 @@ func duplicate_pose() -> LogicalPose:
 	p.facing_h = facing_h
 	p.facing_yaw = facing_yaw
 	p.depth_turn_yaw = depth_turn_yaw
+	p.board_yaw = board_yaw
 	p.active_layer = active_layer
 	return p
 
@@ -87,5 +90,6 @@ static func lerp_poses(a: LogicalPose, b: LogicalPose, t: float) -> LogicalPose:
 		out.facing_h = b.facing_h if u >= 0.5 else a.facing_h
 		out.facing_yaw = lerp_angle(a.facing_yaw, b.facing_yaw, u)
 	out.depth_turn_yaw = lerp_angle(a.depth_turn_yaw, b.depth_turn_yaw, u)
+	out.board_yaw = lerp_angle(a.board_yaw, b.board_yaw, u)
 	out.active_layer = b.active_layer if u >= 0.5 else a.active_layer
 	return out
