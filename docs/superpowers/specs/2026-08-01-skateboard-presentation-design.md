@@ -1,6 +1,6 @@
 # Skateboard presentation (placeholder board + dual fall)
 
-**Status:** approved design (2026-08-01). Not implemented.
+**Status:** implemented on main (2026-08-01).
 
 ## Goal
 
