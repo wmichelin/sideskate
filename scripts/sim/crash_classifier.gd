@@ -156,6 +156,12 @@ func _hang_flat_crash(state: SimState, contact: Dictionary, ctx: Dictionary) -> 
 	if sid == "__void_floor__" or sid == "__park_floor__":
 		return true
 	var kind := str(contact.get("kind", ""))
+	var mode := str(ctx.get("mode", ""))
+	# Hang X-lock on the coping seam shares volume with the abutting outward `#`.
+	# That lip column is air-out / lip-ollie space — not a wipeout. Landing on the
+	# pad (hang_flat_mount) and clipping deep into the pad still crash.
+	if mode == "hang_clip" and _is_hang_lip_column_deck(state, sid, contact):
+		return false
 	if kind == "deck" or int(contact.get("role", -1)) == SimKinds.ContactRole.OUTWARD_DECK:
 		return true
 	if kind == "support_top":
@@ -171,3 +177,48 @@ func _hang_flat_crash(state: SimState, contact: Dictionary, ctx: Dictionary) -> 
 		var pk := int(patch.kind)
 		return pk == SimKinds.SurfaceKind.FLOOR or pk == SimKinds.SurfaceKind.DECK
 	return false
+
+
+## Outward deck of the hang edge's coping, while X-locked on the coping line.
+func _is_hang_lip_column_deck(
+	state: SimState, deck_id: String, _contact: Dictionary = {}
+) -> bool:
+	if state == null or model == null or deck_id.is_empty() or not state.is_hanging():
+		return false
+	if not model.patches.has(deck_id):
+		return false
+	if int((model.patches[deck_id] as SupportPatch).kind) != SimKinds.SurfaceKind.DECK:
+		return false
+	var pipe := _hang_source_pipe(state)
+	if pipe == null:
+		return false
+	var cope: CopingEdge = model.copings.get(pipe.coping_id)
+	if cope == null:
+		return false
+	var z := state.position.y
+	var span: CopingSpan = cope.span_at_z(z)
+	if span == null or span.outward_deck_id != deck_id:
+		return false
+	var cx := pipe.coping_x_at(z)
+	if is_nan(cx):
+		return false
+	# Deep into the pad (past the lock) is a real flat clip; coping column is not.
+	var into_pad := (state.position.x - cx) * pipe.outward_sign()
+	return into_pad <= SimTolerances.CAPSULE_RADIUS * 2.0
+
+
+func _hang_source_pipe(state: SimState) -> PipeSurface:
+	if state == null or model == null:
+		return null
+	var eid := state.hang_launch_edge_id
+	if eid.is_empty():
+		eid = state.hang_edge_id
+	var edge: TopologyEdge = model.edges.get(eid)
+	if edge == null:
+		return null
+	if model.pipes.has(edge.from_surface_id):
+		return model.pipes[edge.from_surface_id] as PipeSurface
+	if model.walls.has(edge.from_surface_id):
+		var wall: WallSurface = model.walls[edge.from_surface_id]
+		return model.pipes.get(wall.source_pipe_id) as PipeSurface
+	return null

@@ -47,6 +47,7 @@ Guiding intuition (not implemented as a general orientation engine this pass): i
 | Foreign pipe below lip band (`u < 1 - ollie_lip_frac`) | Ordinary land / ride |
 | Ramp ride face (any `u`) | Banks stay landable; outer-back still crashes |
 | Hang remount of owned pipe / ramp / source wall | Keep skating the transition |
+| Hang X-lock on coping lip-column overlapping own outward `#` | Lip-band ollie / air-out; deep pad clip and hang→deck land still fall |
 | Own-ramp / own-pipe peak leave corridor | Riding off lip stays free air |
 | Intentional deck-back ride-off | Ledge fall / acid, not wipeout |
 | Free-air map-edge over bordering `#` | Edge fly corridor |

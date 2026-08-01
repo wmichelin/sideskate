@@ -727,13 +727,41 @@ func _launch_ollie_lip_hang(
 	var anchor := query.edge_anchor_sample(edge, z)
 	if anchor.is_empty():
 		return false
+	var lock_x := float(anchor.x)
 	var takeoff_z := state.position.z
+	# Coping lock below an abutting `#` sits inside the deck solid. Lift onto the
+	# pad so lip-band ollie does not enter hang already clipping the deck body.
+	var clear_z := _outward_deck_clear_height_at_lock(state.surface_id, z, lock_x)
+	if not is_nan(clear_z) and takeoff_z < clear_z:
+		takeoff_z = clear_z
 	var hang_z := float(anchor.height)
 	# Ollie pop + ballistic clearance to the hang lip. Climb along never stacks.
 	var world_vh := height_impulse + _up_speed_for_height_gap(hang_z - takeoff_z)
-	state.position = Vector3(float(anchor.x), z, takeoff_z)
+	state.position = Vector3(lock_x, z, takeoff_z)
 	_enter_air(state, Vector3(0.0, depth, world_vh), edge.id)
 	return true
+
+
+## Height just above the outward deck when `lock_x` lies in that pad's X span.
+func _outward_deck_clear_height_at_lock(pipe_id: String, z: float, lock_x: float) -> float:
+	if pipe_id.is_empty() or not model.pipes.has(pipe_id):
+		return NAN
+	var pipe: PipeSurface = model.pipes[pipe_id]
+	var cope: CopingEdge = model.copings.get(pipe.coping_id)
+	if cope == null:
+		return NAN
+	var span: CopingSpan = cope.span_at_z(z)
+	if span == null or span.outward_deck_id.is_empty():
+		return NAN
+	if not model.patches.has(span.outward_deck_id):
+		return NAN
+	var deck: SupportPatch = model.patches[span.outward_deck_id]
+	var pad := SimTolerances.CONTACT_EPS
+	if lock_x < deck.x_min - pad or lock_x > deck.x_max + pad:
+		return NAN
+	if z < deck.z_min - pad or z > deck.z_max + pad:
+		return NAN
+	return deck.height + SimTolerances.CONTACT_EPS
 
 
 ## Wall ollie: deck-out onto compiled top support when in the lip band, else

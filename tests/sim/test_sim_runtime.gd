@@ -25,6 +25,7 @@ func run() -> bool:
 		and _ollie_single_charge_replenishes_on_ground()
 		and _ollie_on_pipe_pops_world_up_not_along_tangent()
 		and _ollie_on_pipe_lip_enters_hang()
+		and _ollie_pipe_lip_outward_deck_no_crash()
 		and _ollie_short_deck_return_no_tunnel()
 		and _ollie_pipe_low_vx_descending_remounts()
 		and _ollie_climbing_ramp_stays_above_solid()
@@ -2642,6 +2643,78 @@ func _ollie_on_pipe_lip_enters_hang() -> bool:
 		)
 		return false
 	return true
+
+
+## Lip-band ollie on a pipe with outward `#` must hang, not hang-clip crash.
+func _ollie_pipe_lip_outward_deck_no_crash() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://levels/plaza_default.ssk"):
+		push_error("lip ollie deck: setup")
+		return false
+	sim.fall_duration = 5.0
+	sim.ollie_accel = 0.0
+	sim.ollie_charge_ms = 0.0
+	sim.ollie_height_pipe = 80.0
+	sim.ollie_lip_frac = 0.50
+	sim.friction = 0.0
+	var pipe: PipeSurface = null
+	var deck_id := ""
+	for id in sim.model.pipes.keys():
+		var p: PipeSurface = sim.model.pipes[id]
+		var cope: CopingEdge = sim.model.copings.get(p.coping_id)
+		if cope == null:
+			continue
+		var span = cope.span_at_z((p.z_min + p.z_max) * 0.5)
+		if span == null or span.outward_deck_id.is_empty():
+			continue
+		pipe = p
+		deck_id = span.outward_deck_id
+		break
+	if pipe == null or deck_id.is_empty():
+		push_error("lip ollie deck: no pipe with outward deck")
+		return false
+	var deck: SupportPatch = sim.model.patches[deck_id]
+	var z := (pipe.z_min + pipe.z_max) * 0.5
+	var u := 0.85
+	var th := u * PI * 0.5
+	var takeoff_h := pipe.height_at_theta(z, th)
+	if takeoff_h >= deck.height - 1.0:
+		push_error("lip ollie deck: expected takeoff below deck top")
+		return false
+	sim.state.mode = SimState.Mode.GROUNDED
+	sim.state.surface_id = pipe.id
+	sim.state.u = u
+	sim.state.v = 0.5
+	sim.state.tangent_velocity = Vector2(120.0, 0.0)
+	sim.state.velocity = Vector3.ZERO
+	sim.state.position = Vector3(pipe.x_at_theta(z, th), z, takeoff_h)
+	sim.state.clear_hang()
+	sim.ollie_available = true
+	sim.ollie_charge = 1.0
+	sim.set_input(Vector2.ZERO, false, false, false, true)
+	sim.tick()
+	if sim.state.falling:
+		push_error("lip ollie deck: crashed on takeoff tick")
+		return false
+	if not sim.state.is_hanging():
+		push_error(
+			"lip ollie deck: expected hang mode=%s hang=%s"
+			% [sim.state.mode, sim.state.hang_edge_id]
+		)
+		return false
+	for _i in range(90):
+		sim.set_input(Vector2.ZERO, false, false)
+		sim.tick()
+		if sim.state.falling:
+			push_error(
+				"lip ollie deck: crashed mid-hang pos=%s"
+				% sim.state.position
+			)
+			return false
+		if sim.state.is_grounded() and sim.state.surface_id == pipe.id:
+			return true
+	# Still hanging / airborne without a fall is acceptable for this gate.
+	return not sim.state.falling
 
 
 func _ollie_short_deck_return_no_tunnel() -> bool:
