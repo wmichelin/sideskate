@@ -1,6 +1,8 @@
 extends RefCounted
 ## LogicalPose render-frame lerp helpers.
 
+const _PlayerScript := preload("res://scripts/player.gd")
+
 
 func run() -> bool:
 	return (
@@ -8,6 +10,8 @@ func run() -> bool:
 		and _lerp_flags()
 		and _centered_y_turn_presentation()
 		and _board_yaw_tracker_rules()
+		and _board_yaw_depth_turn_not_persisted()
+		and _player_pose_snapshots_track_board_yaw()
 		and _fall_box_stays_above_support_planes()
 		and _fall_box_stays_on_impact_approach_side()
 		and _fall_camera_tracks_x_locks_yz()
@@ -170,6 +174,70 @@ func _board_yaw_tracker_rules() -> bool:
 	if absf(y4) > 0.001:
 		push_error("force_snap right failed: %s" % y4)
 		return false
+	return true
+
+
+func _board_yaw_depth_turn_not_persisted() -> bool:
+	var t := BoardYawTracker.new()
+	t.tick(1.0, 0.0, true)
+	var pose := LogicalPose.new()
+	pose.board_yaw = t.yaw
+	pose.depth_turn_yaw = 0.3
+	# Presenter shows board_yaw + depth_turn_yaw; stored board_yaw stays tracker-owned.
+	if absf(pose.board_yaw) > 0.001:
+		push_error("depth turn must not bake into board_yaw")
+		return false
+	return true
+
+
+func _player_pose_snapshots_track_board_yaw() -> bool:
+	var player = _PlayerScript.new()
+	player.depth = PseudoDepthBody.new()
+	player._sim = PlayerSim.new()
+	player._sim.state = SimState.new()
+	player.visual_facing_h = "r"
+	player.facing_yaw = 0.0
+	player._capture_pose_snapshots()
+	if absf(player._pose_curr.board_yaw) > 0.001:
+		push_error("player board_yaw must snap right on first capture")
+		player.depth.free()
+		player.free()
+		return false
+
+	player.visual_facing_h = "l"
+	player.facing_yaw = -PI * 0.5
+	player._capture_pose_snapshots()
+	if absf(player._pose_curr.board_yaw - (-PI * 0.5)) > 0.01:
+		push_error("player board_yaw must track apex yaw delta, got %s" % player._pose_curr.board_yaw)
+		player.depth.free()
+		player.free()
+		return false
+
+	player._sim.state.falling = true
+	player._capture_pose_snapshots()
+	player._sim.state.falling = false
+	player.facing_yaw = 0.0
+	player._capture_pose_snapshots()
+	if absf(angle_difference(player._pose_curr.board_yaw, PI)) > 0.01:
+		push_error("player board_yaw must snap to facing when fall bout ends, got %s" % player._pose_curr.board_yaw)
+		player.depth.free()
+		player.free()
+		return false
+
+	player.facing_yaw = -PI * 0.5
+	player._capture_pose_snapshots()
+	player.visual_facing_h = "r"
+	player.facing_yaw = 0.0
+	player._board_force_snap = true
+	player._capture_pose_snapshots()
+	if absf(player._pose_curr.board_yaw) > 0.01:
+		push_error("player board_yaw one-shot restore snap failed, got %s" % player._pose_curr.board_yaw)
+		player.depth.free()
+		player.free()
+		return false
+
+	player.depth.free()
+	player.free()
 	return true
 
 

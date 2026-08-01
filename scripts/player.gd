@@ -59,6 +59,9 @@ var _transfer_tilt_end: float = 0.0
 var _upright_tilt_active: bool = false
 var _upright_tilt_start: float = 0.0
 var _upright_tilt_elapsed: float = 0.0
+var _board_yaw := BoardYawTracker.new()
+var _was_falling_board: bool = false
+var _board_force_snap: bool = false
 
 
 func _ready() -> void:
@@ -335,11 +338,16 @@ func _capture_pose_snapshots() -> void:
 	if depth == null:
 		return
 	var facing := 1.0 if visual_facing_h == "r" else -1.0
+	var falling := _sim != null and _sim.state != null and _sim.state.falling
+	var force_snap := _board_force_snap or (_was_falling_board and not falling)
+	_was_falling_board = falling
 	var next = _LogicalPose.new()
 	next.copy_from_depth(depth, facing, 0)
 	next.facing_yaw = facing_yaw
 	# Mirror by facing: +Z turns either nose toward +Z, not the same screen side.
 	next.depth_turn_yaw = deg_to_rad(depth_turn_degrees) * _last_wish.y * facing
+	next.board_yaw = _board_yaw.tick(facing, facing_yaw, force_snap or not _pose_snap_ready)
+	_board_force_snap = false
 	if _pose_curr == null:
 		_pose_prev = next
 		_pose_curr = next
@@ -370,6 +378,7 @@ func _on_death_finished() -> void:
 	_transfer_tilt_active = false
 	_transfer_tilt_end = 0.0
 	_sync_from_sim()
+	_board_force_snap = true
 	_capture_pose_snapshots()
 
 
