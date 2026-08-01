@@ -13,6 +13,9 @@ const ContactMath := preload("res://scripts/contact_math.gd")
 ## Logical units per ASCII row. Level depth = rows × this.
 ## Default matches cell_size_x so one glyph is square in world space.
 @export var cell_size_z: float = 47.0
+## Per-glyph-cell pipe/ramp rise. Below cell_size_x → ramps under 45°.
+## TUNING slider / reload forces this over any `.ssk` `step_height` header.
+@export var step_height: float = 40.0
 
 @export_group("Perspective")
 ## Screen Y of the near edge (z_min). Larger Y = lower on screen.
@@ -68,7 +71,10 @@ func load_level(path: String) -> bool:
 	level_path = path
 	LevelLoader.cell_size_x = cell_size_x
 	LevelLoader.cell_size_z = cell_size_z
-	var loaded: LevelSpec = LevelLoader.load_path(path, cell_size_x, cell_size_z)
+	LevelLoader.default_step_height = step_height
+	var loaded: LevelSpec = LevelLoader.load_path(
+		path, cell_size_x, cell_size_z, step_height
+	)
 	# load_path aborts the process on malformed files; null is only possible if quit is deferred.
 	if loaded == null:
 		return false
@@ -77,7 +83,7 @@ func load_level(path: String) -> bool:
 	return true
 
 
-## Re-parse the current .ssk with the active cell sizes (debug tuning).
+## Re-parse the current .ssk with the active cell / step sizes (debug tuning).
 func reload() -> bool:
 	var path := _loaded_path if _loaded_path != "" else level_path
 	if path == "":

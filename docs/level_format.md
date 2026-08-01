@@ -53,7 +53,7 @@ Perspective (`perspective_inset`, `far_geometry_scale`, `reference_depth`, `refe
 | `name` | no | Level id (default: filename) |
 | `pipe_radius` | no | Legacy height override for pipe/ramp rise; footprint still from glyph run × `cell_w` |
 | `deck_height` | no | Override **rise** for all `#` decks (added to layer height) |
-| `step_height` | no | Per-glyph-cell height rise for pipes/ramps (default = **40**, under `cell_w` so ramps are flatter than 45°) |
+| `step_height` | no | Per-glyph-cell height rise for pipes/ramps (default = **40**, under `cell_w` so ramps are flatter than 45°). Debug TUNING `step height` / `RampLevel.step_height` forces this at load. |
 | `spawn_facing` | no | Spawn horizontal facing: `l` or `r` (default `r`) |
 
 `@` may sit on any layer; the skater spawns at that layer’s `height` (`LevelSpec.spawn_height`).

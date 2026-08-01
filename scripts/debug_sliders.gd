@@ -48,6 +48,8 @@ extends CanvasLayer
 @export var cell_x_max: float = 120.0
 @export var cell_z_min: float = 10.0
 @export var cell_z_max: float = 200.0
+@export var step_height_min: float = 10.0
+@export var step_height_max: float = 120.0
 @export var cam_dist_min: float = 0.0
 @export var cam_dist_max: float = 2500.0
 @export var cam_pitch_min: float = -180.0
@@ -179,6 +181,7 @@ func _ready() -> void:
 
 	_bind_float_slider(_cell_x_slider, cell_x_min, cell_x_max, 1.0, _level, "cell_size_x", 47.0, _on_cell_x_changed, _refresh_cell_x_label)
 	_bind_float_slider(_cell_z_slider, cell_z_min, cell_z_max, 1.0, _level, "cell_size_z", 47.0, _on_cell_z_changed, _refresh_cell_z_label)
+	_setup_step_height_slider()
 
 	var cell_on := false
 	if _level_debug_3d != null and _level_debug_3d.get("debug_cell_highlight") != null:
@@ -1030,6 +1033,51 @@ func _on_cell_z_changed(v: float) -> void:
 
 func _refresh_cell_z_label(v: float) -> void:
 	_cell_z_value.text = "%.0f" % v
+
+
+func _setup_step_height_slider() -> void:
+	if _body == null:
+		return
+	if _body.get_node_or_null("StepHeightRow") != null:
+		return
+	var insert_at := 0
+	var cell_z_row := _body.get_node_or_null("CellZRow")
+	if cell_z_row != null:
+		insert_at = cell_z_row.get_index() + 1
+	var row := _make_slider_row("StepHeightRow", "step height", insert_at)
+	var default_h := LevelLoader.DEFAULT_STEP_HEIGHT
+	if _level != null and _level.get("step_height") != null:
+		default_h = float(_level.get("step_height"))
+	_bind_float_slider(
+		row["slider"],
+		step_height_min,
+		step_height_max,
+		1.0,
+		_level,
+		"step_height",
+		default_h,
+		_on_step_height_changed,
+		_refresh_step_height_label
+	)
+	row["slider"].focus_mode = Control.FOCUS_NONE
+
+
+func _on_step_height_changed(v: float) -> void:
+	if _level != null:
+		_level.set("step_height", v)
+		LevelLoader.default_step_height = v
+		if _level.has_method("reload"):
+			_level.call("reload")
+	_refresh_step_height_label(v)
+
+
+func _refresh_step_height_label(v: float) -> void:
+	var row := _body.get_node_or_null("StepHeightRow") if _body != null else null
+	if row == null:
+		return
+	var value_lbl := row.get_node_or_null("Value") as Label
+	if value_lbl != null:
+		value_lbl.text = "%.0f" % v
 
 
 func _on_depth_grid_toggled(_on: bool) -> void:

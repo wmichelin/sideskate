@@ -261,9 +261,7 @@ static func _refine_slope_loft(spec: LevelSpec, model: ParkModel, surf, glyph: S
 
 static func _slope_run_on_row(line: String, glyph: String, surf, spec: LevelSpec) -> Dictionary:
 	var best := {}
-	var step_h := (
-		spec.step_height if spec.step_height > 0.0 else LevelLoader.DEFAULT_STEP_HEIGHT
-	)
+	var step_h := LevelLoader._effective_step_height(spec)
 	var c := 0
 	while c < line.length():
 		if line[c] != glyph:

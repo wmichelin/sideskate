@@ -8,13 +8,18 @@ static var last_error: String = ""
 ## Global defaults; RampLevel / debug sliders override per load.
 static var cell_size_x: float = 47.0
 static var cell_size_z: float = 47.0
-## Per-glyph-cell pipe/ramp rise when `.ssk` omits `step_height`.
+## Factory default per-glyph-cell pipe/ramp rise when `.ssk` omits `step_height`.
 ## Below `cell_size_x` so default ramps are under 45° and pipes are slightly squat.
 const DEFAULT_STEP_HEIGHT: float = 40.0
+## Live default (TUNING / RampLevel). Starts at `DEFAULT_STEP_HEIGHT`.
+static var default_step_height: float = DEFAULT_STEP_HEIGHT
 
 
 static func load_path(
-	path: String, cell_x: float = -1.0, cell_z: float = -1.0
+	path: String,
+	cell_x: float = -1.0,
+	cell_z: float = -1.0,
+	step_height: float = -1.0,
 ) -> LevelSpec:
 	last_error = ""
 	var f := FileAccess.open(path, FileAccess.READ)
@@ -24,7 +29,7 @@ static func load_path(
 	var text := f.get_as_text()
 	f.close()
 	var spec := parse_text(
-		text, path.get_file().get_basename(), path, cell_x, cell_z
+		text, path.get_file().get_basename(), path, cell_x, cell_z, step_height
 	)
 	if spec == null:
 		_abort(last_error if last_error != "" else "Malformed level:\n%s" % path)
@@ -34,12 +39,14 @@ static func load_path(
 
 ## Parse only — returns null on error and sets last_error (no quit). Prefer load_path.
 ## Format: ssk 2 with one or more `layer N` / `height` / ASCII map blocks after `---`.
+## `step_height` > 0 forces rise (TUNING), overriding any `.ssk` header value.
 static func parse_text(
 	text: String,
 	default_name: String = "level",
 	source_path: String = "",
 	cell_x: float = -1.0,
 	cell_z: float = -1.0,
+	step_height: float = -1.0,
 ) -> LevelSpec:
 	var label := source_path if source_path != "" else default_name
 	var lines := text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
@@ -136,6 +143,9 @@ static func parse_text(
 		return _fail(label, "no layers (expected '---' then 'layer N' / 'height' / map)")
 	if cx <= 0.0 or cz <= 0.0:
 		return _fail(label, "cell size must be > 0")
+	# Runtime / TUNING override wins over header `step_height`.
+	if step_height > 0.0:
+		spec.step_height = step_height
 
 	var err := _build_layered_geometry(spec, layers, cx, cz)
 	if err != "":
@@ -500,7 +510,7 @@ static func _recompute_bounds(spec: LevelSpec) -> void:
 static func _effective_step_height(spec: LevelSpec) -> float:
 	if spec.step_height > 0.0:
 		return spec.step_height
-	return DEFAULT_STEP_HEIGHT
+	return default_step_height if default_step_height > 0.0 else DEFAULT_STEP_HEIGHT
 
 
 static func _pipes_from_aligned_runs(
@@ -534,7 +544,9 @@ static func _pipes_from_aligned_runs(
 
 	var used := {}
 	var pipes: Array = []
-	var step_h := step_height if step_height > 0.0 else DEFAULT_STEP_HEIGHT
+	var step_h := step_height if step_height > 0.0 else default_step_height
+	if step_h <= 0.0:
+		step_h = DEFAULT_STEP_HEIGHT
 	for i in range(runs.size()):
 		if used.has(i):
 			continue
@@ -573,7 +585,9 @@ static func _pipe_from_band(
 	var z1 := float(H - band.r0) * ch
 	var width_cells := int(band.c1) - int(band.c0) + 1
 	var footprint := x1 - x0
-	var step_h := step_height if step_height > 0.0 else DEFAULT_STEP_HEIGHT
+	var step_h := step_height if step_height > 0.0 else default_step_height
+	if step_h <= 0.0:
+		step_h = DEFAULT_STEP_HEIGHT
 	var rise: float = radius_override if radius_override > 0.0 else float(width_cells) * step_h
 	var is_left: bool = band.is_left
 	var lip_x: float = x1 if is_left else x0
@@ -614,7 +628,9 @@ static func _pipe_from_component(
 
 	var width_cells := max_c - min_c + 1
 	var footprint := x1 - x0
-	var step_h := step_height if step_height > 0.0 else DEFAULT_STEP_HEIGHT
+	var step_h := step_height if step_height > 0.0 else default_step_height
+	if step_h <= 0.0:
+		step_h = DEFAULT_STEP_HEIGHT
 	var rise: float = radius_override if radius_override > 0.0 else float(width_cells) * step_h
 
 	var lip_x: float
