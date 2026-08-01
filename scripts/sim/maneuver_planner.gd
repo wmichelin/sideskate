@@ -199,10 +199,17 @@ func try_fly_out(state: SimState, input_x: float, input_z: float) -> Dictionary:
 	var ahead_col := cell.x + (1 if out > 0.0 else -1)
 	if not model.is_playable_cell(ahead_col, cell.y):
 		return _reject("no outward playable cell")
+	var ahead_x := float(samp.coping_x) + out * model.cell_w
+	# Mid-cell sample: open joints put a foreign pipe column here (block —
+	# unlock would sail through that back above the peak). A `#` pad in the
+	# outward cell is a legal deck-out even when a partner pipe sits beyond it.
+	var mid_x := float(samp.coping_x) + out * model.cell_w * 0.5
+	if not _outward_mid_cell_is_deck(mid_x, pos.y, maxf(pos.z, cope_h)) \
+			and _outward_corridor_has_foreign_slope(pipe, mid_x, pos.y):
+		return _reject("outward corridor blocked")
 	# Must not tunnel through a foreign pipe/wall at this height. The climb /
 	# union wall on this coping is the fly-out plane itself (including the
 	# geometric top band) — never treat it as a blocked corridor.
-	var ahead_x := float(samp.coping_x) + out * model.cell_w
 	var clear := query.sweep_capsule(
 		pos, Vector3(ahead_x, pos.y, pos.z)
 	)
@@ -242,6 +249,44 @@ func _fly_out_hit_is_own_coping_wall(
 	if wall.source_pipe_id == pipe.id:
 		return true
 	if wall.upper_partner_pipe_id == pipe.id:
+		return true
+	return false
+
+
+## Outward mid-cell has a deck support (cross-story `#` deck-out corridor).
+func _outward_mid_cell_is_deck(mid_x: float, z: float, probe_h: float) -> bool:
+	if query == null:
+		return false
+	var top: Dictionary = query.top_support(
+		mid_x, z, probe_h + SimTolerances.CONTACT_EPS
+	)
+	if top.is_empty():
+		return false
+	return int(top.get("kind", -1)) == SimKinds.SurfaceKind.DECK
+
+
+## True when the outward sample X sits inside another pipe/ramp's XZ column.
+func _outward_corridor_has_foreign_slope(
+	pipe: PipeSurface, ahead_x: float, z: float
+) -> bool:
+	if pipe == null or model == null:
+		return false
+	var eps := SimTolerances.CONTACT_EPS
+	for pid in model.all_pipe_ids():
+		if pid == pipe.id:
+			continue
+		var other: PipeSurface = model.pipes[pid]
+		if z < other.z_min - eps or z > other.z_max + eps:
+			continue
+		if ahead_x < other.bound_x_min - eps or ahead_x > other.bound_x_max + eps:
+			continue
+		return true
+	for rid in model.all_ramp_ids():
+		var ramp: RampSurface = model.ramps[rid]
+		if z < ramp.z_min - eps or z > ramp.z_max + eps:
+			continue
+		if ahead_x < ramp.bound_x_min - eps or ahead_x > ramp.bound_x_max + eps:
+			continue
 		return true
 	return false
 
