@@ -68,12 +68,7 @@ Suggested defaults are starting points only.
 
 ### Recovery
 
-Recovery runs when **both** are true:
-
-1. `fall_elapsed >= fall_duration`
-2. Skater is **grounded**
-
-If duration elapses while airborne, remain locked until the next grounded mount, then recover on that tick.
+Recovery runs when `fall_elapsed >= fall_duration` (checkpoint soft-restore — **no** grounded wait). Crash Reject contacts can trap the skater airborne with planar stop; waiting for a land never completes.
 
 On recovery (see also fall-impact-triggers spec):
 

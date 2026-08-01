@@ -127,7 +127,7 @@ func begin_fall() -> void:
 		state.fall_start_vy = state.tangent_velocity.y
 
 
-## Remaining lockout fraction 1→0 over fall_duration (0 while waiting for land after).
+## Remaining lockout fraction 1→0 over fall_duration.
 func fall_cooldown_frac() -> float:
 	if state == null or not state.falling:
 		return 0.0
@@ -215,7 +215,10 @@ func _tick_fall(delta: float) -> void:
 		state.tangent_velocity.x = vx
 		state.tangent_velocity.y = vy
 		state.velocity = Vector3.ZERO
-	if state.fall_elapsed >= fall_duration and state.is_grounded():
+	# Checkpoint teleport — do not wait for a land. Crash walls (foreign lip,
+	# bounds, deck solids) can Reject forever with planar stop, leaving the
+	# skater airborne and never grounded.
+	if state.fall_elapsed >= fall_duration:
 		_restore_to_checkpoint()
 
 

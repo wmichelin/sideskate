@@ -99,6 +99,7 @@ func run() -> bool:
 		and _fall_clears_hang_ignores_wish()
 		and _fall_stops_planar_keeps_gravity()
 		and _fall_air_waits_for_land_then_recovers()
+		and _fall_crash_air_recovers_without_land()
 		and _fall_midair_still_collides_pipe()
 		and _fall_impact_bounds_requests_fall()
 		and _fall_impact_deck_wall_requests_fall()
@@ -206,6 +207,7 @@ func _fall_stops_planar_keeps_gravity() -> bool:
 
 
 func _fall_air_waits_for_land_then_recovers() -> bool:
+	# Name is historical: recovery is duration-gated checkpoint restore (no land wait).
 	var sim := PlayerSim.new()
 	if not sim.setup_from_path("res://tests/levels/sim/sim_halfpipe.ssk"):
 		push_error("fall recover: setup")
@@ -223,17 +225,10 @@ func _fall_air_waits_for_land_then_recovers() -> bool:
 	sim.state.velocity = Vector3(0.0, 0.0, 50.0)
 	sim.state.note_air_height(sim.state.position.z)
 	sim.begin_fall()
-	var saw_post_duration_air := false
 	for _i in range(200):
 		sim.set_input(Vector2(1.0, 0.0), false, false)
 		sim.tick()
-		if sim.state.falling and sim.state.fall_elapsed >= sim.fall_duration \
-				and sim.state.is_airborne():
-			saw_post_duration_air = true
 		if not sim.state.falling and sim.state.is_grounded():
-			if not saw_post_duration_air:
-				# Short fall may land before duration — still require recover clean.
-				pass
 			if sim.state.velocity.length() > 0.5 \
 					or sim.state.tangent_velocity.length() > 0.5:
 				push_error("fall recover: expected zero vel")
@@ -249,6 +244,58 @@ func _fall_air_waits_for_land_then_recovers() -> bool:
 				return false
 			return true
 	push_error("fall recover: never recovered grounded")
+	return false
+
+
+## Foreign high-lip Reject can trap mid-air; recovery must not wait for a land.
+func _fall_crash_air_recovers_without_land() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://levels/plaza_default.ssk"):
+		push_error("fall crash air: setup")
+		return false
+	sim.fall_anim_duration = 0.05
+	sim.fall_stop_duration = 0.1
+	sim.fall_duration = 0.25
+	var pipe: PipeSurface = sim.model.pipes.get("pipe_1_L0_S1")
+	if pipe == null:
+		push_error("fall crash air: missing pipe")
+		return false
+	var floor_id := ""
+	for id in sim.model.patches.keys():
+		if int(sim.model.patches[id].kind) == SimKinds.SurfaceKind.FLOOR:
+			floor_id = id
+			break
+	if floor_id.is_empty():
+		push_error("fall crash air: no floor")
+		return false
+	var z := (pipe.z_min + pipe.z_max) * 0.5
+	var u := 0.92
+	var th := u * PI * 0.5
+	sim.state.mode = SimState.Mode.AIRBORNE
+	sim.state.surface_id = ""
+	sim.state.clear_hang()
+	sim.state.maneuver = null
+	sim.state.air_launch_surface_id = floor_id
+	sim.state.position = Vector3(
+		pipe.x_at_theta(z, th), z, pipe.height_at_theta(z, th) + 20.0
+	)
+	sim.state.velocity = Vector3(0.0, 0.0, -200.0)
+	sim.state.note_air_height(sim.state.position.z)
+	var saw_fall := false
+	for _i in range(120):
+		sim.set_input(Vector2.ZERO, false, false)
+		sim.tick()
+		if sim.state.falling:
+			saw_fall = true
+		if saw_fall and not sim.state.falling and sim.state.is_grounded():
+			if not sim._is_checkpoint_surface(sim.state.surface_id):
+				push_error("fall crash air: restore not on floor/deck")
+				return false
+			return true
+	push_error(
+		"fall crash air: stuck falling=%s grounded=%s pos=%s"
+		% [sim.state.falling, sim.state.is_grounded(), sim.state.position]
+	)
 	return false
 
 

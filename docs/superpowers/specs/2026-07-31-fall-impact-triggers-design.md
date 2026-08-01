@@ -40,12 +40,11 @@ Hang remount of owned pipe / ramp / wall stays Mount as today.
 
 ## Recovery (all falls, including Y)
 
-Fall bout timers / planar stop / presentation box unchanged until recovery conditions:
+Fall bout timers / planar stop / presentation box unchanged until:
 
 1. `fall_elapsed >= fall_duration`
-2. Skater is **grounded**
 
-Then, instead of in-place upright recovery:
+Then soft-restore (no land wait — crash Reject walls can leave the skater airborne forever):
 
 - Soft restore using the existing floor/deck checkpoint history (`CHECKPOINT_HISTORY_SEC`, same selection as `PlayerSim.respawn()`).
 - Clear fall bout, zero velocity, grounded on that floor/deck, facing from checkpoint.
