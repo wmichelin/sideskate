@@ -26,3 +26,27 @@ ASCII `.ssk` files in `levels/`. Format: [docs/level_format.md](docs/level_forma
 ```bash
 godot4 --headless --path . --script res://tests/test_runner.gd
 ```
+
+## Deploy (itch.io HTML5)
+
+Prod page: [wmichelin.itch.io/sideskater](https://wmichelin.itch.io/sideskater)
+
+Prerequisites:
+
+1. Godot **4.7** with **Web** export templates installed
+2. [butler](https://itch.io/docs/butler/installing.html) on `PATH` and `butler login`
+
+```bash
+./tools/deploy_prod.sh
+```
+
+Exports a clean release Web build (no debug tools) to `build/html5/`, then pushes
+channel `html5` on `wmichelin/sideskater` (overrides that channel’s previous build).
+
+- `DRY_RUN=1 ./tools/deploy_prod.sh` — export only
+- `GODOT=/path/to/Godot` — override binary
+- `USERVERSION=1.2.3` — override butler version label (default: git short SHA)
+
+After the **first** push, on the itch Edit game page: set kind to **HTML**, mark the
+`html5` upload playable in browser (and SharedArrayBuffer if prompted), then
+delete/hide any old manual upload.
