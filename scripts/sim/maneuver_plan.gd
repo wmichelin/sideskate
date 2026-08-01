@@ -70,5 +70,6 @@ func to_dict() -> Dictionary:
 		"apex_frac": apex_frac,
 		"land_x": land_x,
 		"land_height": land_height,
+		"land_along": land_along,
 		"travel_sign": travel_sign,
 	}

@@ -2058,7 +2058,12 @@ func _anchor_transfer_dest_hang(state: SimState, plan: ManeuverPlan) -> bool:
 	if launch_id.is_empty():
 		return false
 	state.air_launch_surface_id = launch_id
+	# Accept stamped plan.land_along before begin_hang — clear_hang on accept
+	# already wiped the source hang_launch_along.
+	var carry := plan.land_along if plan != null else 0.0
 	state.begin_hang(edge.id)
+	if carry > 0.001:
+		state.hang_launch_along = carry
 	if not plan.hold_facing.is_empty():
 		state.facing = plan.hold_facing
 		state.visual_facing = plan.hold_facing

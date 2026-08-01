@@ -52,6 +52,9 @@ func try_transfer(state: SimState) -> Dictionary:
 	plan.travel_sign = signf(land_x - state.position.x)
 	if plan.travel_sign == 0.0:
 		plan.travel_sign = -1.0 if state.facing == "l" else 1.0
+	# Carry climb |along| across clear_hang → dest hang remount. Without this,
+	# dest remount falls to the 120 floor and the landing pipe feels like drag.
+	plan.land_along = _transfer_carry_along(state)
 	# Time-phased 0→1 from accept (never pre-seed mid progress — that snaps).
 	# Upright lean at ballistic apex; if already falling, upright at mid pull.
 	var g_abs := absf(SimTolerances.GRAVITY)
@@ -77,6 +80,17 @@ func try_transfer(state: SimState) -> Dictionary:
 		plan.apex_frac = 0.5
 	plan.progress = 0.0
 	return {"ok": true, "plan": plan}
+
+
+## Takeoff |along| to restore on dest hang remount (hang stamp, else ground).
+func _transfer_carry_along(state: SimState) -> float:
+	if state == null:
+		return 0.0
+	if state.hang_launch_along > 0.001:
+		return state.hang_launch_along
+	if state.is_grounded():
+		return absf(state.tangent_velocity.x)
+	return 0.0
 
 
 ## Smallest t ≥ 0 where h0 + vz0·t + ½g·t² reaches h_land under constant g.

@@ -90,6 +90,7 @@ func run() -> bool:
 		and _layered_next_spine_keeps_l1_past_l0_lip()
 		and _transfer_button_lerps_x_holds_facing()
 		and _transfer_shared_x_spine_reanchors_hang()
+		and _transfer_spine_remount_preserves_along()
 		and _transfer_rejects_below_hang_lip_after_floor_ollie()
 		and _layered_deck_back_ride_off_stays_free()
 		and _map_edge_deck_no_void_exit()
@@ -7583,6 +7584,107 @@ func _transfer_shared_x_spine_reanchors_hang() -> bool:
 		return false
 	if absf(sim.state.position.x - cx) > SimTolerances.ALIGN_EPS:
 		push_error("shared-x transfer: x drifted %.2f" % sim.state.position.x)
+		return false
+	return true
+
+
+## =====)))##(((===== spine: transfer must carry climb |along| through dest hang
+## remount. clear_hang must not wipe takeoff speed (land_along → hang_launch_along).
+func _transfer_spine_remount_preserves_along() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_spine_transfer_speed.ssk"):
+		push_error("spine along: setup")
+		return false
+	# Left bowl RIGHT pipe → right bowl LEFT pipe across ##.
+	var src: PipeSurface = null
+	var dest: PipeSurface = null
+	for id in sim.model.pipes.keys():
+		var p: PipeSurface = sim.model.pipes[id]
+		if p.side == SimKinds.PipeSide.RIGHT:
+			src = p
+		elif p.side == SimKinds.PipeSide.LEFT:
+			dest = p
+	if src == null or dest == null:
+		push_error("spine along: need spine pipes")
+		return false
+	_place_at_coping(sim, src, 400.0)
+	sim.state.set_facing_side("r")
+	sim.set_input(Vector2.ZERO, false, false)
+	sim.tick()
+	if not sim.state.is_hanging():
+		push_error("spine along: expected hang after climb")
+		return false
+	var takeoff := absf(sim.state.hang_launch_along)
+	if takeoff < 300.0:
+		push_error("spine along: takeoff unset (%.1f)" % takeoff)
+		return false
+	# Gate requires height above dest hang lip — rise one physics tick.
+	var cands: Array = []
+	for _rise in range(12):
+		sim.set_input(Vector2.ZERO, false, false)
+		sim.tick()
+		cands = sim.query.transfer_candidates(sim.state)
+		if not cands.is_empty() and str(cands[0].coping_id) == dest.coping_id:
+			break
+	if cands.is_empty() or str(cands[0].coping_id) != dest.coping_id:
+		push_error("spine along: want dest %s got %s" % [dest.coping_id, cands])
+		return false
+	sim.set_input(Vector2.ZERO, false, true)
+	sim.tick()
+	if not sim.state.has_maneuver() \
+			or (sim.state.maneuver as ManeuverPlan).kind != ManeuverPlan.Kind.TRANSFER:
+		push_error("spine along: expected TRANSFER reject=%s" % sim.state.last_reject)
+		return false
+	var plan: ManeuverPlan = sim.state.maneuver
+	if plan.land_along < takeoff * 0.85:
+		push_error(
+			"spine along: plan.land_along=%.1f lost takeoff %.1f"
+			% [plan.land_along, takeoff]
+		)
+		return false
+	var dest_edge := sim.query.open_hang_edge_for_coping(dest.coping_id, sim.state.position.y)
+	if dest_edge == null:
+		push_error("spine along: no dest hang edge")
+		return false
+	for _i in range(300):
+		if sim.state.is_hanging() and sim.state.hang_edge_id == dest_edge.id:
+			break
+		sim.set_input(Vector2.ZERO, false, false)
+		sim.tick()
+	if not sim.state.is_hanging() or sim.state.hang_edge_id != dest_edge.id:
+		push_error(
+			"spine along: never dest hang edge=%s got=%s man=%s"
+			% [
+				dest_edge.id,
+				sim.state.hang_edge_id,
+				sim.state.maneuver.kind_name() if sim.state.has_maneuver() else "none",
+			]
+		)
+		return false
+	if absf(sim.state.hang_launch_along) < takeoff * 0.85:
+		push_error(
+			"spine along: dest hang wiped takeoff %.1f → %.1f"
+			% [takeoff, sim.state.hang_launch_along]
+		)
+		return false
+	# Remount dest pipe — must keep climb speed (not the 120 floor).
+	var remounted := false
+	var remount_along := 0.0
+	for _j in range(90):
+		sim.set_input(Vector2.ZERO, false, false)
+		sim.tick()
+		if sim.state.is_grounded() and sim.model.pipes.has(sim.state.surface_id):
+			remounted = true
+			remount_along = absf(sim.state.tangent_velocity.x)
+			break
+	if not remounted:
+		push_error("spine along: never remounted dest pipe")
+		return false
+	if remount_along < takeoff * 0.85:
+		push_error(
+			"spine along: remount dragged %.1f → %.1f (transfer must carry hang_launch_along)"
+			% [takeoff, remount_along]
+		)
 		return false
 	return true
 
