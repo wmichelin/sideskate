@@ -112,6 +112,8 @@ func run() -> bool:
 		and _crash_foreign_pipe_below_lip_may_mount()
 		and _crash_same_slope_upper_remount_no_bail()
 		and _fly_out_ollie_same_pipe_no_crash()
+		and _air_out_hang_return_deck_pipe_no_crash()
+		and _air_out_hang_ollie_same_pipe_no_crash()
 		and _crash_hang_clips_deck_requests_fall()
 		and _ramp_edge_lip_stick_out_faces_and_climbs()
 	)
@@ -801,6 +803,97 @@ func _fly_out_ollie_same_pipe_no_crash() -> bool:
 		"fly-out ollie: never remounted mode=%s surf=%s launch=%s"
 		% [sim.state.mode, sim.state.surface_id, sim.state.air_launch_surface_id]
 	)
+	return false
+
+
+## Hang air-out (no stick fly-out) return onto a deck-backed pipe must remount.
+func _air_out_hang_return_deck_pipe_no_crash() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_deck_backed.ssk"):
+		push_error("air-out hang return: setup")
+		return false
+	sim.fall_duration = 5.0
+	sim.friction = 0.0
+	sim.ramp_friction = 0.0
+	var left := _left_pipe(sim.model)
+	if left == null:
+		return false
+	_place_at_coping(sim, left, 280.0)
+	sim.set_input(Vector2.ZERO, false, false)
+	sim.tick()
+	if not sim.state.is_hanging():
+		push_error(
+			"air-out hang return: expected hang mode=%s reject=%s"
+			% [sim.state.mode, sim.state.last_reject]
+		)
+		return false
+	if sim.state.air_launch_surface_id != left.id:
+		push_error(
+			"air-out hang return: launch=%s want %s"
+			% [sim.state.air_launch_surface_id, left.id]
+		)
+		return false
+	for _i in range(90):
+		sim.set_input(Vector2.ZERO, false, false)
+		sim.tick()
+		if sim.state.falling:
+			push_error(
+				"air-out hang return: fell on remount hang=%s pos=%s"
+				% [sim.state.is_hanging(), sim.state.position]
+			)
+			return false
+		if sim.state.is_grounded() and sim.state.surface_id == left.id:
+			return true
+	push_error(
+		"air-out hang return: never remounted mode=%s surf=%s"
+		% [sim.state.mode, sim.state.surface_id]
+	)
+	return false
+
+
+## Hang air-out + air ollie on the same deck-backed pipe — remount, no bail.
+func _air_out_hang_ollie_same_pipe_no_crash() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_deck_backed.ssk"):
+		push_error("air-out hang ollie: setup")
+		return false
+	sim.fall_duration = 5.0
+	sim.ollie_height_pipe = 200.0
+	sim.ollie_charge_ms = 0.0
+	sim.ollie_accel = 0.0
+	sim.friction = 0.0
+	sim.ramp_friction = 0.0
+	var left := _left_pipe(sim.model)
+	if left == null:
+		return false
+	_place_at_coping(sim, left, 280.0)
+	sim.ollie_available = true
+	sim.set_input(Vector2.ZERO, false, false, true, false)
+	sim.tick()
+	if not sim.state.is_hanging():
+		push_error("air-out hang ollie: expected hang")
+		return false
+	sim.set_input(Vector2.ZERO, false, false, false, true)
+	sim.tick()
+	if sim.state.falling:
+		push_error("air-out hang ollie: crashed on ollie tick")
+		return false
+	for _i in range(150):
+		sim.set_input(Vector2.ZERO, false, false)
+		sim.tick()
+		if sim.state.falling:
+			push_error(
+				"air-out hang ollie: fell launch=%s hang=%s pos=%s"
+				% [
+					sim.state.air_launch_surface_id,
+					sim.state.is_hanging(),
+					sim.state.position,
+				]
+			)
+			return false
+		if sim.state.is_grounded() and sim.state.surface_id == left.id:
+			return true
+	push_error("air-out hang ollie: never remounted")
 	return false
 
 

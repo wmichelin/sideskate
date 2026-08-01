@@ -193,17 +193,25 @@ func _hang_flat_crash(state: SimState, contact: Dictionary, ctx: Dictionary) -> 
 		return false
 	if not state.is_hanging() and not bool(ctx.get("was_hanging", false)):
 		return false
-	var sid := str(contact.get("owner_id", contact.get("surface_id", "")))
+	var owner := str(contact.get("owner_id", contact.get("surface_id", "")))
+	var surface_id := str(contact.get("surface_id", owner))
+	var sid := owner
 	if sid == "__void_floor__" or sid == "__park_floor__":
 		return true
 	var kind := str(contact.get("kind", ""))
+	var role := int(contact.get("role", -1))
 	var mode := str(ctx.get("mode", ""))
 	# Hang X-lock on the coping seam shares volume with the abutting outward `#`.
-	# That lip column is air-out / lip-ollie space — not a wipeout. Landing on the
-	# pad (hang_flat_mount) and clipping deep into the pad still crash.
-	if mode == "hang_clip" and _is_hang_lip_column_deck(state, sid, contact):
-		return false
-	if kind == "deck" or int(contact.get("role", -1)) == SimKinds.ContactRole.OUTWARD_DECK:
+	# Lip-column remap sets owner→pipe while surface_id stays the `#` — that
+	# corridor is air-out / remount space, not a wipeout. Deep pad clips still fall.
+	if mode == "hang_clip":
+		if role == SimKinds.ContactRole.LIP_COLUMN:
+			return false
+		if _is_hang_lip_column_deck(state, surface_id, contact):
+			return false
+		if _is_hang_lip_column_deck(state, owner, contact):
+			return false
+	if kind == "deck" or role == SimKinds.ContactRole.OUTWARD_DECK:
 		return true
 	if kind == "support_top":
 		var sk := int(contact.get("support_kind", -1))
