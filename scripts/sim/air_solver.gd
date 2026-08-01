@@ -167,14 +167,14 @@ func _step_free(state: SimState, wish: Vector2, delta: float) -> void:
 		var t := float(contact.get("t", 1.0))
 		var at := from.lerp(to, t)
 		state.position = from.lerp(to, maxf(t - 0.01, 0.0))
-		var disp := _disposition_for_contact(state, contact, from.z)
+		var disp := _disposition_for_contact(state, contact, from, at)
 		# Legacy bounce+_try_land: a wall/bounds Reject must not steal a later
 		# Mount (layered inbound onto an upper pipe past a lower wall face).
 		# Crash shells (foreign lip, slope outer back, …) stay Reject — never
 		# Corridor past them onto a later support-top Mount (warp to u≈1).
 		if disp == SimKinds.ContactDisposition.REJECT \
 				and not _reject_blocks_later_mount(state, contact) \
-				and _stream_has_later_mount(state, contacts, ci, from.z):
+				and _stream_has_later_mount(state, contacts, ci, from, to):
 			disp = SimKinds.ContactDisposition.CORRIDOR
 		if disp == SimKinds.ContactDisposition.CORRIDOR:
 			state.position = at
@@ -189,7 +189,7 @@ func _step_free(state: SimState, wish: Vector2, delta: float) -> void:
 				_assert_air_invariants(state)
 				return
 			# Mount refused — if a later Mount exists, keep going; else Reject.
-			if _stream_has_later_mount(state, contacts, ci, from.z):
+			if _stream_has_later_mount(state, contacts, ci, from, to):
 				state.position = at
 				continue
 			disp = SimKinds.ContactDisposition.REJECT
@@ -253,11 +253,12 @@ func _air_rim_is_launch_slope_edge(state: SimState, at: Vector3) -> bool:
 
 ## True when a contact after `index` dispositions to Mount (and can seat).
 func _stream_has_later_mount(
-	state: SimState, contacts: Array, index: int, from_height: float
+	state: SimState, contacts: Array, index: int, from: Vector3, to: Vector3
 ) -> bool:
 	for j in range(index + 1, contacts.size()):
 		var later: Dictionary = contacts[j]
-		if _disposition_for_contact(state, later, from_height) \
+		var later_at := from.lerp(to, float(later.get("t", 1.0)))
+		if _disposition_for_contact(state, later, from, later_at) \
 				== SimKinds.ContactDisposition.MOUNT:
 			return true
 	return false
@@ -284,10 +285,41 @@ func _integrate_air_wish(state: SimState, wish: Vector2, delta: float) -> void:
 	state.velocity.z += SimTolerances.GRAVITY * delta
 
 
+## Deck launches cannot seat the abutting slope by proximity. They may Mount only
+## when this free-air segment crosses its sampled ride surface from above.
+## Returns -1 when `contact` is not the launch deck's abutting slope.
+func _deck_launch_slope_disposition(
+	state: SimState, contact: Dictionary, from: Vector3, at: Vector3
+) -> int:
+	if crash == null or state.has_maneuver() or state.is_hanging():
+		return -1
+	var launch := state.air_launch_surface_id
+	if launch.is_empty() or not model.patches.has(launch):
+		return -1
+	var deck: SupportPatch = model.patches[launch]
+	if int(deck.kind) != SimKinds.SurfaceKind.DECK:
+		return -1
+	var surf = _contact_slope_surf(contact)
+	if surf == null or not crash.deck_abuts_slope(launch, surf.id, at.y):
+		return -1
+	if state.velocity.z >= -SimTolerances.CONTACT_EPS:
+		return SimKinds.ContactDisposition.REJECT
+	var from_proj: Dictionary = surf.project(from.x, from.y, from.z)
+	var at_proj: Dictionary = surf.project(at.x, at.y, at.z)
+	if not bool(from_proj.get("ok", false)) or not bool(at_proj.get("ok", false)):
+		return SimKinds.ContactDisposition.REJECT
+	var from_above := float(from_proj.separation) > SimTolerances.CONTACT_EPS
+	var crossed := float(at_proj.separation) <= SimTolerances.CONTACT_EPS
+	if from_above and crossed:
+		return SimKinds.ContactDisposition.MOUNT
+	return SimKinds.ContactDisposition.REJECT
+
+
 ## Policy table: state + compiled contact role → Mount / Reject / Corridor.
 func _disposition_for_contact(
-	state: SimState, contact: Dictionary, from_height: float
+	state: SimState, contact: Dictionary, from: Vector3, at: Vector3
 ) -> int:
+	var from_height := from.z
 	var kind := str(contact.get("kind", ""))
 	var role := int(contact.get("role", SimKinds.ContactRole.SOLID))
 	var reason := str(contact.get("reason", ""))
@@ -326,6 +358,9 @@ func _disposition_for_contact(
 				else SimKinds.ContactDisposition.CORRIDOR
 			)
 		return SimKinds.ContactDisposition.CORRIDOR
+	var deck_launch_disp := _deck_launch_slope_disposition(state, contact, from, at)
+	if deck_launch_disp >= 0:
+		return deck_launch_disp
 	# Bounds / feature walls.
 	if kind == "bounds" or role == SimKinds.ContactRole.BOUNDS:
 		# Slope outer back is a crash shell (classifier). Never Mount through it —
@@ -341,10 +376,6 @@ func _disposition_for_contact(
 				and state.air_launch_surface_id == str(contact.get("surface_id", "")):
 			return SimKinds.ContactDisposition.CORRIDOR
 		return SimKinds.ContactDisposition.REJECT
-	# Deck leave onto abutting slope: Corridor only when *not* with-slope (into-
-	# face / skim). With-slope ride-face contact Mounts below.
-	if _deck_ride_off_blocks_slope_contact(state, contact):
-		return SimKinds.ContactDisposition.CORRIDOR
 	# OPEN corridor from outward — acid only, never ordinary mount.
 	if role == SimKinds.ContactRole.OPEN_CORRIDOR:
 		return SimKinds.ContactDisposition.CORRIDOR
@@ -454,63 +485,6 @@ func _reject_blocks_later_mount(state: SimState, contact: Dictionary) -> bool:
 	return false
 
 
-## This air bout left an outward `#` onto a slope that is *not* with-slope travel
-## (into-face / skim): Corridor so we do not sticky-Mount the lip. With-slope
-## deck leave → abutting ride face may Mount. Bowl-side body Mounts stay legal
-## so `===)))####` can land the arc toward the floor.
-func _deck_ride_off_blocks_slope_contact(state: SimState, contact: Dictionary) -> bool:
-	var launch := state.air_launch_surface_id
-	if launch.is_empty() or not model.patches.has(launch):
-		return false
-	var pad: SupportPatch = model.patches[launch]
-	if int(pad.kind) != SimKinds.SurfaceKind.DECK:
-		return false
-	if crash != null and crash.is_with_slope(
-		state, contact, {"launch_id": launch}
-	):
-		return false
-	var kind := str(contact.get("kind", ""))
-	var owner := str(contact.get("owner_id", contact.get("surface_id", "")))
-	if owner.is_empty():
-		return false
-	var z := state.position.y
-	var coping_id := ""
-	if model.pipes.has(owner):
-		coping_id = model.pipes[owner].coping_id
-	elif model.ramps.has(owner):
-		coping_id = model.ramps[owner].coping_id
-	elif model.walls.has(owner):
-		var wall: WallSurface = model.walls[owner]
-		var pipe: PipeSurface = model.pipes.get(wall.source_pipe_id)
-		if pipe == null:
-			return false
-		coping_id = pipe.coping_id
-	elif kind == "support_top":
-		var sk := int(contact.get("support_kind", -1))
-		if sk == SimKinds.SurfaceKind.PIPE and model.pipes.has(owner):
-			coping_id = model.pipes[owner].coping_id
-		elif sk == SimKinds.SurfaceKind.RAMP and model.ramps.has(owner):
-			coping_id = model.ramps[owner].coping_id
-	var deck_owned := _slope_span_has_outward_deck(coping_id, launch, z)
-	# Wall-extension lip `#` may omit span.outward_deck_id while still abutting.
-	if not deck_owned and model.walls.has(owner) and int(pad.kind) == SimKinds.SurfaceKind.DECK:
-		var wall: WallSurface = model.walls[owner]
-		var ws: Dictionary = wall.sample_at_z(z)
-		if not ws.is_empty():
-			var wx := float(ws.x)
-			deck_owned = (
-				absf(pad.x_min - wx) <= SimTolerances.ALIGN_EPS
-				or absf(pad.x_max - wx) <= SimTolerances.ALIGN_EPS
-			)
-	if coping_id.is_empty() or not deck_owned:
-		return false
-	# Body hit past the lip (bowl side) is an ordinary land, not the sticky pad exit.
-	if (kind == "pipe" or kind == "ramp") \
-			and not _deck_ride_off_still_outward(coping_id, state.position.x, z):
-		return false
-	return true
-
-
 func _slope_span_has_outward_deck(coping_id: String, deck_id: String, z: float) -> bool:
 	if coping_id.is_empty() or deck_id.is_empty():
 		return false
@@ -519,18 +493,6 @@ func _slope_span_has_outward_deck(coping_id: String, deck_id: String, z: float) 
 		return false
 	var span: CopingSpan = cope.span_at_z(z)
 	return span != null and span.outward_deck_id == deck_id
-
-
-## True while X is still on the outward/deck side of the coping (sticky band).
-func _deck_ride_off_still_outward(coping_id: String, x: float, z: float) -> bool:
-	var cope: CopingEdge = model.copings.get(coping_id)
-	if cope == null:
-		return true
-	var samp := cope.sample_at_z(z)
-	if samp.is_empty():
-		return true
-	var cx := float(samp.coping_x)
-	return (x - cx) * float(cope.outward_sign) > -SimTolerances.CAPSULE_RADIUS
 
 
 ## True when this outer-back hit belongs to the slope we just left (or its
@@ -830,7 +792,11 @@ func _mount_support_top(state: SimState, contact: Dictionary, from_height: float
 func _reject_air_contact(state: SimState, contact: Dictionary, from: Vector3) -> void:
 	var kind := str(contact.get("kind", ""))
 	var normal: Vector3 = contact.get("normal", Vector3.ZERO)
-	if _contact_requests_fall(state, contact):
+	var hit_point: Vector3 = contact.get("point", state.position)
+	if _deck_launch_slope_disposition(state, contact, from, hit_point) \
+			== SimKinds.ContactDisposition.REJECT:
+		state.request_fall = true
+	elif _contact_requests_fall(state, contact):
 		state.request_fall = true
 		# Default lean to approach side before specialized park paths refine it.
 		if not state.fall_lean_locked:
@@ -980,7 +946,7 @@ func _bounce_off_solid_no_vz_kill(state: SimState, hit: Dictionary, from: Vector
 func _resolve_air_contact(
 	state: SimState, contact: Dictionary, from: Vector3, from_height: float
 ) -> bool:
-	var disp := _disposition_for_contact(state, contact, from_height)
+	var disp := _disposition_for_contact(state, contact, from, from)
 	if disp == SimKinds.ContactDisposition.CORRIDOR:
 		return false
 	if disp == SimKinds.ContactDisposition.MOUNT:

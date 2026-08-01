@@ -181,55 +181,8 @@ func contact_slope_id(contact: Dictionary) -> String:
 	return ""
 
 
-## Traveling with a slope: same-slope reentry, or deck-leave onto an abutting
-## pipe/ramp while planar motion is into-bowl / near-vertical.
-func is_with_slope(state: SimState, contact: Dictionary, ctx: Dictionary = {}) -> bool:
-	if state == null or model == null:
-		return false
-	var pipe := contact_pipe(contact)
-	if pipe != null and is_same_slope_reentry(state, pipe, ctx):
-		return true
-	var launch := str(ctx.get("launch_id", ""))
-	if launch.is_empty():
-		launch = state.air_launch_surface_id
-	if launch.is_empty():
-		return false
-	var slope_id := contact_slope_id(contact)
-	if slope_id.is_empty() and pipe != null:
-		slope_id = pipe.id
-	if slope_id.is_empty():
-		return false
-	if launch == slope_id:
-		return _planar_travels_with_slope(state, slope_id)
-	if not model.patches.has(launch):
-		return false
-	if int((model.patches[launch] as SupportPatch).kind) != SimKinds.SurfaceKind.DECK:
-		return false
-	var z := state.position.y
-	if deck_abuts_slope(launch, slope_id, z):
-		return _planar_travels_with_slope(state, slope_id)
-	if pipe != null and pipe.id != slope_id and deck_abuts_slope(launch, pipe.id, z):
-		return _planar_travels_with_slope(state, pipe.id)
-	return false
-
-
-## Into-bowl half-plane of the slope (or near-zero planar X for a drop-in).
-func _planar_travels_with_slope(state: SimState, slope_id: String) -> bool:
-	var out := NAN
-	if model.pipes.has(slope_id):
-		out = float((model.pipes[slope_id] as PipeSurface).outward_sign())
-	elif model.ramps.has(slope_id):
-		out = float((model.ramps[slope_id] as RampSurface).outward_sign())
-	if is_nan(out):
-		return false
-	var vx := state.velocity.x
-	if absf(vx) <= SimTolerances.CONTACT_EPS * 20.0:
-		return true
-	return vx * out < 0.0
-
-
 ## Free-air into a foreign pipe's upper ollie-lip band → crash wall (never Mount).
-## With-slope leave/land (deck abut leave, same-slope reentry) is never foreign-lip.
+## Deck-launch contact timing is decided by AirSolver's swept surface gate.
 func is_foreign_pipe_lip_crash(
 	state: SimState, contact: Dictionary, ctx: Dictionary = {}
 ) -> bool:
@@ -239,8 +192,6 @@ func is_foreign_pipe_lip_crash(
 	if pipe == null:
 		return false
 	if is_same_slope_reentry(state, pipe, ctx):
-		return false
-	if is_with_slope(state, contact, ctx):
 		return false
 	var u := float(ctx.get("u", NAN))
 	if is_nan(u):
