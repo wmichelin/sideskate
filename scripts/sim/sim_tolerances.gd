@@ -12,6 +12,8 @@ const CAPSULE_RADIUS := 9.0
 ## Wall / joint Reject clearance — ≥ half presentation body (0.18m) so the fall
 ## box and camera do not spawn inside the crash face.
 const WALL_REJECT_CLEAR := CAPSULE_RADIUS * 2.0
+## Height band under a pipe peak that counts as a tip/top skim (eject outside).
+const PIPE_TOP_SKIM_BAND := 24.0
 const CAPSULE_CYLINDER_H := 22.0
 const BODY_FEET_TO_CENTER := CAPSULE_RADIUS + CAPSULE_CYLINDER_H * 0.5
 const FIXED_DT := 1.0 / 60.0

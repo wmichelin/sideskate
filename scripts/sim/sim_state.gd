@@ -62,6 +62,8 @@ var fall_start_vx: float = 0.0
 var fall_start_vy: float = 0.0
 ## Solvers stamp this; PlayerSim calls begin_fall() after the step.
 var request_fall: bool = false
+## Pipe id to eject outside of on lip-top crash (cleared after eject).
+var fall_eject_pipe_id: String = ""
 
 
 ## Lock presentation flop to `sign` (usually wall approach / away-from-impact).
@@ -139,6 +141,7 @@ func clear_fall() -> void:
 	fall_start_vx = 0.0
 	fall_start_vy = 0.0
 	request_fall = false
+	fall_eject_pipe_id = ""
 
 
 func to_dict() -> Dictionary:

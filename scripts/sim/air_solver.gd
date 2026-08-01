@@ -355,9 +355,8 @@ func _disposition_for_contact(
 		if _rising_same_slope_reentry(state, _contact_slope_surf(contact)):
 			return SimKinds.ContactDisposition.CORRIDOR
 		if _foreign_pipe_lip_is_crash_wall(state, contact):
-			# Already wiping out: seat on the lip instead of Reject-bounce forever.
-			if state.falling and state.velocity.z <= SimTolerances.CONTACT_EPS:
-				return SimKinds.ContactDisposition.MOUNT
+			return SimKinds.ContactDisposition.REJECT
+		if state.falling:
 			return SimKinds.ContactDisposition.REJECT
 		return SimKinds.ContactDisposition.MOUNT
 	# Wall climb face.
@@ -398,9 +397,13 @@ func _disposition_for_contact(
 			return SimKinds.ContactDisposition.CORRIDOR
 		if state.velocity.z > 0.0:
 			return SimKinds.ContactDisposition.CORRIDOR
-		if sk == SimKinds.SurfaceKind.PIPE and _foreign_pipe_lip_is_crash_wall(state, contact):
-			if state.falling and state.velocity.z <= SimTolerances.CONTACT_EPS:
-				return SimKinds.ContactDisposition.MOUNT
+		if sk == SimKinds.SurfaceKind.PIPE and (
+			state.falling or _foreign_pipe_lip_is_crash_wall(state, contact)
+		):
+			return SimKinds.ContactDisposition.REJECT
+		if state.falling and (
+			sk == SimKinds.SurfaceKind.PIPE or sk == SimKinds.SurfaceKind.RAMP
+		):
 			return SimKinds.ContactDisposition.REJECT
 		return SimKinds.ContactDisposition.MOUNT
 	# Pipe / ramp body solids.
@@ -411,9 +414,10 @@ func _disposition_for_contact(
 			return SimKinds.ContactDisposition.CORRIDOR
 		if state.is_hanging() and kind == "pipe" and _hang_rejects_pipe_hit(state, contact):
 			return SimKinds.ContactDisposition.CORRIDOR
+		# Wipeout must not seat and slide into the bowl after a lip/top clip.
+		if state.falling:
+			return SimKinds.ContactDisposition.REJECT
 		if kind == "pipe" and _foreign_pipe_lip_is_crash_wall(state, contact):
-			if state.falling and state.velocity.z <= SimTolerances.CONTACT_EPS:
-				return SimKinds.ContactDisposition.MOUNT
 			return SimKinds.ContactDisposition.REJECT
 		return SimKinds.ContactDisposition.MOUNT
 	return SimKinds.ContactDisposition.REJECT
@@ -431,6 +435,9 @@ func _foreign_pipe_lip_is_crash_wall(state: SimState, contact: Dictionary) -> bo
 ## Rejects that must not be softened into Corridor for a later Mount.
 func _reject_blocks_later_mount(state: SimState, contact: Dictionary) -> bool:
 	if _foreign_pipe_lip_is_crash_wall(state, contact):
+		return true
+	# Wipeout slope contacts must Reject — Corridor+later Mount climbs into L1.
+	if state.falling and _contact_is_slope_body(contact):
 		return true
 	var kind := str(contact.get("kind", ""))
 	var role := int(contact.get("role", -1))
@@ -663,19 +670,19 @@ func _mount_pipe_owner(state: SimState, pipe_id: String, contact: Dictionary) ->
 	var pipe: PipeSurface = model.pipes.get(pipe_id)
 	if pipe == null:
 		return false
+	# Wipeout must not seat onto a pipe (lip skim → slide into the bowl).
+	if state.falling:
+		return false
 	# Ramp Z-leave / seam skim must not force-lip onto the abutting hang pipe.
 	if not state.is_hanging() \
 			and _ramp_launch_abuts_pipe(state.air_launch_surface_id, pipe, state.position.y):
 		return false
 	if _rising_same_slope_reentry(state, pipe):
 		return false
-	# Mid-wipeout may seat on the lip we already crashed into; free-air still
-	# refuses foreign lip / outward lip approaches (crash Reject handles those).
-	if not state.falling:
-		if _foreign_pipe_lip_is_crash_wall(state, contact):
-			return false
-		if _foreign_outward_lip_approach(state, pipe):
-			return false
+	if _foreign_pipe_lip_is_crash_wall(state, contact):
+		return false
+	if _foreign_outward_lip_approach(state, pipe):
+		return false
 	var vz := state.velocity.y
 	var world_vel := state.velocity
 	var z := state.position.y
@@ -851,14 +858,40 @@ func _reject_air_contact(state: SimState, contact: Dictionary, from: Vector3) ->
 		# opposite lip — that teleported joint crashes through the pipe column.
 		_clamp_to_wall_approach_side(state, pt_w.x, side)
 		_push_out_of_solids(state, wall_n)
+		if state.request_fall:
+			_try_eject_pipe_top_skim(state, contact)
+	elif state.falling and _contact_is_slope_body(contact):
+		_clear_fall_from_slope_solid(state, contact)
+		if state.request_fall:
+			_try_eject_pipe_top_skim(state, contact)
 	elif normal.length_squared() > 0.0001:
 		state.velocity = _reject_into_normal(state.velocity, normal)
 		var pt: Vector3 = contact.get("projection", contact.get("point", state.position))
 		state.position = pt + normal.normalized() * SimTolerances.CONTACT_EPS
 		_push_out_of_solids(state, normal)
+		if state.request_fall:
+			_try_eject_pipe_top_skim(state, contact)
 	else:
-		_bounce_off_solid_no_vz_kill(state, contact, from)
+		if state.falling and _contact_is_slope_body(contact):
+			_clear_fall_from_slope_solid(state, contact)
+		else:
+			_bounce_off_solid_no_vz_kill(state, contact, from)
+		if state.request_fall:
+			_try_eject_pipe_top_skim(state, contact)
 	_ensure_air_outside_slopes(state)
+
+
+## Pipe/ramp body or support-top on those slopes (not decks/floors).
+func _contact_is_slope_body(contact: Dictionary) -> bool:
+	var kind := str(contact.get("kind", ""))
+	if kind == "pipe" or kind == "ramp":
+		return true
+	if kind == "support_top":
+		var sk := int(contact.get("support_kind", -1))
+		return (
+			sk == SimKinds.SurfaceKind.PIPE or sk == SimKinds.SurfaceKind.RAMP
+		)
+	return false
 
 
 ## Free-air bail solids via CrashClassifier. Hang uses hang_flat / hang_clip modes.
@@ -1143,6 +1176,8 @@ func _snap_onto_solid(state: SimState, hit: Dictionary, from_height: float = NAN
 			return false
 		if state.velocity.z > 80.0:
 			return false
+		if state.falling:
+			return false
 		var pipe: PipeSurface = model.pipes.get(str(hit.get("surface_id", "")))
 		if pipe == null:
 			return false
@@ -1182,6 +1217,8 @@ func _snap_onto_solid(state: SimState, hit: Dictionary, from_height: float = NAN
 	if kind == "ramp":
 		# Ordinary same-facing land / bounce — never hang from ramp peaks.
 		if state.velocity.z > 80.0:
+			return false
+		if state.falling:
 			return false
 		var ramp: RampSurface = model.ramps.get(str(hit.get("surface_id", "")))
 		if ramp == null:
@@ -1542,6 +1579,8 @@ func _resolve_bounds_hit(state: SimState, hit: Dictionary, from: Vector3) -> voi
 		state.position.x += side_fw * SimTolerances.WALL_REJECT_CLEAR
 		_clamp_to_wall_approach_side(state, face_x, side_fw)
 		_depenetrate(state, from)
+		if state.request_fall:
+			_try_eject_pipe_top_skim(state, hit)
 		var clamped_fw := model.clamp_xz(state.position.x, state.position.y)
 		state.position.x = clamped_fw.x
 		state.position.y = clamped_fw.y
@@ -1592,9 +1631,53 @@ func _ensure_air_outside_slopes(state: SimState) -> void:
 	var kind := str(hit.get("kind", ""))
 	if kind != "pipe" and kind != "ramp":
 		return
-	# Local reject/mount only — never walk X across a pipe footprint (that
-	# teleported joint/rear crashes to the opposite lip / through L1).
+	# Wipeout: never seat, and never follow ride normals into a stacked partner.
+	if state.falling:
+		_clear_fall_from_slope_solid(state, hit)
+		return
 	if _snap_onto_solid(state, hit, state.position.z):
+		return
+	_bounce_off_solid(state, hit, state.position)
+
+
+## Fall inside a slope solid: lift off the body; if past a left-pipe coping
+## (partner side of a joint), shove back to the bowl/approach side.
+func _clear_fall_from_slope_solid(state: SimState, hit: Dictionary) -> void:
+	var sid := str(hit.get("surface_id", hit.get("owner_id", "")))
+	var pipe: PipeSurface = model.pipes.get(sid) as PipeSurface
+	var ramp: RampSurface = model.ramps.get(sid) as RampSurface
+	if pipe == null and ramp == null and crash != null:
+		pipe = crash.contact_pipe(hit)
+	var z := state.position.y
+	if pipe != null:
+		var cope := pipe.coping_x_at(z)
+		if not is_nan(cope) and int(pipe.side) == SimKinds.PipeSide.LEFT \
+				and state.position.x > cope - SimTolerances.CONTACT_EPS:
+			state.position.x = cope - SimTolerances.WALL_REJECT_CLEAR
+			state.velocity.x = 0.0
+			state.fall_start_vx = 0.0
+			state.stamp_fall_lean(-1.0)
+		var proj := pipe.project(state.position.x, z, state.position.z)
+		if bool(proj.get("ok", false)) \
+				and state.position.z < float(proj.point.z) + SimTolerances.CONTACT_EPS:
+			state.position.z = float(proj.point.z) + SimTolerances.CONTACT_EPS
+			if state.velocity.z < 0.0:
+				state.velocity.z = 0.0
+		return
+	if ramp != null:
+		var rcope := ramp.coping_x_at(z)
+		if not is_nan(rcope) and int(ramp.side) == SimKinds.PipeSide.LEFT \
+				and state.position.x > rcope - SimTolerances.CONTACT_EPS:
+			state.position.x = rcope - SimTolerances.WALL_REJECT_CLEAR
+			state.velocity.x = 0.0
+			state.fall_start_vx = 0.0
+			state.stamp_fall_lean(-1.0)
+		var rproj := ramp.project(state.position.x, z, state.position.z)
+		if bool(rproj.get("ok", false)) \
+				and state.position.z < float(rproj.point.z) + SimTolerances.CONTACT_EPS:
+			state.position.z = float(rproj.point.z) + SimTolerances.CONTACT_EPS
+			if state.velocity.z < 0.0:
+				state.velocity.z = 0.0
 		return
 	_bounce_off_solid(state, hit, state.position)
 
@@ -1609,6 +1692,46 @@ func _clamp_to_wall_approach_side(state: SimState, face_x: float, side_x: float)
 		state.position.x = minf(state.position.x, min_clear)
 	else:
 		state.position.x = maxf(state.position.x, min_clear)
+
+
+## Tip / top skim of a pipe: throw the wipeout outside the bowl lip so the fall
+## does not drop onto the transition and slide into the pipe.
+func _try_eject_pipe_top_skim(state: SimState, contact: Dictionary) -> void:
+	if state == null or model == null or contact.is_empty():
+		return
+	var pipe: PipeSurface = null
+	if crash != null:
+		pipe = crash.contact_pipe(contact)
+	if pipe == null:
+		var sid := str(contact.get("surface_id", contact.get("owner_id", "")))
+		if model.pipes.has(sid):
+			pipe = model.pipes[sid]
+		elif model.walls.has(sid):
+			pipe = model.pipes.get((model.walls[sid] as WallSurface).source_pipe_id) as PipeSurface
+	if pipe == null:
+		return
+	var h := state.position.z
+	var peak := pipe.bound_h_max
+	# Only the tip band under the pipe peak — not mid-face joint crashes, and not
+	# high up a stacked wall above the pipe.
+	if h < peak - SimTolerances.PIPE_TOP_SKIM_BAND or h > peak + SimTolerances.CONTACT_EPS * 8.0:
+		return
+	_eject_fall_outside_pipe(state, pipe)
+
+
+func _eject_fall_outside_pipe(state: SimState, pipe: PipeSurface) -> void:
+	if state == null or pipe == null:
+		return
+	# Bowl-side exterior: left of a right pipe's lip, right of a left pipe's lip.
+	if int(pipe.side) == SimKinds.PipeSide.RIGHT:
+		state.position.x = pipe.bound_x_min - SimTolerances.WALL_REJECT_CLEAR
+	else:
+		state.position.x = pipe.bound_x_max + SimTolerances.WALL_REJECT_CLEAR
+	state.velocity.x = 0.0
+	state.fall_eject_pipe_id = ""
+	var clamped := model.clamp_xz(state.position.x, state.position.y)
+	state.position.x = clamped.x
+	state.position.y = clamped.y
 
 
 func _step_maneuver(state: SimState, wish: Vector2, delta: float) -> void:

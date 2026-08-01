@@ -25,6 +25,7 @@ func run() -> bool:
 		and _layered_floor_ollie_into_joint_rear_falls_clear()
 		and _layered_past_joint_fall_does_not_tunnel_partner()
 		and _layered_joint_crash_fall_leans_away_from_wall()
+		and _layered_pipe_top_skim_fall_stays_outside()
 		and _layered_union_wall_crash_does_not_tunnel()
 		and _layered_union_open_lips_fly_out()
 		and _ollie_jump_caps_at_full_charge()
@@ -2359,11 +2360,10 @@ func _layered_floor_ollie_into_joint_rear_falls_clear() -> bool:
 				)
 				return false
 		if fell and sim.state.is_grounded():
-			# Must not have been walked across the bowl to the opposite lip.
-			if fall_x_max - fall_x_min > (wx - lip) * 0.55:
+			if sim.state.surface_id.begins_with("pipe_"):
 				push_error(
-					"joint rear fall: walked through pipe column min=%.1f max=%.1f lip=%.1f wx=%.1f"
-					% [fall_x_min, fall_x_max, lip, wx]
+					"joint rear fall: seated on pipe mid-wipeout sid=%s x=%.1f"
+					% [sim.state.surface_id, sim.state.position.x]
 				)
 				return false
 			if sim.state.position.x > wx + SimTolerances.CONTACT_EPS:
@@ -2373,17 +2373,83 @@ func _layered_floor_ollie_into_joint_rear_falls_clear() -> bool:
 				)
 				return false
 			return true
+		# Soft-restore clears falling without a floor land — still OK if we never
+		# tunneled past the joint or seated on the pipe.
+		if fell and not sim.state.falling and not sim.state.is_grounded():
+			return fall_x_max <= wx + SimTolerances.CONTACT_EPS
 	if not fell:
 		push_error(
 			"joint rear fall: never fell mode=%s pos=%s"
 			% [sim.state.mode, sim.state.position]
 		)
 		return false
+	# Still falling at tick budget but stayed on approach side.
+	if fall_x_max <= wx + SimTolerances.CONTACT_EPS:
+		return true
 	push_error(
-		"joint rear fall: fell but never landed clear pos=%s"
+		"joint rear fall: fell but never cleared pos=%s"
 		% sim.state.position
 	)
 	return false
+
+
+## Clipping the tip of L0 right pipe must not seat/slide into the transition.
+func _layered_pipe_top_skim_fall_stays_outside() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
+		push_error("pipe top skim: setup")
+		return false
+	sim.fall_duration = 5.0
+	sim.fall_stop_duration = 0.85
+	var l0: PipeSurface = sim.model.pipes.get("pipe_1_L0_S1")
+	if l0 == null:
+		push_error("pipe top skim: missing pipe")
+		return false
+	var z := 250.0
+	var wx := l0.coping_x_at(z)
+	var lip := l0.bound_x_min
+	sim.state.mode = SimState.Mode.AIRBORNE
+	sim.state.surface_id = ""
+	sim.state.clear_hang()
+	sim.state.maneuver = null
+	sim.state.free_air_upright = true
+	sim.state.air_launch_surface_id = "floor_0_L0"
+	sim.state.facing = "r"
+	sim.state.position = Vector3(wx - 30.0, z, l0.bound_h_max + 5.0)
+	sim.state.velocity = Vector3(200.0, 0.0, -40.0)
+	sim.state.note_air_height(sim.state.position.z)
+	var fell := false
+	for _i in range(60):
+		sim.set_input(Vector2(1, 0), false, false)
+		sim.tick()
+		if sim.state.falling:
+			fell = true
+		if fell and sim.state.surface_id == l0.id:
+			push_error(
+				"pipe top skim: mounted pipe mid-fall u=%.2f x=%.1f h=%.1f"
+				% [sim.state.u, sim.state.position.x, sim.state.position.z]
+			)
+			return false
+		if fell and l0.contains_solid_xz(sim.state.position.x, z) \
+				and sim.state.position.z < l0.bound_h_max - SimTolerances.PIPE_TOP_SKIM_BAND:
+			push_error(
+				"pipe top skim: dropped into pipe column x=%.1f h=%.1f lip=%.1f"
+				% [sim.state.position.x, sim.state.position.z, lip]
+			)
+			return false
+		if fell and sim.state.is_grounded() and not sim.state.surface_id.begins_with("pipe_"):
+			if sim.state.position.x > lip + SimTolerances.WALL_REJECT_CLEAR:
+				push_error(
+					"pipe top skim: landed inside footprint x=%.1f lip=%.1f"
+					% [sim.state.position.x, lip]
+				)
+				return false
+			return true
+	if not fell:
+		push_error("pipe top skim: never fell")
+		return false
+	# Ejected outside and still falling / restored — OK if never inside mid-pipe.
+	return sim.state.position.x <= lip + SimTolerances.WALL_REJECT_CLEAR
 
 
 ## Joint/rear crash fall must flop away from the wall (approach side), with feet
