@@ -39,8 +39,8 @@ var ollie_charge_peak_height: float = 0.0
 var ollie_available: bool = true
 ## Fall bout tunables (seconds). Synced from Player debug exports.
 var fall_anim_duration: float = 0.15
-var fall_stop_duration: float = 0.35
-var fall_duration: float = 1.0
+var fall_stop_duration: float = 1.0
+var fall_duration: float = 2.0
 var debug: SimDebugSnapshot
 var trace: SimTrace
 ## Safe floor/deck pose history for lava respawn. Oldest sample in the window

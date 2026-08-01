@@ -63,6 +63,7 @@ player_path = NodePath("../../Player")
 [node name="CameraRig3D" type="Node3D" parent="World3D"]
 script = ExtResource("15_cam3d")
 target_path = NodePath("../PlayerVisual")
+player_path = NodePath("../../Player")
 distance = 3.1
 look_ahead = 0.8
 

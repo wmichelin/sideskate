@@ -3,6 +3,10 @@ extends Node3D
 ## Orbit Camera3D following the interpolated logical skater pose (render frames).
 
 @export var target_path: NodePath = NodePath("../PlayerVisual")
+## Gameplay player — fall bout gates X-only follow.
+@export var player_path: NodePath = NodePath("../../Player")
+## Presentation FallBox (reparented under World3D) — lateral track while falling.
+@export var fall_box_path: NodePath = NodePath("../FallBox")
 ## Radial distance from focus (zoom).
 @export var distance: float = 3.1
 ## Elevation angle in degrees. 0 = horizon behind; positive = above looking down.
@@ -17,8 +21,13 @@ extends Node3D
 
 var _cam: Camera3D
 var _target: Node3D
+var _player: Node
+var _fall_box: Node3D
 var _manual_origin: Vector3 = Vector3.ZERO
 var use_manual_origin: bool = false
+var _fall_lock_active: bool = false
+var _fall_lock_y: float = 0.0
+var _fall_lock_z: float = 0.0
 
 
 func _ready() -> void:
@@ -28,6 +37,8 @@ func _ready() -> void:
 	_cam.fov = fov_deg
 	add_child(_cam)
 	_target = get_node_or_null(target_path) as Node3D
+	_player = get_node_or_null(player_path)
+	_fall_box = get_node_or_null(fall_box_path) as Node3D
 
 
 func set_follow_world(origin: Vector3) -> void:
@@ -37,6 +48,18 @@ func set_follow_world(origin: Vector3) -> void:
 
 func clear_manual_origin() -> void:
 	use_manual_origin = false
+
+
+## During a fall bout: track target X, hold Y/Z from fall start. Otherwise full follow.
+func focus_with_fall_lock(target_pos: Vector3, falling: bool) -> Vector3:
+	if falling:
+		if not _fall_lock_active:
+			_fall_lock_active = true
+			_fall_lock_y = target_pos.y
+			_fall_lock_z = target_pos.z
+		return Vector3(target_pos.x, _fall_lock_y, _fall_lock_z)
+	_fall_lock_active = false
+	return target_pos
 
 
 func _process(delta: float) -> void:
@@ -64,9 +87,30 @@ func _focus_point() -> Vector3:
 		return _manual_origin
 	if _target == null:
 		_target = get_node_or_null(target_path) as Node3D
-	if _target != null:
-		return _target.global_position
-	return Vector3.ZERO
+	if _player == null:
+		_player = get_node_or_null(player_path)
+	var falling := (
+		_player != null
+		and _player.has_method("is_falling")
+		and bool(_player.call("is_falling"))
+	)
+	# Sim pose often parks X during a fall; the visible tumble is FallBox.
+	var raw := _fall_track_position(falling)
+	return focus_with_fall_lock(raw, falling)
+
+
+## World focus sample: FallBox X while tumbling, else PlayerVisual.
+func _fall_track_position(falling: bool) -> Vector3:
+	var base := _target.global_position if _target != null else Vector3.ZERO
+	if not falling:
+		return base
+	if _fall_box == null or not is_instance_valid(_fall_box):
+		_fall_box = get_node_or_null(fall_box_path) as Node3D
+	if _fall_box == null or not _fall_box.visible:
+		return base
+	if _fall_box is RigidBody3D and bool((_fall_box as RigidBody3D).freeze):
+		return base
+	return Vector3(_fall_box.global_position.x, base.y, base.z)
 
 
 func _orbit_offset() -> Vector3:

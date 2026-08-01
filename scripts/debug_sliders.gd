@@ -422,7 +422,7 @@ func _setup_fall_duration_sliders() -> void:
 		0.01,
 		_player,
 		"fall_stop_duration",
-		0.35,
+		1.0,
 		_on_fall_stop_duration_changed,
 		_refresh_fall_stop_duration_label
 	)
@@ -437,7 +437,7 @@ func _setup_fall_duration_sliders() -> void:
 		0.01,
 		_player,
 		"fall_duration",
-		1.0,
+		2.0,
 		_on_fall_duration_changed,
 		_refresh_fall_duration_label
 	)

@@ -1,11 +1,12 @@
 class_name PlayerDebug3D
 extends Node3D
 ## 3D motion-vector arrows + head zone label (Body CanvasItem debug is hidden in 3D).
-## Ollie charge is a screen-space bar projected from the interpolated skater visual
-## (same follow target as the camera) so it stays crisp while skating.
+## Ollie charge / fall cooldown is a screen-space bar projected from the
+## interpolated skater — or the FallBox while tumbling.
 
 @export var player_path: NodePath = NodePath("../Player")
 @export var visual_path: NodePath = NodePath("../PlayerVisual")
+@export var fall_box_path: NodePath = NodePath("../FallBox")
 @export var min_speed: float = 8.0
 @export var units_per_speed: float = 0.0008
 @export var min_length: float = 0.18
@@ -16,6 +17,7 @@ extends Node3D
 
 var _player: Node
 var _visual: Node3D
+var _fall_box: Node3D
 var _head: Label3D
 var _charge_layer: CanvasLayer
 var _charge_root: Control
@@ -34,6 +36,7 @@ func _ready() -> void:
 	process_priority = 100
 	_player = get_node_or_null(player_path)
 	_visual = get_node_or_null(visual_path) as Node3D
+	_fall_box = get_node_or_null(fall_box_path) as Node3D
 	_head = Label3D.new()
 	_head.name = "HeadDebug"
 	_head.billboard = BaseMaterial3D.BILLBOARD_ENABLED
@@ -151,8 +154,10 @@ func _process(_delta: float) -> void:
 		_visual = get_node_or_null(visual_path) as Node3D
 	if _player == null:
 		return
-	# Keep 3D debug gizmos on the interpolated skater (camera follow target).
-	if _visual != null:
+	# Follow the visible tumble (FallBox) while falling; else interpolated skater.
+	if _fall_box_active():
+		global_position = _fall_box.global_position
+	elif _visual != null:
 		global_position = _visual.global_position
 	else:
 		var depth: PseudoDepthBody = _player.get_node_or_null("PseudoDepthBody") as PseudoDepthBody
@@ -168,6 +173,32 @@ func _process(_delta: float) -> void:
 	_update_head()
 	_update_charge_bar()
 	_update_arrows()
+
+
+func _fall_box_active() -> bool:
+	if _fall_box == null or not is_instance_valid(_fall_box):
+		_fall_box = get_node_or_null(fall_box_path) as Node3D
+	if _fall_box == null or not _fall_box.visible:
+		return false
+	if _fall_box is RigidBody3D and bool((_fall_box as RigidBody3D).freeze):
+		return false
+	return (
+		_player != null
+		and _player.has_method("is_falling")
+		and bool(_player.call("is_falling"))
+	)
+
+
+## World point for the screen-space head bar (FallBox top while tumbling).
+func _charge_bar_world() -> Vector3:
+	if _fall_box_active():
+		var half_y := 0.2
+		if _fall_box is FallBoxConstraint:
+			half_y = (_fall_box as FallBoxConstraint).box_size.y * 0.5
+		return _fall_box.global_position + Vector3(0.0, half_y + 0.32, 0.0)
+	if _visual != null:
+		return _visual.global_position + charge_bar_offset
+	return global_position + charge_bar_offset
 
 
 func _update_head() -> void:
@@ -212,10 +243,10 @@ func _update_charge_bar() -> void:
 
 func _draw_head_bar(frac: float, force_show: bool, fill_color: Color, label_text: String) -> void:
 	var cam := get_viewport().get_camera_3d()
-	if cam == null or _visual == null:
+	if cam == null or (_visual == null and not _fall_box_active()):
 		_charge_root.visible = false
 		return
-	var head_world := _visual.global_position + charge_bar_offset
+	var head_world := _charge_bar_world()
 	if cam.is_position_behind(head_world):
 		_charge_root.visible = false
 		return

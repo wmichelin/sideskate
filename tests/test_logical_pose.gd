@@ -9,6 +9,7 @@ func run() -> bool:
 		and _centered_y_turn_presentation()
 		and _fall_box_stays_above_support_planes()
 		and _fall_box_stays_on_impact_approach_side()
+		and _fall_camera_tracks_x_locks_yz()
 	)
 
 
@@ -164,4 +165,45 @@ func _fall_box_stays_on_impact_approach_side() -> bool:
 		constraint.free()
 		return false
 	constraint.free()
+	return true
+
+
+## Fall bout: camera focus tracks X (FallBox), freezes Y/Z at bout start, then full follow.
+func _fall_camera_tracks_x_locks_yz() -> bool:
+	var cam := CameraRig3D.new()
+	var start := Vector3(10.0, 2.0, 5.0)
+	var mid := cam.focus_with_fall_lock(start, true)
+	if mid != start:
+		push_error("fall cam: first falling focus should match start %s vs %s" % [mid, start])
+		cam.free()
+		return false
+	# FallBox X drifts while sim/PlayerVisual YZ would also move — only X tracks.
+	var tumbled := Vector3(14.0, 0.4, 9.0)
+	var locked := cam.focus_with_fall_lock(tumbled, true)
+	if absf(locked.x - 14.0) > 0.001:
+		push_error("fall cam: must track X, got %s" % locked)
+		cam.free()
+		return false
+	if absf(locked.y - 2.0) > 0.001 or absf(locked.z - 5.0) > 0.001:
+		push_error("fall cam: Y/Z must stay at fall start, got %s" % locked)
+		cam.free()
+		return false
+	var after := Vector3(16.0, 1.1, 7.0)
+	var resumed := cam.focus_with_fall_lock(after, false)
+	if resumed != after:
+		push_error("fall cam: after bout must full-follow %s vs %s" % [resumed, after])
+		cam.free()
+		return false
+	# Second fall re-locks at the new start.
+	var second := cam.focus_with_fall_lock(after, true)
+	if second != after:
+		push_error("fall cam: new bout should re-lock at %s got %s" % [after, second])
+		cam.free()
+		return false
+	var second_move := cam.focus_with_fall_lock(Vector3(20.0, 0.0, 0.0), true)
+	if absf(second_move.y - 1.1) > 0.001 or absf(second_move.z - 7.0) > 0.001:
+		push_error("fall cam: second bout Y/Z lock failed %s" % second_move)
+		cam.free()
+		return false
+	cam.free()
 	return true

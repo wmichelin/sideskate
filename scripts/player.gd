@@ -29,8 +29,8 @@ const BODY_CYLINDER_H_M := 0.22
 @export var facing_coping_cells: int = 3
 @export var acid_coping_cells: int = 16
 @export_range(0.0, 5.0, 0.01) var fall_anim_duration: float = 0.15
-@export_range(0.0, 5.0, 0.01) var fall_stop_duration: float = 0.35
-@export_range(0.0, 10.0, 0.01) var fall_duration: float = 1.0
+@export_range(0.0, 5.0, 0.01) var fall_stop_duration: float = 1.0
+@export_range(0.0, 10.0, 0.01) var fall_duration: float = 2.0
 ## Presentation: seconds to ease carried lean → upright when `free_air_upright` (0 = snap).
 @export_range(0.0, 2.0, 0.01) var free_air_upright_duration: float = 0.1
 
