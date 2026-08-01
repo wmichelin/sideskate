@@ -91,6 +91,9 @@ func run() -> bool:
 		and _transfer_button_lerps_x_holds_facing()
 		and _transfer_shared_x_spine_reanchors_hang()
 		and _transfer_spine_remount_preserves_along()
+		and _transfer_hold_delay_zero_auto()
+		and _transfer_hold_waits_delay()
+		and _transfer_tap_ignores_hold_delay()
 		and _transfer_rejects_below_hang_lip_after_floor_ollie()
 		and _layered_deck_back_ride_off_stays_free()
 		and _map_edge_deck_no_void_exit()
@@ -7584,6 +7587,102 @@ func _transfer_shared_x_spine_reanchors_hang() -> bool:
 		return false
 	if absf(sim.state.position.x - cx) > SimTolerances.ALIGN_EPS:
 		push_error("shared-x transfer: x drifted %.2f" % sim.state.position.x)
+		return false
+	return true
+
+
+## Hang on left spine lip and rise until the opposite coping is a candidate.
+func _spine_hang_until_transfer_candidate() -> Dictionary:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_spine_transfer_speed.ssk"):
+		return {}
+	var src: PipeSurface = null
+	var dest: PipeSurface = null
+	for id in sim.model.pipes.keys():
+		var p: PipeSurface = sim.model.pipes[id]
+		if p.side == SimKinds.PipeSide.RIGHT:
+			src = p
+		elif p.side == SimKinds.PipeSide.LEFT:
+			dest = p
+	if src == null or dest == null:
+		return {}
+	_place_at_coping(sim, src, 400.0)
+	sim.state.set_facing_side("r")
+	sim.set_input(Vector2.ZERO, false, false)
+	sim.tick()
+	if not sim.state.is_hanging():
+		return {}
+	for _rise in range(12):
+		sim.set_input(Vector2.ZERO, false, false)
+		sim.tick()
+		var cands := sim.query.transfer_candidates(sim.state)
+		if not cands.is_empty() and str(cands[0].coping_id) == dest.coping_id:
+			return {"sim": sim, "dest": dest}
+	return {}
+
+
+## Hold with delay 0: no edge press — auto-accept once eligible.
+func _transfer_hold_delay_zero_auto() -> bool:
+	var ready := _spine_hang_until_transfer_candidate()
+	if ready.is_empty():
+		push_error("hold delay0: setup")
+		return false
+	var sim: PlayerSim = ready.sim
+	sim.transfer_hold_delay = 0.0
+	sim.set_input(Vector2.ZERO, true, false)
+	sim.tick()
+	if not sim.state.has_maneuver() \
+			or (sim.state.maneuver as ManeuverPlan).kind != ManeuverPlan.Kind.TRANSFER:
+		push_error("hold delay0: expected TRANSFER on hold reject=%s" % sim.state.last_reject)
+		return false
+	return true
+
+
+## Hold arms only after eligible time ≥ delay (not from button-down alone).
+func _transfer_hold_waits_delay() -> bool:
+	var ready := _spine_hang_until_transfer_candidate()
+	if ready.is_empty():
+		push_error("hold wait: setup")
+		return false
+	var sim: PlayerSim = ready.sim
+	var delay := SimTolerances.FIXED_DT * 5.0
+	sim.transfer_hold_delay = delay
+	# First eligible hold ticks must not fire early.
+	for i in range(3):
+		sim.set_input(Vector2.ZERO, true, false)
+		sim.tick()
+		if sim.state.has_maneuver():
+			push_error("hold wait: fired at tick %d before delay (elig=%.3f)" % [
+				i, sim.transfer_hold_eligible
+			])
+			return false
+	var fired := false
+	for _j in range(8):
+		sim.set_input(Vector2.ZERO, true, false)
+		sim.tick()
+		if sim.state.has_maneuver() \
+				and (sim.state.maneuver as ManeuverPlan).kind == ManeuverPlan.Kind.TRANSFER:
+			fired = true
+			break
+	if not fired:
+		push_error("hold wait: never auto-transferred after delay")
+		return false
+	return true
+
+
+## Tap still fires immediately even when hold delay is large.
+func _transfer_tap_ignores_hold_delay() -> bool:
+	var ready := _spine_hang_until_transfer_candidate()
+	if ready.is_empty():
+		push_error("tap delay: setup")
+		return false
+	var sim: PlayerSim = ready.sim
+	sim.transfer_hold_delay = 1.0
+	sim.set_input(Vector2.ZERO, true, true)
+	sim.tick()
+	if not sim.state.has_maneuver() \
+			or (sim.state.maneuver as ManeuverPlan).kind != ManeuverPlan.Kind.TRANSFER:
+		push_error("tap delay: expected immediate TRANSFER reject=%s" % sim.state.last_reject)
 		return false
 	return true
 

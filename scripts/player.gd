@@ -25,6 +25,8 @@ const BODY_CYLINDER_H_M := 0.22
 @export var gravity_ms2: float = -19.0
 @export var fly_out_above_coping: float = 40.0
 @export var apex_facing_delay: float = 0.05
+## Hold transfer this long (s) after a candidate exists before auto spine/acid.
+@export_range(0.0, 0.5, 0.01) var transfer_hold_delay: float = 0.08
 @export_range(0.0, 45.0, 0.5) var depth_turn_degrees: float = 18.0
 @export var facing_coping_cells: int = 3
 @export var acid_coping_cells: int = 16
@@ -169,6 +171,7 @@ func _sync_tuning_to_sim() -> void:
 	_sim.fall_anim_duration = fall_anim_duration
 	_sim.fall_stop_duration = fall_stop_duration
 	_sim.fall_duration = fall_duration
+	_sim.transfer_hold_delay = transfer_hold_delay
 	SimTolerances.GRAVITY = gravity_ms2 * SimTolerances.LOGIC_PER_METER
 	SimTolerances.FLY_OUT_ABOVE = fly_out_above_coping
 	SimTolerances.APEX_FACING_DELAY = apex_facing_delay

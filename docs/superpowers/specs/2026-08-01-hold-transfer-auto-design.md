@@ -1,6 +1,6 @@
 # Hold-to-auto-transfer (spine / acid)
 
-**Status:** approved design (2026-08-01).
+**Status:** implemented on main (2026-08-01).
 
 ## Goal
 

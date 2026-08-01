@@ -29,6 +29,12 @@ var friction: float = 0.0
 var ramp_friction: float = 0.0
 var last_wish: Vector2 = Vector2.ZERO
 var action_just: bool = false
+## Transfer button held (spine / acid). Used for hold-to-auto-transfer.
+var action_held: bool = false
+## Seconds of continuous transfer eligibility before hold auto-fires.
+var transfer_hold_delay: float = 0.08
+## Accumulated eligible time while held with a live transfer candidate.
+var transfer_hold_eligible: float = 0.0
 var ollie_pressed: bool = false
 var ollie_just_released: bool = false
 ## Hold meter in [0, 1] while charging an available ollie.
@@ -93,15 +99,18 @@ func _finish_setup() -> bool:
 
 func set_input(
 	wish: Vector2,
-	_action_down: bool,
+	action_down: bool,
 	action_edge: bool,
 	ollie_down: bool = false,
 	ollie_released: bool = false,
 ) -> void:
 	last_wish = wish
+	action_held = action_down
 	action_just = action_edge
 	ollie_pressed = ollie_down
 	ollie_just_released = ollie_released
+	if not action_held:
+		transfer_hold_eligible = 0.0
 
 
 ## Start a fall bout (Y key / business logic). No-op if already falling or dead.
@@ -115,6 +124,8 @@ func begin_fall() -> void:
 	ollie_pressed = false
 	ollie_just_released = false
 	action_just = false
+	action_held = false
+	transfer_hold_eligible = 0.0
 	last_wish = Vector2.ZERO
 	state.falling = true
 	state.fall_elapsed = 0.0
@@ -176,6 +187,8 @@ func tick(delta: float = SimTolerances.FIXED_DT) -> void:
 	if falling:
 		ollie_just_released = false
 		action_just = false
+		action_held = false
+		transfer_hold_eligible = 0.0
 		ollie_pressed = false
 		# Planar schedule before solvers so Reject/depenetrate can cut into-wall
 		# speed. _tick_fall must not reinject fall_start afterward (that tunneled
@@ -184,6 +197,7 @@ func tick(delta: float = SimTolerances.FIXED_DT) -> void:
 	else:
 		_update_ollie_charge(delta)
 		_try_ollie_jump()
+		_update_transfer_hold(delta)
 		_try_actions()
 	var planned_surface_change := state.has_maneuver()
 	if crash != null:
@@ -531,11 +545,29 @@ func _note_checkpoint() -> void:
 	_push_checkpoint_sample(state.surface_id, state.position, state.facing)
 
 
+## Arm hold-to-auto-transfer only while pressed with a live candidate.
+func _update_transfer_hold(delta: float) -> void:
+	if state == null or not state.alive or state.falling or state.has_maneuver():
+		transfer_hold_eligible = 0.0
+		return
+	if not action_held:
+		transfer_hold_eligible = 0.0
+		return
+	if query.transfer_candidates(state).is_empty():
+		transfer_hold_eligible = 0.0
+		return
+	transfer_hold_eligible += maxf(delta, 0.0)
+
+
 func _try_actions() -> void:
 	if state.has_maneuver():
 		return
-	# Transfer button: X-lerp onto the next opposite lip (same gates as HUD).
-	if action_just:
+	# Transfer: tap immediate, or hold after eligible time ≥ delay.
+	var hold_ready := (
+		action_held
+		and transfer_hold_eligible + 0.0001 >= maxf(transfer_hold_delay, 0.0)
+	)
+	if action_just or hold_ready:
 		var tr := planner.try_transfer(state)
 		if bool(tr.get("ok", false)):
 			var tplan: ManeuverPlan = tr.plan
@@ -548,6 +580,7 @@ func _try_actions() -> void:
 			state.clear_hang()
 			state.maneuver = tplan
 			state.last_reject = ""
+			transfer_hold_eligible = 0.0
 			if not tplan.hold_facing.is_empty():
 				state.facing = tplan.hold_facing
 				state.visual_facing = tplan.hold_facing

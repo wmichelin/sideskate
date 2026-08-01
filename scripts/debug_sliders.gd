@@ -14,6 +14,8 @@ extends CanvasLayer
 @export var fly_out_above_max: float = 300.0
 @export var apex_facing_delay_min: float = 0.0
 @export var apex_facing_delay_max: float = 0.5
+@export var transfer_hold_delay_min: float = 0.0
+@export var transfer_hold_delay_max: float = 0.5
 @export var depth_turn_min: float = 0.0
 @export var depth_turn_max: float = 45.0
 @export var ollie_accel_min: float = 0.0
@@ -122,6 +124,7 @@ var _cam_pitch_value: Label
 var _cam_yaw_value: Label
 var _cam_fov_value: Label
 var _apex_facing_value: Label
+var _transfer_hold_value: Label
 var _depth_turn_value: Label
 
 
@@ -169,6 +172,7 @@ func _ready() -> void:
 		_refresh_fly_out_label
 	)
 	_setup_apex_facing_slider()
+	_setup_transfer_hold_delay_slider()
 	_setup_depth_turn_slider()
 	_bind_float_slider(_ollie_slider, ollie_accel_min, ollie_accel_max, 10.0, _player, "ollie_accel", 650.0, _on_ollie_accel_changed, _refresh_ollie_label)
 	_setup_ollie_jump_sliders()
@@ -469,15 +473,42 @@ func _setup_apex_facing_slider() -> void:
 	row["slider"].focus_mode = Control.FOCUS_NONE
 
 
+func _setup_transfer_hold_delay_slider() -> void:
+	if _body == null:
+		return
+	if _body.get_node_or_null("TransferHoldDelayRow") != null:
+		return
+	var insert_at := 0
+	var apex_row := _body.get_node_or_null("ApexFacingDelayRow")
+	if apex_row != null:
+		insert_at = apex_row.get_index() + 1
+	var row := _make_slider_row("TransferHoldDelayRow", "xfer hold", insert_at)
+	_transfer_hold_value = row["value"]
+	_bind_float_slider(
+		row["slider"],
+		transfer_hold_delay_min,
+		transfer_hold_delay_max,
+		0.01,
+		_player,
+		"transfer_hold_delay",
+		0.08,
+		_on_transfer_hold_delay_changed,
+		_refresh_transfer_hold_delay_label
+	)
+	row["slider"].focus_mode = Control.FOCUS_NONE
+
+
 func _setup_depth_turn_slider() -> void:
 	if _body == null:
 		return
 	if _body.get_node_or_null("DepthTurnRow") != null:
 		return
 	var insert_at := 0
-	var apex_row := _body.get_node_or_null("ApexFacingDelayRow")
-	if apex_row != null:
-		insert_at = apex_row.get_index() + 1
+	var hold_row := _body.get_node_or_null("TransferHoldDelayRow")
+	if hold_row != null:
+		insert_at = hold_row.get_index() + 1
+	elif _body.get_node_or_null("ApexFacingDelayRow") != null:
+		insert_at = _body.get_node_or_null("ApexFacingDelayRow").get_index() + 1
 	var row := _make_slider_row("DepthTurnRow", "depth turn", insert_at)
 	_depth_turn_value = row["value"]
 	_bind_float_slider(
@@ -804,6 +835,17 @@ func _on_apex_facing_delay_changed(v: float) -> void:
 func _refresh_apex_facing_delay_label(v: float) -> void:
 	if _apex_facing_value != null:
 		_apex_facing_value.text = "%.2f s" % v
+
+
+func _on_transfer_hold_delay_changed(v: float) -> void:
+	if _player != null:
+		_player.set("transfer_hold_delay", v)
+	_refresh_transfer_hold_delay_label(v)
+
+
+func _refresh_transfer_hold_delay_label(v: float) -> void:
+	if _transfer_hold_value != null:
+		_transfer_hold_value.text = "%.2f s" % v
 
 
 func _on_depth_turn_changed(v: float) -> void:
