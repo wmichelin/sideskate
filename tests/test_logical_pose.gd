@@ -149,32 +149,35 @@ func _centered_y_turn_presentation() -> bool:
 
 func _board_yaw_tracker_rules() -> bool:
 	var t := BoardYawTracker.new()
-	if absf(t.tick(1.0, 0.0, true) - 0.0) > 0.001:
-		push_error("snap right should be 0")
+	if absf(angle_difference(t.tick(1.0, 0.0, true), PI)) > 0.001:
+		push_error("snap right should be PI")
+		return false
+	var left := BoardYawTracker.new()
+	if absf(left.tick(-1.0, 0.0, true)) > 0.001:
+		push_error("snap left should be 0")
 		return false
 	# Facing flip alone: no change
 	var y0 := t.tick(-1.0, 0.0, false)
-	if absf(y0) > 0.001:
+	if absf(angle_difference(y0, PI)) > 0.001:
 		push_error("facing flip must not change board_yaw, got %s" % y0)
 		return false
 	# Apex co-rotation: facing_yaw 0 → -PI
 	var y1 := t.tick(-1.0, -PI * 0.5, false)
-	if absf(y1 - (-PI * 0.5)) > 0.01:
+	if absf(y1 - (PI * 0.5)) > 0.01:
 		push_error("apex mid delta failed: %s" % y1)
 		return false
 	var y2 := t.tick(-1.0, -PI, false)
-	if absf(y2 - (-PI)) > 0.01:
+	if absf(y2) > 0.01:
 		push_error("apex end delta failed: %s" % y2)
 		return false
 	# Handoff: facing_yaw -PI → 0 must not spin the board back
 	var y3 := t.tick(1.0, 0.0, false)
-	if absf(y3 - (-PI)) > 0.01 and absf(y3 - PI) > 0.01:
-		# -PI and PI are equivalent orientation; accept either
+	if absf(y3) > 0.01:
 		push_error("handoff must keep board orientation, got %s" % y3)
 		return false
 	# Depth turn is NOT the tracker's job — ensure force_snap restore
 	var y4 := t.tick(1.0, 0.0, true)
-	if absf(y4) > 0.001:
+	if absf(angle_difference(y4, PI)) > 0.001:
 		push_error("force_snap right failed: %s" % y4)
 		return false
 	return true
@@ -187,7 +190,7 @@ func _board_yaw_depth_turn_not_persisted() -> bool:
 	pose.board_yaw = t.yaw
 	pose.depth_turn_yaw = 0.3
 	# Presenter shows board_yaw + depth_turn_yaw; stored board_yaw stays tracker-owned.
-	if absf(pose.board_yaw) > 0.001:
+	if absf(angle_difference(pose.board_yaw, PI)) > 0.001:
 		push_error("depth turn must not bake into board_yaw")
 		return false
 	return true
@@ -201,7 +204,7 @@ func _player_pose_snapshots_track_board_yaw() -> bool:
 	player.visual_facing_h = "r"
 	player.facing_yaw = 0.0
 	player._capture_pose_snapshots()
-	if absf(player._pose_curr.board_yaw) > 0.001:
+	if absf(angle_difference(player._pose_curr.board_yaw, PI)) > 0.001:
 		push_error("player board_yaw must snap right on first capture")
 		player.depth.free()
 		player.free()
@@ -210,7 +213,7 @@ func _player_pose_snapshots_track_board_yaw() -> bool:
 	player.visual_facing_h = "l"
 	player.facing_yaw = -PI * 0.5
 	player._capture_pose_snapshots()
-	if absf(player._pose_curr.board_yaw - (-PI * 0.5)) > 0.01:
+	if absf(player._pose_curr.board_yaw - (PI * 0.5)) > 0.01:
 		push_error("player board_yaw must track apex yaw delta, got %s" % player._pose_curr.board_yaw)
 		player.depth.free()
 		player.free()
@@ -221,7 +224,7 @@ func _player_pose_snapshots_track_board_yaw() -> bool:
 	player._sim.state.falling = false
 	player.facing_yaw = 0.0
 	player._capture_pose_snapshots()
-	if absf(angle_difference(player._pose_curr.board_yaw, PI)) > 0.01:
+	if absf(player._pose_curr.board_yaw) > 0.01:
 		push_error("player board_yaw must snap to facing when fall bout ends, got %s" % player._pose_curr.board_yaw)
 		player.depth.free()
 		player.free()
@@ -233,7 +236,7 @@ func _player_pose_snapshots_track_board_yaw() -> bool:
 	player.facing_yaw = 0.0
 	player._board_force_snap = true
 	player._capture_pose_snapshots()
-	if absf(player._pose_curr.board_yaw) > 0.01:
+	if absf(angle_difference(player._pose_curr.board_yaw, PI)) > 0.01:
 		push_error("player board_yaw one-shot restore snap failed, got %s" % player._pose_curr.board_yaw)
 		player.depth.free()
 		player.free()

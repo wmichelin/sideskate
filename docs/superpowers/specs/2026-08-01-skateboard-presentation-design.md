@@ -10,14 +10,15 @@ presentation RigidBodies so the rider falls off the board.
 
 ## Context
 
-Today `LogicalPosePresenter3D` draws a single pink box. Fall hides that mesh and
-unfreezes one `FallBox` RigidBody. There is no board node and no board yaw.
-Gameplay facing (`SimState.facing` / `visual_facing`) must stay decoupled from
-board orientation.
+`LogicalPosePresenter3D` now draws an orange rider on a red-nose / blue-tail
+placeholder board. `LogicalPose` snapshots carry presentation-owned
+`board_yaw`, and the board applies that yaw plus the ephemeral depth-turn yaw
+without changing gameplay facing (`SimState.facing` / `visual_facing`).
 
-`PlayerSim` remains sole gameplay authority. Board yaw for this slice is
-**presentation-owned** (pose snapshots), with a clear seam to promote into
-`SimState` when tricks affect gameplay.
+Fall now hides the riding meshes and unfreezes two presentation RigidBodies:
+`RiderFall` for the orange rider and facing mark, and `BoardFall` for the
+nose/tail board. `PlayerSim` remains sole gameplay authority, with a clear seam
+to promote board yaw into `SimState` later if tricks affect gameplay.
 
 ## Vocabulary
 

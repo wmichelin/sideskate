@@ -8,7 +8,7 @@ var _inited: bool = false
 
 
 func snap_to_facing(facing_h: float) -> void:
-	yaw = 0.0 if facing_h >= 0.0 else PI
+	yaw = PI if facing_h >= 0.0 else 0.0
 	_inited = true
 
 
