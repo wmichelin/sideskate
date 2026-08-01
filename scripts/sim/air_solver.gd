@@ -302,16 +302,21 @@ func _deck_launch_slope_disposition(
 	var surf = _contact_slope_surf(contact)
 	if surf == null or not crash.deck_abuts_slope(launch, surf.id, at.y):
 		return -1
-	if state.velocity.z >= -SimTolerances.CONTACT_EPS:
-		return SimKinds.ContactDisposition.REJECT
 	var from_proj: Dictionary = surf.project(from.x, from.y, from.z)
 	var at_proj: Dictionary = surf.project(at.x, at.y, at.z)
-	if not bool(from_proj.get("ok", false)) or not bool(at_proj.get("ok", false)):
-		return SimKinds.ContactDisposition.REJECT
-	var from_above := float(from_proj.separation) > SimTolerances.CONTACT_EPS
-	var crossed := float(at_proj.separation) <= SimTolerances.CONTACT_EPS
-	if from_above and crossed:
+	var crossed := (
+		state.velocity.z < -SimTolerances.CONTACT_EPS
+		and bool(from_proj.get("ok", false))
+		and bool(at_proj.get("ok", false))
+		and float(from_proj.separation) > SimTolerances.CONTACT_EPS
+		and float(at_proj.separation) <= SimTolerances.CONTACT_EPS
+	)
+	if crossed:
 		return SimKinds.ContactDisposition.MOUNT
+	var role := int(contact.get("role", SimKinds.ContactRole.SOLID))
+	if str(contact.get("kind", "")) == "support_top" \
+			or role == SimKinds.ContactRole.LIP_COLUMN:
+		return SimKinds.ContactDisposition.CORRIDOR
 	return SimKinds.ContactDisposition.REJECT
 
 

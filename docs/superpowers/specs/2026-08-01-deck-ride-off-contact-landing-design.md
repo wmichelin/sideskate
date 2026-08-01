@@ -9,8 +9,10 @@ Correct the deck-to-abutting-slope behavior:
   coping, nor because the free-air capsule overlaps its body near that edge.
 - An ordinary Mount is legal only when the falling trajectory physically crosses
   the slope's sampled ride surface from above.
-- A lip, wall, underside, or lateral face hit before such a surface crossing is
-  an into-face **Reject + fall**.
+- A deck-seam support/lip ownership contact before such a crossing is a
+  **Corridor**, not a collision.
+- An actual outer/back wall, underside, or lateral solid-face hit before such a
+  crossing is an into-face **Reject + fall**.
 - **Acid** and **Spine** remain explicit transfer paths and may seat their
   accepted targets independently of the ordinary deck-launch landing gate.
 
@@ -35,13 +37,19 @@ For an air bout whose `air_launch_surface_id` is an outward `#` deck:
 | Contact with the deck's abutting pipe/ramp | Required disposition |
 |---|---|
 | The ride surface is crossed from above while falling | **Mount** |
-| Lip column, wall, outer/back face, underside, or lateral body face before that crossing | **Reject + fall** |
+| Deck seam support-top or lip ownership contact before that crossing | **Corridor** |
+| Outer/back wall, underside, or lateral solid face before that crossing | **Reject + fall** |
 | No slope contact | Continue free air; ordinary flat/lava landing rules apply |
 
 “Crossed from above while falling” is a sweep condition, not a proximity test:
 the segment begins above the sampled slope height at the contact X/Z and ends
 at or below it, with negative vertical velocity. A body overlap with no such
 crossing is not a landing.
+
+The first `support_top` / lip-owner event at an abutting deck seam is only
+compiled ownership metadata. It may occur at `t=0` while the rider remains
+above or outside the projectable ride surface, so it must Corridor into the
+next free-air segment rather than Reject or Mount.
 
 ## Explicit transfers
 
@@ -61,7 +69,9 @@ slope.
    depth span.
 2. For that pair, test the free-air segment against the sampled ride height.
 3. Select Mount only for the real descending surface crossing.
-4. Reject and request a fall for every other solid-face contact with that slope.
+4. Corridor seam support/lip ownership events that do not cross the ride
+   surface.
+5. Reject and request a fall for every other solid-face contact with that slope.
 
 `CrashClassifier` may expose the deck-abut ownership lookup, but it does not
 label an entire deck air bout “with-slope.” Collision timing and the
@@ -71,12 +81,13 @@ surface-crossing predicate belong in `AirSolver`.
 
 Add real-sim regressions using `####(((=====`:
 
-1. Deck edge starts free air rather than Mounting on the first adjacent-slope
-   body contact.
+1. Deck edge starts free air and Corridors through its first adjacent-slope seam
+   support/lip ownership contact.
 2. Held-direction leave reproduces the formerly problematic trajectory and
    does not Mount by proximity.
 3. A trajectory that descends through the sampled pipe/ramp surface Mounts.
-4. A lateral face hit before a valid surface crossing Rejects and starts a fall.
+4. A true lateral solid face hit before a valid surface crossing Rejects and
+   starts a fall.
 5. Acid and Spine transfers still seat accepted targets.
 
 Keep existing fly-out, hang, and foreign-pipe lip regressions green.

@@ -36,7 +36,7 @@ Guiding intuition (not implemented as a general orientation engine this pass): i
 | Deck walls / volumes (`feature_wall`, deck solid) | Free air or grounded | fall |
 | Ramp **or pipe** outer-back (`feature_wall` reason `"slope outer back"`, ground contain equivalent) | Free air or grounded; not hang remount | fall unless launch-exit / intentional deck-back carve-out |
 | Foreign **pipe** in upper ollie-lip band (`u ≥ 1 - ollie_lip_frac`) | Free air; lip column / body / support_top owning that pipe | **Reject + fall — never Mount** |
-| Deck-launch abutting slope before a descending ride-surface crossing (see [deck ride-off contact landing](2026-08-01-deck-ride-off-contact-landing-design.md)) | Free air; lip, wall, underside, or lateral body contact owning that slope | **Reject + fall — never Mount** |
+| Deck-launch abutting slope before a descending ride-surface crossing (see [deck ride-off contact landing](2026-08-01-deck-ride-off-contact-landing-design.md)) | Free air; actual outer/back wall, underside, or lateral solid contact owning that slope | **Reject + fall — never Mount** |
 | Hang + floor/deck **solid or clip** | Hang / X-lock; capsule intersects floor or deck solid (not only clean descending flat Mount) | fall |
 | Hang descending land onto floor or deck | Hang air | fall (already shipped; classifier owns the rule) |
 
@@ -47,6 +47,7 @@ Guiding intuition (not implemented as a general orientation engine this pass): i
 | Same-slope remount (launch pipe/ramp, or Z-adjacent same-footprint ramp↔pipe), including upper lip band | Normal air-out drop-in |
 | Foreign pipe below lip band (`u < 1 - ollie_lip_frac`) | Ordinary land / ride |
 | Ordinary descending ride-surface crossing (including deck launch) | AirSolver proves the sampled surface was crossed from above; outer-back still crashes |
+| Deck-seam support-top / lip ownership before that crossing | Ownership metadata only; Corridor into the next free-air segment |
 | Hang remount of owned pipe / ramp / source wall | Keep skating the transition |
 | Hang X-lock on coping lip-column overlapping own outward `#` | Lip-band ollie / air-out; deep pad clip and hang→deck land still fall |
 | Free-air into launch pipe/ramp's own outward `#` | Peak / lip leave air-out pad; foreign decks still crash |

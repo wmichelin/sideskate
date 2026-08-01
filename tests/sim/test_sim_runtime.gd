@@ -78,8 +78,9 @@ func run() -> bool:
 		and _hang_persists_off_edge_z_span()
 		and _hang_depth_transfer_lands_edge_floor()
 		and _hang_depth_transfer_lands_edge_lava()
-		and _deck_ride_off_rejects_pre_surface_pipe_contact()
+		and _deck_ride_off_corridors_seam_support_contact()
 		and _deck_ride_off_mounts_only_on_descending_surface_crossing()
+		and _deck_ride_off_rejects_actual_pipe_solid()
 		and _right_pipe_deck_slow_leave_lands_floor()
 		and _joint_wipeout_fall_tip_stays_approach()
 		and _layered_next_spine_keeps_l1_past_l0_lip()
@@ -6677,9 +6678,8 @@ func _deck_left_pipe_setup() -> Dictionary:
 	return {"sim": sim, "deck": deck, "pipe": pipe}
 
 
-## A deck edge does not proximity-mount its abutting pipe before the falling
-## segment has crossed that pipe's sampled ride surface.
-func _deck_ride_off_rejects_pre_surface_pipe_contact() -> bool:
+## Deck seam ownership is a Corridor, not a proximity Mount or crash face.
+func _deck_ride_off_corridors_seam_support_contact() -> bool:
 	var setup := _deck_left_pipe_setup()
 	if setup.is_empty():
 		push_error("deck contact: setup")
@@ -6695,17 +6695,33 @@ func _deck_ride_off_rejects_pre_surface_pipe_contact() -> bool:
 	sim.state.tangent_velocity = Vector2(180.0, 0.0)
 	sim.state.facing = "r"
 	sim.state.clear_hang()
-	var saw_air := false
-	for tick in range(12):
+	for _tick in range(3):
 		sim.set_input(Vector2.ZERO, false, false)
 		sim.tick()
-		saw_air = saw_air or sim.state.is_airborne()
 		if sim.state.is_grounded() and sim.state.surface_id == pipe.id:
-			push_error("deck contact: proximity-mounted pipe at tick %s" % tick)
+			push_error("deck seam: proximity-mounted pipe")
 			return false
 		if sim.state.falling:
-			return saw_air
-	push_error("deck contact: pre-surface pipe face never rejected")
+			push_error("deck seam: crashed before a ride-surface crossing")
+			return false
+	if not sim.state.is_airborne():
+		push_error("deck seam: expected free air, mode=%s" % sim.state.mode)
+		return false
+	for _tick in range(87):
+		sim.set_input(Vector2.ZERO, false, false)
+		sim.tick()
+		if sim.state.falling:
+			push_error("deck seam: fell before touching the ride surface")
+			return false
+		if sim.state.is_grounded():
+			if sim.state.surface_id != pipe.id:
+				push_error(
+					"deck seam: landed %s, want %s"
+					% [sim.state.surface_id, pipe.id]
+				)
+				return false
+			return true
+	push_error("deck seam: never mounted after descending to the ride surface")
 	return false
 
 
@@ -6744,6 +6760,37 @@ func _deck_ride_off_mounts_only_on_descending_surface_crossing() -> bool:
 				return false
 			return true
 	push_error("deck crossing: never mounted sampled ride surface")
+	return false
+
+
+## A real pipe solid hit below its ride surface rejects and falls; only a
+## descending crossing from above is an ordinary deck-launch Mount.
+func _deck_ride_off_rejects_actual_pipe_solid() -> bool:
+	var setup := _deck_left_pipe_setup()
+	if setup.is_empty():
+		push_error("deck solid: setup")
+		return false
+	var sim: PlayerSim = setup.sim
+	var deck: SupportPatch = setup.deck
+	var pipe: PipeSurface = setup.pipe
+	var z := (deck.z_min + deck.z_max) * 0.5
+	var theta := 0.45 * PI * 0.5
+	var x := pipe.x_at_theta(z, theta)
+	var ride_h := pipe.height_at_theta(z, theta)
+	sim.state.mode = SimState.Mode.AIRBORNE
+	sim.state.surface_id = ""
+	sim.state.air_launch_surface_id = deck.id
+	sim.state.position = Vector3(x, z, ride_h - 12.0)
+	sim.state.velocity = Vector3(180.0, 0.0, 0.0)
+	for _tick in range(8):
+		sim.set_input(Vector2.ZERO, false, false)
+		sim.tick()
+		if sim.state.is_grounded() and sim.state.surface_id == pipe.id:
+			push_error("deck solid: mounted pipe through solid face")
+			return false
+		if sim.state.falling:
+			return true
+	push_error("deck solid: never rejected pipe solid")
 	return false
 
 
