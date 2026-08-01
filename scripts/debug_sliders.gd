@@ -306,11 +306,11 @@ func _setup_ollie_jump_sliders() -> void:
 	_bind_float_slider(
 		pipe_row["slider"],
 		0.0,
-		200.0,
+		400.0,
 		0.1,
 		_player,
 		"ollie_height_pipe",
-		100.0,
+		200.0,
 		_on_ollie_height_pipe_changed,
 		_refresh_ollie_height_pipe_label
 	)
