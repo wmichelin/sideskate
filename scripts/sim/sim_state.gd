@@ -64,6 +64,12 @@ var fall_start_vy: float = 0.0
 var request_fall: bool = false
 ## Pipe id to eject outside of on lip-top crash (cleared after eject).
 var fall_eject_pipe_id: String = ""
+## Presentation FallBox clamps — logical support / optional impact half-spaces.
+var fall_support_point: Vector3 = Vector3.ZERO
+var fall_support_normal: Vector3 = Vector3(0.0, 0.0, 1.0)
+var fall_impact_point: Vector3 = Vector3.ZERO
+var fall_impact_normal: Vector3 = Vector3.ZERO
+var fall_has_impact_plane: bool = false
 
 
 ## Lock presentation flop to `sign` (usually wall approach / away-from-impact).
@@ -142,6 +148,28 @@ func clear_fall() -> void:
 	fall_start_vy = 0.0
 	request_fall = false
 	fall_eject_pipe_id = ""
+	clear_fall_planes()
+
+
+func stamp_fall_planes(
+	support_point: Vector3, support_normal: Vector3,
+	impact_point: Vector3 = Vector3.ZERO, impact_normal: Vector3 = Vector3.ZERO
+) -> void:
+	fall_support_point = support_point
+	fall_support_normal = support_normal.normalized()
+	if fall_support_normal.length_squared() < 0.0001:
+		fall_support_normal = Vector3(0.0, 0.0, 1.0)
+	fall_impact_point = impact_point
+	fall_impact_normal = impact_normal.normalized()
+	fall_has_impact_plane = fall_impact_normal.length_squared() >= 0.0001
+
+
+func clear_fall_planes() -> void:
+	fall_support_point = Vector3.ZERO
+	fall_support_normal = Vector3(0.0, 0.0, 1.0)
+	fall_impact_point = Vector3.ZERO
+	fall_impact_normal = Vector3.ZERO
+	fall_has_impact_plane = false
 
 
 func to_dict() -> Dictionary:

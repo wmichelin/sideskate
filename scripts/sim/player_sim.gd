@@ -116,6 +116,7 @@ func begin_fall() -> void:
 	ollie_just_released = false
 	action_just = false
 	last_wish = Vector2.ZERO
+	state.stamp_fall_planes(state.position, Vector3(0.0, 0.0, 1.0))
 	state.falling = true
 	state.fall_elapsed = 0.0
 	# Wall/feature crashes stamp approach-side lean so the fall box flops away

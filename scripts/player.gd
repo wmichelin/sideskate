@@ -462,6 +462,34 @@ func next_facing_coping_debug() -> String:
 	]
 
 
+func fall_support_plane_world() -> Dictionary:
+	if _sim == null or _sim.state == null:
+		return {"point": Vector3.ZERO, "normal": Vector3.UP}
+	var s := _sim.state
+	return {
+		"point": _WorldSpace.logical_to_world(
+			s.fall_support_point.x, s.fall_support_point.y, s.fall_support_point.z
+		),
+		"normal": _WorldSpace.logical_velocity_to_world(
+			s.fall_support_normal.x, s.fall_support_normal.y, s.fall_support_normal.z
+		).normalized(),
+	}
+
+
+func fall_impact_plane_world() -> Dictionary:
+	if _sim == null or _sim.state == null or not _sim.state.fall_has_impact_plane:
+		return {}
+	var s := _sim.state
+	return {
+		"point": _WorldSpace.logical_to_world(
+			s.fall_impact_point.x, s.fall_impact_point.y, s.fall_impact_point.z
+		),
+		"normal": _WorldSpace.logical_velocity_to_world(
+			s.fall_impact_normal.x, s.fall_impact_normal.y, s.fall_impact_normal.z
+		).normalized(),
+	}
+
+
 func motion_world(kind: int) -> Vector3:
 	if _sim == null or _sim.state == null:
 		return Vector3.ZERO

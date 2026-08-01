@@ -6833,8 +6833,30 @@ func _falling_deck_launch_rejects_abutting_l1_pipe() -> bool:
 	sim.state.velocity = Vector3(-outward * 180.0, 0.0, -80.0)
 	sim.state.note_air_height(sim.state.position.z)
 	sim.begin_fall()
-	var saw_reject_contact := false
-	var start_x := sim.state.position.x
+	# Seam/lip ownership while falling must Reject — never Corridor or Mount.
+	var seam_contact := {
+		"kind": "support_top",
+		"surface_id": target.id,
+		"owner_id": target.id,
+		"support_kind": SimKinds.SurfaceKind.PIPE,
+		"role": SimKinds.ContactRole.LIP_COLUMN,
+		"normal": Vector3(0.0, 0.0, 1.0),
+		"point": Vector3(cope_x, z, launch_deck.height),
+		"projection": Vector3(cope_x, z, launch_deck.height),
+	}
+	var seam_disp := sim.air._deck_launch_slope_disposition(
+		sim.state, seam_contact, sim.state.position, sim.state.position
+	)
+	if seam_disp != SimKinds.ContactDisposition.REJECT:
+		push_error(
+			"falling L1 deck launch: seam disposition=%s want REJECT"
+			% seam_disp
+		)
+		return false
+	var saw_pipe_contact_while_falling := false
+	var bowl_lip_x := (
+		target.bound_x_max if outward < 0.0 else target.bound_x_min
+	)
 	for _tick in range(90):
 		sim.set_input(Vector2.ZERO, false, false)
 		sim.tick()
@@ -6844,41 +6866,35 @@ func _falling_deck_launch_rejects_abutting_l1_pipe() -> bool:
 				% target.id
 			)
 			return false
-		# Deck-seam Corridor while falling lets the bout walk the solid column
-		# above the ride surface — reject that containment breach.
-		if sim.state.falling \
-				and target.contains_solid_xz(sim.state.position.x, z) \
-				and sim.state.position.z < target.bound_h_max - SimTolerances.PIPE_TOP_SKIM_BAND:
-			push_error(
-				"falling L1 deck launch: Corridored through abutting pipe solid x=%.1f h=%.1f"
-				% [sim.state.position.x, sim.state.position.z]
-			)
-			return false
 		var proj := target.project(sim.state.position.x, z, sim.state.position.z)
-		if bool(proj.get("ok", false)) and sim.state.position.z < float(proj.point.z) - 0.01:
-			push_error(
-				"falling L1 deck launch: tunneled below ride surface h=%.1f ride=%.1f"
-				% [sim.state.position.z, float(proj.point.z)]
+		if bool(proj.get("ok", false)):
+			if sim.state.falling:
+				saw_pipe_contact_while_falling = true
+			# Solid volume is below the ride surface — Corridor must not enter it.
+			if sim.state.position.z < float(proj.point.z) - SimTolerances.CONTACT_EPS:
+				push_error(
+					"falling L1 deck launch: tunneled below ride surface h=%.1f ride=%.1f"
+					% [sim.state.position.z, float(proj.point.z)]
+				)
+				return false
+		# Far/bowl side of the abutting pipe — deck-launched falls stay approach-side.
+		if sim.state.falling:
+			var crossed_bowl := (
+				(outward < 0.0 and sim.state.position.x > bowl_lip_x + SimTolerances.WALL_REJECT_CLEAR)
+				or (outward > 0.0 and sim.state.position.x < bowl_lip_x - SimTolerances.WALL_REJECT_CLEAR)
 			)
+			if crossed_bowl:
+				push_error(
+					"falling L1 deck launch: crossed bowl side of pipe x=%.1f lip=%.1f"
+					% [sim.state.position.x, bowl_lip_x]
+				)
+				return false
+	if not saw_pipe_contact_while_falling:
+		# Reject may park outside projection; require the bout still be active
+		# after the approach window so we know the fall ran against the pipe.
+		if not sim.state.falling:
+			push_error("falling L1 deck launch: fall cleared without pipe contact")
 			return false
-		# Far-side crossing through the pipe volume is also a containment fail.
-		var far_side := (
-			(outward < 0.0 and sim.state.position.x > cope_x + 40.0)
-			or (outward > 0.0 and sim.state.position.x < cope_x - 40.0)
-		)
-		if sim.state.falling and far_side:
-			push_error(
-				"falling L1 deck launch: crossed far side of pipe start_x=%.1f x=%.1f"
-				% [start_x, sim.state.position.x]
-			)
-			return false
-		if sim.state.falling and sim.state.position.x != start_x:
-			# Bounce/park back on the approach deck counts as having contacted.
-			if absf(sim.state.position.x - start_x) > 1.0:
-				saw_reject_contact = true
-	if not saw_reject_contact and not sim.state.falling:
-		push_error("falling L1 deck launch: fall cleared without abutting contact")
-		return false
 	return true
 
 

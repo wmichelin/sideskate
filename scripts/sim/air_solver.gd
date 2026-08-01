@@ -302,6 +302,9 @@ func _deck_launch_slope_disposition(
 	var surf = _contact_slope_surf(contact)
 	if surf == null or not crash.deck_abuts_slope(launch, surf.id, at.y):
 		return -1
+	# Fall bouts never Corridor/Mount through the abutting slope — Reject only.
+	if state.falling:
+		return SimKinds.ContactDisposition.REJECT
 	var from_proj: Dictionary = surf.project(from.x, from.y, from.z)
 	var at_proj: Dictionary = surf.project(at.x, at.y, at.z)
 	var crossed := (
@@ -826,6 +829,12 @@ func _reject_air_contact(state: SimState, contact: Dictionary, from: Vector3) ->
 		if absf(side) < 0.001:
 			side = -1.0
 		var wall_n := Vector3(side, 0.0, 0.0)
+		state.stamp_fall_planes(
+			Vector3(pt_w.x, state.position.y, state.position.z),
+			Vector3(0.0, 0.0, 1.0),
+			Vector3(pt_w.x, state.position.y, state.position.z),
+			Vector3(side, 0.0, 0.0)
+		)
 		state.velocity = _reject_into_normal(state.velocity, wall_n)
 		if state.velocity.x * side < 0.0:
 			state.velocity.x = 0.0
@@ -843,12 +852,15 @@ func _reject_air_contact(state: SimState, contact: Dictionary, from: Vector3) ->
 		if state.request_fall:
 			_try_eject_pipe_top_skim(state, contact)
 	elif state.falling and _contact_is_slope_body(contact):
+		_stamp_slope_fall_planes(state, contact, from)
 		_clear_fall_from_slope_solid(state, contact)
 		if state.request_fall:
 			_try_eject_pipe_top_skim(state, contact)
 	elif normal.length_squared() > 0.0001:
 		state.velocity = _reject_into_normal(state.velocity, normal)
 		var pt: Vector3 = contact.get("projection", contact.get("point", state.position))
+		if state.falling and _contact_is_slope_body(contact):
+			_stamp_slope_fall_planes(state, contact, from)
 		state.position = pt + normal.normalized() * SimTolerances.CONTACT_EPS
 		_push_out_of_solids(state, normal)
 		if state.request_fall:
@@ -874,6 +886,25 @@ func _contact_is_slope_body(contact: Dictionary) -> bool:
 			sk == SimKinds.SurfaceKind.PIPE or sk == SimKinds.SurfaceKind.RAMP
 		)
 	return false
+
+
+## Stamp FallBox support (and optional approach impact) from a slope Reject.
+func _stamp_slope_fall_planes(
+	state: SimState, contact: Dictionary, from: Vector3
+) -> void:
+	var pt: Vector3 = contact.get("projection", contact.get("point", state.position))
+	var n: Vector3 = contact.get("normal", Vector3(0.0, 0.0, 1.0))
+	var support_n := n
+	if support_n.length_squared() < 0.0001:
+		support_n = Vector3(0.0, 0.0, 1.0)
+	var impact_n := Vector3.ZERO
+	if absf(n.x) > 0.0001:
+		var side := signf(from.x - pt.x)
+		if absf(side) < 0.001:
+			side = signf(n.x)
+		if absf(side) >= 0.001:
+			impact_n = Vector3(side, 0.0, 0.0)
+	state.stamp_fall_planes(pt, support_n, pt, impact_n)
 
 
 ## Free-air bail solids via CrashClassifier. Hang uses hang_flat / hang_clip modes.
@@ -1704,8 +1735,22 @@ func _try_eject_pipe_top_skim(state: SimState, contact: Dictionary) -> void:
 func _eject_fall_outside_pipe(state: SimState, pipe: PipeSurface) -> void:
 	if state == null or pipe == null:
 		return
-	# Bowl-side exterior: left of a right pipe's lip, right of a left pipe's lip.
-	if int(pipe.side) == SimKinds.PipeSide.RIGHT:
+	# Deck-launched falls approach from the outward pad — eject back there.
+	# Bowl-side crashes still park outside the bowl lip (not through the column).
+	var from_outward_deck := (
+		crash != null
+		and not state.air_launch_surface_id.is_empty()
+		and crash.deck_abuts_slope(
+			state.air_launch_surface_id, pipe.id, state.position.y
+		)
+	)
+	if from_outward_deck:
+		var out := pipe.outward_sign()
+		if out < 0.0:
+			state.position.x = pipe.bound_x_min - SimTolerances.WALL_REJECT_CLEAR
+		else:
+			state.position.x = pipe.bound_x_max + SimTolerances.WALL_REJECT_CLEAR
+	elif int(pipe.side) == SimKinds.PipeSide.RIGHT:
 		state.position.x = pipe.bound_x_min - SimTolerances.WALL_REJECT_CLEAR
 	else:
 		state.position.x = pipe.bound_x_max + SimTolerances.WALL_REJECT_CLEAR
