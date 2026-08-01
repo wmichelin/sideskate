@@ -1,5 +1,7 @@
 # Bounded fall presentation and containment
 
+**Status:** implemented on `main` (2026-08-01).
+
 ## Goal
 
 Restore a physics-like crash tumble without letting a presentation body enter

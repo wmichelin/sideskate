@@ -120,15 +120,17 @@ fills UV/height for a chosen Mount — it is not a competing lander.
 
 Outward `#` remains `OPEN`. Riding off that deck is ordinary free air with
 `air_launch` = the deck. The initial deck-seam support/lip ownership event is a
-**Corridor**: it neither Mounts nor crashes, so gravity carries the rider toward
-the transition. The adjoining pipe/ramp Mounts only when the descending
-free-air sweep crosses its sampled ride surface from above. An actual outer/back
-wall, underside, or lateral solid face hit before that crossing Rejects and
-starts a fall. Accepted **Acid** and **Spine** transfer plans use their own
-target-seat rules. Into-face wall/bounds Rejects park on the approach side at
-`WALL_REJECT_CLEAR` with lean away from the face. The exact pipe coping is not
-inside either pipe solid; contact still returns a stable feature / owner id,
-surface, projection, normal, and time.
+**Corridor** only while **not** falling: it neither Mounts nor crashes, so
+gravity carries the rider toward the transition. The adjoining pipe/ramp Mounts
+only when the descending free-air sweep crosses its sampled ride surface from
+above. An actual outer/back wall, underside, or lateral solid face hit before
+that crossing Rejects and starts a fall. Once a fall bout is active, every
+deck-launch contact with that abutting pipe/ramp **Rejects** (never Corridor or
+Mount) and clearance stays on the approach / outward side. Accepted **Acid** and
+**Spine** transfer plans use their own target-seat rules. Into-face wall/bounds
+Rejects park on the approach side at `WALL_REJECT_CLEAR` with lean away from the
+face. The exact pipe coping is not inside either pipe solid; contact still
+returns a stable feature / owner id, surface, projection, normal, and time.
 
 ## Tolerances (`SimTolerances`)
 
