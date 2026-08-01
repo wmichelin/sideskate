@@ -63,8 +63,8 @@ func _build_meshes() -> void:
 	var box := BoxMesh.new()
 	box.size = body_size
 	_body.mesh = box
-	# BoxMesh is centered on its origin; lift so the bottom edge sits on the feet.
-	_body.position = Vector3(0.0, body_size.y * 0.5, 0.0)
+	# Stand on the board top (board bottom sits on the feet/support plane).
+	_body.position = Vector3(0.0, board_size.y + body_size.y * 0.5, 0.0)
 	_body.material_override = _body_mat
 	add_child(_body)
 
@@ -81,7 +81,8 @@ func _build_meshes() -> void:
 
 	_board = Node3D.new()
 	_board.name = "Board"
-	_board.position = Vector3(0.0, -board_size.y * 0.5, 0.0)
+	# Bottom of board sits on the feet/support plane (never below surface).
+	_board.position = Vector3(0.0, board_size.y * 0.5, 0.0)
 	add_child(_board)
 
 	var board_half_size := Vector3(board_size.x * 0.5, board_size.y, board_size.z)
@@ -233,7 +234,9 @@ func apply_pose(pose: LogicalPose) -> void:
 		position = world_position
 	scale = Vector3.ONE
 
-	var body_pos := Vector3(0.0, body_size.y * 0.5, 0.0)
+	# Board on support plane; rider stands on the board top.
+	var board_pos := Vector3(0.0, board_size.y * 0.5, 0.0)
+	var body_pos := Vector3(0.0, board_size.y + body_size.y * 0.5, 0.0)
 	var body_basis_yaw := Vector3(0.0, body_yaw, 0.0)
 	var body_scl := Vector3(-face, 1.0, 1.0)
 	if _body and _body.visible:
@@ -245,7 +248,7 @@ func apply_pose(pose: LogicalPose) -> void:
 			_facing_mark.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	if _board and _board.visible:
 		_board.scale = Vector3.ONE
-		_board.position = Vector3(0.0, -board_size.y * 0.5, 0.0)
+		_board.position = board_pos
 		_board.rotation = Vector3(0.0, pose.board_yaw + pose.depth_turn_yaw, 0.0)
 
 
@@ -287,8 +290,10 @@ func _start_fall_bodies(pose: LogicalPose, feet_world: Vector3) -> void:
 	var support_normal: Vector3 = support.get("normal", Vector3.UP)
 	var impact_point: Vector3 = impact.get("point", Vector3.ZERO)
 	var impact_normal: Vector3 = impact.get("normal", Vector3.ZERO)
+	# Rider stood on the board top while riding — start tumble from that contact.
+	var rider_feet := feet_world + basis * Vector3(0.0, board_size.y, 0.0)
 	_rider_fall.global_transform = _rider_fall.transform_for_planes(
-		feet_world, basis, support_point, support_normal, impact_point, impact_normal
+		rider_feet, basis, support_point, support_normal, impact_point, impact_normal
 	)
 	var vel := Vector3.ZERO
 	if _player != null and _player.has_method("motion_world"):
@@ -305,9 +310,9 @@ func _start_fall_bodies(pose: LogicalPose, feet_world: Vector3) -> void:
 
 	var board_yaw := pose.board_yaw + pose.depth_turn_yaw
 	var board_basis := Basis.from_euler(Vector3(0.0, board_yaw, tilt + lean * deg_to_rad(25.0)))
-	var board_feet := feet_world - board_basis * Vector3(0.0, board_size.y, 0.0)
+	# Board bottom on the support/feet plane (same as riding — never below surface).
 	_board_fall.global_transform = _board_fall.transform_for_planes(
-		board_feet, board_basis, support_point, support_normal, impact_point, impact_normal
+		feet_world, board_basis, support_point, support_normal, impact_point, impact_normal
 	)
 	_board_fall.linear_velocity = vel * 0.85
 	_board_fall.angular_velocity = board_basis * Vector3(0.0, lean * 3.0, -lean * 2.0)

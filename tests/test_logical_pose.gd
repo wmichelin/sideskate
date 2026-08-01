@@ -122,13 +122,19 @@ func _centered_y_turn_presentation() -> bool:
 		push_error("Y-turn presentation: apex and depth turns must share local Y")
 		presenter.free()
 		return false
-	if absf(body.position.y - presenter.body_size.y * 0.5) > 0.001:
-		push_error("Y-turn presentation: body center moved during turn")
+	var expect_body_y := presenter.board_size.y + presenter.body_size.y * 0.5
+	if absf(body.position.y - expect_body_y) > 0.001:
+		push_error("Y-turn presentation: body should stand on board top, got %s" % body.position.y)
 		presenter.free()
 		return false
 	var board := presenter.get_node_or_null("Board") as Node3D
 	if board == null:
 		push_error("Y-turn presentation: missing Board")
+		presenter.free()
+		return false
+	var board_bottom := board.position.y - presenter.board_size.y * 0.5
+	if board_bottom < -0.0001:
+		push_error("Y-turn presentation: board clipped below support plane (%s)" % board_bottom)
 		presenter.free()
 		return false
 	pose.board_yaw = 0.7
