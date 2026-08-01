@@ -9,3 +9,4 @@ exports/
 .mcp/
 mcp_bridge.gd
 artifacts/render_compare/
+.superpowers/
