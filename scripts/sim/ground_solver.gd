@@ -1108,8 +1108,12 @@ func _mount_wall_from_hit(state: SimState, hit: Dictionary, at: Vector3) -> bool
 		var projection := wall.project(at.x, at.y, at.z)
 		if not bool(projection.get("ok", false)):
 			return false
-		var along := state.velocity.z if state.is_airborne() else state.tangent_velocity.x
 		var depth_speed := state.velocity.y if state.is_airborne() else state.tangent_velocity.y
+		# Hang remount: same takeoff along as pipe/ramp (not hang |vh|).
+		var along := (
+			-maxf(state.hang_launch_along, 120.0) if state.is_hanging()
+			else (state.velocity.z if state.is_airborne() else state.tangent_velocity.x)
+		)
 		state.mode = SimState.Mode.GROUNDED
 		state.surface_id = wall.id
 		state.u = float(projection.u)
