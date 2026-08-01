@@ -118,6 +118,7 @@ func run() -> bool:
 		and _fall_impact_deck_wall_requests_fall()
 		and _fall_hang_flat_floor_requests_fall()
 		and _fall_peak_leave_does_not_bail()
+		and _fall_support_plane_lies_under_airborne_feet()
 		and _ramp_lip_ollie_own_outward_deck_no_crash()
 		and _fall_recovery_restores_checkpoint()
 		and _crash_foreign_pipe_lip_rejects_and_falls()
@@ -508,6 +509,49 @@ func _fall_peak_leave_does_not_bail() -> bool:
 			return true
 	push_error("fall peak leave: never launched")
 	return false
+
+
+## FallBox support must sit under airborne feet so gravity can pull the body down.
+func _fall_support_plane_lies_under_airborne_feet() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_halfpipe.ssk"):
+		push_error("fall support under: setup")
+		return false
+	var floor_id := ""
+	for id in sim.model.patches.keys():
+		var p: SupportPatch = sim.model.patches[id]
+		if int(p.kind) == SimKinds.SurfaceKind.FLOOR:
+			floor_id = id
+			break
+	if floor_id.is_empty():
+		push_error("fall support under: no floor")
+		return false
+	var floor: SupportPatch = sim.model.patches[floor_id]
+	var z := (floor.z_min + floor.z_max) * 0.5
+	var x := (floor.x_min + floor.x_max) * 0.5
+	sim.state.mode = SimState.Mode.AIRBORNE
+	sim.state.surface_id = ""
+	sim.state.clear_hang()
+	sim.state.position = Vector3(x, z, floor.height + 120.0)
+	sim.state.velocity = Vector3(0.0, 0.0, -40.0)
+	sim.state.note_air_height(sim.state.position.z)
+	sim.begin_fall()
+	if not sim.state.falling:
+		push_error("fall support under: expected falling")
+		return false
+	if sim.state.fall_support_point.z >= sim.state.position.z - 10.0:
+		push_error(
+			"fall support under: plane h=%.1f must be under feet h=%.1f"
+			% [sim.state.fall_support_point.z, sim.state.position.z]
+		)
+		return false
+	if absf(sim.state.fall_support_point.z - floor.height) > SimTolerances.CONTACT_EPS * 4.0:
+		push_error(
+			"fall support under: expected floor h=%.1f got %.1f"
+			% [floor.height, sim.state.fall_support_point.z]
+		)
+		return false
+	return true
 
 
 ## Lip-band ramp ollie into the abutting outward `#` must not crash (same bout).

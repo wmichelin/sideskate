@@ -829,9 +829,10 @@ func _reject_air_contact(state: SimState, contact: Dictionary, from: Vector3) ->
 		if absf(side) < 0.001:
 			side = -1.0
 		var wall_n := Vector3(side, 0.0, 0.0)
-		state.stamp_fall_planes(
-			Vector3(pt_w.x, state.position.y, state.position.z),
-			Vector3(0.0, 0.0, 1.0),
+		# Support = surface under feet (not air height); impact = approach face.
+		stamp_fall_planes_underfoot(
+			state,
+			query,
 			Vector3(pt_w.x, state.position.y, state.position.z),
 			Vector3(side, 0.0, 0.0)
 		)
@@ -888,15 +889,12 @@ func _contact_is_slope_body(contact: Dictionary) -> bool:
 	return false
 
 
-## Stamp FallBox support (and optional approach impact) from a slope Reject.
+## Stamp FallBox support underfoot + optional approach impact from a slope Reject.
 func _stamp_slope_fall_planes(
 	state: SimState, contact: Dictionary, from: Vector3
 ) -> void:
 	var pt: Vector3 = contact.get("projection", contact.get("point", state.position))
 	var n: Vector3 = contact.get("normal", Vector3(0.0, 0.0, 1.0))
-	var support_n := n
-	if support_n.length_squared() < 0.0001:
-		support_n = Vector3(0.0, 0.0, 1.0)
 	var impact_n := Vector3.ZERO
 	if absf(n.x) > 0.0001:
 		var side := signf(from.x - pt.x)
@@ -904,7 +902,32 @@ func _stamp_slope_fall_planes(
 			side = signf(n.x)
 		if absf(side) >= 0.001:
 			impact_n = Vector3(side, 0.0, 0.0)
-	state.stamp_fall_planes(pt, support_n, pt, impact_n)
+	stamp_fall_planes_underfoot(state, query, pt, impact_n)
+
+
+## Analytical support under the feet for FallBox gravity settle (never mid-air).
+static func stamp_fall_planes_underfoot(
+	state: SimState,
+	query: SurfaceQuery,
+	impact_point: Vector3 = Vector3.ZERO,
+	impact_normal: Vector3 = Vector3.ZERO,
+) -> void:
+	if state == null or query == null:
+		return
+	var x := state.position.x
+	var z := state.position.y
+	var top := query.top_support(x, z, state.position.z + SimTolerances.CONTACT_EPS)
+	var support_pt := Vector3(x, z, SimTolerances.VOID_FLOOR)
+	var support_n := Vector3(0.0, 0.0, 1.0)
+	if not top.is_empty():
+		if top.has("proj") and bool(top.proj.get("ok", false)):
+			support_pt = top.proj.point
+			var pn: Vector3 = top.proj.normal
+			if pn.length_squared() >= 0.0001:
+				support_n = pn
+		else:
+			support_pt = Vector3(x, z, float(top.height))
+	state.stamp_fall_planes(support_pt, support_n, impact_point, impact_normal)
 
 
 ## Free-air bail solids via CrashClassifier. Hang uses hang_flat / hang_clip modes.

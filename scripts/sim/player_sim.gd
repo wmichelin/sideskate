@@ -116,9 +116,11 @@ func begin_fall() -> void:
 	ollie_just_released = false
 	action_just = false
 	last_wish = Vector2.ZERO
-	state.stamp_fall_planes(state.position, Vector3(0.0, 0.0, 1.0))
 	state.falling = true
 	state.fall_elapsed = 0.0
+	# Support plane is the surface under the feet — never mid-air feet height
+	# (that pinned the presentation FallBox and cancelled gravity).
+	refresh_fall_support_plane()
 	# Wall/feature crashes stamp approach-side lean so the fall box flops away
 	# from the impact face (facing-into-wall used to tip the RigidBody into mesh).
 	if not state.fall_lean_locked:
@@ -130,6 +132,20 @@ func begin_fall() -> void:
 	else:
 		state.fall_start_vx = state.tangent_velocity.x
 		state.fall_start_vy = state.tangent_velocity.y
+
+
+## Keep FallBox support on the analytical surface under the sim feet.
+## Preserves any stamped impact (wall approach) half-space.
+func refresh_fall_support_plane() -> void:
+	if state == null or query == null:
+		return
+	var impact_pt := (
+		state.fall_impact_point if state.fall_has_impact_plane else Vector3.ZERO
+	)
+	var impact_n := (
+		state.fall_impact_normal if state.fall_has_impact_plane else Vector3.ZERO
+	)
+	AirSolver.stamp_fall_planes_underfoot(state, query, impact_pt, impact_n)
 
 
 ## Remaining lockout fraction 1→0 over fall_duration.
@@ -273,6 +289,7 @@ func _tick_fall(delta: float) -> void:
 	if state == null or not state.falling:
 		return
 	_absorb_fall_planar_after_collision()
+	refresh_fall_support_plane()
 	state.fall_elapsed += delta
 	# Checkpoint teleport — do not wait for a land. Crash walls (foreign lip,
 	# bounds, deck solids) can Reject forever with planar stop, leaving the

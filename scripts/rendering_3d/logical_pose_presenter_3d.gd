@@ -287,14 +287,29 @@ func _physics_process(_delta: float) -> void:
 	var falling := (
 		_player != null and _player.has_method("is_falling") and bool(_player.call("is_falling"))
 	)
-	if falling == _was_falling:
-		return
-	var pose := _interpolated_pose()
-	var feet := WorldSpace.logical_to_world(pose.logical_x, pose.logical_z, pose.feet_height)
-	var body_yaw := pose.facing_yaw + pose.depth_turn_yaw
-	var face := signf(pose.facing_h) if pose.facing_h != 0.0 else 1.0
 	if falling:
-		_start_fall_box(feet, body_yaw, face, pose.surface_tilt)
-	else:
+		if not _was_falling:
+			var pose := _interpolated_pose()
+			var feet := WorldSpace.logical_to_world(
+				pose.logical_x, pose.logical_z, pose.feet_height
+			)
+			var body_yaw := pose.facing_yaw + pose.depth_turn_yaw
+			var face := signf(pose.facing_h) if pose.facing_h != 0.0 else 1.0
+			_start_fall_box(feet, body_yaw, face, pose.surface_tilt)
+		else:
+			_refresh_fall_box_planes()
+	elif _was_falling:
 		_stop_fall_box()
 	_was_falling = falling
+
+
+func _refresh_fall_box_planes() -> void:
+	if _fall_box == null or _fall_box.freeze or _player == null:
+		return
+	var support: Dictionary = {"point": Vector3.ZERO, "normal": Vector3.UP}
+	var impact: Dictionary = {}
+	if _player.has_method("fall_support_plane_world"):
+		support = _player.call("fall_support_plane_world")
+	if _player.has_method("fall_impact_plane_world"):
+		impact = _player.call("fall_impact_plane_world")
+	_fall_box.configure_planes(support, impact)
