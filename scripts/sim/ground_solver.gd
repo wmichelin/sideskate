@@ -122,8 +122,8 @@ func _step_patch(
 		return
 	var on_deck := int(patch.kind) == SimKinds.SurfaceKind.DECK
 	# Floor under an embedded pipe/ramp mounts the slope. Decks never auto-stick
-	# while grounded — open-side leave is free air (`air_launch` = deck); air
-	# with-slope then Mounts the abutting ride face (acid drop stays transfer).
+	# while grounded — open-side leave is free air (`air_launch` = deck); the
+	# AirSolver later permits only a real descending ride-surface crossing.
 	if not on_deck:
 		if _mount_slope_at(state, state.position.x, state.position.y, state.tangent_velocity.x):
 			_update_facing_slope(state, state.surface_id)
@@ -158,7 +158,7 @@ func _step_patch(
 		return
 	next = contained.pos
 	# Entering a pipe/ramp footprint from floor → mount. From deck → free air
-	# (with-slope Mount happens in AirSolver — never request_fall here).
+	# (AirSolver requires a real descending ride-surface crossing).
 	if not on_deck:
 		if _mount_slope_at(state, next.x, next.y, state.tangent_velocity.x):
 			_update_facing_slope(state, state.surface_id)

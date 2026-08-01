@@ -75,7 +75,7 @@ Exactly one of:
 
 `hang_edge_id` empty ⇒ free air (XZ control). Non-empty ⇒ **air-out**: X is locked to that edge’s anchor at current Z (depth stick still applies; height ballistic). Hang clears on fly-out, land, or remount. Leaving the launch edge’s Z span **retargets** onto a colinear same-side OPEN edge when available, otherwise keeps a synthetic X-lock across the gap (does not clear).
 
-Crash / death is a terminal grounded→overlay path after **lava** contact only; it is not a third motion state. Sudden-stop contacts classified by `CrashClassifier` start a **fall bout** (`begin_fall`): world borders, deck walls/volumes, ramp **or pipe** outer-back, free-air into a **foreign pipe** upper ollie-lip band (`u ≥ 1 - ollie_lip_frac` — Reject, never Mount), and hang / X-lock clipping or landing floor/deck. Excluded: same-slope remount (including upper band), foreign pipe below the lip band, ramp ride face, hang remount of owned pipe/wall, hang on the coping lip-column of an abutting `#`, free-air into the launch slope’s own outward `#` (lip/peak leave), own-slope peak leave / outer-back, intentional deck-back ride-off. After the fall bout, soft-restore uses the same floor/deck `CHECKPOINT_HISTORY_SEC` window as lava respawn (no death overlay). Invisible `__void_floor__` still catches fall-through. Lava / pipe / wall / void never count as checkpoints.
+Crash / death is a terminal grounded→overlay path after **lava** contact only; it is not a third motion state. Sudden-stop contacts classified by `CrashClassifier` start a **fall bout** (`begin_fall`): world borders, deck walls/volumes, ramp **or pipe** outer-back, a deck-launch lip/wall/underside/lateral hit on that deck’s abutting slope before a valid ride-surface crossing, free-air into a **foreign pipe** upper ollie-lip band (`u ≥ 1 - ollie_lip_frac` — Reject, never Mount), and hang / X-lock clipping or landing floor/deck. Excluded: same-slope remount (including upper band), foreign pipe below the lip band, ordinary descending ride-surface crossing, hang remount of owned pipe/wall, hang on the coping lip-column of an abutting `#`, free-air into the launch slope’s own outward `#` (lip/peak leave), own-slope peak leave / outer-back, intentional deck-back ride-off. After the fall bout, soft-restore uses the same floor/deck `CHECKPOINT_HISTORY_SEC` window as lava respawn (no death overlay). Invisible `__void_floor__` still catches fall-through. Lava / pipe / wall / void never count as checkpoints.
 
 ## Transitions
 
@@ -118,14 +118,15 @@ intersecting), **Corridor** (continue to the next event). Hang remounts only the
 retained source; foreign lips under the X-lock are Corridor. `supports_below`
 fills UV/height for a chosen Mount — it is not a competing lander.
 
-Outward `#` remains `OPEN`. Skating off that deck toward an abutting pipe/ramp is
-**with-slope leave**: free air with `air_launch` = the deck (never wipeout on
-leave), Corridor over the abutting slope, then **Mount** on descending ride-face
-contact while traveling into-bowl. Foreign-lip Reject applies only to **into-face**
-hits. Into-face wall/bounds Rejects park on the approach side at
-`WALL_REJECT_CLEAR` with lean away from the face. The exact pipe coping is not
-inside either pipe solid; contact still returns a stable feature / owner id,
-surface, projection, normal, and time.
+Outward `#` remains `OPEN`. Riding off that deck is ordinary free air with
+`air_launch` = the deck; the adjoining pipe/ramp cannot Mount by coping seam,
+proximity, or body overlap. It Mounts only when the descending free-air sweep
+crosses the sampled ride surface from above. A lip, wall, underside, or lateral
+face hit before that crossing Rejects and starts a fall. Accepted **Acid** and
+**Spine** transfer plans use their own target-seat rules. Into-face wall/bounds
+Rejects park on the approach side at `WALL_REJECT_CLEAR` with lean away from
+the face. The exact pipe coping is not inside either pipe solid; contact still
+returns a stable feature / owner id, surface, projection, normal, and time.
 
 ## Tolerances (`SimTolerances`)
 
