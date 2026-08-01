@@ -32,9 +32,19 @@ func _slope_along_from_world_vx(surf, world_vx: float) -> float:
 	return world_vx * float(surf.outward_sign())
 
 
+## Into-bowl along for any hang→slope remount (anchor, lip column, support-top,
+## ordinary land). Uses stored air-out takeoff speed — never hang world vel
+## (vx is locked to 0, so slope projection collapses near apex / depth travel).
+func _hang_remount_along(state: SimState) -> float:
+	if state == null:
+		return -120.0
+	return -maxf(state.hang_launch_along, 120.0)
+
+
 ## Project free-air world velocity onto the slope tangent (X + height).
 ## Same-slope reentry (ollie / air-out drop-back) always seeds downhill like hang
 ## remount — clamping to 0 let stick-out climb into a weak coping hang / X-lock.
+## Callers that still have an active hang must use `_hang_remount_along` instead.
 func _slope_along_from_world_vel(
 	surf, world_vel: Vector3, at: Vector3, launch_id: String = ""
 ) -> float:
@@ -45,7 +55,7 @@ func _slope_along_from_world_vel(
 	var along := world_vel.x * t.x + world_vel.z * t.z
 	if not _slope_land_is_reentry(surf, launch_id, at.y):
 		return along
-	# Hang remount parity: always punch downhill on same-slope return.
+	# Same-slope free-air return: punch downhill from impact (not hang takeoff).
 	var impact := maxf(absf(world_vel.z), absf(world_vel.x) * 0.5)
 	return -maxf(impact, 80.0)
 
@@ -658,6 +668,7 @@ func _mount_pipe_owner(state: SimState, pipe_id: String, contact: Dictionary) ->
 		return false
 	var vz := state.velocity.y
 	var world_vel := state.velocity
+	var hanging := state.is_hanging()
 	var z := state.position.y
 	var proj := pipe.project(state.position.x, z, state.position.z)
 	var role := int(contact.get("role", -1))
@@ -665,15 +676,17 @@ func _mount_pipe_owner(state: SimState, pipe_id: String, contact: Dictionary) ->
 		role == SimKinds.ContactRole.LIP_COLUMN
 		or str(contact.get("kind", "")) == "support_top"
 	)
+	var along := (
+		_hang_remount_along(state) if hanging
+		else _slope_along_from_world_vel(pipe, world_vel, state.position, _launch_id_for_along(state))
+	)
 	if bool(proj.get("ok", false)) and _pipe_snap_allowed(state, pipe, proj):
 		state.mode = SimState.Mode.GROUNDED
 		state.surface_id = pipe.id
 		state.u = float(proj.u)
 		state.v = float(proj.v)
 		state.position = proj.point
-		state.tangent_velocity = Vector2(
-			_slope_along_from_world_vel(pipe, world_vel, state.position, _launch_id_for_along(state)), vz
-		)
+		state.tangent_velocity = Vector2(along, vz)
 		state.velocity = Vector3.ZERO
 		state.clear_hang()
 		state.clear_air_peak()
@@ -690,9 +703,7 @@ func _mount_pipe_owner(state: SimState, pipe_id: String, contact: Dictionary) ->
 	state.u = theta / (PI * 0.5)
 	state.v = clampf((z - pipe.z_min) / maxf(pipe.z_max - pipe.z_min, 0.001), 0.0, 1.0)
 	state.position = Vector3(pipe.x_at_theta(z, theta), z, pipe.height_at_theta(z, theta))
-	state.tangent_velocity = Vector2(
-		_slope_along_from_world_vel(pipe, world_vel, state.position, _launch_id_for_along(state)), vz
-	)
+	state.tangent_velocity = Vector2(along, vz)
 	state.velocity = Vector3.ZERO
 	state.clear_hang()
 	state.clear_air_peak()
@@ -741,14 +752,19 @@ func _mount_ramp_owner(state: SimState, ramp_id: String, contact: Dictionary) ->
 	var rproj := ramp.project(state.position.x, state.position.y, state.position.z)
 	if not bool(rproj.get("ok", false)):
 		return false
+	var hanging := state.is_hanging()
+	var along := (
+		_hang_remount_along(state) if hanging
+		else _slope_along_from_world_vel(
+			ramp, state.velocity, state.position, _launch_id_for_along(state)
+		)
+	)
 	state.mode = SimState.Mode.GROUNDED
 	state.surface_id = ramp.id
 	state.u = float(rproj.u)
 	state.v = float(rproj.v)
 	state.position = rproj.point
-	state.tangent_velocity = Vector2(
-		_slope_along_from_world_vel(ramp, state.velocity, state.position, _launch_id_for_along(state)), state.velocity.y
-	)
+	state.tangent_velocity = Vector2(along, state.velocity.y)
 	state.velocity = Vector3.ZERO
 	state.clear_hang()
 	state.clear_air_peak()
@@ -1247,9 +1263,13 @@ func _snap_onto_solid(state: SimState, hit: Dictionary, from_height: float = NAN
 		state.u = float(proj.u)
 		state.v = float(proj.v)
 		state.position = proj.point
-		state.tangent_velocity = Vector2(
-			_slope_along_from_world_vel(pipe, state.velocity, state.position, _launch_id_for_along(state)), vz
+		var pipe_along := (
+			_hang_remount_along(state) if state.is_hanging()
+			else _slope_along_from_world_vel(
+				pipe, state.velocity, state.position, _launch_id_for_along(state)
+			)
 		)
+		state.tangent_velocity = Vector2(pipe_along, vz)
 		state.velocity = Vector3.ZERO
 		state.clear_hang()
 		state.clear_air_peak()
@@ -1276,9 +1296,13 @@ func _snap_onto_solid(state: SimState, hit: Dictionary, from_height: float = NAN
 		state.u = float(rproj.u)
 		state.v = float(rproj.v)
 		state.position = rproj.point
-		state.tangent_velocity = Vector2(
-			_slope_along_from_world_vel(ramp, state.velocity, state.position, _launch_id_for_along(state)), vz
+		var ramp_along := (
+			_hang_remount_along(state) if state.is_hanging()
+			else _slope_along_from_world_vel(
+				ramp, state.velocity, state.position, _launch_id_for_along(state)
+			)
 		)
+		state.tangent_velocity = Vector2(ramp_along, vz)
 		state.velocity = Vector3.ZERO
 		state.clear_hang()
 		state.clear_air_peak()
@@ -2079,7 +2103,6 @@ func _try_land(state: SimState, from_height: float = NAN) -> void:
 			return
 		if state.air_peak_height <= sh + _deck_land_min_above(state, str(top.surface_id)):
 			return
-	var impact := maxf(absf(state.velocity.z), absf(state.velocity.x))
 	var vz := state.velocity.y
 	var world_vel := state.velocity
 	var was_hanging := state.is_hanging()
@@ -2098,7 +2121,7 @@ func _try_land(state: SimState, from_height: float = NAN) -> void:
 				z,
 				pipe.height_at_theta(z, PI * 0.5)
 			)
-			state.tangent_velocity = Vector2(-maxf(impact, 80.0), vz)
+			state.tangent_velocity = Vector2(_hang_remount_along(state), vz)
 		else:
 			var proj: Dictionary = top.proj
 			state.u = float(proj.u)
@@ -2114,10 +2137,15 @@ func _try_land(state: SimState, from_height: float = NAN) -> void:
 		state.u = float(rproj.u)
 		state.v = float(rproj.v)
 		state.position = rproj.point
-		state.tangent_velocity = Vector2(
-			_slope_along_from_world_vel(ramp, world_vel, state.position, _launch_id_for_along(state)) if ramp != null else world_vel.x,
-			vz
+		var ramp_along := (
+			_hang_remount_along(state) if was_hanging
+			else (
+				_slope_along_from_world_vel(
+					ramp, world_vel, state.position, _launch_id_for_along(state)
+				) if ramp != null else world_vel.x
+			)
 		)
+		state.tangent_velocity = Vector2(ramp_along, vz)
 	else:
 		# Flat land from hang: drop X-lock / lip lean; coast with world XZ.
 		state.u = 0.0
@@ -2378,10 +2406,7 @@ func _try_return_to_anchor(state: SimState, from_height: float) -> bool:
 		return false
 	if not crossed and state.velocity.z > 0.0:
 		return false
-	# Prefer stored air-out along so depth travel / near-apex remount stays smooth.
-	var impact := maxf(absf(state.velocity.z), absf(state.velocity.x))
-	var along_mag := maxf(maxf(state.hang_launch_along, impact), 120.0)
-	var along := -along_mag
+	var along := _hang_remount_along(state)
 	var vz := state.velocity.y
 	var z := state.position.y
 	state.mode = SimState.Mode.GROUNDED

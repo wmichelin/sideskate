@@ -77,6 +77,7 @@ func run() -> bool:
 		and _lava_grounded_contact_kills()
 		and _respawn_at_prior_floor_or_deck()
 		and _hang_persists_off_edge_z_span()
+		and _hang_lip_column_remount_preserves_along()
 		and _hang_depth_transfer_lands_edge_floor()
 		and _hang_depth_transfer_lands_edge_lava()
 		and _deck_ride_off_corridors_seam_support_contact()
@@ -6550,6 +6551,68 @@ func _respawn_at_prior_floor_or_deck() -> bool:
 			"respawn cp: floor pose want ~%s got %s"
 			% [spawn_floor_pos, deck_sim.state.position]
 		)
+		return false
+	return true
+
+
+## Hang remount via LIP_COLUMN (not HANG_ANCHOR) must still restore takeoff along.
+## Sibling depth returns often hit lip-column / support-top before hang-anchor.
+func _hang_lip_column_remount_preserves_along() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/air_transfer.ssk"):
+		push_error("hang lip-remount: setup")
+		return false
+	var source: PipeSurface = null
+	var far: PipeSurface = null
+	var spawn_z := sim.state.position.y
+	for id in sim.model.pipes.keys():
+		var p: PipeSurface = sim.model.pipes[id]
+		if p.side != SimKinds.PipeSide.RIGHT:
+			continue
+		if spawn_z >= p.z_min - 1.0 and spawn_z <= p.z_max + 1.0:
+			source = p
+		else:
+			far = p
+	if source == null or far == null:
+		push_error("hang lip-remount: need two right pipes")
+		return false
+	_place_at_coping(sim, source, 400.0)
+	sim.state.set_facing_side("r")
+	sim.set_input(Vector2.ZERO, false, false)
+	sim.tick()
+	if not sim.state.is_hanging():
+		push_error("hang lip-remount: expected hang")
+		return false
+	var launch_along := absf(sim.state.hang_launch_along)
+	if launch_along < 300.0:
+		push_error("hang lip-remount: launch along unset (%.1f)" % launch_along)
+		return false
+	var far_z := (far.z_min + far.z_max) * 0.5
+	var lip_h := far.height_at_theta(far_z, PI * 0.5)
+	sim.state.position = Vector3(far.coping_x_at(far_z), far_z, lip_h + 1.0)
+	# Near-apex hang world vel — projecting this onto the slope is ~0 along.
+	sim.state.velocity = Vector3(0.0, 0.0, -12.0)
+	var contact := {
+		"role": SimKinds.ContactRole.LIP_COLUMN,
+		"kind": "support_top",
+		"owner_id": far.id,
+		"surface_id": far.id,
+	}
+	if not sim.air._mount_pipe_owner(sim.state, far.id, contact):
+		push_error("hang lip-remount: mount failed")
+		return false
+	if not sim.state.is_grounded() or sim.state.surface_id != far.id:
+		push_error("hang lip-remount: not grounded on far pipe")
+		return false
+	var remount_along := absf(sim.state.tangent_velocity.x)
+	if remount_along < launch_along * 0.85:
+		push_error(
+			"hang lip-remount: LIP_COLUMN remount slowed %.1f → %.1f (must use hang_launch_along)"
+			% [launch_along, remount_along]
+		)
+		return false
+	if sim.state.tangent_velocity.x >= -1.0:
+		push_error("hang lip-remount: must seed into-bowl (-)")
 		return false
 	return true
 
