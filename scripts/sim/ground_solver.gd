@@ -629,6 +629,8 @@ func _enter_air(state: SimState, world_vel: Vector3, hang_edge_id: String = "") 
 		state.free_air_upright = false
 	else:
 		state.begin_hang(hang_edge_id)
+		# Preserve takeoff along magnitude for hang remount (air-out / lip ollie).
+		state.hang_launch_along = absf(world_vel.z)
 
 
 ## Ramp free-air leave from the peak-ward lip band → level presentation tilt.

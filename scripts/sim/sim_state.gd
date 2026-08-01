@@ -30,6 +30,9 @@ var hang_edge_id: String = ""
 ## Launch edge for this hang bout (unchanged by depth retarget). Lock-X and
 ## apex facing use this even when hang_edge_id retargets across a gap.
 var hang_launch_edge_id: String = ""
+## |along| at air-out leave (vertical seed). Remount restores this so depth
+## travel / apex cannot slow the return into the bowl.
+var hang_launch_along: float = 0.0
 ## Max height reached this airborne bout (hang / free / fly-out). Used so deck
 ## lands require a real arc above the pad, not a lip/apex skim.
 var air_peak_height: float = -INF
@@ -106,6 +109,7 @@ func set_facing_side(side: String) -> void:
 func clear_hang() -> void:
 	hang_edge_id = ""
 	hang_launch_edge_id = ""
+	hang_launch_along = 0.0
 	hang_apex_facing_done = false
 	hang_apex_timer = -1.0
 	facing_yaw = 0.0
@@ -123,6 +127,8 @@ func begin_hang(edge_id: String) -> void:
 	hang_apex_to_yaw = 0.0
 	free_air_upright = false
 	note_air_height(position.z)
+	# hang_launch_along is stamped by GroundSolver._enter_air / callers; depth
+	# retarget begin_hang must not wipe a stored takeoff along.
 
 
 func note_air_height(height: float) -> void:

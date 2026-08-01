@@ -6554,6 +6554,71 @@ func _respawn_at_prior_floor_or_deck() -> bool:
 	return true
 
 
+## Near-apex sibling remount must restore takeoff along (not the tiny |vz| floor).
+func _hang_remount_preserves_along_near_apex() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/air_transfer.ssk"):
+		push_error("hang apex-remount: setup")
+		return false
+	var source: PipeSurface = null
+	var far: PipeSurface = null
+	var spawn_z := sim.state.position.y
+	for id in sim.model.pipes.keys():
+		var p: PipeSurface = sim.model.pipes[id]
+		if p.side != SimKinds.PipeSide.RIGHT:
+			continue
+		if spawn_z >= p.z_min - 1.0 and spawn_z <= p.z_max + 1.0:
+			source = p
+		else:
+			far = p
+	if source == null or far == null:
+		push_error("hang apex-remount: need two right pipes")
+		return false
+	_place_at_coping(sim, source, 400.0)
+	sim.state.set_facing_side("r")
+	sim.set_input(Vector2.ZERO, false, false)
+	sim.tick()
+	if not sim.state.is_hanging():
+		push_error("hang apex-remount: expected hang")
+		return false
+	var launch_along := absf(sim.state.hang_launch_along)
+	if launch_along < 300.0:
+		push_error("hang apex-remount: launch along unset (%.1f)" % launch_along)
+		return false
+	# Retarget onto the far span at lip height with almost no vertical speed.
+	var far_z := (far.z_min + far.z_max) * 0.5
+	var far_edge := sim.query.edge_at(far.id, far_z, "coping")
+	if far_edge == null:
+		push_error("hang apex-remount: no far coping edge")
+		return false
+	var lip_h := far.height_at_theta(far_z, PI * 0.5)
+	sim.state.hang_edge_id = far_edge.id
+	sim.state.position = Vector3(far.coping_x_at(far_z), far_z, lip_h + 2.0)
+	sim.state.velocity = Vector3(0.0, 0.0, -15.0)
+	var remount_along := 0.0
+	var remounted := false
+	for _i in range(40):
+		sim.set_input(Vector2.ZERO, false, false)
+		sim.tick()
+		if sim.state.is_grounded() and sim.state.surface_id == far.id:
+			remounted = true
+			remount_along = absf(sim.state.tangent_velocity.x)
+			break
+	if not remounted:
+		push_error(
+			"hang apex-remount: never remounted (mode=%s surf=%s h=%.1f)"
+			% [sim.state.mode, sim.state.surface_id, sim.state.position.z]
+		)
+		return false
+	if remount_along < launch_along * 0.85:
+		push_error(
+			"hang apex-remount: near-apex remount slowed %.1f → %.1f"
+			% [launch_along, remount_along]
+		)
+		return false
+	return true
+
+
 ## Leaving a hang edge's Z span must keep X-lock + hang (no free-air level-out)
 ## unless the player flys out. Also remounts the far same-facing pipe on air_transfer.
 func _hang_persists_off_edge_z_span() -> bool:
@@ -6582,10 +6647,16 @@ func _hang_persists_off_edge_z_span() -> bool:
 	if not sim.state.is_hanging():
 		push_error("hang off-z: expected hang after coping leave")
 		return false
+	# Air-out converts along → vertical; remount after lava depth must restore it.
+	var launch_along := absf(sim.state.velocity.z)
+	if launch_along < 300.0:
+		push_error("hang off-z: expected strong launch vertical, got %.1f" % launch_along)
+		return false
 	var lock_x := source.coping_x_at(sim.state.position.y)
 	var takeoff_facing := sim.state.facing
 	var saw_gap_air := false
 	var remounted := false
+	var remount_along := 0.0
 	for _i in range(240):
 		sim.set_input(Vector2(0, -1), false, false)
 		sim.tick()
@@ -6630,6 +6701,7 @@ func _hang_persists_off_edge_z_span() -> bool:
 			if landed.id == source.id:
 				continue
 			remounted = true
+			remount_along = absf(sim.state.tangent_velocity.x)
 			break
 	if not saw_gap_air:
 		push_error("hang off-z: never airborne over lava mid-gap")
@@ -6639,6 +6711,14 @@ func _hang_persists_off_edge_z_span() -> bool:
 			"hang off-z: never remounted far pipe (mode=%s z=%.1f hang=%s)"
 			% [sim.state.mode, sim.state.position.y, sim.state.hang_edge_id]
 		)
+		return false
+	if remount_along < launch_along * 0.85:
+		push_error(
+			"hang off-z: sibling remount slowed launch %.1f → along %.1f (speed must preserve)"
+			% [launch_along, remount_along]
+		)
+		return false
+	if not _hang_remount_preserves_along_near_apex():
 		return false
 	# Fly-out still clears hang on the launch span.
 	var fly := PlayerSim.new()

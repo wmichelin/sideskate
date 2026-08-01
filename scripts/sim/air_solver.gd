@@ -2378,8 +2378,10 @@ func _try_return_to_anchor(state: SimState, from_height: float) -> bool:
 		return false
 	if not crossed and state.velocity.z > 0.0:
 		return false
+	# Prefer stored air-out along so depth travel / near-apex remount stays smooth.
 	var impact := maxf(absf(state.velocity.z), absf(state.velocity.x))
-	var along := -maxf(impact, 120.0)
+	var along_mag := maxf(maxf(state.hang_launch_along, impact), 120.0)
+	var along := -along_mag
 	var vz := state.velocity.y
 	var z := state.position.y
 	state.mode = SimState.Mode.GROUNDED
