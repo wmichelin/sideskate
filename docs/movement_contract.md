@@ -37,9 +37,10 @@ While air-out (hang) or perched on an `OPEN` / `SHARED_SPINE` coping, and height
 - Accepting fly-out clears hang, seeds outward free-air velocity from climb/air speed, ends X-lock, and stands the skater upright (`free_air_upright` — no carried pipe/wall lean).
 
 Same-height outward `#` decks are fly/air corridor — they do **not** auto-mount from the pipe.
-Free-air landings on the coping column (or its bowl side) prefer that pipe over an abutting
-outward `#` pad — floor ollies that meet the lip drop into the bowl, they do not sticky-mount
-the deck with zero coast. Past the coping into the deck remains ordinary deck land / fly-out.
+Free-air landings on the coping column prefer that pipe over an abutting outward `#` pad for
+ownership — but a **foreign** pipe upper ollie-lip band is a crash wall (Reject + fall), not a
+drop-in. Same-slope remount may still seat. Past the coping into the deck remains ordinary
+deck land / fly-out.
 
 ### Air-out landing
 
@@ -74,7 +75,7 @@ Exactly one of:
 
 `hang_edge_id` empty ⇒ free air (XZ control). Non-empty ⇒ **air-out**: X is locked to that edge’s anchor at current Z (depth stick still applies; height ballistic). Hang clears on fly-out, land, or remount. Leaving the launch edge’s Z span **retargets** onto a colinear same-side OPEN edge when available, otherwise keeps a synthetic X-lock across the gap (does not clear).
 
-Crash / death is a terminal grounded→overlay path after **lava** contact only; it is not a third motion state. World borders, unplayable space, deck walls/volumes, and ramp outer-back solids are **containment** that can start a **fall bout** (`begin_fall`) when contacted in free air or while grounded (hang remount of pipe/ramp/wall excluded; own-ramp peak leave and intentional deck-back ride-off excluded). Hang land onto floor/deck also starts a fall. After the fall bout, soft-restore uses the same floor/deck `CHECKPOINT_HISTORY_SEC` window as lava respawn (no death overlay). Invisible `__void_floor__` still catches fall-through. Lava / pipe / wall / void never count as checkpoints.
+Crash / death is a terminal grounded→overlay path after **lava** contact only; it is not a third motion state. Sudden-stop contacts classified by `CrashClassifier` start a **fall bout** (`begin_fall`): world borders, deck walls/volumes, ramp **or pipe** outer-back, free-air into a **foreign pipe** upper ollie-lip band (`u ≥ 1 - ollie_lip_frac` — Reject, never Mount), and hang / X-lock clipping or landing floor/deck. Excluded: same-slope remount (including upper band), foreign pipe below the lip band, ramp ride face, hang remount of owned pipe/wall, own-slope peak leave, intentional deck-back ride-off. After the fall bout, soft-restore uses the same floor/deck `CHECKPOINT_HISTORY_SEC` window as lava respawn (no death overlay). Invisible `__void_floor__` still catches fall-through. Lava / pipe / wall / void never count as checkpoints.
 
 ## Transitions
 

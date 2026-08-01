@@ -116,6 +116,7 @@ Tunable sim values sync into `SimTolerances` / `PlayerSim` each physics tick. Ca
 | [`sim/surface_query.gd`](../scripts/sim/surface_query.gd) | Separate support projection, edge lookup, and deterministic swept solid contact |
 | [`sim/ground_solver.gd`](../scripts/sim/ground_solver.gd) | Grounded + wall climb + seams |
 | [`sim/air_solver.gd`](../scripts/sim/air_solver.gd) | Free air + maneuvers |
+| [`sim/crash_classifier.gd`](../scripts/sim/crash_classifier.gd) | Sudden-stop fall / wipeout policy |
 | [`sim/maneuver_planner.gd`](../scripts/sim/maneuver_planner.gd) | Fly-out + transfer X-lerp plans |
 | [`sim/sim_tolerances.gd`](../scripts/sim/sim_tolerances.gd) | Epsilons, gravity, cast ranges |
 | [`player.gd`](../scripts/player.gd) | Input → tick → pose sync |
@@ -125,7 +126,7 @@ Tunable sim values sync into `SimTolerances` / `PlayerSim` each physics tick. Ca
 
 ### Fall bout
 
-`PlayerSim.begin_fall()` starts a soft wipeout: clears hang/maneuver/ollie charge, ignores stick/transfer/ollie, keeps analytical collision + gravity, lerps planar X/depth to 0 over `fall_stop_duration`, leans onto the facing side over `fall_anim_duration`, and after `fall_duration` once grounded soft-restores to the last floor/deck checkpoint (same ~1.5s history as lava, no death overlay). Triggers: free-air or grounded impact with level walls, deck walls/volumes, or ramp launch/outer-back (not hang; not own-ramp peak leave / intentional deck-back ride-off); hang land onto floor/deck (not pipe/ramp). Dev invoke: **Y** / InputMap `fall`. Debug TUNING exposes the three durations and a head countdown bar (`show_fall_cooldown`).
+`PlayerSim.begin_fall()` starts a soft wipeout: clears hang/maneuver/ollie charge, ignores stick/transfer/ollie, keeps analytical collision + gravity, lerps planar X/depth to 0 over `fall_stop_duration`, leans onto the facing side over `fall_anim_duration`, and after `fall_duration` once grounded soft-restores to the last floor/deck checkpoint (same ~1.5s history as lava, no death overlay). Triggers live in [`sim/crash_classifier.gd`](../scripts/sim/crash_classifier.gd): level walls, deck walls/volumes, ramp/pipe outer-back, free-air into a foreign pipe’s upper `ollie_lip_frac` band (Reject + fall, never Mount), hang clip/land onto floor/deck. Same-slope remount and ramp ride-face stay playable. Dev invoke: **Y** / InputMap `fall`. Debug TUNING exposes the three durations and a head countdown bar (`show_fall_cooldown`).
 
 Analytical suites: [`tests/sim/`](../tests/sim/).
 

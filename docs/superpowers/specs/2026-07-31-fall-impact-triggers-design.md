@@ -1,5 +1,7 @@
 # Fall impact triggers + checkpoint recovery
 
+> **Trigger table superseded by** [crash classifier](2026-07-31-crash-classifier-design.md) (foreign pipe lip, hang clip, pipe outer-back). Recovery / checkpoint behavior in this doc still applies.
+
 ## Goal
 
 Wire **business logic** into `PlayerSim.begin_fall()`: hard contact with park containment solids (and hang flat land) starts a fall bout. When any fall bout finishes, soft-restore to the last floor/deck checkpoint — same history window as lava respawn, without the death overlay.

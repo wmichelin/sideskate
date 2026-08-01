@@ -45,7 +45,7 @@ func run() -> bool:
 		and _l0_pipe_ollie_not_stuck_on_l1_deck()
 		and _l0_launch_does_not_force_land_inward_deck()
 		and _l0_free_air_at_cope_remounts_wall_not_freeze()
-		and _floor_ollie_coping_lands_pipe_not_deck()
+		and _floor_ollie_coping_crashes_not_deck()
 		and _air_contact_stream_lip_owns_coping_column()
 		and _airborne_reject_leaves_exterior()
 		and _void_floor_catches_fall()
@@ -104,6 +104,10 @@ func run() -> bool:
 		and _fall_hang_flat_floor_requests_fall()
 		and _fall_peak_leave_does_not_bail()
 		and _fall_recovery_restores_checkpoint()
+		and _crash_foreign_pipe_lip_rejects_and_falls()
+		and _crash_foreign_pipe_below_lip_may_mount()
+		and _crash_same_slope_upper_remount_no_bail()
+		and _crash_hang_clips_deck_requests_fall()
 		and _ramp_edge_lip_stick_out_faces_and_climbs()
 	)
 
@@ -480,6 +484,203 @@ func _fall_recovery_restores_checkpoint() -> bool:
 	return false
 
 
+## Floor launch into foreign pipe upper ollie-lip band → Reject + fall, never Mount.
+func _crash_foreign_pipe_lip_rejects_and_falls() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_halfpipe.ssk"):
+		push_error("crash lip: setup")
+		return false
+	sim.fall_duration = 5.0
+	var right: PipeSurface = null
+	var floor_id := ""
+	for id in sim.model.pipes.keys():
+		var p: PipeSurface = sim.model.pipes[id]
+		if p.side == SimKinds.PipeSide.RIGHT:
+			right = p
+			break
+	for id in sim.model.patches.keys():
+		if int(sim.model.patches[id].kind) == SimKinds.SurfaceKind.FLOOR:
+			floor_id = id
+			break
+	if right == null or floor_id.is_empty():
+		push_error("crash lip: missing pipe/floor")
+		return false
+	var z := (right.z_min + right.z_max) * 0.5
+	var u := 0.92
+	var th := u * PI * 0.5
+	sim.state.mode = SimState.Mode.AIRBORNE
+	sim.state.surface_id = ""
+	sim.state.clear_hang()
+	sim.state.maneuver = null
+	sim.state.air_launch_surface_id = floor_id
+	sim.state.position = Vector3(
+		right.x_at_theta(z, th), z, right.height_at_theta(z, th) + 20.0
+	)
+	sim.state.velocity = Vector3(0.0, 0.0, -200.0)
+	sim.state.note_air_height(sim.state.position.z)
+	for _i in range(60):
+		sim.set_input(Vector2.ZERO, false, false)
+		sim.tick()
+		if sim.state.is_grounded() and sim.state.surface_id == right.id:
+			push_error(
+				"crash lip: must not Mount foreign high pipe u=%.2f"
+				% sim.state.u
+			)
+			return false
+		if sim.state.falling:
+			return true
+	push_error(
+		"crash lip: never fell mode=%s surf=%s pos=%s"
+		% [sim.state.mode, sim.state.surface_id, sim.state.position]
+	)
+	return false
+
+
+## Floor launch into foreign pipe below lip band may Mount (not forced lip crash).
+func _crash_foreign_pipe_below_lip_may_mount() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_halfpipe.ssk"):
+		push_error("crash low pipe: setup")
+		return false
+	var right: PipeSurface = null
+	var floor_id := ""
+	for id in sim.model.pipes.keys():
+		var p: PipeSurface = sim.model.pipes[id]
+		if p.side == SimKinds.PipeSide.RIGHT:
+			right = p
+			break
+	for id in sim.model.patches.keys():
+		if int(sim.model.patches[id].kind) == SimKinds.SurfaceKind.FLOOR:
+			floor_id = id
+			break
+	if right == null or floor_id.is_empty():
+		push_error("crash low pipe: missing pipe/floor")
+		return false
+	var z := (right.z_min + right.z_max) * 0.5
+	var u := 0.35
+	var th := u * PI * 0.5
+	sim.state.mode = SimState.Mode.AIRBORNE
+	sim.state.surface_id = ""
+	sim.state.clear_hang()
+	sim.state.maneuver = null
+	sim.state.air_launch_surface_id = floor_id
+	sim.state.position = Vector3(
+		right.x_at_theta(z, th), z, right.height_at_theta(z, th) + 25.0
+	)
+	sim.state.velocity = Vector3(80.0, 0.0, -160.0)
+	sim.state.note_air_height(sim.state.position.z)
+	for _i in range(90):
+		sim.set_input(Vector2(1, 0), false, false)
+		sim.tick()
+		if sim.state.falling:
+			push_error("crash low pipe: lip rule must not fall below band")
+			return false
+		if sim.state.is_grounded() and sim.state.surface_id == right.id:
+			if sim.state.u >= 1.0 - sim.ollie_lip_frac:
+				push_error("crash low pipe: expected below-lip mount, u=%.2f" % sim.state.u)
+				return false
+			return true
+	push_error("crash low pipe: never mounted")
+	return false
+
+
+## Same-slope air-out remount into upper band must not lip-crash.
+func _crash_same_slope_upper_remount_no_bail() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_halfpipe.ssk"):
+		push_error("crash same-slope: setup")
+		return false
+	sim.fall_duration = 5.0
+	var right: PipeSurface = null
+	for id in sim.model.pipes.keys():
+		var p: PipeSurface = sim.model.pipes[id]
+		if p.side == SimKinds.PipeSide.RIGHT:
+			right = p
+			break
+	if right == null:
+		push_error("crash same-slope: missing pipe")
+		return false
+	var z := (right.z_min + right.z_max) * 0.5
+	var u := 0.92
+	var th := u * PI * 0.5
+	sim.state.mode = SimState.Mode.AIRBORNE
+	sim.state.surface_id = ""
+	sim.state.clear_hang()
+	sim.state.maneuver = null
+	sim.state.air_launch_surface_id = right.id
+	sim.state.position = Vector3(
+		right.x_at_theta(z, th), z, right.height_at_theta(z, th) + 14.0
+	)
+	sim.state.velocity = Vector3(0.0, 0.0, -180.0)
+	sim.state.note_air_height(sim.state.position.z)
+	for _i in range(60):
+		sim.set_input(Vector2.ZERO, false, false)
+		sim.tick()
+		if sim.state.falling:
+			push_error("crash same-slope: remount must not bail")
+			return false
+		if sim.state.is_grounded() and sim.state.surface_id == right.id:
+			return true
+	push_error("crash same-slope: never remounted")
+	return false
+
+
+## Hang X-lock clipping a deck solid requests fall (not only clean flat Mount).
+func _crash_hang_clips_deck_requests_fall() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://levels/plaza_default.ssk"):
+		push_error("crash hang deck: setup")
+		return false
+	sim.fall_duration = 5.0
+	# Prefer a pipe with an outward deck at coping.
+	var pipe: PipeSurface = null
+	var deck_id := ""
+	for id in sim.model.pipes.keys():
+		var p: PipeSurface = sim.model.pipes[id]
+		var cope: CopingEdge = sim.model.copings.get(p.coping_id)
+		if cope == null:
+			continue
+		var span = cope.span_at_z((p.z_min + p.z_max) * 0.5)
+		if span == null or span.outward_deck_id.is_empty():
+			continue
+		pipe = p
+		deck_id = span.outward_deck_id
+		break
+	if pipe == null or deck_id.is_empty():
+		push_error("crash hang deck: no pipe with outward deck")
+		return false
+	var z := (pipe.z_min + pipe.z_max) * 0.5
+	var edge := sim.query.edge_at(pipe.id, z, "coping")
+	if edge == null:
+		push_error("crash hang deck: no coping edge")
+		return false
+	var deck: SupportPatch = sim.model.patches[deck_id]
+	var cx := pipe.coping_x_at(z)
+	# Hang snaps X to coping — probe inside the outward deck body (not above top,
+	# which remounts the pipe before any clip contact).
+	var dx := clampf(cx + pipe.outward_sign() * 40.0, deck.x_min + 1.0, deck.x_max - 1.0)
+	var dz := clampf(z, deck.z_min + 1.0, deck.z_max - 1.0)
+	sim.state.mode = SimState.Mode.AIRBORNE
+	sim.state.surface_id = ""
+	sim.state.begin_hang(edge.id)
+	sim.state.position = Vector3(dx, dz, deck.height - 8.0)
+	sim.state.velocity = Vector3(0.0, 0.0, -20.0)
+	sim.state.note_air_height(sim.state.position.z)
+	if sim.query.blocker_at(sim.state.position).is_empty():
+		push_error("crash hang deck: expected start inside deck solid")
+		return false
+	for _i in range(90):
+		sim.set_input(Vector2.ZERO, false, false)
+		sim.tick()
+		if sim.state.falling:
+			return true
+	push_error(
+		"crash hang deck: never fell mode=%s hang=%s pos=%s"
+		% [sim.state.mode, sim.state.hang_edge_id, sim.state.position]
+	)
+	return false
+
+
 ## Park-edge >>> lip: facing left + hold right must face right and climb out
 ## (not bounce into void and remount with a downhill punch forever).
 func _ramp_edge_lip_stick_out_faces_and_climbs() -> bool:
@@ -591,7 +792,8 @@ func _air_land_pipe_maps_vx_via_outward() -> bool:
 		push_error("air land pipe: missing right pipe")
 		return false
 	var z := (right.z_min + right.z_max) * 0.5
-	var th := PI * 0.35
+	# u=0.35 — above lip band (u≥1-ollie_lip_frac) free-air lands crash.
+	var th := PI * 0.5 * 0.35
 	var mid_x := right.x_at_theta(z, th)
 	var mid_h := right.height_at_theta(z, th)
 	sim.state.mode = SimState.Mode.AIRBORNE
@@ -599,6 +801,7 @@ func _air_land_pipe_maps_vx_via_outward() -> bool:
 	sim.state.clear_hang()
 	sim.state.maneuver = null
 	sim.state.free_air_upright = true
+	sim.state.air_launch_surface_id = ""
 	sim.state.position = Vector3(mid_x, z, mid_h + 25.0)
 	sim.state.velocity = Vector3(400.0, 0.0, -60.0)
 	var landed := false
@@ -3777,11 +3980,14 @@ func _l0_free_air_at_cope_remounts_wall_not_freeze() -> bool:
 
 ## Floor / free-air ollie that meets an L0 pipe coping must land the pipe and
 ## drop into the bowl — not sticky-mount the abutting same-height deck at 0 coast.
-func _floor_ollie_coping_lands_pipe_not_deck() -> bool:
+## Floor ollie onto coping column: foreign high lip crashes (Reject+fall);
+## abutting outward deck must not steal the contact as a clean Mount.
+func _floor_ollie_coping_crashes_not_deck() -> bool:
 	var sim := PlayerSim.new()
 	if not sim.setup_from_path("res://levels/plaza_default.ssk"):
 		push_error("floor ollie cope: setup")
 		return false
+	sim.fall_duration = 5.0
 	var pipe: PipeSurface = sim.model.pipes.get("pipe_1_L0_S1")
 	if pipe == null:
 		push_error("floor ollie cope: missing pipe")
@@ -3806,26 +4012,15 @@ func _floor_ollie_coping_lands_pipe_not_deck() -> bool:
 			push_error("floor ollie cope: abutting deck stole coping land")
 			return false
 		if sim.state.is_grounded() and sim.state.surface_id == pipe.id:
-			# Must carry into the bowl, not perch frozen at u≈1.
-			for _k in range(40):
-				sim.set_input(Vector2.ZERO, false, false)
-				sim.tick()
-				if sim.model.patches.has(sim.state.surface_id) \
-						and int(sim.model.patches[sim.state.surface_id].kind) \
-						== SimKinds.SurfaceKind.DECK:
-					push_error("floor ollie cope: deck stole after pipe land")
-					return false
-				if sim.state.surface_id == pipe.id and sim.state.u < 0.95:
-					return true
-			if sim.state.surface_id == pipe.id and sim.state.u < 0.99:
-				return true
 			push_error(
-				"floor ollie cope: perched u=%.2f tv=%s"
-				% [sim.state.u, sim.state.tangent_velocity]
+				"floor ollie cope: foreign high lip must not Mount pipe u=%.2f"
+				% sim.state.u
 			)
 			return false
+		if sim.state.falling:
+			return true
 	push_error(
-		"floor ollie cope: never landed pipe mode=%s surf=%s pos=%s"
+		"floor ollie cope: never fell mode=%s surf=%s pos=%s"
 		% [sim.state.mode, sim.state.surface_id, sim.state.position]
 	)
 	return false
@@ -4547,17 +4742,18 @@ func _land_snaps_out_of_pipe_solid() -> bool:
 	if left == null:
 		return false
 	var z := (left.z_min + left.z_max) * 0.5
-	var mid_x := left.x_at_theta(z, PI * 0.35)
-	var mid_h := left.height_at_theta(z, PI * 0.35)
+	# Below ollie-lip band so foreign free-air land Mounts (upper band is a crash wall).
+	# Drop mostly vertically — large outward vx drifts into the lip band before contact.
+	var th := PI * 0.5 * 0.35
+	var mid_x := left.x_at_theta(z, th)
+	var mid_h := left.height_at_theta(z, th)
 	sim.state.mode = SimState.Mode.AIRBORNE
 	sim.state.surface_id = ""
 	sim.state.clear_hang()
 	sim.state.maneuver = null
-	# Start above the pipe and drop into the solid volume with travel matching side.
-	# Same-facing land: left pipe wants −X travel. Hold outward so vx stays
-	# present for the mount (ballistic seed alone is fine too).
-	sim.state.position = Vector3(mid_x, z, mid_h + 80.0)
-	sim.state.velocity = Vector3(left.outward_sign() * 200.0, 0.0, -400.0)
+	sim.state.air_launch_surface_id = ""
+	sim.state.position = Vector3(mid_x, z, mid_h + 25.0)
+	sim.state.velocity = Vector3(left.outward_sign() * 40.0, 0.0, -280.0)
 	var land_stick := Vector2(left.outward_sign(), 0.0)
 	var snapped := false
 	for _i in range(90):

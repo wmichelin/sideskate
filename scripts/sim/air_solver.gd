@@ -7,6 +7,7 @@ var model: ParkModel
 var query: SurfaceQuery
 var planner: ManeuverPlanner
 var ground: GroundSolver
+var crash: CrashClassifier
 ## Live caps from PlayerSim (absolute |vx| / depth stick scale).
 var _max_speed: float = 880.0
 var _max_speed_z: float = 400.0
@@ -24,6 +25,7 @@ func _init(
 	query = q if q != null else SurfaceQuery.new(m)
 	planner = p if p != null else ManeuverPlanner.new(m, query)
 	ground = g if g != null else GroundSolver.new(m, query)
+	crash = CrashClassifier.new(m)
 
 
 func _slope_along_from_world_vx(surf, world_vx: float) -> float:
@@ -168,11 +170,18 @@ func _step_free(state: SimState, wish: Vector2, delta: float) -> void:
 		var disp := _disposition_for_contact(state, contact, from.z)
 		# Legacy bounce+_try_land: a wall/bounds Reject must not steal a later
 		# Mount (layered inbound onto an upper pipe past a lower wall face).
+		# Foreign high-pipe crash walls stay Reject — never Corridor past them.
 		if disp == SimKinds.ContactDisposition.REJECT \
+				and not _foreign_pipe_lip_is_crash_wall(state, contact) \
 				and _stream_has_later_mount(state, contacts, ci, from.z):
 			disp = SimKinds.ContactDisposition.CORRIDOR
 		if disp == SimKinds.ContactDisposition.CORRIDOR:
 			state.position = at
+			# Hang X-lock clipping floor/deck solid → fall (even before a clean land).
+			if state.is_hanging() and crash != null and crash.is_crash(
+				state, contact, {"mode": "hang_clip", "launch_id": _bout_launch_id}
+			):
+				state.request_fall = true
 			continue
 		if disp == SimKinds.ContactDisposition.MOUNT:
 			if _mount_air_contact(state, contact, from.z):
@@ -345,6 +354,8 @@ func _disposition_for_contact(
 			return SimKinds.ContactDisposition.CORRIDOR
 		if _rising_same_slope_reentry(state, _contact_slope_surf(contact)):
 			return SimKinds.ContactDisposition.CORRIDOR
+		if _foreign_pipe_lip_is_crash_wall(state, contact):
+			return SimKinds.ContactDisposition.REJECT
 		return SimKinds.ContactDisposition.MOUNT
 	# Wall climb face.
 	if kind == "wall" or role == SimKinds.ContactRole.WALL_CLIMB:
@@ -380,6 +391,8 @@ func _disposition_for_contact(
 			return SimKinds.ContactDisposition.CORRIDOR
 		if state.velocity.z > 0.0:
 			return SimKinds.ContactDisposition.CORRIDOR
+		if sk == SimKinds.SurfaceKind.PIPE and _foreign_pipe_lip_is_crash_wall(state, contact):
+			return SimKinds.ContactDisposition.REJECT
 		return SimKinds.ContactDisposition.MOUNT
 	# Pipe / ramp body solids.
 	if kind == "pipe" or kind == "ramp":
@@ -389,8 +402,19 @@ func _disposition_for_contact(
 			return SimKinds.ContactDisposition.CORRIDOR
 		if state.is_hanging() and kind == "pipe" and _hang_rejects_pipe_hit(state, contact):
 			return SimKinds.ContactDisposition.CORRIDOR
+		if kind == "pipe" and _foreign_pipe_lip_is_crash_wall(state, contact):
+			return SimKinds.ContactDisposition.REJECT
 		return SimKinds.ContactDisposition.MOUNT
 	return SimKinds.ContactDisposition.REJECT
+
+
+## Foreign pipe upper ollie-lip band is a crash wall — Reject, never Mount.
+func _foreign_pipe_lip_is_crash_wall(state: SimState, contact: Dictionary) -> bool:
+	if crash == null:
+		return false
+	return crash.is_foreign_pipe_lip_crash(
+		state, contact, {"launch_id": _launch_id_for_along(state)}
+	)
 
 
 ## This air bout left an outward `#` deck onto its abutting slope — ordinary
@@ -583,15 +607,22 @@ func _mount_air_contact(state: SimState, contact: Dictionary, from_height: float
 func _maybe_request_fall_after_hang_flat(state: SimState, was_hanging: bool) -> void:
 	if not was_hanging or state == null or not state.is_grounded():
 		return
-	if not model.patches.has(state.surface_id):
+	if crash == null:
 		return
-	var patch: SupportPatch = model.patches[state.surface_id]
-	var pk := int(patch.kind)
-	if pk != SimKinds.SurfaceKind.FLOOR and pk != SimKinds.SurfaceKind.DECK:
-		return
-	if patch.lethal:
-		return
-	state.request_fall = true
+	var contact := {
+		"kind": "support_top",
+		"surface_id": state.surface_id,
+		"owner_id": state.surface_id,
+	}
+	if model.patches.has(state.surface_id):
+		var patch: SupportPatch = model.patches[state.surface_id]
+		contact["support_kind"] = int(patch.kind)
+	if crash.is_crash(
+		state,
+		contact,
+		{"mode": "hang_flat_mount", "was_hanging": true, "launch_id": _bout_launch_id},
+	):
+		state.request_fall = true
 
 
 ## Free-air approach into a wall that compiles an upper partner pipe (layered
@@ -619,6 +650,8 @@ func _mount_pipe_owner(state: SimState, pipe_id: String, contact: Dictionary) ->
 			and _ramp_launch_abuts_pipe(state.air_launch_surface_id, pipe, state.position.y):
 		return false
 	if _rising_same_slope_reentry(state, pipe):
+		return false
+	if _foreign_pipe_lip_is_crash_wall(state, contact):
 		return false
 	var vz := state.velocity.y
 	var world_vel := state.velocity
@@ -745,27 +778,33 @@ func _reject_air_contact(state: SimState, contact: Dictionary, from: Vector3) ->
 	_ensure_air_outside_slopes(state)
 
 
-## Free-air / grounded bail solids: level walls, deck walls/volumes, ramp outer-back.
-## Hang uses flat-land mount path instead. Launch-exit corridors never Reject here.
+## Free-air bail solids via CrashClassifier. Hang uses hang_flat / hang_clip modes.
 func _contact_requests_fall(state: SimState, contact: Dictionary) -> bool:
-	if state == null or state.falling or not state.alive or state.is_hanging():
+	if crash == null:
 		return false
-	var kind := str(contact.get("kind", ""))
-	var role := int(contact.get("role", SimKinds.ContactRole.SOLID))
-	var reason := str(contact.get("reason", ""))
 	var sid := str(contact.get("surface_id", contact.get("owner_id", "")))
-	if reason == "slope outer back" and _slope_outer_back_is_launch_exit(state, contact):
-		return false
-	if reason == "deck open side" and state.air_launch_surface_id == sid:
-		return false
-	if kind == "bounds" or role == SimKinds.ContactRole.BOUNDS:
-		return true
-	if kind == "feature_wall":
-		return true
-	# Deck solid / underside Reject (Mount path does not call this).
-	if kind == "deck" or role == SimKinds.ContactRole.OUTWARD_DECK:
-		return true
-	return false
+	var reason := str(contact.get("reason", ""))
+	var launch := _bout_launch_id if not _bout_launch_id.is_empty() else state.air_launch_surface_id
+	# Hang must not use the free-air reject table (owned remounts stay playable),
+	# but floor/deck solids still wipe out via hang_clip.
+	if state.is_hanging():
+		return crash.is_crash(
+			state, contact, {"mode": "hang_clip", "launch_id": launch}
+		)
+	return crash.is_crash(
+		state,
+		contact,
+		{
+			"mode": "reject",
+			"launch_id": launch,
+			"launch_exit": (
+				reason == "slope outer back" and _slope_outer_back_is_launch_exit(state, contact)
+			),
+			"deck_ride_off": (
+				reason == "deck open side" and state.air_launch_surface_id == sid
+			),
+		},
+	)
 
 
 ## Like _bounce_off_solid but never zeroes descending vz (freeze root cause).
@@ -1003,6 +1042,10 @@ func _snap_onto_solid(state: SimState, hit: Dictionary, from_height: float = NAN
 		if pipe == null:
 			return false
 		if _rising_same_slope_reentry(state, pipe):
+			return false
+		if crash != null and crash.is_foreign_pipe_lip_crash(
+			state, hit, {"launch_id": _launch_id_for_along(state)}
+		):
 			return false
 		var proj := _pipe_proj_for_air_hit(state, pipe, hit)
 		# Lower-story pipe bodies can wrap under upper lips — prefer a same-side

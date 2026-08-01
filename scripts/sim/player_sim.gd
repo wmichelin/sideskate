@@ -8,6 +8,7 @@ var query: SurfaceQuery
 var ground: GroundSolver
 var air: AirSolver
 var planner: ManeuverPlanner
+var crash: CrashClassifier
 var state: SimState
 var accel: float = 3250.0
 var max_speed: float = 880.0
@@ -73,9 +74,12 @@ func _finish_setup() -> bool:
 	if model == null or not model.is_valid():
 		return false
 	query = SurfaceQuery.new(model)
+	crash = CrashClassifier.new(model, ollie_lip_frac)
 	ground = GroundSolver.new(model, query)
+	ground.crash = crash
 	planner = ManeuverPlanner.new(model, query)
 	air = AirSolver.new(model, query, planner, ground)
+	air.crash = crash
 	state = ground.spawn_state()
 	_seed_checkpoint_from_state()
 	ollie_available = state != null and state.is_grounded()
@@ -157,6 +161,8 @@ func tick(delta: float = SimTolerances.FIXED_DT) -> void:
 		_try_ollie_jump()
 		_try_actions()
 	var planned_surface_change := state.has_maneuver()
+	if crash != null:
+		crash.set_ollie_lip_frac(ollie_lip_frac)
 	if state.is_grounded():
 		ground.ollie_lip_frac = ollie_lip_frac
 		ground.step(

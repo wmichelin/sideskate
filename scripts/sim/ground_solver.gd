@@ -5,6 +5,7 @@ extends RefCounted
 
 var model: ParkModel
 var query: SurfaceQuery
+var crash: CrashClassifier
 ## Synced from PlayerSim each tick — lip band for ramp free-air upright.
 var ollie_lip_frac: float = 0.50
 
@@ -12,6 +13,7 @@ var ollie_lip_frac: float = 0.50
 func _init(m: ParkModel = null, q: SurfaceQuery = null) -> void:
 	model = m
 	query = q if q != null else SurfaceQuery.new(m)
+	crash = CrashClassifier.new(m)
 
 
 func spawn_state() -> SimState:
@@ -1178,6 +1180,7 @@ func _contain_ground_xz(state: SimState, proposed: Vector3) -> Dictionary:
 	state.tangent_velocity.x = 0.0
 	state.tangent_velocity.y = 0.0
 	if hit_bail and not state.falling:
+		# Prefer classifier when the last hit is available; else bail on border solids.
 		state.request_fall = true
 	return {"ok": false}
 
