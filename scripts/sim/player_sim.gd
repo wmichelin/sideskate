@@ -464,6 +464,7 @@ func _try_actions() -> void:
 		if bool(tr.get("ok", false)):
 			var tplan: ManeuverPlan = tr.plan
 			if state.is_grounded():
+				_stamp_air_launch_from_current()
 				state.mode = SimState.Mode.AIRBORNE
 				state.surface_id = ""
 				state.velocity = tplan.start_velocity
@@ -491,6 +492,10 @@ func _try_actions() -> void:
 	var fo := planner.try_fly_out(state, last_wish.x, last_wish.y)
 	if bool(fo.get("ok", false)):
 		var plan: ManeuverPlan = fo.plan
+		# Same as GroundSolver._enter_air — keep launch ownership for same-slope
+		# remount / crash carve-outs. Grounded stick fly-out used to clear
+		# surface_id without stamping, so air-ollie return hit foreign-lip fall.
+		_stamp_air_launch_from_current()
 		state.mode = SimState.Mode.AIRBORNE
 		state.surface_id = ""
 		state.clear_hang()
@@ -498,6 +503,31 @@ func _try_actions() -> void:
 		state.last_reject = ""
 		return
 	state.last_reject = str(fo.get("reason", ""))
+
+
+## Stamp `air_launch_surface_id` before clearing grounded / hang ownership.
+func _stamp_air_launch_from_current() -> void:
+	if state == null or model == null:
+		return
+	if state.is_grounded() and not state.surface_id.is_empty():
+		state.air_launch_surface_id = state.surface_id
+		return
+	if not state.air_launch_surface_id.is_empty():
+		return
+	# Hang fly-out with a wiped launch id — recover from the hang edge source.
+	var eid := state.hang_launch_edge_id
+	if eid.is_empty():
+		eid = state.hang_edge_id
+	var edge: TopologyEdge = model.edges.get(eid)
+	if edge == null:
+		return
+	var sid := edge.from_surface_id
+	if model.walls.has(sid):
+		var wall: WallSurface = model.walls[sid]
+		if not wall.source_pipe_id.is_empty():
+			sid = wall.source_pipe_id
+	if not sid.is_empty():
+		state.air_launch_surface_id = sid
 
 
 func _assert_finite() -> void:

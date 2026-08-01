@@ -111,6 +111,7 @@ func run() -> bool:
 		and _crash_foreign_pipe_lip_rejects_and_falls()
 		and _crash_foreign_pipe_below_lip_may_mount()
 		and _crash_same_slope_upper_remount_no_bail()
+		and _fly_out_ollie_same_pipe_no_crash()
 		and _crash_hang_clips_deck_requests_fall()
 		and _ramp_edge_lip_stick_out_faces_and_climbs()
 	)
@@ -742,6 +743,64 @@ func _crash_same_slope_upper_remount_no_bail() -> bool:
 		if sim.state.is_grounded() and sim.state.surface_id == right.id:
 			return true
 	push_error("crash same-slope: never remounted")
+	return false
+
+
+## Stick fly-out from a deck-backed pipe, air ollie, return — same pipe, no bail.
+func _fly_out_ollie_same_pipe_no_crash() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_deck_backed.ssk"):
+		push_error("fly-out ollie: setup")
+		return false
+	sim.fall_duration = 5.0
+	sim.ollie_height_pipe = 200.0
+	sim.ollie_charge_ms = 0.0
+	sim.ollie_accel = 0.0
+	sim.ollie_lip_frac = 0.50
+	sim.friction = 0.0
+	sim.ramp_friction = 0.0
+	var left := _left_pipe(sim.model)
+	if left == null:
+		return false
+	_place_at_coping(sim, left, 320.0)
+	sim.ollie_available = true
+	sim.set_input(Vector2(left.outward_sign(), 0.0), false, false, true, false)
+	sim.tick()
+	if not sim.state.is_airborne():
+		push_error(
+			"fly-out ollie: expected fly-out air reject=%s"
+			% sim.state.last_reject
+		)
+		return false
+	if sim.state.is_hanging():
+		push_error("fly-out ollie: stick fly-out must unlock hang")
+		return false
+	if sim.state.air_launch_surface_id != left.id:
+		push_error(
+			"fly-out ollie: launch must be pipe, got '%s'"
+			% sim.state.air_launch_surface_id
+		)
+		return false
+	sim.set_input(Vector2.ZERO, false, false, false, true)
+	sim.tick()
+	if sim.state.falling:
+		push_error("fly-out ollie: crashed on ollie tick")
+		return false
+	for _i in range(150):
+		sim.set_input(Vector2(-left.outward_sign(), 0.0), false, false)
+		sim.tick()
+		if sim.state.falling:
+			push_error(
+				"fly-out ollie: same-pipe return fell launch=%s pos=%s"
+				% [sim.state.air_launch_surface_id, sim.state.position]
+			)
+			return false
+		if sim.state.is_grounded() and sim.state.surface_id == left.id:
+			return true
+	push_error(
+		"fly-out ollie: never remounted mode=%s surf=%s launch=%s"
+		% [sim.state.mode, sim.state.surface_id, sim.state.air_launch_surface_id]
+	)
 	return false
 
 
