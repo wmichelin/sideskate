@@ -53,8 +53,9 @@ While air-out (X-locked):
   Leaving Z alone never clears hang — that requires fly-out / land / remount.
 - Descending through the current (possibly retargeted) edge returns to its source
   pipe or explicit wall with fall speed preserved.
-- Depth travel off the launch span (or holding depth stick) skips/freezes the
-  into-bowl apex facing turn so takeoff lean is kept.
+- Hang apex into-bowl facing turn still fires after vertical apex when holding
+  depth stick or leaving the launch Z span; presentation depth-turn yaw layers
+  on top of `facing_yaw` and is unchanged.
 - Ordinary contact must **never** accept an opposite-facing pipe (transfers TBD).
 - Hang remount prefers same-facing X-aligned pipe/wall via the retained/retargeted
   edge anchor. Cross-story rear decks under the lock must not steal remount while a
@@ -175,7 +176,7 @@ Wall faces are one-sided. Riding off a deck through its backing wall enters ordi
 - Free-air **X**: ballistic — no friction/coast decay; stick steers toward `wish × max_speed` (or brakes when opposite). Aligned stick must **not** slow existing `|vx|` toward a lower wish fraction, but `|vx|` is hard-clamped to `max_speed`. Release conserves vx within that cap. Height integrates gravity only.
 - Seam crossing: transport world tangent speed onto the destination surface; no dead-stop.
 - Pipe→wall and wall→pipe seams preserve tangent speed and consume the crossing once.
-- Air-out leave: seed vertical from wall/pipe tangent; `vx = 0`; retain and lock to the launch edge anchor until fly-out / return (depth may retarget onto a colinear same-side OPEN edge or hold a synthetic X-lock across a gap). Once per hang, after vertical apex **while still on the launch Z span** with no depth stick, facing turns around the character's centered local Y axis into the source pipe over `APEX_FACING_DELAY` (0 = instant). Leaving the launch span or holding depth keeps takeoff orientation.
+- Air-out leave: seed vertical from wall/pipe tangent; `vx = 0`; retain and lock to the launch edge anchor until fly-out / return (depth may retarget onto a colinear same-side OPEN edge or hold a synthetic X-lock across a gap). Once per hang, after vertical apex, facing turns around the character's centered local Y axis into the source pipe over `APEX_FACING_DELAY` (0 = instant) — still runs with depth stick held or after leaving the launch Z span. Presentation depth-turn yaw remains a separate additive layer.
 - Fly-out / deck-out: clear hang, keep rising height, and seed outward free-air X from climb/air speed. Deck grounding from free air requires a descending pad crossing **and** that this air bout peaked at least `DECK_LAND_MIN_ABOVE` above the pad. A wall face sharing a rear `#` X owns the full climb band (including the bottom `CONTACT_EPS` seam) — never deck-rescue mid-climb.
 - Ordinary land: require descending support crossing; pipes only same-facing (air-out: also coping-X aligned, any height); never opposite-facing. Free-air land onto pipe/ramp maps along from world velocity projected onto the slope tangent (not a forced downhill seed; not vx-only). Hang remount into the bowl **always** seeds downhill along from stored air-out takeoff `|along|` (`hang_launch_along`) via one helper — every path (HANG_ANCHOR, LIP_COLUMN, support-top, snap, ordinary land), never hang world-vel projection (`vx` is locked to 0). Air-out prefers remountable pipes; if none are under the lock, ordinary-land the nearest flat (floor/deck/lava/void) and clear hang.
 - Pipe/ramp lip leave with **no abutting support** (park-edge void): clamp on the lip and kill downhill along — do not free-air eject. Void eject + same-slope remount punch (≥80 downhill) trapped stick-out reverse at border lips (`>>>` against the left wall).

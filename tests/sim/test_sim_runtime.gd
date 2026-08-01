@@ -10,6 +10,7 @@ func run() -> bool:
 		and _fly_out_seeds_ballistic_outward_x()
 		and _hang_land_into_bowl()
 		and _hang_apex_faces_into_ramp()
+		and _hang_apex_with_depth_stick()
 		and _deterministic_replay()
 		and _layered_spawn_respects_story()
 		and _supports_sorted_high_to_low()
@@ -1713,6 +1714,47 @@ func _hang_land_into_bowl() -> bool:
 	if not landed:
 		push_error("never landed from hang")
 		return false
+	return true
+
+
+## Holding depth stick through hang apex must still run the into-bowl turn.
+## Presentation depth-turn yaw is separate and remains applied on top.
+func _hang_apex_with_depth_stick() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_open_fly.ssk"):
+		push_error("apex depth: setup")
+		return false
+	var left := _left_pipe(sim.model)
+	_place_at_coping(sim, left, 400.0)
+	sim.state.set_facing_side("l")
+	SimTolerances.APEX_FACING_DELAY = 0.0
+	sim.set_input(Vector2(0.0, -1.0), false, false)
+	sim.tick()
+	if not sim.state.is_hanging():
+		push_error("apex depth: expected hang")
+		return false
+	var flipped := false
+	for _i in range(120):
+		sim.set_input(Vector2(0.0, -1.0), false, false)
+		sim.tick()
+		if absf(sim.state.velocity.y) < 1.0:
+			push_error("apex depth: depth stick must keep vz while hanging")
+			return false
+		if sim.state.facing == "r" and absf(absf(sim.state.facing_yaw) - PI) < 0.01:
+			flipped = true
+			break
+		if not sim.state.is_hanging() and not sim.state.is_airborne():
+			break
+	if not flipped:
+		push_error("apex depth: never faced into ramp while holding depth")
+		return false
+	if sim.state.visual_facing != "l":
+		push_error("apex depth: visual facing must stay takeoff during turn")
+		return false
+	if not sim.state.hang_apex_facing_done:
+		push_error("apex depth: apex turn did not complete")
+		return false
+	SimTolerances.APEX_FACING_DELAY = 0.05
 	return true
 
 
@@ -6716,7 +6758,6 @@ func _hang_persists_off_edge_z_span() -> bool:
 		push_error("hang off-z: expected strong launch vertical, got %.1f" % launch_along)
 		return false
 	var lock_x := source.coping_x_at(sim.state.position.y)
-	var takeoff_facing := sim.state.facing
 	var saw_gap_air := false
 	var remounted := false
 	var remount_along := 0.0
@@ -6750,12 +6791,8 @@ func _hang_persists_off_edge_z_span() -> bool:
 			if absf(sim.state.velocity.x) > 0.01:
 				push_error("hang off-z: hang over gap must keep vx=0")
 				return false
-			if absf(sim.state.facing_yaw) > 0.05:
-				push_error("hang off-z: yaw changed during depth transfer")
-				return false
-			if sim.state.facing != takeoff_facing:
-				push_error("hang off-z: facing flipped during depth transfer")
-				return false
+			# Apex turn may complete while depth-traveling; takeoff orientation is
+			# not frozen for the whole gap.
 		if sim.state.is_grounded() and sim.model.pipes.has(sim.state.surface_id):
 			var landed: PipeSurface = sim.model.pipes[sim.state.surface_id]
 			if landed.side != SimKinds.PipeSide.RIGHT:

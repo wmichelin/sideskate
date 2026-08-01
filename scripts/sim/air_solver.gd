@@ -1158,24 +1158,12 @@ func _hang_continuation_edge(z: float, side: int, lock_x: float) -> TopologyEdge
 
 ## Once per air-out: after vertical apex, turn around the body's local Y axis
 ## into the source pipe over APEX_FACING_DELAY (0 = instant).
-func _update_hang_apex_facing(state: SimState, delta: float, wish: Vector2) -> void:
+## Depth stick and leaving the launch Z span do **not** cancel this — presentation
+## depth-turn yaw still layers on top of facing_yaw independently.
+func _update_hang_apex_facing(state: SimState, delta: float, _wish: Vector2) -> void:
 	if state.hang_apex_facing_done:
 		return
-	var launch := _hang_launch_edge(state)
-	# Off the launch edge Z span: keep takeoff orientation (depth transfer).
-	if launch == null or not launch.contains_z(state.position.y):
-		state.hang_apex_facing_done = true
-		state.hang_apex_timer = -1.0
-		state.facing_yaw = 0.0
-		return
-	# Depth stick held: freeze takeoff lean; apex may still fire if they release
-	# while remaining on the launch span.
-	if absf(wish.y) >= 0.15:
-		state.hang_apex_timer = -1.0
-		state.facing_yaw = 0.0
-		return
-	var anchor := query.edge_anchor_sample(launch, state.position.y)
-	var pipe: PipeSurface = model.pipes.get(str(anchor.get("source_pipe_id", "")))
+	var pipe := _hang_apex_into_pipe(state)
 	if pipe == null:
 		return
 	# Into the bowl: opposite the pipe's outward (coping) direction.
@@ -1202,6 +1190,25 @@ func _update_hang_apex_facing(state: SimState, delta: float, wish: Vector2) -> v
 	# R(0) × new-facing, so clear_hang can hand off without a pop.
 	state.facing = into
 	state.facing_yaw = state.hang_apex_to_yaw
+
+
+## Pipe that defines into-bowl apex yaw: launch edge when known, else live hang.
+func _hang_apex_into_pipe(state: SimState) -> PipeSurface:
+	var launch := _hang_launch_edge(state)
+	if launch != null:
+		var z_ref := state.position.y
+		if not launch.contains_z(z_ref):
+			z_ref = clampf(z_ref, launch.z_min, maxf(launch.z_max - 0.001, launch.z_min))
+		var launch_anchor := query.edge_anchor_sample(launch, z_ref)
+		var launch_pipe: PipeSurface = model.pipes.get(
+			str(launch_anchor.get("source_pipe_id", ""))
+		)
+		if launch_pipe != null:
+			return launch_pipe
+	var cur := _hang_anchor(state, state.position.y)
+	if cur.is_empty():
+		return null
+	return model.pipes.get(str(cur.get("source_pipe_id", ""))) as PipeSurface
 
 
 func _anchor_crossing_time(state: SimState, from: Vector3, to: Vector3) -> float:

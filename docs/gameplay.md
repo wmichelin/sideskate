@@ -76,7 +76,7 @@ remount into the bowl still seeds downhill along.
 
 **Transfer:** press transfer when `next acid / spine` has a candidate. Normal gravity. Progress is **time-phased** 0→1 from accept (never pre-seeded — that snaps lean/X). Lean is upright at the ballistic apex (`apex_frac`); if already falling, upright at mid-pull. Lateral X follows the same clock; finishes on lip touch. Keeps facing; zeros `vx` on arrival; re-anchors hang on that open edge. Depth (logical Z) stays free. Lean rolls start → upright → dest (never the inverted backflip half).
 
-Hang stores `hang_edge_id` (and launch id for lock/apex); it clears on fly-out, land, or return. Leaving the launch Z span retargets onto a colinear same-side OPEN edge or keeps a synthetic X-lock across the gap — it does not free-air / level out. Depth-transfer before apex keeps takeoff orientation. Fly-out plans never retarget mid-flight. At hang apex on the launch span, facing turns around the character's centered local Y axis into the source pipe over `APEX_FACING_DELAY`.
+Hang stores `hang_edge_id` (and launch id for lock/apex); it clears on fly-out, land, or return. Leaving the launch Z span retargets onto a colinear same-side OPEN edge or keeps a synthetic X-lock across the gap — it does not free-air / level out. Fly-out plans never retarget mid-flight. At hang apex, facing turns around the character's centered local Y axis into the source pipe over `APEX_FACING_DELAY` even while holding depth stick or depth-traveling; Z-stick depth-turn presentation still layers on top.
 
 ## Motion vectors
 
