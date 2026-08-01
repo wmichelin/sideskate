@@ -23,6 +23,7 @@ func set_ollie_lip_frac(lip_frac: float) -> void:
 ## - was_hanging: bool (hang_flat_mount after seat)
 ## - launch_exit: bool (own-slope outer-back peak leave)
 ## - deck_ride_off: bool (intentional deck open-side leave)
+## - launch_outward_deck: bool (air-out into launch slope's abutting `#`)
 func is_crash(state: SimState, contact: Dictionary, ctx: Dictionary = {}) -> bool:
 	if state == null or model == null or not state.alive or state.falling:
 		return false
@@ -32,22 +33,62 @@ func is_crash(state: SimState, contact: Dictionary, ctx: Dictionary = {}) -> boo
 	# Hang remount / corridor must not use the free-air reject bail table.
 	if state.is_hanging():
 		return false
-	if bool(ctx.get("launch_exit", false)) or bool(ctx.get("deck_ride_off", false)):
+	if bool(ctx.get("launch_exit", false)) or bool(ctx.get("deck_ride_off", false)) \
+			or bool(ctx.get("launch_outward_deck", false)):
 		return false
 	var kind := str(contact.get("kind", ""))
 	var role := int(contact.get("role", SimKinds.ContactRole.SOLID))
 	var reason := str(contact.get("reason", ""))
+	var sid := str(contact.get("owner_id", contact.get("surface_id", "")))
 	if reason == "slope outer back":
 		return true
 	if kind == "bounds" or role == SimKinds.ContactRole.BOUNDS:
 		return true
 	if kind == "feature_wall":
+		# Open-side cage of the launch slope's own air-out `#` is not a wipeout.
+		if is_launch_outward_deck(state, sid, ctx):
+			return false
 		return true
 	if kind == "deck" or role == SimKinds.ContactRole.OUTWARD_DECK:
+		if is_launch_outward_deck(state, sid, ctx):
+			return false
 		return true
+	if kind == "support_top" \
+			and int(contact.get("support_kind", -1)) == SimKinds.SurfaceKind.DECK:
+		if is_launch_outward_deck(state, sid, ctx):
+			return false
 	if is_foreign_pipe_lip_crash(state, contact, ctx):
 		return true
 	return false
+
+
+## Free-air into the outward `#` that backs the launch pipe/ramp coping.
+func is_launch_outward_deck(
+	state: SimState, deck_id: String, ctx: Dictionary = {}
+) -> bool:
+	if state == null or model == null or deck_id.is_empty():
+		return false
+	if not model.patches.has(deck_id):
+		return false
+	if int((model.patches[deck_id] as SupportPatch).kind) != SimKinds.SurfaceKind.DECK:
+		return false
+	var launch := str(ctx.get("launch_id", ""))
+	if launch.is_empty():
+		launch = state.air_launch_surface_id
+	if launch.is_empty():
+		return false
+	var coping_id := ""
+	if model.pipes.has(launch):
+		coping_id = (model.pipes[launch] as PipeSurface).coping_id
+	elif model.ramps.has(launch):
+		coping_id = (model.ramps[launch] as RampSurface).coping_id
+	else:
+		return false
+	var cope: CopingEdge = model.copings.get(coping_id)
+	if cope == null:
+		return false
+	var span: CopingSpan = cope.span_at_z(state.position.y)
+	return span != null and span.outward_deck_id == deck_id
 
 
 ## Free-air into a foreign pipe's upper ollie-lip band → crash wall (never Mount).

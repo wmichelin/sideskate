@@ -105,6 +105,7 @@ func run() -> bool:
 		and _fall_impact_deck_wall_requests_fall()
 		and _fall_hang_flat_floor_requests_fall()
 		and _fall_peak_leave_does_not_bail()
+		and _ramp_lip_ollie_own_outward_deck_no_crash()
 		and _fall_recovery_restores_checkpoint()
 		and _crash_foreign_pipe_lip_rejects_and_falls()
 		and _crash_foreign_pipe_below_lip_may_mount()
@@ -488,6 +489,76 @@ func _fall_peak_leave_does_not_bail() -> bool:
 			return true
 	push_error("fall peak leave: never launched")
 	return false
+
+
+## Lip-band ramp ollie into the abutting outward `#` must not crash (same bout).
+func _ramp_lip_ollie_own_outward_deck_no_crash() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://levels/plaza_default.ssk"):
+		push_error("ramp own deck: setup")
+		return false
+	sim.fall_duration = 5.0
+	sim.ollie_accel = 0.0
+	sim.ollie_charge_ms = 0.0
+	sim.ollie_height_pipe = 60.0
+	sim.ollie_lip_frac = 0.50
+	sim.friction = 0.0
+	var ramp: RampSurface = null
+	var deck_id := ""
+	for id in sim.model.ramps.keys():
+		var r: RampSurface = sim.model.ramps[id]
+		var cope: CopingEdge = sim.model.copings.get(r.coping_id)
+		if cope == null:
+			continue
+		var span = cope.span_at_z((r.z_min + r.z_max) * 0.5)
+		if span == null or span.outward_deck_id.is_empty():
+			continue
+		ramp = r
+		deck_id = span.outward_deck_id
+		break
+	if ramp == null or deck_id.is_empty():
+		push_error("ramp own deck: no ramp with outward deck")
+		return false
+	var z := (ramp.z_min + ramp.z_max) * 0.5
+	var u := 0.92
+	var th := u * PI * 0.5
+	sim.state.mode = SimState.Mode.GROUNDED
+	sim.state.surface_id = ramp.id
+	sim.state.u = u
+	sim.state.v = 0.5
+	sim.state.tangent_velocity = Vector2(350.0, 0.0)
+	sim.state.velocity = Vector3.ZERO
+	sim.state.position = Vector3(ramp.x_at_theta(z, th), z, ramp.height_at_theta(z, th))
+	sim.state.clear_hang()
+	sim.ollie_available = true
+	sim.ollie_charge = 1.0
+	sim.set_input(Vector2(ramp.outward_sign(), 0.0), false, false, false, true)
+	sim.tick()
+	if not sim.state.is_airborne():
+		push_error("ramp own deck: expected free-air after lip ollie")
+		return false
+	if sim.state.is_hanging():
+		push_error("ramp own deck: ramps must not hang")
+		return false
+	if sim.state.air_launch_surface_id != ramp.id:
+		push_error("ramp own deck: launch should be ramp")
+		return false
+	for _i in range(60):
+		sim.set_input(Vector2(ramp.outward_sign(), 0.0), false, false)
+		sim.tick()
+		if sim.state.falling:
+			push_error(
+				"ramp own deck: crashed into own outward deck pos=%s launch=%s"
+				% [sim.state.position, sim.state.air_launch_surface_id]
+			)
+			return false
+		# Landed on the air-out pad or remounted ramp — success.
+		if sim.state.is_grounded() and (
+			sim.state.surface_id == deck_id or sim.state.surface_id == ramp.id
+		):
+			return true
+	# Still airborne past the pad without falling is acceptable for this gate.
+	return not sim.state.falling
 
 
 func _fall_recovery_restores_checkpoint() -> bool:

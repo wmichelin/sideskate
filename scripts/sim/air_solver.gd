@@ -378,6 +378,11 @@ func _disposition_for_contact(
 		# Short same-pad / abutting-slope return near the ride top → Mount.
 		if _force_near_pad_deck_land_ok(state, contact):
 			return SimKinds.ContactDisposition.MOUNT
+		# Peak / lip leave into the launch slope's own air-out `#` — corridor,
+		# not a crash wall (classifier matches via launch_outward_deck).
+		var deck_sid := str(contact.get("owner_id", contact.get("surface_id", "")))
+		if _launch_owns_outward_deck(state, deck_sid):
+			return SimKinds.ContactDisposition.CORRIDOR
 		# Skim / underside: Reject with mandatory exterior resolve (no vz kill freeze).
 		return SimKinds.ContactDisposition.REJECT
 	# Support-top crossing (floor / pipe / ramp / deck already handled above).
@@ -803,8 +808,30 @@ func _contact_requests_fall(state: SimState, contact: Dictionary) -> bool:
 			"deck_ride_off": (
 				reason == "deck open side" and state.air_launch_surface_id == sid
 			),
+			"launch_outward_deck": _launch_owns_outward_deck(state, sid),
 		},
 	)
+
+
+## Launch pipe/ramp's abutting outward `#` at this depth (air-out pad).
+func _launch_owns_outward_deck(state: SimState, deck_id: String) -> bool:
+	if crash != null:
+		return crash.is_launch_outward_deck(
+			state, deck_id, {"launch_id": _launch_id_for_along(state)}
+		)
+	if deck_id.is_empty() or state == null:
+		return false
+	var launch := _launch_id_for_along(state)
+	if launch.is_empty():
+		return false
+	var coping_id := ""
+	if model.pipes.has(launch):
+		coping_id = (model.pipes[launch] as PipeSurface).coping_id
+	elif model.ramps.has(launch):
+		coping_id = (model.ramps[launch] as RampSurface).coping_id
+	else:
+		return false
+	return _slope_span_has_outward_deck(coping_id, deck_id, state.position.y)
 
 
 ## Like _bounce_off_solid but never zeroes descending vz (freeze root cause).
