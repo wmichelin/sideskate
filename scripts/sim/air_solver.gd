@@ -927,6 +927,10 @@ static func stamp_fall_planes_underfoot(
 				support_n = pn
 		else:
 			support_pt = Vector3(x, z, float(top.height))
+	# Keep a stamped wall approach plane when a later slope stamp has no X impact.
+	if impact_normal.length_squared() < 0.0001 and state.fall_has_impact_plane:
+		impact_point = state.fall_impact_point
+		impact_normal = state.fall_impact_normal
 	state.stamp_fall_planes(support_pt, support_n, impact_point, impact_normal)
 
 
@@ -1676,8 +1680,9 @@ func _ensure_air_outside_slopes(state: SimState) -> void:
 	_bounce_off_solid(state, hit, state.position)
 
 
-## Fall inside a slope solid: lift off the body; if past a left-pipe coping
-## (partner side of a joint), shove back to the bowl/approach side.
+## Fall inside a slope solid: eject without seating mid-face or crossing the
+## column. Wall-stamped impact keeps the approach half-space; otherwise push
+## opposite travel to the near exterior bound.
 func _clear_fall_from_slope_solid(state: SimState, hit: Dictionary) -> void:
 	var sid := str(hit.get("surface_id", hit.get("owner_id", "")))
 	var pipe: PipeSurface = model.pipes.get(sid) as PipeSurface
@@ -1686,36 +1691,156 @@ func _clear_fall_from_slope_solid(state: SimState, hit: Dictionary) -> void:
 		pipe = crash.contact_pipe(hit)
 	var z := state.position.y
 	if pipe != null:
-		var cope := pipe.coping_x_at(z)
-		if not is_nan(cope) and int(pipe.side) == SimKinds.PipeSide.LEFT \
-				and state.position.x > cope - SimTolerances.CONTACT_EPS:
-			state.position.x = cope - SimTolerances.WALL_REJECT_CLEAR
-			state.velocity.x = 0.0
-			state.fall_start_vx = 0.0
-			state.stamp_fall_lean(-1.0)
-		var proj := pipe.project(state.position.x, z, state.position.z)
-		if bool(proj.get("ok", false)) \
-				and state.position.z < float(proj.point.z) + SimTolerances.CONTACT_EPS:
-			state.position.z = float(proj.point.z) + SimTolerances.CONTACT_EPS
-			if state.velocity.z < 0.0:
-				state.velocity.z = 0.0
+		_eject_fall_from_slope_exterior(
+			state,
+			pipe.bound_x_min,
+			pipe.bound_x_max,
+			pipe.bound_h_max,
+			pipe.outward_sign(),
+			z,
+			pipe.contains_solid_xz(state.position.x, z),
+			pipe.project(state.position.x, z, state.position.z),
+			pipe.id
+		)
 		return
 	if ramp != null:
-		var rcope := ramp.coping_x_at(z)
-		if not is_nan(rcope) and int(ramp.side) == SimKinds.PipeSide.LEFT \
-				and state.position.x > rcope - SimTolerances.CONTACT_EPS:
-			state.position.x = rcope - SimTolerances.WALL_REJECT_CLEAR
-			state.velocity.x = 0.0
-			state.fall_start_vx = 0.0
-			state.stamp_fall_lean(-1.0)
-		var rproj := ramp.project(state.position.x, z, state.position.z)
-		if bool(rproj.get("ok", false)) \
-				and state.position.z < float(rproj.point.z) + SimTolerances.CONTACT_EPS:
-			state.position.z = float(rproj.point.z) + SimTolerances.CONTACT_EPS
-			if state.velocity.z < 0.0:
-				state.velocity.z = 0.0
+		_eject_fall_from_slope_exterior(
+			state,
+			ramp.bound_x_min,
+			ramp.bound_x_max,
+			ramp.bound_h_max,
+			ramp.outward_sign(),
+			z,
+			ramp.contains_solid_xz(state.position.x, z),
+			ramp.project(state.position.x, z, state.position.z),
+			""
+		)
 		return
 	_bounce_off_solid(state, hit, state.position)
+
+
+## Escape a pipe/ramp solid during a fall bout.
+func _eject_fall_from_slope_exterior(
+	state: SimState,
+	bound_x_min: float,
+	bound_x_max: float,
+	bound_h_max: float,
+	outward_sign: float,
+	z: float,
+	in_solid_xz: bool,
+	proj: Dictionary,
+	partner_pipe_id: String = "",
+) -> void:
+	var below_ride := (
+		bool(proj.get("ok", false))
+		and state.position.z < float(proj.point.z) + SimTolerances.CONTACT_EPS
+	)
+	if not in_solid_xz and not below_ride:
+		return
+	# Joint/wall Reject stamped an approach half-space — honor it.
+	if state.fall_has_impact_plane and absf(state.fall_impact_normal.x) > 0.5:
+		_park_fall_on_joint_approach(
+			state, state.fall_impact_point.x, state.fall_impact_normal.x, bound_h_max, z
+		)
+		return
+	# Moving into an L0→L1 joint face from the partner-pipe side: stay on that
+	# side above the lip. Do not throw across the column to the far bowl lip.
+	var joint := _joint_wall_face_for_partner(partner_pipe_id, z)
+	if not joint.is_empty():
+		var face := float(joint.x)
+		var toward_joint := (face - state.position.x) * state.velocity.x > 0.0
+		if not toward_joint and absf(state.velocity.x) < 0.001:
+			toward_joint = (face - state.position.x) * state.fall_start_vx > 0.0
+		if toward_joint:
+			var side := signf(state.position.x - face)
+			if absf(side) < 0.001:
+				side = -signf(state.velocity.x)
+			if absf(side) < 0.001:
+				side = 1.0
+			_park_fall_on_joint_approach(state, face, side, bound_h_max, z)
+			return
+	var push := _fall_solid_clear_push_x(state, outward_sign)
+	if push < 0.0:
+		state.position.x = bound_x_min - SimTolerances.WALL_REJECT_CLEAR
+	else:
+		state.position.x = bound_x_max + SimTolerances.WALL_REJECT_CLEAR
+	state.velocity.x = 0.0
+	state.fall_start_vx = 0.0
+	if not state.fall_lean_locked:
+		state.stamp_fall_lean(push)
+	var clamped := model.clamp_xz(state.position.x, z)
+	state.position.x = clamped.x
+	state.position.y = clamped.y
+	var still_in_column := (
+		state.position.x >= bound_x_min - SimTolerances.CONTACT_EPS
+		and state.position.x <= bound_x_max + SimTolerances.CONTACT_EPS
+	)
+	# Map-edge clamp can leave feet inside the column — escape above the peak.
+	if still_in_column and (in_solid_xz or below_ride):
+		state.position.z = maxf(
+			state.position.z, bound_h_max + SimTolerances.CONTACT_EPS
+		)
+		if state.velocity.z < 0.0:
+			state.velocity.z = 0.0
+		# Prefer the opposite exterior if the first push hit the world rim.
+		var alt := -push
+		if alt < 0.0:
+			state.position.x = bound_x_min - SimTolerances.WALL_REJECT_CLEAR
+		else:
+			state.position.x = bound_x_max + SimTolerances.WALL_REJECT_CLEAR
+		clamped = model.clamp_xz(state.position.x, z)
+		state.position.x = clamped.x
+		state.position.y = clamped.y
+
+
+func _park_fall_on_joint_approach(
+	state: SimState, face_x: float, side_x: float, bound_h_max: float, z: float
+) -> void:
+	_clamp_to_wall_approach_side(state, face_x, side_x)
+	state.velocity.x = 0.0
+	state.fall_start_vx = 0.0
+	# Leave the column upward on the approach side — not mid-face seat, not
+	# lateral snap across the pipe.
+	state.position.z = maxf(state.position.z, bound_h_max + SimTolerances.CONTACT_EPS)
+	if state.velocity.z < 0.0:
+		state.velocity.z = 0.0
+	if not state.fall_lean_locked:
+		state.stamp_fall_lean(side_x)
+	var clamped := model.clamp_xz(state.position.x, z)
+	state.position.x = clamped.x
+	state.position.y = clamped.y
+
+
+## Wall face X where `partner_pipe_id` is the upper partner, or {}.
+func _joint_wall_face_for_partner(partner_pipe_id: String, z: float) -> Dictionary:
+	if model == null or partner_pipe_id.is_empty():
+		return {}
+	for wall_id in model.all_wall_ids():
+		var wall: WallSurface = model.walls[wall_id]
+		if wall.upper_partner_pipe_id != partner_pipe_id:
+			continue
+		if not wall.contains_z(z):
+			continue
+		var ws: Dictionary = wall.sample_at_z(z)
+		if ws.is_empty():
+			continue
+		return {"x": float(ws.x), "wall_id": wall_id}
+	return {}
+
+
+## Horizontal eject direction out of a fall solid: opposite travel, else outward.
+func _fall_solid_clear_push_x(state: SimState, outward_sign: float = -1.0) -> float:
+	var push := -signf(state.velocity.x)
+	if absf(push) < 0.001:
+		push = -signf(state.fall_start_vx)
+	if absf(push) < 0.001 and state.fall_has_impact_plane:
+		push = signf(state.fall_impact_normal.x)
+	if absf(push) < 0.001:
+		# Outward/deck exterior — same bias as the old left-pipe cope− clear.
+		push = signf(outward_sign)
+	if absf(push) < 0.001:
+		push = -1.0
+	return push
 
 
 ## Keep X on the approach side of a vertical face (joint / rear crash).
@@ -1773,10 +1898,36 @@ func _eject_fall_outside_pipe(state: SimState, pipe: PipeSurface) -> void:
 			state.position.x = pipe.bound_x_min - SimTolerances.WALL_REJECT_CLEAR
 		else:
 			state.position.x = pipe.bound_x_max + SimTolerances.WALL_REJECT_CLEAR
-	elif int(pipe.side) == SimKinds.PipeSide.RIGHT:
-		state.position.x = pipe.bound_x_min - SimTolerances.WALL_REJECT_CLEAR
+	elif state.fall_has_impact_plane and absf(state.fall_impact_normal.x) > 0.5:
+		# Wall-stamped approach — never tip-skim across the partner pipe.
+		_park_fall_on_joint_approach(
+			state,
+			state.fall_impact_point.x,
+			state.fall_impact_normal.x,
+			pipe.bound_h_max,
+			state.position.y
+		)
+		state.fall_eject_pipe_id = ""
+		return
 	else:
-		state.position.x = pipe.bound_x_max + SimTolerances.WALL_REJECT_CLEAR
+		var joint := _joint_wall_face_for_partner(pipe.id, state.position.y)
+		if not joint.is_empty():
+			var face := float(joint.x)
+			var side := signf(state.position.x - face)
+			if absf(side) < 0.001:
+				side = -pipe.outward_sign()
+			# Partner half of the joint (opposite outward): tip-skim must not
+			# throw through the column to the far bowl lip.
+			if side * pipe.outward_sign() < 0.0:
+				_park_fall_on_joint_approach(
+					state, face, side, pipe.bound_h_max, state.position.y
+				)
+				state.fall_eject_pipe_id = ""
+				return
+		if int(pipe.side) == SimKinds.PipeSide.RIGHT:
+			state.position.x = pipe.bound_x_min - SimTolerances.WALL_REJECT_CLEAR
+		else:
+			state.position.x = pipe.bound_x_max + SimTolerances.WALL_REJECT_CLEAR
 	state.velocity.x = 0.0
 	state.fall_eject_pipe_id = ""
 	var clamped := model.clamp_xz(state.position.x, state.position.y)

@@ -27,6 +27,7 @@ func run() -> bool:
 		and _layered_joint_crash_fall_leans_away_from_wall()
 		and _layered_pipe_top_skim_fall_stays_outside()
 		and _layered_union_wall_crash_does_not_tunnel()
+		and _layered_rtl_joint_crash_stays_on_approach()
 		and _layered_union_open_lips_fly_out()
 		and _ollie_jump_caps_at_full_charge()
 		and _ollie_jump_airborne_adds_impulse()
@@ -2546,6 +2547,75 @@ func _layered_joint_crash_fall_leans_away_from_wall() -> bool:
 			return true
 	push_error("joint lean: never fell")
 	return false
+
+
+## R→L into the L0→L1 joint from the L1/partner side must fall on that approach
+## — never snap up onto the L1 ride surface or teleport across the pipe to L0.
+func _layered_rtl_joint_crash_stays_on_approach() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
+		push_error("rtl joint: setup")
+		return false
+	sim.fall_duration = 5.0
+	sim.fall_stop_duration = 0.85
+	var wall: WallSurface = sim.model.walls.get("wall_span_coping_pipe_1_L0_S1_0")
+	var l1: PipeSurface = null
+	if wall != null:
+		l1 = sim.model.pipes.get(wall.upper_partner_pipe_id) as PipeSurface
+	if wall == null or l1 == null:
+		push_error("rtl joint: missing wall/partner")
+		return false
+	var z := 250.0
+	var ws: Dictionary = wall.sample_at_z(z)
+	var wx := float(ws.x)
+	var top := float(ws.top_height)
+	var bottom := float(ws.bottom_height)
+	sim.state.mode = SimState.Mode.AIRBORNE
+	sim.state.surface_id = ""
+	sim.state.clear_hang()
+	sim.state.maneuver = null
+	sim.state.free_air_upright = true
+	sim.state.air_launch_surface_id = "floor_0_L0"
+	sim.state.facing = "l"
+	# Partner-side approach: right of the joint, mid climb band, skating left.
+	sim.state.position = Vector3(wx + 40.0, z, (bottom + top) * 0.5)
+	sim.state.velocity = Vector3(-500.0, 0.0, -80.0)
+	sim.state.note_air_height(sim.state.position.z)
+	var fell := false
+	var min_x := INF
+	for _i in range(40):
+		sim.set_input(Vector2(-1, 0), false, false)
+		sim.tick()
+		min_x = minf(min_x, sim.state.position.x)
+		if sim.state.falling:
+			fell = true
+		if sim.state.is_grounded() and sim.state.surface_id == l1.id:
+			push_error(
+				"rtl joint: seated on L1 pipe u=%.2f x=%.1f h=%.1f"
+				% [sim.state.u, sim.state.position.x, sim.state.position.z]
+			)
+			return false
+		# Crossing the joint onto the L0 side is the snap-across failure.
+		if fell and sim.state.position.x < wx - SimTolerances.WALL_REJECT_CLEAR - 1.0:
+			push_error(
+				"rtl joint: snapped across joint x=%.1f wx=%.1f h=%.1f"
+				% [sim.state.position.x, wx, sim.state.position.z]
+			)
+			return false
+		# Far-bowl eject across the L1 column is the other snap failure.
+		if fell and sim.state.position.x > l1.bound_x_max - 20.0:
+			push_error(
+				"rtl joint: snapped across L1 pipe to far lip x=%.1f bound=%.1f"
+				% [sim.state.position.x, l1.bound_x_max]
+			)
+			return false
+	if not fell:
+		push_error("rtl joint: never fell")
+		return false
+	if min_x < wx - SimTolerances.WALL_REJECT_CLEAR - 1.0:
+		push_error("rtl joint: min x %.1f crossed joint wx=%.1f" % [min_x, wx])
+		return false
+	return true
 
 
 ## Past the joint coping while falling must bounce on the approach side — never
