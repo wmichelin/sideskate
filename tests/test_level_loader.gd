@@ -174,11 +174,13 @@ height 0
 	var ramp_n := 0
 	var pipe_n := 0
 	var right_r := -1.0
+	var right_rise := -1.0
 	for p in spec.pipes:
 		if str(p.get("kind", "pipe")) == "ramp":
 			ramp_n += 1
 			if int(p.side) == QuarterPipe.PipeSide.RIGHT:
 				right_r = float(p.radius)
+				right_rise = float(p.get("rise", p.radius))
 		else:
 			pipe_n += 1
 	if ramp_n < 2 or pipe_n != 0:
@@ -187,15 +189,19 @@ height 0
 		])
 		return false
 	var want := 3.0 * cx
+	var want_rise := 3.0 * LevelLoader.DEFAULT_STEP_HEIGHT
 	if not is_equal_approx(right_r, want):
 		push_error(">>> radius want %s got %s" % [want, right_r])
+		return false
+	if not is_equal_approx(right_rise, want_rise):
+		push_error(">>> rise want %s got %s" % [want_rise, right_rise])
 		return false
 	if spec.decks.is_empty():
 		push_error("ramp_glyphs: expected deck from #")
 		return false
 	var deck_h := float(spec.decks[0].get("height", -1.0))
-	if not is_equal_approx(deck_h, right_r):
-		push_error("deck height want ramp peak %s got %s" % [right_r, deck_h])
+	if not is_equal_approx(deck_h, right_rise):
+		push_error("deck height want ramp peak %s got %s" % [right_rise, deck_h])
 		return false
 	# Mixed ramp–deck–pipe composition.
 	var mixed := """ssk 2
@@ -361,7 +367,7 @@ func _stagger_deck_height() -> bool:
 	if spec.decks.is_empty():
 		push_error("stagger: expected decks from #")
 		return false
-	var want_h := 3.0 * LevelLoader.cell_size_x
+	var want_h := 3.0 * LevelLoader.DEFAULT_STEP_HEIGHT
 	for deck in spec.decks:
 		if not is_equal_approx(float(deck.height), want_h):
 			push_error("stagger deck height want %s got %s" % [want_h, deck.height])
@@ -370,7 +376,7 @@ func _stagger_deck_height() -> bool:
 
 
 func _layered_upper_floor() -> bool:
-	var r := 3.0 * LevelLoader.cell_size_x
+	var r := 3.0 * LevelLoader.DEFAULT_STEP_HEIGHT
 	var text := (
 		"ssk 2\nname layered_unit\n---\nlayer 0\nheight 0\n"
 		+ "(((==========)))\n(((=====@====)))\n(((==========)))\n"
@@ -395,7 +401,7 @@ func _layered_upper_floor() -> bool:
 
 
 func _spawn_on_upper_layer() -> bool:
-	var r := 3.0 * LevelLoader.cell_size_x
+	var r := 3.0 * LevelLoader.DEFAULT_STEP_HEIGHT
 	var text := (
 		"ssk 2\nname spawn_l1\n---\nlayer 0\nheight 0\n"
 		+ "(((==========)))\n(((==========)))\n(((==========)))\n"

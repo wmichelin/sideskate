@@ -53,7 +53,7 @@ Perspective (`perspective_inset`, `far_geometry_scale`, `reference_depth`, `refe
 | `name` | no | Level id (default: filename) |
 | `pipe_radius` | no | Legacy height override for pipe/ramp rise; footprint still from glyph run × `cell_w` |
 | `deck_height` | no | Override **rise** for all `#` decks (added to layer height) |
-| `step_height` | no | Per-glyph-cell height rise for pipes/ramps (default = `cell_w`) |
+| `step_height` | no | Per-glyph-cell height rise for pipes/ramps (default = **40**, under `cell_w` so ramps are flatter than 45°) |
 | `spawn_facing` | no | Spawn horizontal facing: `l` or `r` (default `r`) |
 
 `@` may sit on any layer; the skater spawns at that layer’s `height` (`LevelSpec.spawn_height`).
@@ -71,7 +71,7 @@ height 0
 (((======)))
 ---
 layer 1
-height 141
+height 120
 ....====....
 ....====....
 ....====....
@@ -100,7 +100,7 @@ height 141
 | `<` | Left-facing **ramp** (lip on **right** edge of run) | `base + rise·u` (straight incline) |
 | `>` | Right-facing **ramp** (lip on **left** edge of run) | `base + rise·u` (straight incline) |
 
-Pipe/ramp **footprint X** = `run_cells × cell_w`. **Height rise** = `run_cells × step_height` (shared header; default `step_height = cell_w`). Examples: `)` / `>` → 1×H; `))` / `>>` → 2×H. When `step_height ≠ cell_w`, pipes are elliptical (rx ≠ ry) and ramps are not 45°.
+Pipe/ramp **footprint X** = `run_cells × cell_w`. **Height rise** = `run_cells × step_height` (shared header; default `step_height = 40`). Examples: `)` / `>` → 1×H; `))` / `>>` → 2×H. When `step_height ≠ cell_w`, pipes are elliptical (rx ≠ ry) and ramps are not 45°.
 | space | Solid invisible wall (never enter; not a kill) | — |
 
 ## Deck height
@@ -182,7 +182,7 @@ derives an immutable park model from the grid:
 
 Same-side contiguous `(` / `)` cells form a pipe component. Per ASCII row:
 **footprint** `radius` = run width × `cell_w`; **height** `rise` = run width ×
-`step_height` (default `cell_w`; header `pipe_radius` forces rise only). Across Z,
+`step_height` (default `40`; header `pipe_radius` forces rise only). Across Z,
 `lip(z)`, `radius(z)`, `rise(z)`, and `base(z)` are joined with monotone
 interpolation that does not overshoot. Runtime logic never branches on layer
 index — layers only contribute absolute heights at compile time.

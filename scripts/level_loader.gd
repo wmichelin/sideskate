@@ -8,6 +8,9 @@ static var last_error: String = ""
 ## Global defaults; RampLevel / debug sliders override per load.
 static var cell_size_x: float = 47.0
 static var cell_size_z: float = 47.0
+## Per-glyph-cell pipe/ramp rise when `.ssk` omits `step_height`.
+## Below `cell_size_x` so default ramps are under 45° and pipes are slightly squat.
+const DEFAULT_STEP_HEIGHT: float = 40.0
 
 
 static func load_path(
@@ -497,7 +500,7 @@ static func _recompute_bounds(spec: LevelSpec) -> void:
 static func _effective_step_height(spec: LevelSpec) -> float:
 	if spec.step_height > 0.0:
 		return spec.step_height
-	return spec.cell_w
+	return DEFAULT_STEP_HEIGHT
 
 
 static func _pipes_from_aligned_runs(
@@ -531,7 +534,7 @@ static func _pipes_from_aligned_runs(
 
 	var used := {}
 	var pipes: Array = []
-	var step_h := step_height if step_height > 0.0 else cw
+	var step_h := step_height if step_height > 0.0 else DEFAULT_STEP_HEIGHT
 	for i in range(runs.size()):
 		if used.has(i):
 			continue
@@ -570,7 +573,7 @@ static func _pipe_from_band(
 	var z1 := float(H - band.r0) * ch
 	var width_cells := int(band.c1) - int(band.c0) + 1
 	var footprint := x1 - x0
-	var step_h := step_height if step_height > 0.0 else cw
+	var step_h := step_height if step_height > 0.0 else DEFAULT_STEP_HEIGHT
 	var rise: float = radius_override if radius_override > 0.0 else float(width_cells) * step_h
 	var is_left: bool = band.is_left
 	var lip_x: float = x1 if is_left else x0
@@ -611,7 +614,7 @@ static func _pipe_from_component(
 
 	var width_cells := max_c - min_c + 1
 	var footprint := x1 - x0
-	var step_h := step_height if step_height > 0.0 else cw
+	var step_h := step_height if step_height > 0.0 else DEFAULT_STEP_HEIGHT
 	var rise: float = radius_override if radius_override > 0.0 else float(width_cells) * step_h
 
 	var lip_x: float

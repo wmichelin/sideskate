@@ -1842,7 +1842,7 @@ func _supports_sorted_high_to_low() -> bool:
 		if float(all[i].height) + 0.0001 < float(all[i + 1].height):
 			push_error("supports_below not descending: %s then %s" % [all[i], all[i + 1]])
 			return false
-	if absf(float(all[0].height) - 141.0) > 0.1:
+	if absf(float(all[0].height) - 120.0) > 0.1:
 		push_error("top support should be L1 floor, got %s" % all[0])
 		return false
 	return true
@@ -5412,7 +5412,7 @@ func _layered_hole_not_invisible_wall() -> bool:
 		return false
 	sim.state.mode = SimState.Mode.GROUNDED
 	sim.state.surface_id = floor_id
-	sim.state.position = Vector3(start_x, edge_z, 141.0)
+	sim.state.position = Vector3(start_x, edge_z, 120.0)
 	sim.state.tangent_velocity = Vector2.ZERO
 	sim.state.velocity = Vector3.ZERO
 	sim.state.clear_hang()
@@ -5451,7 +5451,7 @@ func _layered_hole_not_invisible_wall() -> bool:
 		return false
 	# Phantom wall-extension must not block L1 height inside the hole band.
 	var mid_x := right.coping_x_at(hole_z)
-	var phantom := sim.query.blocker_at(Vector3(mid_x, hole_z, 141.0))
+	var phantom := sim.query.blocker_at(Vector3(mid_x, hole_z, 120.0))
 	if str(phantom.get("kind", "")) == "wall":
 		push_error("hole: phantom wall-extension in hole rows: %s" % phantom)
 		return false
@@ -5471,7 +5471,7 @@ func _deck_hash_no_pin_from_floor() -> bool:
 		if int(p.kind) != SimKinds.SurfaceKind.DECK:
 			continue
 		if p.height < 200.0:
-			continue ## prefer L1 deck (base 141, top 282)
+			continue ## prefer L1 deck (base 120, top 240)
 		deck = p
 		break
 	if deck == null:
@@ -7053,7 +7053,7 @@ func _feature_walls_block_endcaps_and_sides() -> bool:
 	var sample := right.sample_at_z(z_mid)
 	var lip := float(sample.lip_x)
 	var cope := right.coping_x_at(z_mid)
-	var peak := float(sample.base_height) + float(sample.radius)
+	var peak := float(sample.base_height) + float(sample.get("rise", sample.radius))
 	var thick := SimTolerances.CAPSULE_RADIUS
 	# 1) Walk into the far endcap from outside Z — must not remount / ride up.
 	var approach_z := right.z_max + maxf(thick * 2.0, sim.model.cell_h * 0.35)

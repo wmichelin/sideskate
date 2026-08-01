@@ -14,7 +14,7 @@ func run() -> bool:
 		and _open_coping()
 		and _playable_levels_compile()
 		and _step_height_scales_ramp_and_pipe()
-		and _step_height_defaults_to_cell_w()
+		and _step_height_defaults_under_cell_w()
 	)
 
 
@@ -53,24 +53,34 @@ func _step_height_scales_ramp_and_pipe() -> bool:
 	return true
 
 
-func _step_height_defaults_to_cell_w() -> bool:
+func _step_height_defaults_under_cell_w() -> bool:
 	var m: ParkModel = IdlCompiler.compile_path("res://tests/levels/sim/sim_step_height_default.ssk")
 	if not m.is_valid():
 		push_error("step_height default compile: %s" % ",".join(m.compile_errors))
 		return false
 	var cw := m.cell_w
-	var want := 3.0 * cw
+	var want_rise := 3.0 * LevelLoader.DEFAULT_STEP_HEIGHT
+	var want_radius := 3.0 * cw
 	var ramp: RampSurface = m.ramps[m.ramps.keys()[0]]
 	var pipe: PipeSurface = m.pipes[m.pipes.keys()[0]]
 	var rs: Dictionary = ramp.sample_at_z((ramp.z_min + ramp.z_max) * 0.5)
 	var ps: Dictionary = pipe.sample_at_z((pipe.z_min + pipe.z_max) * 0.5)
 	var rr := float(rs.get("rise", rs.radius))
 	var pr := float(ps.get("rise", ps.radius))
-	if absf(rr - want) > 0.01 or absf(float(rs.radius) - want) > 0.01:
-		push_error("default ramp rise/radius want %.1f rise=%.1f radius=%.1f" % [want, rr, float(rs.radius)])
+	if absf(rr - want_rise) > 0.01 or absf(float(rs.radius) - want_radius) > 0.01:
+		push_error(
+			"default ramp rise/radius want rise=%.1f radius=%.1f got rise=%.1f radius=%.1f"
+			% [want_rise, want_radius, rr, float(rs.radius)]
+		)
 		return false
-	if absf(pr - want) > 0.01 or absf(float(ps.radius) - want) > 0.01:
-		push_error("default pipe rise/radius want %.1f rise=%.1f radius=%.1f" % [want, pr, float(ps.radius)])
+	if absf(pr - want_rise) > 0.01 or absf(float(ps.radius) - want_radius) > 0.01:
+		push_error(
+			"default pipe rise/radius want rise=%.1f radius=%.1f got rise=%.1f radius=%.1f"
+			% [want_rise, want_radius, pr, float(ps.radius)]
+		)
+		return false
+	if want_rise >= want_radius - 0.01:
+		push_error("default step_height should keep ramps under 45°")
 		return false
 	return true
 

@@ -8,7 +8,7 @@ var width: float = 0.0
 var depth: float = 0.0
 var pipe_radius_override: float = -1.0
 var deck_height_override: float = -1.0
-## Per-glyph-cell height rise for pipes/ramps. -1 = use cell_w at compile.
+## Per-glyph-cell height rise for pipes/ramps. -1 = LevelLoader.DEFAULT_STEP_HEIGHT.
 var step_height: float = -1.0
 
 var spawn_x: float = 640.0
