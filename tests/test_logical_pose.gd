@@ -94,6 +94,12 @@ func _centered_y_turn_presentation() -> bool:
 	var body := presenter.get_node_or_null("SkaterBody") as MeshInstance3D
 	if body == null:
 		push_error("Y-turn presentation: missing body")
+		presenter.free()
+		return false
+	var mat := (body.material_override as StandardMaterial3D)
+	if mat == null or mat.albedo_color.r < 0.8 or mat.albedo_color.g < 0.3:
+		push_error("rider must be orange placeholder")
+		presenter.free()
 		return false
 	var pose := LogicalPose.new()
 	pose.surface_tilt = PI * 0.5
@@ -103,12 +109,32 @@ func _centered_y_turn_presentation() -> bool:
 	presenter.apply_pose(pose)
 	if absf(presenter.rotation.z - pose.surface_tilt) > 0.01:
 		push_error("Y-turn presentation: turn incorrectly changed feet pivot")
+		presenter.free()
 		return false
 	if absf(body.rotation.y - (pose.facing_yaw + pose.depth_turn_yaw)) > 0.01:
 		push_error("Y-turn presentation: apex and depth turns must share local Y")
+		presenter.free()
 		return false
 	if absf(body.position.y - presenter.body_size.y * 0.5) > 0.001:
 		push_error("Y-turn presentation: body center moved during turn")
+		presenter.free()
+		return false
+	var board := presenter.get_node_or_null("Board") as Node3D
+	if board == null:
+		push_error("Y-turn presentation: missing Board")
+		presenter.free()
+		return false
+	pose.board_yaw = 0.7
+	presenter.apply_pose(pose)
+	var expect_board_yaw := pose.board_yaw + pose.depth_turn_yaw
+	if absf(board.rotation.y - expect_board_yaw) > 0.01:
+		push_error("board yaw must be board_yaw+depth_turn, got %s" % board.rotation.y)
+		presenter.free()
+		return false
+	# Facing scale must not flip the board node.
+	if board.scale.x < 0.0:
+		push_error("board must not use facing scale flip")
+		presenter.free()
 		return false
 	presenter.free()
 	return true

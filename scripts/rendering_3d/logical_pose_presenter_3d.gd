@@ -10,9 +10,11 @@ const CollisionLayersScript := preload("res://scripts/physics/collision_layers.g
 @export var player_path: NodePath = NodePath("../Player")
 ## Placeholder skater size in meters. Root origin is the feet / ground contact.
 @export var body_size: Vector3 = Vector3(0.18, 0.40, 0.14)
+@export var board_size: Vector3 = Vector3(0.40, 0.05, 0.14)
 
 var _body: MeshInstance3D
 var _facing_mark: MeshInstance3D
+var _board: Node3D
 var _fall_box: FallBoxConstraint
 var _fall_mesh: MeshInstance3D
 var _fall_mark: MeshInstance3D
@@ -44,7 +46,7 @@ func _reparent_fall_box() -> void:
 
 func _build_meshes() -> void:
 	_body_mat = StandardMaterial3D.new()
-	_body_mat.albedo_color = Color(0.92, 0.25, 0.45, 1.0)
+	_body_mat.albedo_color = Color(1.0, 0.45, 0.08, 1.0)
 
 	_body = MeshInstance3D.new()
 	_body.name = "SkaterBody"
@@ -66,6 +68,34 @@ func _build_meshes() -> void:
 	_facing_mark.material_override = fmat
 	_facing_mark.position = Vector3(body_size.x * 0.5 + 0.01, 0.0, 0.0)
 	_body.add_child(_facing_mark)
+
+	_board = Node3D.new()
+	_board.name = "Board"
+	_board.position = Vector3(0.0, -board_size.y * 0.5, 0.0)
+	add_child(_board)
+
+	var board_half_size := Vector3(board_size.x * 0.5, board_size.y, board_size.z)
+	var nose := MeshInstance3D.new()
+	nose.name = "BoardNose"
+	var nose_mesh := BoxMesh.new()
+	nose_mesh.size = board_half_size
+	nose.mesh = nose_mesh
+	nose.position = Vector3(board_size.x * 0.25, 0.0, 0.0)
+	var nose_mat := StandardMaterial3D.new()
+	nose_mat.albedo_color = Color(0.9, 0.12, 0.12, 1.0)
+	nose.material_override = nose_mat
+	_board.add_child(nose)
+
+	var tail := MeshInstance3D.new()
+	tail.name = "BoardTail"
+	var tail_mesh := BoxMesh.new()
+	tail_mesh.size = board_half_size
+	tail.mesh = tail_mesh
+	tail.position = Vector3(-board_size.x * 0.25, 0.0, 0.0)
+	var tail_mat := StandardMaterial3D.new()
+	tail_mat.albedo_color = Color(0.15, 0.35, 0.95, 1.0)
+	tail.material_override = tail_mat
+	_board.add_child(tail)
 
 	_fall_box = FallBoxConstraint.new()
 	_fall_box.name = "FallBox"
@@ -168,10 +198,14 @@ func apply_pose(pose: LogicalPose) -> void:
 	if falling and _fall_box != null and not _fall_box.freeze:
 		if _body:
 			_body.visible = false
+		if _board:
+			_board.visible = false
 		rotation = Vector3.ZERO
 	else:
 		if _body:
 			_body.visible = true
+		if _board:
+			_board.visible = true
 		rotation = Vector3(0.0, 0.0, tilt)
 
 	if is_inside_tree():
@@ -190,6 +224,10 @@ func apply_pose(pose: LogicalPose) -> void:
 		_body.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 		if _facing_mark != null:
 			_facing_mark.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	if _board and _board.visible:
+		_board.scale = Vector3.ONE
+		_board.position = Vector3(0.0, -board_size.y * 0.5, 0.0)
+		_board.rotation = Vector3(0.0, pose.board_yaw + pose.depth_turn_yaw, 0.0)
 
 
 func _start_fall_box(feet_world: Vector3, body_yaw: float, face: float, tilt: float) -> void:
@@ -227,6 +265,8 @@ func _start_fall_box(feet_world: Vector3, body_yaw: float, face: float, tilt: fl
 	_fall_box.visible = true
 	if _body:
 		_body.visible = false
+	if _board:
+		_board.visible = false
 	_fall_box.apply_impulse(
 		basis * Vector3(lean * 1.4, 0.0, 0.0),
 		basis * Vector3(0.0, body_size.y * 0.35, 0.0)
@@ -244,6 +284,8 @@ func _stop_fall_box() -> void:
 	_fall_box.configure_planes({})
 	if _body:
 		_body.visible = true
+	if _board:
+		_board.visible = true
 
 
 func _build_live_pose() -> LogicalPose:
