@@ -2,11 +2,11 @@ class_name PlayerDebug3D
 extends Node3D
 ## 3D motion-vector arrows + head zone label (Body CanvasItem debug is hidden in 3D).
 ## Ollie charge / fall cooldown is a screen-space bar projected from the
-## interpolated skater — or the FallBox while tumbling.
+## interpolated skater — or RiderFall while tumbling.
 
 @export var player_path: NodePath = NodePath("../Player")
 @export var visual_path: NodePath = NodePath("../PlayerVisual")
-@export var fall_box_path: NodePath = NodePath("../FallBox")
+@export var fall_box_path: NodePath = NodePath("../RiderFall")
 @export var min_speed: float = 8.0
 @export var units_per_speed: float = 0.0008
 @export var min_length: float = 0.18
@@ -154,7 +154,7 @@ func _process(_delta: float) -> void:
 		_visual = get_node_or_null(visual_path) as Node3D
 	if _player == null:
 		return
-	# Follow the visible tumble (FallBox) while falling; else interpolated skater.
+	# Follow the visible tumble (RiderFall) while falling; else interpolated skater.
 	if _fall_box_active():
 		global_position = _fall_box.global_position
 	elif _visual != null:
@@ -189,7 +189,7 @@ func _fall_box_active() -> bool:
 	)
 
 
-## World point for the screen-space head bar (FallBox top while tumbling).
+## World point for the screen-space head bar (RiderFall top while tumbling).
 func _charge_bar_world() -> Vector3:
 	if _fall_box_active():
 		var half_y := 0.2

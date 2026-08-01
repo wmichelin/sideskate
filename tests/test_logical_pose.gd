@@ -13,7 +13,10 @@ func run() -> bool:
 		and _board_yaw_depth_turn_not_persisted()
 		and _player_pose_snapshots_track_board_yaw()
 		and _fall_box_stays_above_support_planes()
+		and _board_fall_box_stays_above_support_planes()
 		and _fall_box_stays_on_impact_approach_side()
+		and _presenter_builds_dual_fall_bodies()
+		and _fall_tracking_defaults_to_rider_fall()
 		and _fall_camera_tracks_x_locks_yz()
 	)
 
@@ -285,6 +288,18 @@ func _fall_box_stays_above_support_planes() -> bool:
 	return true
 
 
+func _board_fall_box_stays_above_support_planes() -> bool:
+	var constraint := FallBoxConstraint.new()
+	constraint.box_size = Vector3(0.40, 0.05, 0.14)
+	var basis := Basis.from_euler(Vector3(0.0, 0.4, deg_to_rad(35.0)))
+	var xf := constraint.transform_for_planes(
+		Vector3.ZERO, basis, Vector3.ZERO, Vector3.UP, Vector3.ZERO, Vector3.ZERO
+	)
+	var ok := _assert_box_on_plane(xf, constraint.box_size, Vector3.ZERO, Vector3.UP, "board flat")
+	constraint.free()
+	return ok
+
+
 func _fall_box_stays_on_impact_approach_side() -> bool:
 	var constraint := FallBoxConstraint.new()
 	constraint.box_size = Vector3(0.18, 0.40, 0.14)
@@ -303,6 +318,63 @@ func _fall_box_stays_on_impact_approach_side() -> bool:
 		constraint.free()
 		return false
 	constraint.free()
+	return true
+
+
+func _presenter_builds_dual_fall_bodies() -> bool:
+	var presenter := LogicalPosePresenter3D.new()
+	presenter._build_meshes()
+	var rider := presenter.get_node_or_null("RiderFall") as FallBoxConstraint
+	var board := presenter.get_node_or_null("BoardFall") as FallBoxConstraint
+	if rider == null:
+		push_error("presenter must build RiderFall")
+		presenter.free()
+		return false
+	if board == null:
+		push_error("presenter must build BoardFall")
+		presenter.free()
+		return false
+	if presenter.get_node_or_null("FallBox") != null:
+		push_error("presenter must not leave a FallBox node")
+		presenter.free()
+		return false
+	if rider.box_size != presenter.body_size or absf(rider.mass - 4.0) > 0.001:
+		push_error("RiderFall must keep body size and rider mass")
+		presenter.free()
+		return false
+	if board.box_size != presenter.board_size or absf(board.mass - 1.0) > 0.001:
+		push_error("BoardFall must use board size and board mass")
+		presenter.free()
+		return false
+	if absf(board.linear_damp - 0.8) > 0.001 or absf(board.angular_damp - 0.4) > 0.001:
+		push_error("BoardFall must use board damping")
+		presenter.free()
+		return false
+	if rider.get_node_or_null("FallFacingMark") == null:
+		push_error("RiderFall must keep facing mark")
+		presenter.free()
+		return false
+	if board.get_node_or_null("FallFacingMark") != null:
+		push_error("BoardFall must not have facing mark")
+		presenter.free()
+		return false
+	presenter.free()
+	return true
+
+
+func _fall_tracking_defaults_to_rider_fall() -> bool:
+	var cam := CameraRig3D.new()
+	if cam.fall_box_path != NodePath("../RiderFall"):
+		push_error("camera must track RiderFall by default, got %s" % cam.fall_box_path)
+		cam.free()
+		return false
+	cam.free()
+	var debug := PlayerDebug3D.new()
+	if debug.fall_box_path != NodePath("../RiderFall"):
+		push_error("debug must track RiderFall by default, got %s" % debug.fall_box_path)
+		debug.free()
+		return false
+	debug.free()
 	return true
 
 

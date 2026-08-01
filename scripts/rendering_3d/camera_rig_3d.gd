@@ -5,8 +5,8 @@ extends Node3D
 @export var target_path: NodePath = NodePath("../PlayerVisual")
 ## Gameplay player — fall bout gates X-only follow.
 @export var player_path: NodePath = NodePath("../../Player")
-## Presentation FallBox (reparented under World3D) — lateral track while falling.
-@export var fall_box_path: NodePath = NodePath("../FallBox")
+## Presentation RiderFall body (reparented under World3D) — lateral track while falling.
+@export var fall_box_path: NodePath = NodePath("../RiderFall")
 ## Radial distance from focus (zoom).
 @export var distance: float = 3.1
 ## Elevation angle in degrees. 0 = horizon behind; positive = above looking down.
@@ -94,12 +94,12 @@ func _focus_point() -> Vector3:
 		and _player.has_method("is_falling")
 		and bool(_player.call("is_falling"))
 	)
-	# Sim pose often parks X during a fall; the visible tumble is FallBox.
+	# Sim pose often parks X during a fall; the visible tumble is RiderFall.
 	var raw := _fall_track_position(falling)
 	return focus_with_fall_lock(raw, falling)
 
 
-## World focus sample: FallBox X while tumbling, else PlayerVisual.
+## World focus sample: RiderFall X while tumbling, else PlayerVisual.
 func _fall_track_position(falling: bool) -> Vector3:
 	var base := _target.global_position if _target != null else Vector3.ZERO
 	if not falling:

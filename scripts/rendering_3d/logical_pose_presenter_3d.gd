@@ -2,7 +2,7 @@ class_name LogicalPosePresenter3D
 extends Node3D
 ## Drives a 3D skater placeholder from LogicalPose / PseudoDepthBody.
 ## Simulation stays on physics ticks; visible pose interpolates on render frames.
-## Fall: presentation RigidBody bounded by sim support/impact planes.
+## Fall: presentation RigidBodies bounded by sim support/impact planes.
 
 const CollisionLayersScript := preload("res://scripts/physics/collision_layers.gd")
 
@@ -15,33 +15,43 @@ const CollisionLayersScript := preload("res://scripts/physics/collision_layers.g
 var _body: MeshInstance3D
 var _facing_mark: MeshInstance3D
 var _board: Node3D
-var _fall_box: FallBoxConstraint
-var _fall_mesh: MeshInstance3D
-var _fall_mark: MeshInstance3D
+var _rider_fall: FallBoxConstraint
+var _board_fall: FallBoxConstraint
 var _depth: PseudoDepthBody
 var _player: Node
 var _was_falling: bool = false
 var _body_mat: StandardMaterial3D
+var _board_fall_mat: StandardMaterial3D
 
 
 func _ready() -> void:
 	_build_meshes()
 	_resolve_refs()
-	call_deferred("_reparent_fall_box")
+	call_deferred("_reparent_fall_bodies")
 
 
-func _reparent_fall_box() -> void:
-	if _fall_box == null or not is_inside_tree():
-		return
-	if _fall_box.get_parent() != self:
+func _reparent_fall_bodies() -> void:
+	if not is_inside_tree():
 		return
 	var world := get_parent()
 	if world == null:
 		return
-	var keep: Transform3D = _fall_box.global_transform
-	remove_child(_fall_box)
-	world.add_child(_fall_box)
-	_fall_box.global_transform = keep
+	for body in _fall_bodies():
+		if body.get_parent() != self:
+			continue
+		var keep: Transform3D = body.global_transform
+		remove_child(body)
+		world.add_child(body)
+		body.global_transform = keep
+
+
+func _fall_bodies() -> Array:
+	var bodies: Array = []
+	if _rider_fall != null:
+		bodies.append(_rider_fall)
+	if _board_fall != null:
+		bodies.append(_board_fall)
+	return bodies
 
 
 func _build_meshes() -> void:
@@ -97,44 +107,59 @@ func _build_meshes() -> void:
 	tail.material_override = tail_mat
 	_board.add_child(tail)
 
-	_fall_box = FallBoxConstraint.new()
-	_fall_box.name = "FallBox"
-	_fall_box.box_size = body_size
-	_fall_box.mass = 4.0
-	_fall_box.linear_damp = 0.6
-	_fall_box.angular_damp = 0.25
-	_fall_box.continuous_cd = true
-	_fall_box.collision_layer = CollisionLayersScript.bit(CollisionLayersScript.RAGDOLL)
-	_fall_box.collision_mask = (
+	_board_fall_mat = StandardMaterial3D.new()
+	_board_fall_mat.albedo_color = Color(0.09, 0.10, 0.12, 1.0)
+
+	_rider_fall = _make_fall_body("RiderFall", body_size, 4.0, _body_mat, true)
+	_board_fall = _make_fall_body("BoardFall", board_size, 1.0, _board_fall_mat, false)
+	_board_fall.linear_damp = 0.8
+	_board_fall.angular_damp = 0.4
+	# World-space siblings so the moving pose root doesn't drag the rigid bodies.
+	add_child(_rider_fall)
+	add_child(_board_fall)
+
+
+func _make_fall_body(
+	p_name: String, size: Vector3, mass_value: float, mat: Material, with_mark: bool
+) -> FallBoxConstraint:
+	var body := FallBoxConstraint.new()
+	body.name = p_name
+	body.box_size = size
+	body.mass = mass_value
+	body.linear_damp = 0.6
+	body.angular_damp = 0.25
+	body.continuous_cd = true
+	body.collision_layer = CollisionLayersScript.bit(CollisionLayersScript.RAGDOLL)
+	body.collision_mask = (
 		CollisionLayersScript.bit(CollisionLayersScript.WORLD_RIDE)
 		| CollisionLayersScript.bit(CollisionLayersScript.WORLD_WALL)
 		| CollisionLayersScript.bit(CollisionLayersScript.PLAYABLE_BOUNDS)
 	)
-	_fall_box.freeze = true
-	_fall_box.visible = false
+	body.freeze = true
+	body.visible = false
 	var fall_cs := CollisionShape3D.new()
 	var fall_shape := BoxShape3D.new()
-	fall_shape.size = body_size
+	fall_shape.size = size
 	fall_cs.shape = fall_shape
-	_fall_box.add_child(fall_cs)
-	_fall_mesh = MeshInstance3D.new()
-	_fall_mesh.name = "FallMesh"
+	body.add_child(fall_cs)
+	var fall_mesh := MeshInstance3D.new()
+	fall_mesh.name = "FallMesh"
 	var fall_box_mesh := BoxMesh.new()
-	fall_box_mesh.size = body_size
-	_fall_mesh.mesh = fall_box_mesh
-	_fall_mesh.material_override = _body_mat
-	_fall_box.add_child(_fall_mesh)
-	_fall_mark = MeshInstance3D.new()
-	_fall_mark.name = "FallFacingMark"
-	_fall_mark.mesh = _make_facing_triangle(0.07, 0.09, 0.04)
-	var fall_fmat := StandardMaterial3D.new()
-	fall_fmat.albedo_color = Color(0.98, 0.85, 0.2, 1.0)
-	fall_fmat.cull_mode = BaseMaterial3D.CULL_DISABLED
-	_fall_mark.material_override = fall_fmat
-	_fall_mark.position = Vector3(body_size.x * 0.5 + 0.01, 0.0, 0.0)
-	_fall_box.add_child(_fall_mark)
-	# World-space sibling so the moving pose root doesn't drag the rigid body.
-	add_child(_fall_box)
+	fall_box_mesh.size = size
+	fall_mesh.mesh = fall_box_mesh
+	fall_mesh.material_override = mat
+	body.add_child(fall_mesh)
+	if with_mark:
+		var fall_mark := MeshInstance3D.new()
+		fall_mark.name = "FallFacingMark"
+		fall_mark.mesh = _make_facing_triangle(0.07, 0.09, 0.04)
+		var fall_fmat := StandardMaterial3D.new()
+		fall_fmat.albedo_color = Color(0.98, 0.85, 0.2, 1.0)
+		fall_fmat.cull_mode = BaseMaterial3D.CULL_DISABLED
+		fall_mark.material_override = fall_fmat
+		fall_mark.position = Vector3(size.x * 0.5 + 0.01, 0.0, 0.0)
+		body.add_child(fall_mark)
+	return body
 
 
 ## Flat triangle in the XZ plane pointing +X (tip), extruded slightly in Y.
@@ -195,17 +220,11 @@ func apply_pose(pose: LogicalPose) -> void:
 	var tilt := pose.surface_tilt
 	var face := signf(pose.facing_h) if pose.facing_h != 0.0 else 1.0
 
-	if falling and _fall_box != null and not _fall_box.freeze:
-		if _body:
-			_body.visible = false
-		if _board:
-			_board.visible = false
+	if falling and _rider_fall != null and not _rider_fall.freeze:
+		_set_pose_meshes_visible(false)
 		rotation = Vector3.ZERO
 	else:
-		if _body:
-			_body.visible = true
-		if _board:
-			_board.visible = true
+		_set_pose_meshes_visible(true)
 		rotation = Vector3(0.0, 0.0, tilt)
 
 	if is_inside_tree():
@@ -230,8 +249,20 @@ func apply_pose(pose: LogicalPose) -> void:
 		_board.rotation = Vector3(0.0, pose.board_yaw + pose.depth_turn_yaw, 0.0)
 
 
-func _start_fall_box(feet_world: Vector3, body_yaw: float, face: float, tilt: float) -> void:
-	if _fall_box == null or not _fall_box.is_inside_tree():
+func _set_pose_meshes_visible(is_visible: bool) -> void:
+	if _body:
+		_body.visible = is_visible
+	if _board:
+		_board.visible = is_visible
+
+
+func _start_fall_bodies(pose: LogicalPose, feet_world: Vector3) -> void:
+	if (
+		_rider_fall == null
+		or _board_fall == null
+		or not _rider_fall.is_inside_tree()
+		or not _board_fall.is_inside_tree()
+	):
 		return
 	var lean := 1.0
 	if _player != null and _player.has_method("fall_lean_sign"):
@@ -244,7 +275,11 @@ func _start_fall_box(feet_world: Vector3, body_yaw: float, face: float, tilt: fl
 		support = _player.call("fall_support_plane_world")
 	if _player != null and _player.has_method("fall_impact_plane_world"):
 		impact = _player.call("fall_impact_plane_world")
-	_fall_box.configure_planes(support, impact)
+	for body in _fall_bodies():
+		body.configure_planes(support, impact)
+	var body_yaw := pose.facing_yaw + pose.depth_turn_yaw
+	var face := signf(pose.facing_h) if pose.facing_h != 0.0 else 1.0
+	var tilt := pose.surface_tilt
 	var yaw := body_yaw + (PI if face < 0.0 else 0.0)
 	var tip := tilt + lean * deg_to_rad(55.0)
 	var basis := Basis.from_euler(Vector3(0.0, yaw, tip))
@@ -252,40 +287,46 @@ func _start_fall_box(feet_world: Vector3, body_yaw: float, face: float, tilt: fl
 	var support_normal: Vector3 = support.get("normal", Vector3.UP)
 	var impact_point: Vector3 = impact.get("point", Vector3.ZERO)
 	var impact_normal: Vector3 = impact.get("normal", Vector3.ZERO)
-	_fall_box.global_transform = _fall_box.transform_for_planes(
+	_rider_fall.global_transform = _rider_fall.transform_for_planes(
 		feet_world, basis, support_point, support_normal, impact_point, impact_normal
 	)
 	var vel := Vector3.ZERO
 	if _player != null and _player.has_method("motion_world"):
 		vel = (_player.call("motion_world", MotionVectors.Kind.ACTUAL) as Vector3).limit_length(8.0)
-	_fall_box.linear_velocity = vel
-	_fall_box.angular_velocity = basis * Vector3(0.0, 0.0, -lean * 8.0)
-	_fall_box.freeze = false
-	_fall_box.sleeping = false
-	_fall_box.visible = true
-	if _body:
-		_body.visible = false
-	if _board:
-		_board.visible = false
-	_fall_box.apply_impulse(
+	_rider_fall.linear_velocity = vel
+	_rider_fall.angular_velocity = basis * Vector3(0.0, 0.0, -lean * 8.0)
+	_rider_fall.freeze = false
+	_rider_fall.sleeping = false
+	_rider_fall.visible = true
+	_rider_fall.apply_impulse(
 		basis * Vector3(lean * 1.4, 0.0, 0.0),
 		basis * Vector3(0.0, body_size.y * 0.35, 0.0)
 	)
 
+	var board_yaw := pose.board_yaw + pose.depth_turn_yaw
+	var board_basis := Basis.from_euler(Vector3(0.0, board_yaw, tilt + lean * deg_to_rad(25.0)))
+	var board_feet := feet_world - board_basis * Vector3(0.0, board_size.y, 0.0)
+	_board_fall.global_transform = _board_fall.transform_for_planes(
+		board_feet, board_basis, support_point, support_normal, impact_point, impact_normal
+	)
+	_board_fall.linear_velocity = vel * 0.85
+	_board_fall.angular_velocity = board_basis * Vector3(0.0, lean * 3.0, -lean * 2.0)
+	_board_fall.freeze = false
+	_board_fall.sleeping = false
+	_board_fall.visible = true
+	_board_fall.apply_impulse(board_basis * Vector3(-lean * 0.6, 0.25, 0.0), Vector3.ZERO)
+	_set_pose_meshes_visible(false)
 
-func _stop_fall_box() -> void:
-	if _fall_box == null:
-		return
-	_fall_box.linear_velocity = Vector3.ZERO
-	_fall_box.angular_velocity = Vector3.ZERO
-	_fall_box.freeze = true
-	_fall_box.sleeping = true
-	_fall_box.visible = false
-	_fall_box.configure_planes({})
-	if _body:
-		_body.visible = true
-	if _board:
-		_board.visible = true
+
+func _stop_fall_bodies() -> void:
+	for body in _fall_bodies():
+		body.linear_velocity = Vector3.ZERO
+		body.angular_velocity = Vector3.ZERO
+		body.freeze = true
+		body.sleeping = true
+		body.visible = false
+		body.configure_planes({})
+	_set_pose_meshes_visible(true)
 
 
 func _build_live_pose() -> LogicalPose:
@@ -335,18 +376,16 @@ func _physics_process(_delta: float) -> void:
 			var feet := WorldSpace.logical_to_world(
 				pose.logical_x, pose.logical_z, pose.feet_height
 			)
-			var body_yaw := pose.facing_yaw + pose.depth_turn_yaw
-			var face := signf(pose.facing_h) if pose.facing_h != 0.0 else 1.0
-			_start_fall_box(feet, body_yaw, face, pose.surface_tilt)
+			_start_fall_bodies(pose, feet)
 		else:
-			_refresh_fall_box_planes()
+			_refresh_fall_body_planes()
 	elif _was_falling:
-		_stop_fall_box()
+		_stop_fall_bodies()
 	_was_falling = falling
 
 
-func _refresh_fall_box_planes() -> void:
-	if _fall_box == null or _fall_box.freeze or _player == null:
+func _refresh_fall_body_planes() -> void:
+	if _player == null:
 		return
 	var support: Dictionary = {"point": Vector3.ZERO, "normal": Vector3.UP}
 	var impact: Dictionary = {}
@@ -354,4 +393,6 @@ func _refresh_fall_box_planes() -> void:
 		support = _player.call("fall_support_plane_world")
 	if _player.has_method("fall_impact_plane_world"):
 		impact = _player.call("fall_impact_plane_world")
-	_fall_box.configure_planes(support, impact)
+	for body in _fall_bodies():
+		if not body.freeze:
+			body.configure_planes(support, impact)
