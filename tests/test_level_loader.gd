@@ -20,6 +20,9 @@ func run() -> bool:
 	ok = _uneven_rows_fail() and ok
 	ok = _ssk1_rejected() and ok
 	ok = _stagger_deck_height() and ok
+	ok = _z_band_deck_heights() and ok
+	ok = _z_band_lr_conflict_fails() and ok
+	ok = _deck_height_override_no_z_split() and ok
 	ok = _layered_upper_floor() and ok
 	ok = _spawn_on_upper_layer() and ok
 	ok = _dot_is_hole_not_floor() and ok
@@ -372,6 +375,83 @@ func _stagger_deck_height() -> bool:
 		if not is_equal_approx(float(deck.height), want_h):
 			push_error("stagger deck height want %s got %s" % [want_h, deck.height])
 			return false
+	return true
+
+
+func _z_band_deck_heights() -> bool:
+	var text := _read("res://tests/levels/sim/sim_z_band_deck.ssk")
+	var spec := LevelLoader.parse_text(text, "sim_z_band_deck")
+	if spec == null:
+		push_error("z_band parse failed: %s" % LevelLoader.last_error)
+		return false
+	var short_h := 1.0 * LevelLoader.DEFAULT_STEP_HEIGHT
+	var tall_h := 3.0 * LevelLoader.DEFAULT_STEP_HEIGHT
+	var saw_short := false
+	var saw_tall := false
+	for deck in spec.decks:
+		var h := float(deck.height)
+		if is_equal_approx(h, short_h):
+			saw_short = true
+		elif is_equal_approx(h, tall_h):
+			saw_tall = true
+		else:
+			push_error("z_band: unexpected deck height %s (want %s or %s)" % [h, short_h, tall_h])
+			return false
+	if not saw_short or not saw_tall:
+		push_error("z_band: need both short=%s and tall=%s decks (got %s)" % [
+			short_h, tall_h, spec.decks.size()
+		])
+		return false
+	# Equal-rise continuous `#` stays one patch (no spurious Z split).
+	var spine := _read("res://tests/levels/sim/sim_spine_deck_solid.ssk")
+	var spine_spec := LevelLoader.parse_text(spine, "sim_spine_deck_solid")
+	if spine_spec == null:
+		push_error("z_band equal spine parse failed: %s" % LevelLoader.last_error)
+		return false
+	var spine_h := 3.0 * LevelLoader.DEFAULT_STEP_HEIGHT
+	var deck_n := 0
+	for deck in spine_spec.decks:
+		deck_n += 1
+		if not is_equal_approx(float(deck.height), spine_h):
+			push_error("equal-rise spine deck height want %s got %s" % [spine_h, deck.height])
+			return false
+	if deck_n != 1:
+		push_error("equal-rise spine want 1 deck patch, got %s" % deck_n)
+		return false
+	return true
+
+
+func _z_band_lr_conflict_fails() -> bool:
+	var text := (
+		"ssk 2\nname lr_conflict\n---\nlayer 0\nheight 0\n"
+		+ "===)))##(====\n===)))##(====\n===)))##(@===\n"
+	)
+	var spec := LevelLoader.parse_text(text, "lr_conflict")
+	if spec != null:
+		push_error("lr_conflict: expected parse failure for unequal L/R rises")
+		return false
+	var err := LevelLoader.last_error
+	if err.find("unequal") < 0 and err.find("abutting") < 0:
+		push_error("lr_conflict: error should mention unequal abutting rises, got: %s" % err)
+		return false
+	return true
+
+
+func _deck_height_override_no_z_split() -> bool:
+	var text := (
+		"ssk 2\nname deck_override\ndeck_height 80\n---\nlayer 0\nheight 0\n"
+		+ "===)##(====\n===)##(====\n=)))##(((==\n=)))##(((@=\n"
+	)
+	var spec := LevelLoader.parse_text(text, "deck_override")
+	if spec == null:
+		push_error("deck_override parse failed: %s" % LevelLoader.last_error)
+		return false
+	if spec.decks.size() != 1:
+		push_error("deck_height override should keep one deck, got %s" % spec.decks.size())
+		return false
+	if not is_equal_approx(float(spec.decks[0].height), 80.0):
+		push_error("deck_override height want 80 got %s" % spec.decks[0].height)
+		return false
 	return true
 
 

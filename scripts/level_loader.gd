@@ -415,45 +415,130 @@ static func _append_layer_geometry(
 
 	var deck_comps := _components(deck_cells)
 	for comp in deck_comps:
-		var neighbors := _deck_neighbor_pipes(comp, grid, W, H, layer_pipes, cw, ch)
-		if neighbors.is_empty() and spec.deck_height_override < 0.0:
-			return (
-				"layer %d: deck component has no neighboring pipe/ramp (set deck_height or place next to ()<> )"
-					% layer_index
-				)
-		var rise := spec.deck_height_override
-		if rise < 0.0:
-			rise = float(neighbors[0].get("rise", neighbors[0].radius))
-			for i in range(1, neighbors.size()):
-				var rh := float(neighbors[i].get("rise", neighbors[i].radius))
-				if not is_equal_approx(rh, rise):
-					push_warning(
-						"LevelLoader: layer %d deck neighbors have unequal pipe/ramp rises (%.1f vs %.1f); spine coping will gap. Use matching ()<> run widths."
-						% [layer_index, rise, rh]
-					)
-				rise = maxf(rise, rh)
-		var height := base_height + rise
-		var anchors: Array = []
-		for pipe in neighbors:
-			var is_left: bool = pipe.side == QuarterPipe.PipeSide.LEFT
-			anchors.append({
-				"lip_x": float(pipe.lip_x),
-				"side": pipe.side,
-				"radius": float(pipe.radius),
-				"rise": float(pipe.get("rise", pipe.radius)),
-				"coping_x": float(pipe.x_min) if is_left else float(pipe.x_max),
-			})
-		var dpoly := _outline_poly(comp, cw, ch, H)
-		spec.decks.append({
-			"poly": dpoly,
-			"cells": comp.duplicate(),
-			"height": height,
-			"anchors": anchors,
-			"layer": layer_index,
-			"base_height": base_height,
-		})
+		var deck_err := _emit_deck_component(
+			spec, comp, grid, W, H, layer_pipes, cw, ch, base_height, layer_index
+		)
+		if deck_err != "":
+			return deck_err
 
 	return ""
+
+
+## Emit one flat deck (header override) or Z-banded decks by abutting pipe/ramp rise.
+static func _emit_deck_component(
+	spec: LevelSpec,
+	comp: Array,
+	grid: Array,
+	W: int,
+	H: int,
+	layer_pipes: Array,
+	cw: float,
+	ch: float,
+	base_height: float,
+	layer_index: int,
+) -> String:
+	var neighbors := _deck_neighbor_pipes(comp, grid, W, H, layer_pipes, cw, ch)
+	if neighbors.is_empty() and spec.deck_height_override < 0.0:
+		return (
+			"layer %d: deck component has no neighboring pipe/ramp (set deck_height or place next to ()<> )"
+				% layer_index
+			)
+
+	# Header override: single rise for the whole connected `#` strip (no Z split).
+	if spec.deck_height_override >= 0.0:
+		_append_deck_dict(
+			spec, comp, neighbors, base_height + spec.deck_height_override,
+			base_height, layer_index, cw, ch, H
+		)
+		return ""
+
+	var by_row := {}
+	for cell in comp:
+		var ci: Vector2i = cell
+		if not by_row.has(ci.y):
+			by_row[ci.y] = []
+		by_row[ci.y].append(ci)
+
+	var row_keys: Array = by_row.keys()
+	row_keys.sort()
+	var row_rise := {}
+	for r in row_keys:
+		var row_cells: Array = by_row[r]
+		var row_neighbors := _deck_neighbor_pipes(
+			row_cells, grid, W, H, layer_pipes, cw, ch
+		)
+		if row_neighbors.is_empty():
+			return (
+				"layer %d: deck row %d has no neighboring pipe/ramp (set deck_height or place next to ()<> )"
+					% [layer_index, r]
+				)
+		var rise := float(row_neighbors[0].get("rise", row_neighbors[0].radius))
+		for i in range(1, row_neighbors.size()):
+			var rh := float(row_neighbors[i].get("rise", row_neighbors[i].radius))
+			if not is_equal_approx(rh, rise):
+				return (
+					"layer %d: deck row %d has unequal left/right abutting rises (%.1f vs %.1f)"
+						% [layer_index, r, rise, rh]
+					)
+		row_rise[r] = rise
+
+	# Contiguous equal-rise rows → one SupportPatch-ready deck dict each.
+	var band_start := 0
+	while band_start < row_keys.size():
+		var band_r0: int = row_keys[band_start]
+		var rise: float = row_rise[band_r0]
+		var band_end := band_start
+		while band_end + 1 < row_keys.size():
+			var next_r: int = row_keys[band_end + 1]
+			if next_r != int(row_keys[band_end]) + 1:
+				break
+			if not is_equal_approx(float(row_rise[next_r]), rise):
+				break
+			band_end += 1
+		var band_cells: Array = []
+		for bi in range(band_start, band_end + 1):
+			for cell in by_row[row_keys[bi]]:
+				band_cells.append(cell)
+		var band_neighbors := _deck_neighbor_pipes(
+			band_cells, grid, W, H, layer_pipes, cw, ch
+		)
+		_append_deck_dict(
+			spec, band_cells, band_neighbors, base_height + rise,
+			base_height, layer_index, cw, ch, H
+		)
+		band_start = band_end + 1
+	return ""
+
+
+static func _append_deck_dict(
+	spec: LevelSpec,
+	cells: Array,
+	neighbors: Array,
+	height: float,
+	base_height: float,
+	layer_index: int,
+	cw: float,
+	ch: float,
+	H: int,
+) -> void:
+	var anchors: Array = []
+	for pipe in neighbors:
+		var is_left: bool = pipe.side == QuarterPipe.PipeSide.LEFT
+		anchors.append({
+			"lip_x": float(pipe.lip_x),
+			"side": pipe.side,
+			"radius": float(pipe.radius),
+			"rise": float(pipe.get("rise", pipe.radius)),
+			"coping_x": float(pipe.x_min) if is_left else float(pipe.x_max),
+		})
+	spec.decks.append({
+		"poly": _outline_poly(cells, cw, ch, H),
+		"cells": cells.duplicate(),
+		"height": height,
+		"anchors": anchors,
+		"layer": layer_index,
+		"base_height": base_height,
+	})
 
 
 ## Upper layers must use `.` (not space) inside the layer-0 playable footprint.

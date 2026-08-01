@@ -116,6 +116,9 @@ func run() -> bool:
 		and _air_out_hang_ollie_same_pipe_no_crash()
 		and _crash_hang_clips_deck_requests_fall()
 		and _ramp_edge_lip_stick_out_faces_and_climbs()
+		and _z_band_short_coping_owns_short_deck()
+		and _z_band_tall_to_short_leave_airs()
+		and _z_band_short_to_tall_riser_falls()
 	)
 
 
@@ -7161,3 +7164,167 @@ func _feature_walls_block_endcaps_and_sides() -> bool:
 		push_error("feature walls: deck/peak mismatch")
 		return false
 	return true
+
+
+func _z_band_decks(sim: PlayerSim) -> Dictionary:
+	var short_h := LevelLoader.DEFAULT_STEP_HEIGHT
+	var tall_h := 3.0 * LevelLoader.DEFAULT_STEP_HEIGHT
+	var out := {"short": null, "tall": null}
+	for pid in sim.model.patches.keys():
+		var p: SupportPatch = sim.model.patches[pid]
+		if int(p.kind) != SimKinds.SurfaceKind.DECK:
+			continue
+		if is_equal_approx(p.height, short_h):
+			out.short = p
+		elif is_equal_approx(p.height, tall_h):
+			out.tall = p
+	return out
+
+
+func _z_band_short_coping_owns_short_deck() -> bool:
+	# Short pipe Z must own the short deck — no tall roof over short coping.
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_z_band_deck.ssk"):
+		push_error("z_band cope: setup")
+		return false
+	var decks := _z_band_decks(sim)
+	if decks.short == null or decks.tall == null:
+		push_error("z_band cope: need short+tall decks")
+		return false
+	var short_deck: SupportPatch = decks.short
+	var tall_deck: SupportPatch = decks.tall
+	var short_pipe: PipeSurface = null
+	for id in sim.model.pipes.keys():
+		var p: PipeSurface = sim.model.pipes[id]
+		var samp: Dictionary = p.sample_at_z((p.z_min + p.z_max) * 0.5)
+		if samp.is_empty():
+			continue
+		if is_equal_approx(float(samp.get("rise", 0.0)), LevelLoader.DEFAULT_STEP_HEIGHT):
+			short_pipe = p
+			break
+	if short_pipe == null:
+		push_error("z_band cope: no short pipe")
+		return false
+	var z := (short_pipe.z_min + short_pipe.z_max) * 0.5
+	var cope: CopingEdge = sim.model.copings[short_pipe.coping_id]
+	var span := cope.span_at_z(z)
+	if span == null or span.outward_deck_id != short_deck.id:
+		push_error(
+			"z_band cope: short pipe outward_deck want %s got %s"
+			% [short_deck.id, span.outward_deck_id if span else ""]
+		)
+		return false
+	# Tall pad must not cover short-pipe mid Z (floating roof).
+	if tall_deck.contains_xz((tall_deck.x_min + tall_deck.x_max) * 0.5, z):
+		push_error("z_band cope: tall deck still covers short pipe Z")
+		return false
+	if not short_deck.contains_xz((short_deck.x_min + short_deck.x_max) * 0.5, z):
+		push_error("z_band cope: short deck missing at short pipe Z")
+		return false
+	# Air at short lip must land short deck — not die on a phantom tall roof.
+	sim.fall_duration = 5.0
+	var cx := short_pipe.coping_x_at(z)
+	var mid_x := (short_deck.x_min + short_deck.x_max) * 0.5
+	sim.state.mode = SimState.Mode.AIRBORNE
+	sim.state.surface_id = ""
+	sim.state.clear_hang()
+	sim.state.maneuver = null
+	sim.state.air_launch_surface_id = short_pipe.id
+	sim.state.free_air_upright = true
+	sim.state.position = Vector3(lerpf(cx, mid_x, 0.55), z, short_deck.height + 8.0)
+	sim.state.velocity = Vector3(short_pipe.outward_sign() * 80.0, 0.0, -120.0)
+	sim.state.note_air_height(sim.state.position.z)
+	for _i in range(90):
+		sim.set_input(Vector2(short_pipe.outward_sign(), 0.0), false, false)
+		sim.tick()
+		if sim.state.falling:
+			push_error("z_band cope: bailed over short band (tall roof?)")
+			return false
+		if sim.state.is_grounded() and sim.state.surface_id == short_deck.id:
+			return true
+	push_error("z_band cope: never landed short deck")
+	return false
+
+
+func _z_band_tall_to_short_leave_airs() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_z_band_deck.ssk"):
+		push_error("z_band leave: setup")
+		return false
+	sim.friction = 0.0
+	var decks := _z_band_decks(sim)
+	if decks.short == null or decks.tall == null:
+		push_error("z_band leave: need short+tall decks")
+		return false
+	var tall: SupportPatch = decks.tall
+	var short: SupportPatch = decks.short
+	# Tall band is near (low Z); short is far (high Z) — leave +Y off tall ledge.
+	var mid_x := (tall.x_min + tall.x_max) * 0.5
+	var z0 := tall.z_max - 8.0
+	if z0 <= tall.z_min:
+		z0 = (tall.z_min + tall.z_max) * 0.5
+	sim.state.mode = SimState.Mode.GROUNDED
+	sim.state.surface_id = tall.id
+	sim.state.u = 0.0
+	sim.state.v = 0.0
+	sim.state.position = Vector3(mid_x, z0, tall.height)
+	sim.state.tangent_velocity = Vector2(0.0, 420.0)
+	sim.state.velocity = Vector3.ZERO
+	sim.state.clear_hang()
+	var saw_air := false
+	for _i in range(120):
+		sim.set_input(Vector2(0, 1), false, false)
+		sim.tick()
+		if sim.state.is_airborne():
+			saw_air = true
+		if saw_air and sim.state.is_grounded() and sim.state.surface_id == short.id:
+			# Descending land onto short is OK; sticky mid-air mount is not.
+			if sim.state.position.z > short.height + SimTolerances.CONTACT_EPS * 4.0:
+				push_error("z_band leave: sticky mount short above its top")
+				return false
+			return true
+		if sim.state.falling:
+			return true
+	if not saw_air:
+		push_error("z_band leave: tall→short never left into free air")
+		return false
+	return true
+
+
+func _z_band_short_to_tall_riser_falls() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_z_band_deck.ssk"):
+		push_error("z_band riser: setup")
+		return false
+	sim.fall_duration = 5.0
+	sim.friction = 0.0
+	var decks := _z_band_decks(sim)
+	if decks.short == null or decks.tall == null:
+		push_error("z_band riser: need short+tall decks")
+		return false
+	var short: SupportPatch = decks.short
+	var tall: SupportPatch = decks.tall
+	var mid_x := (short.x_min + short.x_max) * 0.5
+	# Approach the tall riser from the short pad (high Z → low Z).
+	var z0 := short.z_min + 8.0
+	if z0 >= short.z_max:
+		z0 = (short.z_min + short.z_max) * 0.5
+	sim.state.mode = SimState.Mode.GROUNDED
+	sim.state.surface_id = short.id
+	sim.state.u = 0.0
+	sim.state.v = 0.0
+	sim.state.position = Vector3(mid_x, z0, short.height)
+	sim.state.tangent_velocity = Vector2(0.0, -480.0)
+	sim.state.velocity = Vector3.ZERO
+	sim.state.clear_hang()
+	for _i in range(120):
+		sim.set_input(Vector2(0, -1), false, false)
+		sim.tick()
+		if sim.state.falling:
+			return true
+		# Must not tunnel onto tall top without leaving short height band.
+		if sim.state.is_grounded() and sim.state.surface_id == tall.id:
+			push_error("z_band riser: mounted tall top through riser")
+			return false
+	push_error("z_band riser: never fell into tall open-side wall")
+	return false

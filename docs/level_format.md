@@ -107,10 +107,17 @@ Pipe/ramp **footprint X** = `run_cells × cell_w`. **Height rise** = `run_cells 
 
 For each connected `#` component on a layer:
 
-1. Find 4-neighbor pipe/ramp tiles (`(`, `)`, `<`, or `>`) on that layer  
-2. `rise = max(neighbor rise)` of those neighbors (or header `deck_height`)  
-3. Deck absolute height = `layer.height + rise`  
-4. Error if no neighboring pipe/ramp and no header override  
+1. Header `deck_height` → one flat deck at `layer.height + deck_height` (no Z split).  
+2. Otherwise, each grid row of the component takes the abutting pipe/ramp **rise**
+   (4-neighbor `()` / `<>` on that layer). Contiguous equal-rise rows form a **Z-band**;
+   each band emits one flat deck at `layer.height + rise`.  
+3. Same row with unequal left/right abutting rises → **compile error** (no silent max).  
+4. Error if a deck row (or the whole component under override rules) has no neighboring
+   pipe/ramp and no header override.
+
+Hard step between bands: tall→short is an open ledge (free air / fall); short→tall is a
+riser crash via the tall deck’s open-side feature wall. Matching run widths are required
+**per Z band**, not for the whole `#` strip.
 
 Ramp peak height uses the same rise as a pipe of equal run width (`base + R`), so
 `>===<` and `)===(` both lift the deck to matching coping height.
@@ -131,7 +138,7 @@ height 0
 ```
 
 `)))##(((` = right-pipe → elevated deck spine → left-pipe.  
-Both pipe runs must be the same width so coping height matches on both sides.
+Left and right pipe runs in each Z band must share the same width so coping height matches.
 
 ## Ramp example
 
