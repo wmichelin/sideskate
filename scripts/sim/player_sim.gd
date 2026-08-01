@@ -265,7 +265,7 @@ func _try_ollie_jump() -> void:
 	if height <= 0.0:
 		return
 	ollie_available = false
-	_apply_height_impulse(_up_speed_for_height(height))
+	_apply_height_impulse(height)
 
 
 ## Floor/deck → flat height; pipe/ramp/wall → pipe height. Unknown → flat.
@@ -307,18 +307,49 @@ func _up_speed_for_height(height: float) -> float:
 	return sqrt(2.0 * g * height)
 
 
-func _apply_height_impulse(up_speed: float) -> void:
-	if state == null or not state.alive or up_speed <= 0.0:
+## `height` is peak rise (charge × ollie_height_*). Grounded: enter-air impulse.
+## Airborne: boost vz enough to reach launch-lip + height, keeping any faster
+## residual leave speed (stack OK) without adding a second full pop on top.
+func _apply_height_impulse(height: float) -> void:
+	if state == null or not state.alive or height <= 0.0:
 		return
+	var up_speed := _up_speed_for_height(height)
 	if state.is_grounded():
 		ground.launch_height_impulse(state, up_speed, ollie_lip_frac)
 		return
-	# Airborne free air: add upward speed. Hang already is X-locked air — just pop.
 	state.maneuver = null
 	if not state.is_hanging():
 		state.clear_hang()
-	state.velocity.z += up_speed
+	var ref_z := _ollie_launch_lip_height()
+	if is_nan(ref_z):
+		ref_z = state.position.z
+	var gap := (ref_z + height) - state.position.z
+	var need := _up_speed_for_height(maxf(gap, 0.0))
+	state.velocity.z = maxf(state.velocity.z, need)
 	state.note_air_height(state.position.z)
+
+
+## Coping / peak height of the air-launch pipe or ramp; NAN if unknown.
+func _ollie_launch_lip_height() -> float:
+	if state == null or model == null:
+		return NAN
+	var sid := state.air_launch_surface_id
+	var z := state.position.y
+	if model.pipes.has(sid):
+		var pipe: PipeSurface = model.pipes[sid]
+		var z_ref := clampf(z, pipe.z_min, pipe.z_max - 0.001)
+		return pipe.height_at_theta(z_ref, PI * 0.5)
+	if model.ramps.has(sid):
+		var ramp: RampSurface = model.ramps[sid]
+		var z_ref := clampf(z, ramp.z_min, ramp.z_max - 0.001)
+		return ramp.height_at_theta(z_ref, PI * 0.5)
+	if model.walls.has(sid):
+		var wall: WallSurface = model.walls[sid]
+		var sample := wall.sample_at_z(clampf(z, wall.z_min, wall.z_max - 0.001))
+		if sample.is_empty():
+			return NAN
+		return float(sample.top_height)
+	return NAN
 
 
 ## Grounded contact with any lethal pad kills (floor polys may still cover the

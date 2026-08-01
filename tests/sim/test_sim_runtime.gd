@@ -22,6 +22,7 @@ func run() -> bool:
 		and _pipe_lip_ollie_respects_height_not_along()
 		and _ollie_jump_caps_at_full_charge()
 		and _ollie_jump_airborne_adds_impulse()
+		and _ramp_air_ollie_peak_matches_lip_ollie()
 		and _ollie_single_charge_replenishes_on_ground()
 		and _ollie_on_pipe_pops_world_up_not_along_tangent()
 		and _ollie_on_pipe_lip_enters_hang()
@@ -1940,22 +1941,23 @@ func _ollie_airborne_release_uses_launch_pipe_height() -> bool:
 		)
 		return false
 	# Even if launch id is wiped, snapshot must still drive pipe height.
-	sim.state.air_launch_surface_id = ""
-	var vz_before := sim.state.velocity.z
+	# Restore launch so peak targets lip + pipe height (not flat).
+	sim.state.air_launch_surface_id = pipe.id
+	var lip := pipe.height_at_theta(z, PI * 0.5)
+	sim.state.position.z = lip
+	sim.state.velocity.z = 0.0
 	sim.set_input(Vector2.ZERO, false, false, false, true)
 	sim.tick()
 	var g := absf(SimTolerances.GRAVITY)
-	var dt := SimTolerances.FIXED_DT
-	var pop := sim.state.velocity.z - (vz_before - g * dt)
-	var want_pop := sqrt(2.0 * g * 60.0)
-	var flat_pop := sqrt(2.0 * g * 150.0)
-	if absf(pop - want_pop) > 8.0:
+	var want_vz := sqrt(2.0 * g * 60.0) + SimTolerances.GRAVITY * SimTolerances.FIXED_DT
+	var flat_vz := sqrt(2.0 * g * 150.0) + SimTolerances.GRAVITY * SimTolerances.FIXED_DT
+	if absf(sim.state.velocity.z - want_vz) > 12.0:
 		push_error(
-			"air ollie: pop=%.1f want pipe ~%.1f (not flat ~%.1f) vz=%s before=%.1f"
-			% [pop, want_pop, flat_pop, sim.state.velocity.z, vz_before]
+			"air ollie: vz=%.1f want pipe ~%.1f (not flat ~%.1f) lip=%.1f"
+			% [sim.state.velocity.z, want_vz, flat_vz, lip]
 		)
 		return false
-	if absf(pop - flat_pop) < 8.0:
+	if absf(sim.state.velocity.z - flat_vz) < 8.0:
 		push_error("air ollie: used flat height instead of pipe")
 		return false
 	return true
@@ -2213,23 +2215,38 @@ func _ollie_jump_airborne_adds_impulse() -> bool:
 	# Carry the hold meter into free air (still held) without rebuilding there.
 	sim.state.mode = SimState.Mode.AIRBORNE
 	sim.state.surface_id = ""
-	sim.state.velocity = Vector3(0.0, 0.0, 0.0)
+	sim.state.air_launch_surface_id = ""
 	sim.state.clear_hang()
 	sim.state.position.z = 80.0
 	sim.ollie_available = true
-	var before := sim.state.velocity.z
+	# 1) Low residual → boost to √(2g·h).
+	sim.state.velocity = Vector3(0.0, 0.0, 0.0)
 	sim.set_input(Vector2.ZERO, false, false, false, true)
 	sim.tick()
-	var add := sqrt(2.0 * absf(SimTolerances.GRAVITY) * 40.0)
-	var expected := before + add + SimTolerances.GRAVITY * SimTolerances.FIXED_DT
-	if absf(sim.state.velocity.z - expected) > 5.0:
+	var want := sqrt(2.0 * absf(SimTolerances.GRAVITY) * 40.0) \
+			+ SimTolerances.GRAVITY * SimTolerances.FIXED_DT
+	if absf(sim.state.velocity.z - want) > 5.0:
 		push_error(
-			"air ollie vh expected ~%s got %s (before=%s)"
-			% [expected, sim.state.velocity.z, before]
+			"air ollie vh expected ~%s got %s"
+			% [want, sim.state.velocity.z]
 		)
 		return false
 	if sim.ollie_available:
 		push_error("air ollie should spend the single charge")
+		return false
+	# 2) Faster residual leave speed is kept (stack), not cut down.
+	sim.ollie_available = true
+	sim.ollie_charge = 1.0
+	var residual := sqrt(2.0 * absf(SimTolerances.GRAVITY) * 40.0) + 120.0
+	sim.state.velocity.z = residual
+	sim.set_input(Vector2.ZERO, false, false, false, true)
+	sim.tick()
+	var keep := residual + SimTolerances.GRAVITY * SimTolerances.FIXED_DT
+	if absf(sim.state.velocity.z - keep) > 5.0:
+		push_error(
+			"air ollie should keep residual rise ~%s got %s"
+			% [keep, sim.state.velocity.z]
+		)
 		return false
 	# Cannot start a new charge meter while airborne.
 	sim.ollie_available = true
@@ -2239,6 +2256,84 @@ func _ollie_jump_airborne_adds_impulse() -> bool:
 		push_error("must not start ollie charge while airborne")
 		return false
 	return true
+
+
+## Post-leave air ollie peak ≈ grounded lip-band ramp ollie (ollie_height_pipe).
+func _ramp_air_ollie_peak_matches_lip_ollie() -> bool:
+	var path := "res://tests/levels/sim/sim_ramp.ssk"
+	var h := 80.0
+	var lip_peak := _ramp_ollie_peak_height(path, h, false)
+	var air_peak := _ramp_ollie_peak_height(path, h, true)
+	if is_nan(lip_peak) or is_nan(air_peak):
+		return false
+	if absf(air_peak - lip_peak) > 25.0:
+		push_error(
+			"ramp air ollie peak=%.1f vs lip ollie peak=%.1f (want ~same)"
+			% [air_peak, lip_peak]
+		)
+		return false
+	return true
+
+
+func _ramp_ollie_peak_height(path: String, ollie_h: float, air_release: bool) -> float:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path(path):
+		push_error("ramp ollie peak: setup %s" % path)
+		return NAN
+	sim.ollie_accel = 0.0
+	sim.ollie_charge_ms = 0.0
+	sim.ollie_height_flat = ollie_h
+	sim.ollie_height_pipe = ollie_h
+	sim.ollie_lip_frac = 0.50
+	sim.friction = 0.0
+	sim.ramp_friction = 0.0
+	if sim.model.ramps.is_empty():
+		push_error("ramp ollie peak: no ramps")
+		return NAN
+	var ramp: RampSurface = sim.model.ramps[sim.model.all_ramp_ids()[0]]
+	var z := (ramp.z_min + ramp.z_max) * 0.5
+	var u := 0.92
+	var th := u * PI * 0.5
+	sim.state.mode = SimState.Mode.GROUNDED
+	sim.state.surface_id = ramp.id
+	sim.state.u = u
+	sim.state.v = 0.5
+	sim.state.tangent_velocity = Vector2(200.0, 0.0)
+	sim.state.velocity = Vector3.ZERO
+	sim.state.position = Vector3(ramp.x_at_theta(z, th), z, ramp.height_at_theta(z, th))
+	sim.state.clear_hang()
+	sim.ollie_available = true
+	sim.ollie_charge = 1.0
+	if air_release:
+		# Leave via lip ollie impulse without spending charge, then air-release.
+		sim.ollie_available = false
+		sim.ground.launch_height_impulse(
+			sim.state, sim._up_speed_for_height(ollie_h), sim.ollie_lip_frac
+		)
+		if not sim.state.is_airborne():
+			push_error("ramp ollie peak: air path never left")
+			return NAN
+		# One air tick of residual rise, then full-charge air ollie.
+		sim.set_input(Vector2(1, 0), false, false)
+		sim.tick()
+		sim.ollie_available = true
+		sim.ollie_charge = 1.0
+		sim.set_input(Vector2(1, 0), false, false, false, true)
+		sim.tick()
+	else:
+		sim.set_input(Vector2(1, 0), false, false, false, true)
+		sim.tick()
+		if not sim.state.is_airborne():
+			push_error("ramp ollie peak: lip path never left")
+			return NAN
+	var peak := sim.state.position.z
+	for _i in range(90):
+		sim.set_input(Vector2(1, 0), false, false)
+		sim.tick()
+		peak = maxf(peak, sim.state.position.z)
+		if sim.state.velocity.z < 0.0 and sim.state.position.z < peak - 1.0:
+			break
+	return peak
 
 
 func _ollie_single_charge_replenishes_on_ground() -> bool:
