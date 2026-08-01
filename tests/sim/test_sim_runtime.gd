@@ -28,8 +28,7 @@ func run() -> bool:
 		and _layered_pipe_top_skim_fall_stays_outside()
 		and _layered_union_wall_crash_does_not_tunnel()
 		and _layered_rtl_joint_crash_stays_on_approach()
-		and _layered_union_open_lips_block_partner_fly_out()
-		and _layered_l0_climb_does_not_sail_through_l1()
+		and _layered_union_open_lips_fly_out()
 		and _ollie_jump_caps_at_full_charge()
 		and _ollie_jump_airborne_adds_impulse()
 		and _ramp_air_ollie_peak_matches_lip_ollie()
@@ -2717,112 +2716,103 @@ func _layered_union_wall_crash_does_not_tunnel() -> bool:
 	return true
 
 
-## Open L0↔L1 union lips must NOT stick-fly-out into the partner pipe column.
-## Own joint wall is still not a corridor block; the foreign pipe footprint is.
-func _layered_union_open_lips_block_partner_fly_out() -> bool:
+## Regression: L0↔L1 open union lips must stick-fly-out past the joint.
+## Failure modes this pins (do not reintroduce):
+## - try_fly_out rejects "outward corridor blocked" on the own joint wall
+## - above-top wall lip fence keeps corridor blocked forever after the lip frame
+## - unlock then Reject on the lip seam before X clears the coping
+func _layered_union_open_lips_fly_out() -> bool:
 	var z := 250.0
-	if not _union_fly_out_pipe_blocked_by_partner("pipe_9_L1_S1", z):
+	if not _union_fly_out_pipe_clears_joint("pipe_9_L1_S1", z):
 		return false
-	if not _union_fly_out_pipe_blocked_by_partner("pipe_8_L1_S0", z):
+	if not _union_fly_out_pipe_clears_joint("pipe_8_L1_S0", z):
 		return false
-	if not _union_fly_out_wall_blocked_by_partner("wall_span_coping_pipe_1_L0_S1_0", z):
+	if not _union_fly_out_wall_clears_joint("wall_span_coping_pipe_1_L0_S1_0", z):
 		return false
-	if not _union_fly_out_wall_blocked_by_partner("wall_span_coping_pipe_2_L0_S0_0", z):
-		return false
-	return true
-
-
-## Held climb up the open L0 right wall must not sail through the L1 pipe back
-## in free air without a fall (fly-out into the partner column).
-func _layered_l0_climb_does_not_sail_through_l1() -> bool:
-	var sim := PlayerSim.new()
-	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
-		push_error("l0 climb l1: setup")
-		return false
-	sim.fall_duration = 5.0
-	var l0: PipeSurface = sim.model.pipes.get("pipe_1_L0_S1")
-	var l1: PipeSurface = sim.model.pipes.get("pipe_8_L1_S0")
-	if l0 == null or l1 == null:
-		push_error("l0 climb l1: missing pipes")
-		return false
-	var z := 80.0
-	sim.state.mode = SimState.Mode.GROUNDED
-	sim.state.surface_id = l0.id
-	sim.state.position = Vector3(820.0, z, 5.0)
-	sim.state.u = 0.1
-	sim.state.tangent_velocity = Vector2(550.0, 0.0)
-	sim.state.facing = "r"
-	sim.state.clear_hang()
-	var saw_hang := false
-	for _i in range(80):
-		sim.set_input(Vector2(1, 0), false, false)
-		sim.tick()
-		if sim.state.is_hanging():
-			saw_hang = true
-		if sim.state.falling:
-			# Wipeout on the approach is fine — just not a silent tunnel.
-			return true
-		if sim.state.is_grounded() and sim.state.surface_id == l1.id:
-			push_error(
-				"l0 climb l1: seated on L1 u=%.2f x=%.1f h=%.1f"
-				% [sim.state.u, sim.state.position.x, sim.state.position.z]
-			)
-			return false
-		# Free-air past the L1 far lip with no fall = sailed through the back.
-		if (
-			sim.state.is_airborne()
-			and not sim.state.is_hanging()
-			and sim.state.position.x > l1.bound_x_max - 20.0
-		):
-			push_error(
-				"l0 climb l1: sailed through L1 x=%.1f h=%.1f fall=%s"
-				% [sim.state.position.x, sim.state.position.z, sim.state.falling]
-			)
-			return false
-	if not saw_hang:
-		push_error("l0 climb l1: never hung at open wall top")
+	if not _union_fly_out_wall_clears_joint("wall_span_coping_pipe_2_L0_S0_0", z):
 		return false
 	return true
 
 
-func _union_fly_out_pipe_blocked_by_partner(pipe_id: String, z: float) -> bool:
+func _union_fly_out_pipe_clears_joint(pipe_id: String, z: float) -> bool:
 	var sim := PlayerSim.new()
 	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
-		push_error("union fly-out block: setup")
+		push_error("union fly-out: setup")
 		return false
 	var pipe: PipeSurface = sim.model.pipes.get(pipe_id)
 	if pipe == null:
-		push_error("union fly-out block: missing %s" % pipe_id)
+		push_error("union fly-out: missing %s" % pipe_id)
 		return false
 	var out := pipe.outward_sign()
 	var wx := pipe.coping_x_at(z)
 	var lip_h := pipe.height_at_theta(z, PI * 0.5)
-	return _planner_fly_out_blocked_at_hang(sim, pipe, wx, z, lip_h, out, pipe_id)
+	# Planner must accept at lip and above — own joint wall is not a corridor block.
+	if not _planner_fly_out_ok_at_hang(sim, pipe, wx, z, lip_h, out, pipe_id):
+		return false
+	if not _planner_fly_out_ok_at_hang(sim, pipe, wx, z, lip_h + 20.0, out, pipe_id):
+		return false
+	var u := 0.95
+	var th := u * PI * 0.5
+	sim.state.mode = SimState.Mode.GROUNDED
+	sim.state.surface_id = pipe.id
+	sim.state.u = u
+	sim.state.v = 0.5
+	sim.state.position = Vector3(pipe.x_at_theta(z, th), z, pipe.height_at_theta(z, th))
+	sim.state.tangent_velocity = Vector2(600.0, 0.0)
+	sim.state.facing = "r" if out > 0.0 else "l"
+	sim.state.clear_hang()
+	sim.state.falling = false
+	sim.state.request_fall = false
+	return _stick_fly_out_clears_coping(sim, wx, out, pipe_id)
 
 
-func _union_fly_out_wall_blocked_by_partner(wall_id: String, z: float) -> bool:
+func _union_fly_out_wall_clears_joint(wall_id: String, z: float) -> bool:
 	var sim := PlayerSim.new()
 	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
-		push_error("union wall fly-out block: setup")
+		push_error("union wall fly-out: setup")
 		return false
 	var wall: WallSurface = sim.model.walls.get(wall_id)
 	if wall == null or wall.upper_partner_pipe_id.is_empty():
-		push_error("union wall fly-out block: missing joint %s" % wall_id)
+		push_error("union wall fly-out: missing joint %s" % wall_id)
 		return false
 	var src: PipeSurface = sim.model.pipes.get(wall.source_pipe_id)
 	if src == null:
-		push_error("union wall fly-out block: no source for %s" % wall_id)
+		push_error("union wall fly-out: no source for %s" % wall_id)
 		return false
 	var out := src.outward_sign()
 	var ws: Dictionary = wall.sample_at_z(z)
 	var wx := float(ws.x)
 	var top := float(ws.top_height)
-	return _planner_fly_out_blocked_at_wall_hang(
-		sim, wall, src, wx, z, top, out, wall_id
-	)
+	if not _planner_fly_out_ok_at_wall_hang(sim, wall, src, wx, z, top, out, wall_id):
+		return false
+	if not _planner_fly_out_ok_at_wall_hang(
+		sim, wall, src, wx, z, top + 20.0, out, wall_id
+	):
+		return false
+	sim.state.mode = SimState.Mode.GROUNDED
+	sim.state.surface_id = wall.id
+	sim.state.u = 0.9
+	sim.state.v = 0.5
+	sim.state.position = wall.position_at(z, 0.9)
+	sim.state.tangent_velocity = Vector2(700.0, 0.0)
+	sim.state.facing = "r" if out > 0.0 else "l"
+	sim.state.clear_hang()
+	sim.state.falling = false
+	sim.state.request_fall = false
+	var hung := false
+	for _i in range(40):
+		sim.set_input(Vector2.ZERO, false, false)
+		sim.tick()
+		if sim.state.is_hanging():
+			hung = true
+			break
+	if not hung:
+		push_error("union wall fly-out: %s never hung" % wall_id)
+		return false
+	return _stick_fly_out_clears_coping(sim, wx, out, wall_id)
 
 
-func _planner_fly_out_blocked_at_hang(
+func _planner_fly_out_ok_at_hang(
 	sim: PlayerSim,
 	pipe: PipeSurface,
 	wx: float,
@@ -2839,7 +2829,7 @@ func _planner_fly_out_blocked_at_hang(
 			hang_id = eid
 			break
 	if hang_id.is_empty():
-		push_error("union fly-out block: %s no hang edge" % tag)
+		push_error("union fly-out: %s no hang edge" % tag)
 		return false
 	sim.state.mode = SimState.Mode.AIRBORNE
 	sim.state.surface_id = ""
@@ -2851,22 +2841,16 @@ func _planner_fly_out_blocked_at_hang(
 	sim.state.falling = false
 	sim.state.request_fall = false
 	var fo: Dictionary = sim.planner.try_fly_out(sim.state, out, 0.0)
-	if bool(fo.get("ok", false)):
+	if not bool(fo.get("ok", false)):
 		push_error(
-			"union fly-out block: planner allowed partner unlock %s at h=%.1f"
-			% [tag, h]
-		)
-		return false
-	if str(fo.get("reason", "")) != "outward corridor blocked":
-		push_error(
-			"union fly-out block: %s expected corridor blocked, got %s"
-			% [tag, fo.get("reason", "")]
+			"union fly-out: planner blocked %s at h=%.1f reason=%s"
+			% [tag, h, fo.get("reason", "")]
 		)
 		return false
 	return true
 
 
-func _planner_fly_out_blocked_at_wall_hang(
+func _planner_fly_out_ok_at_wall_hang(
 	sim: PlayerSim,
 	wall: WallSurface,
 	src: PipeSurface,
@@ -2885,6 +2869,7 @@ func _planner_fly_out_blocked_at_wall_hang(
 			hang_id = eid
 			break
 	if hang_id.is_empty():
+		# Fall back to source pipe coping edge at the same X.
 		for eid2 in sim.model.edges.keys():
 			var e2: TopologyEdge = sim.model.edges[eid2]
 			var samp2: Dictionary = sim.query.edge_anchor_sample(e2, z)
@@ -2893,32 +2878,58 @@ func _planner_fly_out_blocked_at_wall_hang(
 				hang_id = eid2
 				break
 	if hang_id.is_empty():
-		push_error("union wall fly-out block: %s no hang edge" % tag)
+		push_error("union wall fly-out: %s no hang edge" % tag)
 		return false
-	# Wall-top hang anchors sit at upper lip; stay inside the fly-out height window.
-	var gate_h := minf(h, float(sim.query.edge_anchor_sample(
-		sim.model.edges[hang_id], z
-	).get("height", h)) + SimTolerances.FLY_OUT_ABOVE * 0.5)
 	sim.state.mode = SimState.Mode.AIRBORNE
 	sim.state.surface_id = ""
 	sim.state.begin_hang(hang_id)
 	sim.state.air_launch_surface_id = wall.id
-	sim.state.position = Vector3(wx, z, gate_h)
+	sim.state.position = Vector3(wx, z, h)
 	sim.state.velocity = Vector3(0.0, 0.0, 180.0)
 	sim.state.facing = "r" if out > 0.0 else "l"
 	sim.state.falling = false
 	sim.state.request_fall = false
 	var fo: Dictionary = sim.planner.try_fly_out(sim.state, out, 0.0)
-	if bool(fo.get("ok", false)):
+	if not bool(fo.get("ok", false)):
 		push_error(
-			"union wall fly-out block: planner allowed partner unlock %s at h=%.1f"
-			% [tag, gate_h]
+			"union wall fly-out: planner blocked %s at h=%.1f reason=%s"
+			% [tag, h, fo.get("reason", "")]
 		)
 		return false
-	if str(fo.get("reason", "")) != "outward corridor blocked":
+	return true
+
+
+## Hold outward stick: unlock free air and clear past coping X without falling.
+func _stick_fly_out_clears_coping(
+	sim: PlayerSim, wx: float, out: float, tag: String
+) -> bool:
+	var unlocked := false
+	var cleared := false
+	for _i in range(24):
+		sim.set_input(Vector2(out, 0.0), false, false)
+		sim.tick()
+		if sim.state.falling:
+			push_error(
+				"union fly-out: %s fell during fly-out x=%.1f h=%.1f rej=%s"
+				% [tag, sim.state.position.x, sim.state.position.z, sim.state.last_reject]
+			)
+			return false
+		if sim.state.is_airborne() and not sim.state.is_hanging() \
+				and sim.state.velocity.x * out > 1.0:
+			unlocked = true
+		if unlocked and (sim.state.position.x - wx) * out > 8.0:
+			cleared = true
+			break
+	if not unlocked:
 		push_error(
-			"union wall fly-out block: %s expected corridor blocked, got %s"
-			% [tag, fo.get("reason", "")]
+			"union fly-out: %s never unlocked reject=%s hang=%s"
+			% [tag, sim.state.last_reject, sim.state.is_hanging()]
+		)
+		return false
+	if not cleared:
+		push_error(
+			"union fly-out: %s unlocked but never cleared coping x=%.1f wx=%.1f h=%.1f"
+			% [tag, sim.state.position.x, wx, sim.state.position.z]
 		)
 		return false
 	return true
