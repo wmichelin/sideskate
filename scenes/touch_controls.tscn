@@ -1,4 +1,4 @@
-[gd_scene load_steps=2 format=3 uid="uid://ctouchctrl01"]
+[gd_scene format=3 uid="uid://ctouchctrl01"]
 
 [ext_resource type="Script" path="res://scripts/touch_controls.gd" id="1_script"]
 
@@ -19,53 +19,53 @@ mouse_filter = 2
 
 [node name="PauseButton" type="Button" parent="Root"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(56, 56)
+custom_minimum_size = Vector2(84, 84)
 layout_mode = 1
 anchors_preset = 0
-offset_left = 16.0
-offset_top = 16.0
-offset_right = 72.0
-offset_bottom = 72.0
+offset_left = 20.0
+offset_top = 20.0
+offset_right = 104.0
+offset_bottom = 104.0
 focus_mode = 0
 text = "Pause"
 
 [node name="StickBase" type="Panel" parent="Root"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(140, 140)
+custom_minimum_size = Vector2(220, 220)
 layout_mode = 1
 anchors_preset = 2
 anchor_top = 1.0
 anchor_bottom = 1.0
-offset_left = 24.0
-offset_top = -180.0
-offset_right = 164.0
-offset_bottom = -40.0
+offset_left = 28.0
+offset_top = -268.0
+offset_right = 248.0
+offset_bottom = -48.0
 grow_vertical = 0
 mouse_filter = 0
 
 [node name="StickKnob" type="Panel" parent="Root/StickBase"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(56, 56)
+custom_minimum_size = Vector2(88, 88)
 layout_mode = 0
-offset_left = 42.0
-offset_top = 42.0
-offset_right = 98.0
-offset_bottom = 98.0
+offset_left = 66.0
+offset_top = 66.0
+offset_right = 154.0
+offset_bottom = 154.0
 mouse_filter = 2
 
 [node name="OllieButton" type="Button" parent="Root"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(88, 88)
+custom_minimum_size = Vector2(132, 132)
 layout_mode = 1
 anchors_preset = 3
 anchor_left = 1.0
 anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = -120.0
-offset_top = -128.0
-offset_right = -32.0
-offset_bottom = -40.0
+offset_left = -172.0
+offset_top = -196.0
+offset_right = -40.0
+offset_bottom = -64.0
 grow_horizontal = 0
 grow_vertical = 0
 focus_mode = 0
@@ -73,17 +73,17 @@ text = "Ollie"
 
 [node name="TransferButton" type="Button" parent="Root"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(88, 72)
+custom_minimum_size = Vector2(132, 108)
 layout_mode = 1
 anchors_preset = 3
 anchor_left = 1.0
 anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_left = -120.0
-offset_top = -220.0
-offset_right = -32.0
-offset_bottom = -148.0
+offset_left = -172.0
+offset_top = -328.0
+offset_right = -40.0
+offset_bottom = -220.0
 grow_horizontal = 0
 grow_vertical = 0
 focus_mode = 0
