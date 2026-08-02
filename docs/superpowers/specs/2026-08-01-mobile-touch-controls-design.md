@@ -18,9 +18,11 @@ In-level virtual controls for phone/tablet OS builds: thumbstick, Ollie, Transfe
 
 ## Detection
 
-- Show only when `OS.has_feature("mobile")` (covers Android/iOS export feature tags).
-- Centralize in `PlatformCaps.is_mobile_os()` so call sites do not scatter feature checks.
-- No coarse-pointer / user-agent heuristics in v1.
+- Show when `PlatformCaps.should_show_touch_controls()`:
+  - native `OS.has_feature("mobile")` (Android/iOS export tags), **or**
+  - HTML5 phone/tablet: `OS.has_feature("web")` plus UA / iPadOS-touch / `(pointer: coarse)` + `maxTouchPoints` via `JavaScriptBridge`.
+- Centralize in `PlatformCaps` so call sites do not scatter feature checks.
+- Desktop web browsers do not show the overlay.
 
 ## Architecture
 

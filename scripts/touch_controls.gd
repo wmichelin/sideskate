@@ -82,7 +82,7 @@ func _notification(what: int) -> void:
 
 
 func _process(_delta: float) -> void:
-	if not _PlatformCaps.is_mobile_os() or _joypad_hidden:
+	if not _PlatformCaps.should_show_touch_controls() or _joypad_hidden:
 		return
 	var pause_open := _is_pause_open()
 	if pause_open:
@@ -91,7 +91,7 @@ func _process(_delta: float) -> void:
 			_clear_all_actions()
 			_reset_stick_visual()
 		return
-	if not _root.visible and not _joypad_hidden and _PlatformCaps.is_mobile_os():
+	if not _root.visible and not _joypad_hidden and _PlatformCaps.should_show_touch_controls():
 		_root.visible = true
 
 
@@ -128,7 +128,7 @@ func notify_joypad_activity_for_test() -> void:
 
 
 func _refresh_visibility() -> void:
-	var show_overlay: bool = _PlatformCaps.is_mobile_os() and not _joypad_hidden
+	var show_overlay: bool = _PlatformCaps.should_show_touch_controls() and not _joypad_hidden
 	visible = show_overlay
 	_root.visible = show_overlay and not _is_pause_open()
 	if not show_overlay:

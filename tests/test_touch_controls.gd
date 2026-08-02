@@ -5,12 +5,24 @@ extends RefCounted
 func run() -> bool:
 	PlatformCaps.clear_overrides()
 	PlatformCaps.mobile_os_override = true
-	if not PlatformCaps.is_mobile_os():
+	if not PlatformCaps.should_show_touch_controls():
 		push_error("override true failed")
 		return false
 	PlatformCaps.mobile_os_override = false
-	if PlatformCaps.is_mobile_os():
+	if PlatformCaps.should_show_touch_controls():
 		push_error("override false failed")
+		return false
+	PlatformCaps.clear_overrides()
+
+	# Web phone/tablet probe (itch HTML5) — no native mobile feature required.
+	PlatformCaps.web_mobile_probe_override = true
+	# Simulate the web branch without needing a browser: call probe directly.
+	if not PlatformCaps._web_is_phone_or_tablet():
+		push_error("web_mobile_probe_override true failed")
+		return false
+	PlatformCaps.web_mobile_probe_override = false
+	if PlatformCaps._web_is_phone_or_tablet():
+		push_error("web_mobile_probe_override false should not force true off-web")
 		return false
 	PlatformCaps.clear_overrides()
 
