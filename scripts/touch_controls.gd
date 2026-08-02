@@ -24,6 +24,8 @@ const ACTION_TRANSFER := &"transfer"
 
 var _pause_menu: Node = null
 var _joypad_hidden: bool = false
+## Ignore phantom gamepad noise briefly after the overlay appears (common on mobile Web).
+var _joypad_hide_armed_msec: int = 0
 var _stick_active: bool = false
 var _stick_touch_index: int = -1
 var _ollie_held: bool = false
@@ -82,28 +84,30 @@ func _notification(what: int) -> void:
 
 
 func _process(_delta: float) -> void:
-	if not _PlatformCaps.should_show_touch_controls() or _joypad_hidden:
+	# Re-evaluate every tick: web probes / touchscreen can become true after load,
+	# and CanvasLayer.visible must flip (not only Root).
+	if _joypad_hidden:
 		return
-	var pause_open := _is_pause_open()
-	if pause_open:
-		if _root.visible:
-			_root.visible = false
-			_clear_all_actions()
-			_reset_stick_visual()
-		return
-	if not _root.visible and not _joypad_hidden and _PlatformCaps.should_show_touch_controls():
-		_root.visible = true
+	_refresh_visibility()
 
 
 func _input(event: InputEvent) -> void:
+	# Even while hidden: first finger down on Web unlocks the overlay.
+	if event is InputEventScreenTouch and (event as InputEventScreenTouch).pressed:
+		_PlatformCaps.note_screen_touch()
+		if not _joypad_hidden:
+			_refresh_visibility()
 	if not is_overlay_active():
+		return
+	if Time.get_ticks_msec() < _joypad_hide_armed_msec:
 		return
 	if event is InputEventJoypadButton:
 		var jb := event as InputEventJoypadButton
 		if jb.pressed:
 			_hide_for_joypad()
 			return
-	if event is InputEventJoypadMotion:
+	# Motion-only hide is desktop/pad; mobile Web often emits noisy axes.
+	if event is InputEventJoypadMotion and not OS.has_feature("web"):
 		var jm := event as InputEventJoypadMotion
 		if absf(jm.axis_value) >= JOYPAD_MOTION_DEADZONE:
 			_hide_for_joypad()
@@ -129,6 +133,8 @@ func notify_joypad_activity_for_test() -> void:
 
 func _refresh_visibility() -> void:
 	var show_overlay: bool = _PlatformCaps.should_show_touch_controls() and not _joypad_hidden
+	if show_overlay and not visible:
+		_joypad_hide_armed_msec = Time.get_ticks_msec() + 1500
 	visible = show_overlay
 	_root.visible = show_overlay and not _is_pause_open()
 	if not show_overlay:

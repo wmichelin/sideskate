@@ -16,13 +16,19 @@ func run() -> bool:
 
 	# Web phone/tablet probe (itch HTML5) — no native mobile feature required.
 	PlatformCaps.web_mobile_probe_override = true
-	# Simulate the web branch without needing a browser: call probe directly.
 	if not PlatformCaps._web_is_phone_or_tablet():
 		push_error("web_mobile_probe_override true failed")
 		return false
 	PlatformCaps.web_mobile_probe_override = false
 	if PlatformCaps._web_is_phone_or_tablet():
 		push_error("web_mobile_probe_override false should not force true off-web")
+		return false
+	PlatformCaps.clear_overrides()
+	PlatformCaps.note_screen_touch()
+	# note_screen_touch alone is not enough off-web (feature gate); clear after.
+	if PlatformCaps.should_show_touch_controls():
+		# Desktop headless must stay false unless override/mobile.
+		push_error("touch-seen should not show controls off-web")
 		return false
 	PlatformCaps.clear_overrides()
 

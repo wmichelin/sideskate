@@ -132,7 +132,7 @@ Tunable sim values sync into `SimTolerances` / `PlayerSim` each physics tick. Ca
 
 ## Mobile touch controls
 
-When `PlatformCaps.should_show_touch_controls()` is true — native `OS.has_feature("mobile")`, or HTML5 phone/tablet (UA / coarse pointer / iPadOS touch heuristic via `JavaScriptBridge`) — `TouchControls` overlays an in-level virtual stick, Ollie, Transfer, and Pause. Controls synthesize the same InputMap actions keyboard uses; `player.gd` is unchanged. First joypad activity hides the overlay for that play session. Main/pause menus rely on ordinary Buttons (no virtual pad). Desktop web browsers stay keyboard-only.
+When `PlatformCaps.should_show_touch_controls()` is true — native `OS.has_feature("mobile")`, or HTML5 with touchscreen / mobile UA / coarse pointer / first screen-touch — `TouchControls` overlays an in-level virtual stick, Ollie, Transfer, and Pause. Controls synthesize the same InputMap actions keyboard uses; `player.gd` is unchanged. First joypad activity hides the overlay for that play session. Main/pause menus rely on ordinary Buttons (no virtual pad). Desktop web browsers stay keyboard-only.
 
 ### Fall bout
 
