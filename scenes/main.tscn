@@ -16,6 +16,7 @@
 [ext_resource type="Script" uid="uid://cjlnvlwo6kwnm" path="res://scripts/physics/level_collision_3d.gd" id="18_col3d"]
 [ext_resource type="PackedScene" uid="uid://cpausemenu01" path="res://scenes/pause_menu.tscn" id="19_pause"]
 [ext_resource type="PackedScene" uid="uid://dd2p54r525sjh" path="res://assets/characters/freemocap_skater.glb" id="20_skater"]
+[ext_resource type="PackedScene" uid="uid://ctouchctrl01" path="res://scenes/touch_controls.tscn" id="21_touch"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_player"]
 radius = 0.09
@@ -36,6 +37,8 @@ corner_radius_bottom_left = 8
 script = ExtResource("7_main")
 
 [node name="PauseMenu" parent="." unique_id=1835393424 instance=ExtResource("19_pause")]
+
+[node name="TouchControls" parent="." instance=ExtResource("21_touch")]
 
 [node name="World3D" type="Node3D" parent="." unique_id=266196311]
 

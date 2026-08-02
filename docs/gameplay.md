@@ -127,6 +127,12 @@ Tunable sim values sync into `SimTolerances` / `PlayerSim` each physics tick. Ca
 | [`rendering_3d/*`](../scripts/rendering_3d/) | Park mesh + pose presenter + camera |
 | [`rendering_3d/logical_pose_presenter_3d.gd`](../scripts/rendering_3d/logical_pose_presenter_3d.gd) | Orange rider + nose/tail board; dual fall bodies |
 | [`rendering_3d/fall_box_constraint.gd`](../scripts/rendering_3d/fall_box_constraint.gd) | RiderFall / BoardFall plane clamp (visual only) |
+| [`platform_caps.gd`](../scripts/platform_caps.gd) | OS feature gates (`is_mobile_os`) |
+| [`touch_controls.gd`](../scripts/touch_controls.gd) | Mobile in-level virtual stick / Ollie / Transfer / Pause |
+
+## Mobile touch controls
+
+On phone/tablet OS builds (`OS.has_feature("mobile")` via `PlatformCaps`), `TouchControls` overlays an in-level virtual stick, Ollie, Transfer, and Pause. Controls synthesize the same InputMap actions keyboard uses; `player.gd` is unchanged. First joypad activity hides the overlay for that play session. Main/pause menus rely on ordinary Buttons (no virtual pad).
 
 ### Fall bout
 
