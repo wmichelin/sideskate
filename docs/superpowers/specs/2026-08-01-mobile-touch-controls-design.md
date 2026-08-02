@@ -20,9 +20,9 @@ In-level virtual controls for phone/tablet OS builds: thumbstick, Ollie, Transfe
 
 - Show when `PlatformCaps.should_show_touch_controls()`:
   - native `OS.has_feature("mobile")` (Android/iOS export tags), **or**
-  - HTML5 phone/tablet: `OS.has_feature("web")` plus UA / iPadOS-touch / `(pointer: coarse)` + `maxTouchPoints` via `JavaScriptBridge`.
+  - HTML5 phone/tablet: mobile UA / iPadOS-touch / `(pointer: coarse)` via `JavaScriptBridge`, or a real `InputEventScreenTouch` unlock.
 - Centralize in `PlatformCaps` so call sites do not scatter feature checks.
-- Desktop web browsers do not show the overlay.
+- Desktop web browsers do not show the overlay by default.
 
 ## Architecture
 
