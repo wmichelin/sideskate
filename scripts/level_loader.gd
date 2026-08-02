@@ -22,12 +22,14 @@ static func load_path(
 	step_height: float = -1.0,
 ) -> LevelSpec:
 	last_error = ""
-	var f := FileAccess.open(path, FileAccess.READ)
-	if f == null:
+	if not FileAccess.file_exists(path):
 		_abort("Cannot open level file:\n%s" % path)
 		return null
-	var text := f.get_as_text()
-	f.close()
+	# Bytes → UTF-8 (more reliable than get_as_text for raw non-resource files in Web PCK).
+	var text := FileAccess.get_file_as_bytes(path).get_string_from_utf8()
+	if text.is_empty():
+		_abort("Level file empty or unreadable:\n%s" % path)
+		return null
 	var spec := parse_text(
 		text, path.get_file().get_basename(), path, cell_x, cell_z, step_height
 	)
@@ -49,7 +51,13 @@ static func parse_text(
 	step_height: float = -1.0,
 ) -> LevelSpec:
 	var label := source_path if source_path != "" else default_name
-	var lines := text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+	# Strip a leading UTF-8 BOM once (codepoint check). Do NOT use
+	# begins_with("\ufeff") per-line — on Web exports that can false-positive
+	# and eat the first glyph of every line (ssk→sk, name→ame).
+	var normalized := text.replace("\r\n", "\n").replace("\r", "\n")
+	if normalized.length() > 0 and normalized.unicode_at(0) == 0xFEFF:
+		normalized = normalized.substr(1)
+	var lines := normalized.split("\n")
 	var spec := LevelSpec.new()
 	spec.name = default_name
 	var cx := cell_x if cell_x > 0.0 else cell_size_x
@@ -63,8 +71,6 @@ static func parse_text(
 
 	for raw in lines:
 		var line: String = raw
-		if line.begins_with("\ufeff"):
-			line = line.substr(1)
 		var stripped := line.strip_edges()
 
 		if not header_done:

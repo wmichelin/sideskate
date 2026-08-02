@@ -1,7 +1,7 @@
 ssk 2
-name layered_demo
+name layers
 spawn_facing l
-# 3-cell pipes → radius 141 (X); rise 120. Layer-1 floor sits at coping height over the pipe
+# 3-cell pipes -> radius 141 (X); rise 120. Layer-1 floor sits at coping height over the pipe
 # runs and plaza so riding a wall up rolls onto the upper story; center hole
 # drops back to the ground.
 ---

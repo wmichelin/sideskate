@@ -31,45 +31,10 @@
 - Consumes: Godot CLI `--export-release`, butler `push`
 - Produces: `./tools/deploy_prod.sh` with env `GODOT`, `USERVERSION`, `DRY_RUN`
 
-- [ ] **Step 1: Add `build/` to `.gitignore`**
-
-Append:
-
-```
-build/
-```
-
-- [ ] **Step 2: Create `export/html5_prod.cfg`**
-
-Single Web preset named `HTML5 Prod`, path `build/html5/index.html`, empty `custom_features`, `runnable=false`, thread support on (itch SharedArrayBuffer checkbox), COOP/COEP via PWA isolation headers option.
-
-- [ ] **Step 3: Create `tools/deploy_prod.sh`**
-
-Executable bash: resolve Godot 4.7, optionally require butler, copy preset, `--export-release "HTML5 Prod"`, push or DRY_RUN skip, print itch checklist.
-
-- [ ] **Step 4: Document Deploy in `README.md`**
-
-Prerequisites (Godot 4.7 web templates, butler login), command, itch HTML / playable-in-browser checklist, link to game page.
-
-- [ ] **Step 5: Smoke-test export**
-
-Run: `DRY_RUN=1 GODOT=/path/to/Godot ./tools/deploy_prod.sh`  
-Expected: `build/html5/index.html` exists; script exits 0 without butler.
-
-- [ ] **Step 6: Install/login butler if needed and push**
-
-Run: `./tools/deploy_prod.sh`  
-Expected: butler push succeeds to `wmichelin/sideskater:html5`.
-
-- [ ] **Step 7: Commit**
-
-```bash
-git add export/html5_prod.cfg tools/deploy_prod.sh .gitignore README.md \
-  docs/superpowers/specs/2026-08-01-itch-prod-deploy-design.md \
-  docs/superpowers/plans/2026-08-01-itch-prod-deploy.md
-git commit -m "$(cat <<'EOF'
-Add local itch.io HTML5 prod deploy via butler.
-
-EOF
-)"
-```
+- [x] **Step 1: Add `build/` to `.gitignore`**
+- [x] **Step 2: Create `export/html5_prod.cfg`**
+- [x] **Step 3: Create `tools/deploy_prod.sh`**
+- [x] **Step 4: Document Deploy in `README.md`**
+- [x] **Step 5: Smoke-test export**
+- [x] **Step 6: Install/login butler if needed and push**
+- [x] **Step 7: Commit**

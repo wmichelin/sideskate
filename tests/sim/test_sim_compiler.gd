@@ -146,7 +146,7 @@ func _spine_shared() -> bool:
 func _layered_cross_story_spine() -> bool:
 	# L0 right faces taller L1 left: climb to L1 lip (WALL_EXTENSION), then air/fly.
 	# Must not air-out at L0 geometric height through the upper pipe.
-	var m: ParkModel = IdlCompiler.compile_path("res://levels/layered_demo.ssk")
+	var m: ParkModel = IdlCompiler.compile_path("res://debug_levels/layered_demo.ssk")
 	if not m.is_valid():
 		push_error("layered_demo compile fail")
 		return false
@@ -267,7 +267,7 @@ func _cross_story_contact_ownership() -> bool:
 
 
 func _unrelated_story_breaks_do_not_split_coping() -> bool:
-	var m := IdlCompiler.compile_path("res://levels/layered_demo.ssk")
+	var m := IdlCompiler.compile_path("res://debug_levels/layered_demo.ssk")
 	var pipe: PipeSurface = m.pipes.get("pipe_0_L0_S0")
 	if pipe == null:
 		push_error("coping seam: missing layered outer quarter pipe")
@@ -304,10 +304,10 @@ func _open_coping() -> bool:
 
 func _playable_levels_compile() -> bool:
 	for path in [
-		"res://levels/plaza_default.ssk",
-		"res://levels/spine_demo.ssk",
-		"res://levels/layered_demo.ssk",
-		"res://levels/variable_height_ramps.ssk",
+		"res://debug_levels/plaza_default.ssk",
+		"res://debug_levels/spine_demo.ssk",
+		"res://debug_levels/layered_demo.ssk",
+		"res://debug_levels/variable_height_ramps.ssk",
 		"res://tests/levels/test_halfpipe.ssk",
 		"res://tests/levels/sim/sim_cross_story.ssk",
 	]:

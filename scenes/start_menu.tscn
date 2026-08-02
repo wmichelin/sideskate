@@ -1,6 +1,7 @@
 [gd_scene format=3 uid="uid://cstartmenu01"]
 
 [ext_resource type="Script" uid="uid://bbgyme7hy8511" path="res://scripts/start_menu.gd" id="1_menu"]
+[ext_resource type="FontFile" uid="uid://w7jdnx8g3kuy" path="res://assets/fonts/DejaVuSans-Bold.ttf" id="2_bold"]
 
 [node name="StartMenu" type="Control" unique_id=1226282754]
 layout_mode = 3
@@ -48,6 +49,7 @@ theme_override_constants/separation = 20
 [node name="Title" type="Label" parent="Center" unique_id=852506752]
 layout_mode = 2
 theme_override_colors/font_color = Color(0.96, 0.93, 0.88, 1)
+theme_override_fonts/font = ExtResource("2_bold")
 theme_override_font_sizes/font_size = 72
 text = "SIDESKATE"
 horizontal_alignment = 1
@@ -56,7 +58,7 @@ horizontal_alignment = 1
 layout_mode = 2
 theme_override_colors/font_color = Color(0.95, 0.6, 0.28, 0.9)
 theme_override_font_sizes/font_size = 18
-text = "pseudo-depth skate prototype"
+text = "prototype"
 horizontal_alignment = 1
 
 [node name="Spacer" type="Control" parent="Center" unique_id=1195061876]

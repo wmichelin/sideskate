@@ -19,7 +19,9 @@ Open the project in Godot 4.7+ and play. Starts at the level select menu.
 
 ## Levels
 
-ASCII `.ssk` files in `levels/`. Format: [docs/level_format.md](docs/level_format.md).
+ASCII `.ssk` files in `levels/` (playable). Debug/prototype maps live in
+`debug_levels/` and only appear in the menu when debug tools are available.
+Format: [docs/level_format.md](docs/level_format.md).
 
 ## Tests
 
@@ -48,5 +50,5 @@ channel `html5` on `wmichelin/sideskater` (overrides that channel’s previous b
 - `USERVERSION=1.2.3` — override butler version label (default: git short SHA)
 
 After the **first** push, on the itch Edit game page: set kind to **HTML**, mark the
-`html5` upload playable in browser (and SharedArrayBuffer if prompted), then
-delete/hide any old manual upload.
+`html5` upload playable in browser, then delete/hide any old manual upload.
+Prod currently uses a **no-threads** Web build (SharedArrayBuffer not required).

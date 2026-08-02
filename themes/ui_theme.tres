@@ -1,0 +1,17 @@
+[gd_resource type="Theme" format=3]
+
+[ext_resource type="FontFile" path="res://assets/fonts/DejaVuSans.ttf" id="1_gfhtu"]
+[ext_resource type="FontFile" path="res://assets/fonts/DejaVuSans-Bold.ttf" id="2_qa7hf"]
+
+[resource]
+default_font = ExtResource("1_gfhtu")
+default_font_size = 16
+Button/font_sizes/font_size = 16
+Button/fonts/font = ExtResource("1_gfhtu")
+CheckBox/fonts/font = ExtResource("1_gfhtu")
+Label/font_sizes/font_size = 16
+Label/fonts/font = ExtResource("1_gfhtu")
+LineEdit/fonts/font = ExtResource("1_gfhtu")
+OptionButton/fonts/font = ExtResource("1_gfhtu")
+RichTextLabel/fonts/bold_font = ExtResource("2_qa7hf")
+RichTextLabel/fonts/font = ExtResource("1_gfhtu")

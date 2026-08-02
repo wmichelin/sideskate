@@ -5,7 +5,7 @@ extends Node2D
 const _PerspectiveMath := preload("res://scripts/perspective_math.gd")
 const ContactMath := preload("res://scripts/contact_math.gd")
 
-@export var level_path: String = "res://levels/plaza_default.ssk"
+@export var level_path: String = "res://levels/layers.ssk"
 
 @export_group("World scale")
 ## Logical units per ASCII column. Level width = columns × this.

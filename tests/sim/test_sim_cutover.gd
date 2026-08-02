@@ -63,28 +63,28 @@ func _player_sim_boots() -> bool:
 
 
 func _playable_idls_compile() -> bool:
-	var dir := DirAccess.open("res://levels")
-	if dir == null:
-		push_error("no levels/")
-		return false
-	dir.list_dir_begin()
-	var name := dir.get_next()
 	var any := false
-	while name != "":
-		if name.ends_with(".ssk"):
-			any = true
-			var path := "res://levels/%s" % name
-			var model := IdlCompiler.compile_path(path)
-			if model == null or not model.is_valid():
-				push_error("playable IDL failed: %s" % name)
-				return false
-			if model.model_hash.is_empty():
-				push_error("empty hash for %s" % name)
-				return false
-		name = dir.get_next()
-	dir.list_dir_end()
+	for dir_path in ["res://levels", "res://debug_levels"]:
+		var dir := DirAccess.open(dir_path)
+		if dir == null:
+			continue
+		dir.list_dir_begin()
+		var name := dir.get_next()
+		while name != "":
+			if name.ends_with(".ssk") and not name.begins_with("_"):
+				any = true
+				var path := "%s/%s" % [dir_path, name]
+				var model := IdlCompiler.compile_path(path)
+				if model == null or not model.is_valid():
+					push_error("IDL compile failed: %s" % path)
+					return false
+				if model.model_hash.is_empty():
+					push_error("empty hash for %s" % path)
+					return false
+			name = dir.get_next()
+		dir.list_dir_end()
 	if not any:
-		push_error("no playable .ssk")
+		push_error("no .ssk in levels/ or debug_levels/")
 		return false
 	return true
 

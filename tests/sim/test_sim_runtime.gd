@@ -278,7 +278,7 @@ func _fall_air_waits_for_land_then_recovers() -> bool:
 ## Foreign high-lip Reject can trap mid-air; recovery must not wait for a land.
 func _fall_crash_air_recovers_without_land() -> bool:
 	var sim := PlayerSim.new()
-	if not sim.setup_from_path("res://levels/plaza_default.ssk"):
+	if not sim.setup_from_path("res://debug_levels/plaza_default.ssk"):
 		push_error("fall crash air: setup")
 		return false
 	sim.fall_anim_duration = 0.05
@@ -564,7 +564,7 @@ func _fall_support_plane_lies_under_airborne_feet() -> bool:
 ## Lip-band ramp ollie into the abutting outward `#` must not crash (same bout).
 func _ramp_lip_ollie_own_outward_deck_no_crash() -> bool:
 	var sim := PlayerSim.new()
-	if not sim.setup_from_path("res://levels/plaza_default.ssk"):
+	if not sim.setup_from_path("res://debug_levels/plaza_default.ssk"):
 		push_error("ramp own deck: setup")
 		return false
 	sim.fall_duration = 5.0
@@ -966,7 +966,7 @@ func _air_out_hang_ollie_same_pipe_no_crash() -> bool:
 ## Hang X-lock clipping a deck solid requests fall (not only clean flat Mount).
 func _crash_hang_clips_deck_requests_fall() -> bool:
 	var sim := PlayerSim.new()
-	if not sim.setup_from_path("res://levels/plaza_default.ssk"):
+	if not sim.setup_from_path("res://debug_levels/plaza_default.ssk"):
 		push_error("crash hang deck: setup")
 		return false
 	sim.fall_duration = 5.0
@@ -1916,7 +1916,7 @@ func _left_pipe(model: ParkModel) -> PipeSurface:
 
 func _layered_spawn_respects_story() -> bool:
 	var sim := PlayerSim.new()
-	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
+	if not sim.setup_from_path("res://debug_levels/layered_demo.ssk"):
 		push_error("setup layered_demo")
 		return false
 	if absf(sim.state.position.z - sim.model.spawn_height) > SimTolerances.SEAM_EPS:
@@ -1936,7 +1936,7 @@ func _layered_spawn_respects_story() -> bool:
 
 func _supports_sorted_high_to_low() -> bool:
 	var sim := PlayerSim.new()
-	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
+	if not sim.setup_from_path("res://debug_levels/layered_demo.ssk"):
 		push_error("setup layered_demo sort")
 		return false
 	var all: Array = sim.query.supports_below(
@@ -1957,7 +1957,7 @@ func _supports_sorted_high_to_low() -> bool:
 
 func _pipe_along_wish_and_lip_exit() -> bool:
 	var sim := PlayerSim.new()
-	if not sim.setup_from_path("res://levels/plaza_default.ssk"):
+	if not sim.setup_from_path("res://debug_levels/plaza_default.ssk"):
 		push_error("setup plaza for pipe wish")
 		return false
 	var right: PipeSurface = null
@@ -2225,7 +2225,7 @@ func _ollie_airborne_release_uses_launch_pipe_height() -> bool:
 ## Wall-climb ollie must X-lock (hang) or deck-out — never free-air stick X.
 func _wall_ollie_hangs_x_locked() -> bool:
 	var sim := PlayerSim.new()
-	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
+	if not sim.setup_from_path("res://debug_levels/layered_demo.ssk"):
 		push_error("wall ollie: setup")
 		return false
 	var wall: WallSurface = null
@@ -2370,7 +2370,7 @@ func _pipe_lip_ollie_respects_height_not_along() -> bool:
 ## that face behind `#`; open islands expose it.
 func _layered_ollie_into_l1_pipe_back_crashes() -> bool:
 	var sim := PlayerSim.new()
-	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
+	if not sim.setup_from_path("res://debug_levels/layered_demo.ssk"):
 		push_error("l1 back crash: setup")
 		return false
 	sim.fall_duration = 5.0
@@ -2418,7 +2418,7 @@ func _layered_ollie_into_l1_pipe_back_crashes() -> bool:
 ## to the opposite lip, and not cross past the coping into L1.
 func _layered_floor_ollie_into_joint_rear_falls_clear() -> bool:
 	var sim := PlayerSim.new()
-	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
+	if not sim.setup_from_path("res://debug_levels/layered_demo.ssk"):
 		push_error("joint rear fall: setup")
 		return false
 	sim.fall_duration = 5.0
@@ -2492,7 +2492,7 @@ func _layered_floor_ollie_into_joint_rear_falls_clear() -> bool:
 ## Clipping the tip of L0 right pipe must not seat/slide into the transition.
 func _layered_pipe_top_skim_fall_stays_outside() -> bool:
 	var sim := PlayerSim.new()
-	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
+	if not sim.setup_from_path("res://debug_levels/layered_demo.ssk"):
 		push_error("pipe top skim: setup")
 		return false
 	sim.fall_duration = 5.0
@@ -2552,7 +2552,7 @@ func _layered_pipe_top_skim_fall_stays_outside() -> bool:
 ## clear of the face — facing-into-wall lean parked the fall RigidBody in mesh.
 func _layered_joint_crash_fall_leans_away_from_wall() -> bool:
 	var sim := PlayerSim.new()
-	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
+	if not sim.setup_from_path("res://debug_levels/layered_demo.ssk"):
 		push_error("joint lean: setup")
 		return false
 	sim.fall_duration = 5.0
@@ -2600,7 +2600,7 @@ func _layered_joint_crash_fall_leans_away_from_wall() -> bool:
 ## — never snap up onto the L1 ride surface or teleport across the pipe to L0.
 func _layered_rtl_joint_crash_stays_on_approach() -> bool:
 	var sim := PlayerSim.new()
-	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
+	if not sim.setup_from_path("res://debug_levels/layered_demo.ssk"):
 		push_error("rtl joint: setup")
 		return false
 	sim.fall_duration = 5.0
@@ -2669,7 +2669,7 @@ func _layered_rtl_joint_crash_stays_on_approach() -> bool:
 ## walk +X through the partner pipe solid to the far lip.
 func _layered_past_joint_fall_does_not_tunnel_partner() -> bool:
 	var sim := PlayerSim.new()
-	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
+	if not sim.setup_from_path("res://debug_levels/layered_demo.ssk"):
 		push_error("past joint fall: setup")
 		return false
 	sim.fall_duration = 5.0
@@ -2716,7 +2716,7 @@ func _layered_past_joint_fall_does_not_tunnel_partner() -> bool:
 ## planar must not reinject through a wrong wall normal (partner outward).
 func _layered_union_wall_crash_does_not_tunnel() -> bool:
 	var sim := PlayerSim.new()
-	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
+	if not sim.setup_from_path("res://debug_levels/layered_demo.ssk"):
 		push_error("union wall: setup")
 		return false
 	sim.fall_duration = 5.0
@@ -2783,7 +2783,7 @@ func _layered_union_open_lips_fly_out() -> bool:
 
 func _union_fly_out_pipe_clears_joint(pipe_id: String, z: float) -> bool:
 	var sim := PlayerSim.new()
-	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
+	if not sim.setup_from_path("res://debug_levels/layered_demo.ssk"):
 		push_error("union fly-out: setup")
 		return false
 	var pipe: PipeSurface = sim.model.pipes.get(pipe_id)
@@ -2815,7 +2815,7 @@ func _union_fly_out_pipe_clears_joint(pipe_id: String, z: float) -> bool:
 
 func _union_fly_out_wall_clears_joint(wall_id: String, z: float) -> bool:
 	var sim := PlayerSim.new()
-	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
+	if not sim.setup_from_path("res://debug_levels/layered_demo.ssk"):
 		push_error("union wall fly-out: setup")
 		return false
 	var wall: WallSurface = sim.model.walls.get(wall_id)
@@ -2986,7 +2986,7 @@ func _stick_fly_out_clears_coping(
 ## Adding clearance-vz + ollie-vz overshoots by 2√(gap·h) — feels "way higher".
 func _layered_wall_lip_ollie_peak_is_ollie_height_above_lip() -> bool:
 	var sim := PlayerSim.new()
-	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
+	if not sim.setup_from_path("res://debug_levels/layered_demo.ssk"):
 		push_error("layered wall ollie: setup")
 		return false
 	var pipe: PipeSurface = sim.model.pipes.get("pipe_1_L0_S1")
@@ -3806,7 +3806,7 @@ func _ollie_on_pipe_lip_enters_hang() -> bool:
 ## Lip-band ollie on a pipe with outward `#` must hang, not hang-clip crash.
 func _ollie_pipe_lip_outward_deck_no_crash() -> bool:
 	var sim := PlayerSim.new()
-	if not sim.setup_from_path("res://levels/plaza_default.ssk"):
+	if not sim.setup_from_path("res://debug_levels/plaza_default.ssk"):
 		push_error("lip ollie deck: setup")
 		return false
 	sim.fall_duration = 5.0
@@ -4444,7 +4444,7 @@ func _layered_deck_back_air_outs_at_upper_lip() -> bool:
 	# L0 right under L1: climb the explicit wall, then retain its open top as
 	# an anchored air-out. Proximity to the deck must never auto deck-out.
 	var sim := PlayerSim.new()
-	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
+	if not sim.setup_from_path("res://debug_levels/layered_demo.ssk"):
 		push_error("setup layered air-out")
 		return false
 	var pipe: PipeSurface = null
@@ -5140,7 +5140,7 @@ func _l0_launch_does_not_force_land_inward_deck() -> bool:
 ## deck height while still leaned with X stuck.
 func _l0_free_air_at_cope_remounts_wall_not_freeze() -> bool:
 	var sim := PlayerSim.new()
-	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
+	if not sim.setup_from_path("res://debug_levels/layered_demo.ssk"):
 		push_error("l0 free-air cope: setup")
 		return false
 	var pipe: PipeSurface = sim.model.pipes.get("pipe_1_L0_S1")
@@ -5215,7 +5215,7 @@ func _l0_free_air_at_cope_remounts_wall_not_freeze() -> bool:
 ## abutting outward deck must not steal the contact as a clean Mount.
 func _floor_ollie_coping_crashes_not_deck() -> bool:
 	var sim := PlayerSim.new()
-	if not sim.setup_from_path("res://levels/plaza_default.ssk"):
+	if not sim.setup_from_path("res://debug_levels/plaza_default.ssk"):
 		push_error("floor ollie cope: setup")
 		return false
 	sim.fall_duration = 5.0
@@ -5261,7 +5261,7 @@ func _floor_ollie_coping_crashes_not_deck() -> bool:
 ## abutting outward deck — stream annotation must not dual-claim the seam.
 func _air_contact_stream_lip_owns_coping_column() -> bool:
 	var sim := PlayerSim.new()
-	if not sim.setup_from_path("res://levels/plaza_default.ssk"):
+	if not sim.setup_from_path("res://debug_levels/plaza_default.ssk"):
 		push_error("air stream: setup")
 		return false
 	var pipe: PipeSurface = sim.model.pipes.get("pipe_1_L0_S1")
@@ -5323,7 +5323,7 @@ func _air_contact_stream_lip_owns_coping_column() -> bool:
 ## descending velocity available (no underside freeze).
 func _airborne_reject_leaves_exterior() -> bool:
 	var sim := PlayerSim.new()
-	if not sim.setup_from_path("res://levels/plaza_default.ssk"):
+	if not sim.setup_from_path("res://debug_levels/plaza_default.ssk"):
 		push_error("air reject: setup")
 		return false
 	var deck: SupportPatch = null
@@ -5540,7 +5540,7 @@ func _world_border_contains() -> bool:
 ## into that wall must retain depth control and must not truncate vertical fall.
 func _edge_fly_out_wall_slide() -> bool:
 	var sim := PlayerSim.new()
-	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
+	if not sim.setup_from_path("res://debug_levels/layered_demo.ssk"):
 		push_error("edge wall slide: setup")
 		return false
 	var pipe: PipeSurface = sim.model.pipes.get("pipe_3_L0_S1")
@@ -5586,8 +5586,8 @@ func _edge_fly_out_wall_slide() -> bool:
 		return false
 	var pressed := PlayerSim.new()
 	var free := PlayerSim.new()
-	if not pressed.setup_from_path("res://levels/layered_demo.ssk") \
-			or not free.setup_from_path("res://levels/layered_demo.ssk"):
+	if not pressed.setup_from_path("res://debug_levels/layered_demo.ssk") \
+			or not free.setup_from_path("res://debug_levels/layered_demo.ssk"):
 		push_error("edge wall slide: fall comparison setup")
 		return false
 	var fall_start := Vector3(pressed.model.width - 0.05, pressed.model.depth * 0.5, 1000.0)
@@ -5618,7 +5618,7 @@ func _edge_fly_out_wall_slide() -> bool:
 func _edge_pipe_coping_not_in_wall() -> bool:
 	# Plaza-style edge ))) must hang at coping without immediately hitting bounds.
 	var sim := PlayerSim.new()
-	if not sim.setup_from_path("res://levels/plaza_default.ssk"):
+	if not sim.setup_from_path("res://debug_levels/plaza_default.ssk"):
 		push_error("edge: setup plaza")
 		return false
 	var best: PipeSurface = null
@@ -6084,7 +6084,7 @@ func _layered_outer_wall_crashes_not_warp() -> bool:
 	# never freeze with vx≈0 and never warp onto the upper partner pipe lip.
 	# upper_partner_pipe_id is transfer-only.
 	var sim := PlayerSim.new()
-	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
+	if not sim.setup_from_path("res://debug_levels/layered_demo.ssk"):
 		push_error("inbound: setup")
 		return false
 	sim.fall_duration = 5.0
@@ -6149,7 +6149,7 @@ func _layered_hole_not_invisible_wall() -> bool:
 	# L1 `.` gap between pipe islands must be fall-through, not a Z wall —
 	# including when skating near the pipe (mount then ride off the pipe end).
 	var sim := PlayerSim.new()
-	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
+	if not sim.setup_from_path("res://debug_levels/layered_demo.ssk"):
 		push_error("hole: setup")
 		return false
 	var cell_h := sim.model.cell_h
@@ -6254,7 +6254,7 @@ func _deck_hash_no_pin_from_floor() -> bool:
 	# `#(((===` — contact with the `#` prism remounts onto the deck top,
 	# never freezes with zero velocity against the vertical face.
 	var sim := PlayerSim.new()
-	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
+	if not sim.setup_from_path("res://debug_levels/layered_demo.ssk"):
 		push_error("hash: setup")
 		return false
 	var deck: SupportPatch = null
@@ -6344,7 +6344,7 @@ func _l0_lava_gap_no_phantom_wall_climb() -> bool:
 	# Under L1 hole rows, L0 pipes facing lava must air-out at geometric lip —
 	# not climb a phantom WALL_EXTENSION toward missing L1 geometry.
 	var sim := PlayerSim.new()
-	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
+	if not sim.setup_from_path("res://debug_levels/layered_demo.ssk"):
 		push_error("lava: setup")
 		return false
 	var right: PipeSurface = null
@@ -6848,7 +6848,7 @@ func _hang_persists_off_edge_z_span() -> bool:
 ## must land the floor at lock X (map edge) — not fall through to the void.
 func _hang_depth_transfer_lands_edge_floor() -> bool:
 	var sim := PlayerSim.new()
-	if not sim.setup_from_path("res://levels/air_transfer.ssk"):
+	if not sim.setup_from_path("res://debug_levels/air_transfer.ssk"):
 		push_error("hang edge floor: setup")
 		return false
 	var hung := false
@@ -6911,7 +6911,7 @@ func _hang_depth_transfer_lands_edge_floor() -> bool:
 ## phase through the lethal pad into the void below the park.
 func _hang_depth_transfer_lands_edge_lava() -> bool:
 	var sim := PlayerSim.new()
-	if not sim.setup_from_path("res://levels/air_transfer.ssk"):
+	if not sim.setup_from_path("res://debug_levels/air_transfer.ssk"):
 		push_error("hang edge lava: setup")
 		return false
 	var hung := false
@@ -7097,7 +7097,7 @@ func _deck_ride_off_rejects_actual_pipe_solid() -> bool:
 ## through its solid while falling.
 func _falling_deck_launch_rejects_abutting_l1_pipe() -> bool:
 	var sim := PlayerSim.new()
-	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
+	if not sim.setup_from_path("res://debug_levels/layered_demo.ssk"):
 		push_error("falling L1 deck launch: setup")
 		return false
 	var target: PipeSurface = null
@@ -7199,7 +7199,7 @@ func _falling_deck_launch_rejects_abutting_l1_pipe() -> bool:
 ## Joint wipeout parks on approach side with lean away from the face.
 func _joint_wipeout_fall_tip_stays_approach() -> bool:
 	var sim := PlayerSim.new()
-	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
+	if not sim.setup_from_path("res://debug_levels/layered_demo.ssk"):
 		push_error("wipeout park: setup")
 		return false
 	sim.fall_duration = 5.0
@@ -7248,7 +7248,7 @@ func _joint_wipeout_fall_tip_stays_approach() -> bool:
 ## Next-spine: facing cast, opposite side, above target lip; never self lip.
 func _layered_next_spine_keeps_l1_past_l0_lip() -> bool:
 	var sim := PlayerSim.new()
-	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
+	if not sim.setup_from_path("res://debug_levels/layered_demo.ssk"):
 		push_error("next spine: setup")
 		return false
 	var left: PipeSurface = sim.model.pipes.get("pipe_2_L0_S0")
@@ -7317,7 +7317,7 @@ func _layered_next_spine_keeps_l1_past_l0_lip() -> bool:
 ## Transfer button pulls X onto the next opposite lip, holds facing, clears vx.
 func _transfer_button_lerps_x_holds_facing() -> bool:
 	var sim := PlayerSim.new()
-	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
+	if not sim.setup_from_path("res://debug_levels/layered_demo.ssk"):
 		push_error("transfer lerp: setup")
 		return false
 	var left: PipeSurface = sim.model.pipes.get("pipe_2_L0_S0")
@@ -7425,7 +7425,7 @@ func _transfer_button_lerps_x_holds_facing() -> bool:
 ## transfer must reject — accepting snaps X through the ramp and falls forever.
 func _transfer_rejects_below_hang_lip_after_floor_ollie() -> bool:
 	var sim := PlayerSim.new()
-	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
+	if not sim.setup_from_path("res://debug_levels/layered_demo.ssk"):
 		push_error("below-hang transfer: setup")
 		return false
 	var l1r: PipeSurface = sim.model.pipes.get("pipe_5_L1_S1")
@@ -7497,7 +7497,7 @@ func _transfer_rejects_below_hang_lip_after_floor_ollie() -> bool:
 ## re-anchor hang onto the L0 wall top — X lerp alone is a no-op at dx=0.
 func _transfer_shared_x_spine_reanchors_hang() -> bool:
 	var sim := PlayerSim.new()
-	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
+	if not sim.setup_from_path("res://debug_levels/layered_demo.ssk"):
 		push_error("shared-x transfer: setup")
 		return false
 	var l1l: PipeSurface = sim.model.pipes.get("pipe_4_L1_S0")
@@ -7871,7 +7871,7 @@ func _right_pipe_deck_slow_leave_lands_floor() -> bool:
 
 func _layered_deck_back_ride_off_stays_free() -> bool:
 	var sim := PlayerSim.new()
-	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
+	if not sim.setup_from_path("res://debug_levels/layered_demo.ssk"):
 		push_error("deck back fall: setup")
 		return false
 	var deck: SupportPatch = sim.model.patches.get("deck_2_L1")
@@ -7916,7 +7916,7 @@ func _layered_deck_back_ride_off_stays_free() -> bool:
 ## )))#### at the map edge: skating off the deck must not fall into the void.
 func _map_edge_deck_no_void_exit() -> bool:
 	var sim := PlayerSim.new()
-	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
+	if not sim.setup_from_path("res://debug_levels/layered_demo.ssk"):
 		push_error("edge deck: setup")
 		return false
 	var deck: SupportPatch = null
@@ -7968,7 +7968,7 @@ func _map_edge_deck_no_void_exit() -> bool:
 ## Crossing one while hanging used to invalidate the anchor and drop to void.
 func _layered_outer_coping_seam_stays_anchored() -> bool:
 	var sim := PlayerSim.new()
-	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
+	if not sim.setup_from_path("res://debug_levels/layered_demo.ssk"):
 		push_error("coping seam: setup")
 		return false
 	var pipe: PipeSurface = sim.model.pipes.get("pipe_0_L0_S0")
@@ -8015,7 +8015,7 @@ func _layered_outer_coping_seam_stays_anchored() -> bool:
 ## the geometric lip, and not auto-mount the opposite L1 ramp (spine = transfer).
 func _layered_hang_remounts_wall_height() -> bool:
 	var sim := PlayerSim.new()
-	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
+	if not sim.setup_from_path("res://debug_levels/layered_demo.ssk"):
 		push_error("wall remount: setup")
 		return false
 	var l0r: PipeSurface = sim.model.pipes.get("pipe_1_L0_S1")
@@ -8112,14 +8112,14 @@ func _layered_hang_remounts_wall_height() -> bool:
 
 
 func _layered_l1_coping_returns_source() -> bool:
-	var model := IdlCompiler.compile_path("res://levels/layered_demo.ssk")
+	var model := IdlCompiler.compile_path("res://debug_levels/layered_demo.ssk")
 	for pipe_id in model.all_pipe_ids():
 		var pipe: PipeSurface = model.pipes[pipe_id]
 		var sample := pipe.sample_at_z((pipe.z_min + pipe.z_max) * 0.5)
 		if float(sample.base_height) < 100.0:
 			continue
 		var sim := PlayerSim.new()
-		if not sim.setup_from_path("res://levels/layered_demo.ssk"):
+		if not sim.setup_from_path("res://debug_levels/layered_demo.ssk"):
 			return false
 		var z := (pipe.z_min + pipe.z_max) * 0.5
 		var theta := 0.9 * PI * 0.5
@@ -8163,7 +8163,7 @@ func _layered_l1_coping_returns_source() -> bool:
 
 func _wall_z_exit_consumes_motion() -> bool:
 	var sim := PlayerSim.new()
-	if not sim.setup_from_path("res://levels/layered_demo.ssk"):
+	if not sim.setup_from_path("res://debug_levels/layered_demo.ssk"):
 		return false
 	var wall: WallSurface = null
 	for id in sim.model.all_wall_ids():

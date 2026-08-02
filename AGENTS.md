@@ -61,11 +61,12 @@ godot4 --headless --path . --script res://tests/test_runner.gd
 
 Prefer `LevelLoader.parse_text` over `load_path` in tests (`load_path` aborts the process on bad maps).
 
-Level fixtures for tests live in `tests/levels/` — do not point tests at `res://levels/` (playable maps). Analytical sim fixtures live in `tests/levels/sim/`; suite under `tests/sim/`.
+Level fixtures for tests live in `tests/levels/` — prefer those over playable maps.
+Playable maps: `res://levels/`. Debug/prototype maps: `res://debug_levels/` (menu-listed only when `DebugTools.available`). Analytical sim fixtures live in `tests/levels/sim/`; suite under `tests/sim/`.
 
 ## Renderer (3D)
 
-- Playable maps live in `res://levels/` and load into `scenes/main.tscn` (Godot 3D park + analytical PlayerSim).
+- Playable maps live in `res://levels/`; debug maps in `res://debug_levels/`. Both load into `scenes/main.tscn` (Godot 3D park + analytical PlayerSim).
 - Escape (`menu_back`) returns to the start menu.
 
 ### Agent iteration loop

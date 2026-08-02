@@ -1,9 +1,11 @@
 extends Control
 ## Start menu: splash title + buttons for .ssk in res://levels/.
+## In debug mode, also lists res://debug_levels/ after the playable set.
 ## Files whose names start with `_` (e.g. `_template.ssk`) are skipped.
 ## Arrow / WASD moves focus; Enter selects; list scrolls with focus.
 
 const LEVELS_DIR := "res://levels"
+const DEBUG_LEVELS_DIR := "res://debug_levels"
 
 @onready var _list: VBoxContainer = %LevelList
 @onready var _scroll: ScrollContainer = %LevelScroll
@@ -49,6 +51,10 @@ func _move_focus(delta: int) -> void:
 	_buttons[next].grab_focus()
 
 
+func _debug_levels_enabled() -> bool:
+	return DebugTools != null and DebugTools.available
+
+
 func _populate_levels() -> void:
 	for child in _list.get_children():
 		child.free()
@@ -58,6 +64,8 @@ func _populate_levels() -> void:
 	var style_hover := _make_button_style(Color(0.22, 0.18, 0.12, 0.98), Color(0.95, 0.65, 0.3, 0.9))
 
 	var paths := _scan_level_paths(LEVELS_DIR)
+	if _debug_levels_enabled():
+		paths.append_array(_scan_level_paths(DEBUG_LEVELS_DIR))
 	if paths.is_empty():
 		_status.text = "No levels found in res://levels/"
 		return
@@ -127,11 +135,11 @@ func _scan_level_paths(dir_path: String) -> PackedStringArray:
 
 
 func _display_name_for(path: String) -> String:
-	var f := FileAccess.open(path, FileAccess.READ)
-	if f == null:
+	if not FileAccess.file_exists(path):
 		return path.get_file().get_basename()
-	var text := f.get_as_text()
-	f.close()
+	var text := FileAccess.get_file_as_bytes(path).get_string_from_utf8()
+	if text.is_empty():
+		return path.get_file().get_basename()
 	var spec: LevelSpec = LevelLoader.parse_text(text, path.get_file().get_basename(), path)
 	if spec != null and spec.name != "":
 		return spec.name

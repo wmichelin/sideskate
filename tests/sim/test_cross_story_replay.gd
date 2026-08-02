@@ -5,7 +5,7 @@ extends RefCounted
 func run() -> bool:
 	return (
 		_run_cycle("res://tests/levels/sim/sim_cross_story.ssk", "", NAN)
-		and _run_cycle("res://levels/layered_demo.ssk", "pipe_1_L0_S1", 1800.0)
+		and _run_cycle("res://debug_levels/layered_demo.ssk", "pipe_1_L0_S1", 1800.0)
 	)
 
 

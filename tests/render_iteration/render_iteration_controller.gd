@@ -23,7 +23,7 @@ func _run() -> void:
 	var mode: String = str(args.get("mode", "3d-only"))
 	var wait_frames: int = int(args.get("wait_frames", 4))
 
-	var path := "res://levels/%s.ssk" % pair
+	var path := "res://debug_levels/%s.ssk" % pair
 	if not FileAccess.file_exists(path):
 		push_error("missing level %s" % path)
 		get_tree().quit(1)
