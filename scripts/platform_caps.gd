@@ -7,11 +7,13 @@ extends RefCounted
 static var mobile_os_override: Variant = null
 ## When set to a bool, overrides the web phone/tablet probe (tests only).
 static var web_mobile_probe_override: Variant = null
-## Set after a real screen-touch on Web (itch often lacks reliable probes until then).
+## Set after a real screen-touch on Web.
 static var _web_touch_seen: bool = false
+## Desktop Web: first keyboard gameplay key prefers keyboard and hides the pad.
+static var _web_prefer_keyboard: bool = false
 static var _web_probe_cache: Variant = null
 
-const _WEB_MOBILE_JS := "(function(){var ua=navigator.userAgent||'';if(/Android|webOS|iPhone|iPod|iPad|Mobile|Tablet|BlackBerry|IEMobile|Opera Mini/i.test(ua))return true;if(navigator.maxTouchPoints>1&&/Macintosh/i.test(ua))return true;if(typeof navigator.maxTouchPoints==='number'&&navigator.maxTouchPoints>0&&typeof window.matchMedia==='function'&&window.matchMedia('(pointer: coarse)').matches)return true;return false;})()"
+const _WEB_MOBILE_JS := "(function(){var ua=navigator.userAgent||'';if(/Android|webOS|iPhone|iPod|iPad|Mobile|Tablet|BlackBerry|IEMobile|Opera Mini/i.test(ua))return true;if(navigator.maxTouchPoints>1&&/Macintosh/i.test(ua))return true;if(typeof navigator.maxTouchPoints==='number'&&navigator.maxTouchPoints>0)return true;if(typeof window.matchMedia==='function'&&window.matchMedia('(pointer: coarse)').matches)return true;return false;})()"
 
 
 static func is_mobile_os() -> bool:
@@ -22,31 +24,36 @@ static func is_mobile_os() -> bool:
 
 
 static func should_show_touch_controls() -> bool:
-	## Native mobile, or HTML5 phone/tablet (itch play-in-browser).
+	## Native mobile, or HTML5 (itch). Web shows by default; keyboard can dismiss.
 	if mobile_os_override is bool:
 		return mobile_os_override as bool
 	if OS.has_feature("mobile"):
 		return true
 	if not OS.has_feature("web"):
 		return false
-	# Any of these is enough — itch iframes are flaky on a single signal.
-	if _web_touch_seen:
-		return true
-	if DisplayServer.is_touchscreen_available():
-		return true
-	if _web_is_phone_or_tablet():
-		return true
-	return false
+	if _web_prefer_keyboard:
+		return false
+	# HTML5 itch: always show unless the player opted into keyboard.
+	# Probes are best-effort; phones must not depend on them alone.
+	return true
 
 
 static func note_screen_touch() -> void:
 	_web_touch_seen = true
+	_web_prefer_keyboard = false
+
+
+static func note_keyboard_gameplay() -> void:
+	## Desktop browser with a keyboard — hide the virtual pad.
+	if OS.has_feature("web"):
+		_web_prefer_keyboard = true
 
 
 static func clear_overrides() -> void:
 	mobile_os_override = null
 	web_mobile_probe_override = null
 	_web_touch_seen = false
+	_web_prefer_keyboard = false
 	_web_probe_cache = null
 
 
@@ -71,7 +78,6 @@ static func _web_is_phone_or_tablet() -> bool:
 
 
 static func _eval_web_js(code: String) -> Variant:
-	## JavaScriptBridge is a Web singleton; call it directly (ClassDB static call is unreliable).
 	if not OS.has_feature("web"):
 		return null
 	return JavaScriptBridge.eval(code, true)

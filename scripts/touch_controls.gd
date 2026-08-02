@@ -92,10 +92,17 @@ func _process(_delta: float) -> void:
 
 
 func _input(event: InputEvent) -> void:
-	# Even while hidden: first finger down on Web unlocks the overlay.
+	# Even while hidden: finger down re-enables Web touch UI (after keyboard dismiss).
 	if event is InputEventScreenTouch and (event as InputEventScreenTouch).pressed:
 		_PlatformCaps.note_screen_touch()
 		if not _joypad_hidden:
+			_refresh_visibility()
+	# Desktop Web: pressing gameplay keys dismisses the virtual pad.
+	if event is InputEventKey and (event as InputEventKey).pressed and not (event as InputEventKey).echo:
+		if _is_gameplay_key(event as InputEventKey):
+			_PlatformCaps.note_keyboard_gameplay()
+			_clear_all_actions()
+			_reset_stick_visual()
 			_refresh_visibility()
 	if not is_overlay_active():
 		return
@@ -164,6 +171,15 @@ func _on_pause_pressed() -> void:
 
 
 func _apply_safe_area() -> void:
+	# Web/itch: DisplayServer safe-area often uses a different coordinate space than
+	# the game canvas, which can collapse this Control to zero size (invisible HUD).
+	if OS.has_feature("web"):
+		_root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		_root.offset_left = 16.0
+		_root.offset_top = 16.0
+		_root.offset_right = -16.0
+		_root.offset_bottom = -16.0
+		return
 	var win := DisplayServer.window_get_size()
 	var safe := DisplayServer.get_display_safe_area()
 	if win.x <= 0 or win.y <= 0:
@@ -172,6 +188,8 @@ func _apply_safe_area() -> void:
 	var top := maxi(0, safe.position.y)
 	var right := maxi(0, win.x - (safe.position.x + safe.size.x))
 	var bottom := maxi(0, win.y - (safe.position.y + safe.size.y))
+	if (win.x - left - right) < int(win.x * 0.5) or (win.y - top - bottom) < int(win.y * 0.5):
+		return
 	_root.offset_left = float(left)
 	_root.offset_top = float(top)
 	_root.offset_right = float(-right)
@@ -305,19 +323,19 @@ func _style_chrome() -> void:
 	_style_hit_button(_pause_btn, 18)
 	_style_hit_button(_ollie_btn, 20)
 	_style_hit_button(_transfer_btn, 16)
-	_stick_base.add_theme_stylebox_override("panel", _panel_style(Color(0.12, 0.13, 0.15, 0.35)))
-	_stick_knob.add_theme_stylebox_override("panel", _panel_style(Color(0.95, 0.65, 0.3, 0.55)))
+	_stick_base.add_theme_stylebox_override("panel", _panel_style(Color(0.12, 0.13, 0.15, 0.75)))
+	_stick_knob.add_theme_stylebox_override("panel", _panel_style(Color(0.95, 0.65, 0.3, 0.85)))
 
 
 func _style_hit_button(btn: Button, font_size: int) -> void:
-	var normal := _panel_style(Color(0.14, 0.16, 0.18, 0.55))
-	var pressed := _panel_style(Color(0.95, 0.65, 0.3, 0.55))
+	var normal := _panel_style(Color(0.12, 0.13, 0.15, 0.82))
+	var pressed := _panel_style(Color(0.95, 0.65, 0.3, 0.9))
 	btn.focus_mode = Control.FOCUS_NONE
 	btn.add_theme_font_size_override("font_size", font_size)
 	btn.add_theme_stylebox_override("normal", normal)
 	btn.add_theme_stylebox_override("hover", pressed)
 	btn.add_theme_stylebox_override("pressed", pressed)
-	btn.add_theme_color_override("font_color", Color(0.96, 0.93, 0.88, 0.95))
+	btn.add_theme_color_override("font_color", Color(0.96, 0.93, 0.88, 1.0))
 
 
 func _panel_style(bg: Color) -> StyleBoxFlat:
@@ -329,3 +347,14 @@ func _panel_style(bg: Color) -> StyleBoxFlat:
 	s.content_margin_right = 8
 	s.content_margin_bottom = 8
 	return s
+
+
+func _is_gameplay_key(event: InputEventKey) -> bool:
+	var code := event.keycode
+	if code == KEY_NONE:
+		code = event.physical_keycode
+	match code:
+		KEY_A, KEY_D, KEY_W, KEY_S, KEY_LEFT, KEY_RIGHT, KEY_UP, KEY_DOWN, KEY_SPACE, KEY_E, KEY_SHIFT:
+			return true
+		_:
+			return false

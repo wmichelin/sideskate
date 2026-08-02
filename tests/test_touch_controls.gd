@@ -24,13 +24,9 @@ func run() -> bool:
 		push_error("web_mobile_probe_override false should not force true off-web")
 		return false
 	PlatformCaps.clear_overrides()
-	PlatformCaps.note_screen_touch()
-	# note_screen_touch alone is not enough off-web (feature gate); clear after.
 	if PlatformCaps.should_show_touch_controls():
-		# Desktop headless must stay false unless override/mobile.
-		push_error("touch-seen should not show controls off-web")
+		push_error("desktop headless must not show touch controls")
 		return false
-	PlatformCaps.clear_overrides()
 
 	var zero: Dictionary = TouchControls.axes_from_stick(Vector2.ZERO)
 	if float(zero.left) != 0.0 or float(zero.right) != 0.0:
