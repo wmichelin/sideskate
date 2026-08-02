@@ -4,17 +4,18 @@
 [ext_resource type="Script" uid="uid://bfqwqs48r0cyd" path="res://scripts/player.gd" id="4_player"]
 [ext_resource type="Script" uid="uid://ccsid5t7kcfm5" path="res://scripts/pseudo_depth_body.gd" id="5_depth"]
 [ext_resource type="Script" uid="uid://cy2j0ajrjipwf" path="res://scripts/debug_overlay.gd" id="6_debug"]
-[ext_resource type="Script" path="res://scripts/main.gd" id="7_main"]
+[ext_resource type="Script" uid="uid://bt2eynnt5cbqm" path="res://scripts/main.gd" id="7_main"]
 [ext_resource type="Script" uid="uid://b5c20xe6x0frg" path="res://scripts/debug_sliders.gd" id="9_sliders"]
 [ext_resource type="Script" uid="uid://cuasx6cbqxf7j" path="res://scripts/fps_debug.gd" id="11_fps"]
 [ext_resource type="Script" uid="uid://d1v6q74p1adtk" path="res://scripts/death_overlay.gd" id="12_death"]
-[ext_resource type="Script" path="res://scripts/rendering_3d/level_visual_3d.gd" id="13_vis3d"]
-[ext_resource type="Script" path="res://scripts/rendering_3d/logical_pose_presenter_3d.gd" id="14_pose3d"]
-[ext_resource type="Script" path="res://scripts/rendering_3d/camera_rig_3d.gd" id="15_cam3d"]
-[ext_resource type="Script" path="res://scripts/rendering_3d/level_debug_3d.gd" id="16_dbg3d"]
-[ext_resource type="Script" path="res://scripts/rendering_3d/player_debug_3d.gd" id="17_pdbg3d"]
-[ext_resource type="Script" path="res://scripts/physics/level_collision_3d.gd" id="18_col3d"]
+[ext_resource type="Script" uid="uid://1gatbflwxuaj" path="res://scripts/rendering_3d/level_visual_3d.gd" id="13_vis3d"]
+[ext_resource type="Script" uid="uid://itpnidvnxw62" path="res://scripts/rendering_3d/logical_pose_presenter_3d.gd" id="14_pose3d"]
+[ext_resource type="Script" uid="uid://bohj4hsqpxfqu" path="res://scripts/rendering_3d/camera_rig_3d.gd" id="15_cam3d"]
+[ext_resource type="Script" uid="uid://dbamdercsg2at" path="res://scripts/rendering_3d/level_debug_3d.gd" id="16_dbg3d"]
+[ext_resource type="Script" uid="uid://c0m4x4te3awdd" path="res://scripts/rendering_3d/player_debug_3d.gd" id="17_pdbg3d"]
+[ext_resource type="Script" uid="uid://cjlnvlwo6kwnm" path="res://scripts/physics/level_collision_3d.gd" id="18_col3d"]
 [ext_resource type="PackedScene" uid="uid://cpausemenu01" path="res://scenes/pause_menu.tscn" id="19_pause"]
+[ext_resource type="PackedScene" uid="uid://dd2p54r525sjh" path="res://assets/characters/freemocap_skater.glb" id="20_skater"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_player"]
 radius = 0.09
@@ -34,73 +35,63 @@ corner_radius_bottom_left = 8
 [node name="Main" type="Node" unique_id=2057660755]
 script = ExtResource("7_main")
 
-[node name="PauseMenu" parent="." instance=ExtResource("19_pause")]
+[node name="PauseMenu" parent="." unique_id=1835393424 instance=ExtResource("19_pause")]
 
-[node name="World3D" type="Node3D" parent="."]
+[node name="World3D" type="Node3D" parent="." unique_id=266196311]
 
-[node name="WorldEnvironment" type="WorldEnvironment" parent="World3D"]
+[node name="WorldEnvironment" type="WorldEnvironment" parent="World3D" unique_id=765849474]
 
-[node name="KeyLight" type="DirectionalLight3D" parent="World3D"]
+[node name="KeyLight" type="DirectionalLight3D" parent="World3D" unique_id=1484092810]
 transform = Transform3D(0.866, -0.354, 0.354, 0, 0.707, 0.707, -0.5, -0.612, 0.612, 0, 400, 0)
 light_energy = 1.15
 shadow_enabled = true
 
-[node name="FillLight" type="DirectionalLight3D" parent="World3D"]
-transform = Transform3D(0.707, 0.0, -0.707, 0.0, 1, 0, 0.707, 0, 0.707, 0, 200, 0)
+[node name="FillLight" type="DirectionalLight3D" parent="World3D" unique_id=1896369180]
+transform = Transform3D(0.707, 0, -0.707, 0, 1, 0, 0.707, 0, 0.707, 0, 200, 0)
 light_energy = 0.35
 
-[node name="LevelVisual3D" type="Node3D" parent="World3D"]
+[node name="LevelVisual3D" type="Node3D" parent="World3D" unique_id=1792379249]
 script = ExtResource("13_vis3d")
-level_path = NodePath("../../RampLevel")
 
-[node name="LevelCollision3D" type="Node3D" parent="World3D"]
+[node name="LevelCollision3D" type="Node3D" parent="World3D" unique_id=1726207490]
 script = ExtResource("18_col3d")
-level_path = NodePath("../../RampLevel")
 build_bodies = true
 
-[node name="PlayerVisual" type="Node3D" parent="World3D"]
+[node name="PlayerVisual" type="Node3D" parent="World3D" unique_id=1557193557]
 script = ExtResource("14_pose3d")
 depth_path = NodePath("../../Player/PseudoDepthBody")
 player_path = NodePath("../../Player")
+skater_mesh = ExtResource("20_skater")
+skater_scale = 1.27
+skater_anim_speed = 3.4499999999999997
+skater_anim_end_frac = 0.52
 
-[node name="CameraRig3D" type="Node3D" parent="World3D"]
+[node name="CameraRig3D" type="Node3D" parent="World3D" unique_id=797045660]
 script = ExtResource("15_cam3d")
-target_path = NodePath("../PlayerVisual")
-player_path = NodePath("../../Player")
-distance = 3.1
-look_ahead = 0.8
 
-[node name="LevelDebug3D" type="Node3D" parent="World3D"]
+[node name="LevelDebug3D" type="Node3D" parent="World3D" unique_id=204721764]
 script = ExtResource("16_dbg3d")
 player_path = NodePath("../../Player")
-level_path = NodePath("../../RampLevel")
-edge_lift = 0.0035
 
-[node name="PlayerDebug3D" type="Node3D" parent="World3D"]
+[node name="PlayerDebug3D" type="Node3D" parent="World3D" unique_id=1251104233]
 script = ExtResource("17_pdbg3d")
 player_path = NodePath("../../Player")
-units_per_speed = 0.0008
-min_length = 0.18
-max_length = 0.9
-head_offset = Vector3(0, 0.52, 0)
 
 [node name="RampLevel" type="Node2D" parent="." unique_id=1434297277]
 script = ExtResource("1_level")
 
 [node name="Player" type="CharacterBody3D" parent="." unique_id=1706349078]
-collision_layer = 1
 collision_mask = 30
 motion_mode = 1
 floor_snap_length = 0.08
 script = ExtResource("4_player")
 
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Player"]
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Player" unique_id=826861739]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.2, 0)
 shape = SubResource("CapsuleShape3D_player")
 
 [node name="PseudoDepthBody" type="Node" parent="Player" unique_id=1532835232]
 script = ExtResource("5_depth")
-level_path = NodePath("../../RampLevel")
 
 [node name="DebugOverlay" type="CanvasLayer" parent="." unique_id=1788673540]
 script = ExtResource("6_debug")
@@ -653,7 +644,6 @@ theme_override_constants/separation = 8
 
 [node name="Check" type="CheckButton" parent="DebugSliders/Panel/VBox/Body/EdgeLinesRow" unique_id=1847293052]
 layout_mode = 2
-button_pressed = false
 text = "edge lattice"
 
 [node name="MotionVectorsRow" type="HBoxContainer" parent="DebugSliders/Panel/VBox/Body" unique_id=495672004]
@@ -740,6 +730,5 @@ theme_override_font_sizes/font_size = 12
 text = "3"
 horizontal_alignment = 2
 
-[node name="DeathOverlay" type="CanvasLayer" parent="."]
-groups = ["death_overlay"]
+[node name="DeathOverlay" type="CanvasLayer" parent="." unique_id=49574094]
 script = ExtResource("12_death")

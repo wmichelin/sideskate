@@ -13,10 +13,33 @@ const CollisionLayersScript := preload("res://scripts/physics/collision_layers.g
 @export var board_size: Vector3 = Vector3(0.40, 0.05, 0.14)
 ## Keep the board bottom this far above the feet/support plane (avoids floor Z-fight).
 @export_range(0.0, 0.05, 0.001) var board_clearance: float = 0.012
+## Optional skinned skater (GLB). When set, replaces the orange box while riding.
+@export var skater_mesh: PackedScene
+@export_group("Skater Look")
+## Authored standing height of `skater_mesh` in meters (bind/export scale).
+@export_range(0.1, 3.0, 0.01) var skater_height_m: float = 1.7
+## Visual scale (1 = ~0.55 m on the board). Fall box still uses `body_size`.
+@export_range(0.25, 3.0, 0.01) var skater_scale: float = 1.0
+## Extra yaw so mesh forward matches board nose (+X).
+@export_range(-PI, PI, 0.01) var skater_yaw_offset: float = -PI * 0.5
+@export_group("Skater Ollie Anim")
+## Clip name inside the skater GLB (FreeMoCap export defaults to `kickflip`).
+@export var skater_ollie_anim: String = "kickflip"
+## Playback rate for the ollie clip. Higher = faster (1 = authored, 4 = 4×).
+@export_range(0.05, 12.0, 0.05) var skater_anim_speed: float = 2.5
+## Stop and return to idle after this fraction of the clip (1 = full).
+@export_range(0.05, 1.0, 0.01) var skater_anim_end_frac: float = 0.45
+
+const _SKATER_BASE_DISPLAY_HEIGHT_M := 0.55
 
 var _body: MeshInstance3D
 var _facing_mark: MeshInstance3D
 var _board: Node3D
+var _skater: Node3D
+var _skater_anim: AnimationPlayer
+var _skater_anim_playing: bool = false
+var _skater_anim_end_sec: float = 0.0
+var _skater_on_fall: bool = false
 var _rider_fall: FallBoxConstraint
 var _board_fall: FallBoxConstraint
 var _depth: PseudoDepthBody
@@ -81,6 +104,8 @@ func _build_meshes() -> void:
 	_facing_mark.position = Vector3(body_size.x * 0.5 + 0.01, 0.0, 0.0)
 	_body.add_child(_facing_mark)
 
+	_mount_skater_mesh()
+
 	_board = Node3D.new()
 	_board.name = "Board"
 	# Board bottom stays board_clearance above the feet/support plane.
@@ -120,6 +145,118 @@ func _build_meshes() -> void:
 	# World-space siblings so the moving pose root doesn't drag the rigid bodies.
 	add_child(_rider_fall)
 	add_child(_board_fall)
+
+
+func _mount_skater_mesh() -> void:
+	_skater = null
+	if skater_mesh == null:
+		return
+	var inst := skater_mesh.instantiate()
+	if not (inst is Node3D):
+		inst.queue_free()
+		return
+	_skater = inst as Node3D
+	_skater.name = "SkaterCharacter"
+	# Feet at origin in the GLB — stand on the board top.
+	_skater.position = Vector3(0.0, board_clearance + board_size.y, 0.0)
+	var s := _skater_uniform_scale()
+	_skater.scale = Vector3(s, s, s)
+	_skater.rotation = Vector3(0.0, skater_yaw_offset, 0.0)
+	add_child(_skater)
+	_body.visible = false
+	if _facing_mark != null:
+		_facing_mark.visible = false
+	_configure_skater_animation(_skater)
+	_polish_skater_meshes(_skater)
+
+
+func _skater_uniform_scale() -> float:
+	return (_SKATER_BASE_DISPLAY_HEIGHT_M * skater_scale) / maxf(skater_height_m, 0.01)
+
+
+func _polish_skater_meshes(root: Node) -> void:
+	## Ensure imported surfaces cast shadows and read a bit cleaner in Forward+.
+	var stack: Array[Node] = [root]
+	while not stack.is_empty():
+		var n: Node = stack.pop_back()
+		if n is MeshInstance3D:
+			var mi := n as MeshInstance3D
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+			mi.gi_mode = GeometryInstance3D.GI_MODE_DISABLED
+		for child in n.get_children():
+			stack.append(child)
+
+
+func _configure_skater_animation(root: Node) -> void:
+	_skater_anim = null
+	_skater_anim_playing = false
+	var players: Array[AnimationPlayer] = []
+	_collect_animation_players(root, players)
+	if players.is_empty():
+		return
+	_skater_anim = players[0]
+	if not _skater_anim.animation_finished.is_connected(_on_skater_anim_finished):
+		_skater_anim.animation_finished.connect(_on_skater_anim_finished)
+	_hold_skater_idle()
+
+
+func _skater_clip_name() -> String:
+	if _skater_anim == null:
+		return ""
+	if _skater_anim.has_animation(skater_ollie_anim):
+		return skater_ollie_anim
+	var clips := _skater_anim.get_animation_list()
+	return clips[0] if not clips.is_empty() else ""
+
+
+func _hold_skater_idle() -> void:
+	if _skater_anim == null:
+		return
+	var clip := _skater_clip_name()
+	if clip.is_empty():
+		return
+	_skater_anim_playing = false
+	_skater_anim_end_sec = 0.0
+	_skater_anim.speed_scale = 1.0
+	_skater_anim.play(clip)
+	_skater_anim.seek(0.0, true)
+	_skater_anim.pause()
+
+
+func _play_skater_ollie() -> void:
+	if _skater_anim == null:
+		return
+	var clip := _skater_clip_name()
+	if clip.is_empty():
+		return
+	var anim := _skater_anim.get_animation(clip)
+	var length := anim.length if anim != null else 0.0
+	_skater_anim_end_sec = length * clampf(skater_anim_end_frac, 0.05, 1.0)
+	_skater_anim_playing = true
+	_skater_anim.speed_scale = maxf(skater_anim_speed, 0.01)
+	_skater_anim.play(clip)
+	_skater_anim.seek(0.0, true)
+
+
+func _on_skater_anim_finished(_anim_name: StringName) -> void:
+	if _skater_anim_playing:
+		_hold_skater_idle()
+
+
+func _update_skater_anim_cutoff() -> void:
+	if not _skater_anim_playing or _skater_anim == null:
+		return
+	if _skater_anim_end_sec <= 0.0:
+		return
+	if _skater_anim.current_animation_position >= _skater_anim_end_sec - 0.0001:
+		_hold_skater_idle()
+
+
+func _collect_animation_players(node: Node, out: Array[AnimationPlayer]) -> void:
+	if node is AnimationPlayer:
+		out.append(node as AnimationPlayer)
+	for child in node.get_children():
+		_collect_animation_players(child, out)
 
 
 func _make_fall_body(
@@ -239,9 +376,18 @@ func apply_pose(pose: LogicalPose) -> void:
 	# Board above support plane; rider stands on the board top.
 	var board_pos := Vector3(0.0, board_clearance + board_size.y * 0.5, 0.0)
 	var body_pos := Vector3(0.0, board_clearance + board_size.y + body_size.y * 0.5, 0.0)
+	var skater_pos := Vector3(0.0, board_clearance + board_size.y, 0.0)
 	var body_basis_yaw := Vector3(0.0, body_yaw, 0.0)
 	var body_scl := Vector3(-face, 1.0, 1.0)
-	if _body and _body.visible:
+	# Skinned mesh: yaw-turn to face (no X-mirror — that inverted the character).
+	var skater_yaw := body_yaw + skater_yaw_offset + (PI if face < 0.0 else 0.0)
+	var skater_uniform := _skater_uniform_scale()
+	# While ragdolling, skater is parented to RiderFall — don't overwrite its transform.
+	if _skater != null and _skater.visible and not _skater_on_fall:
+		_skater.scale = Vector3(skater_uniform, skater_uniform, skater_uniform)
+		_skater.position = skater_pos
+		_skater.rotation = Vector3(0.0, skater_yaw, 0.0)
+	elif _body and _body.visible and not _skater_on_fall:
 		_body.scale = body_scl
 		_body.position = body_pos
 		_body.rotation = body_basis_yaw
@@ -255,10 +401,57 @@ func apply_pose(pose: LogicalPose) -> void:
 
 
 func _set_pose_meshes_visible(is_visible: bool) -> void:
-	if _body:
+	# Skater stays visible on RiderFall during crash; only the ride pose root hides.
+	if _skater != null and not _skater_on_fall:
+		_skater.visible = is_visible
+		if _body:
+			_body.visible = false
+	elif _body and not _skater_on_fall:
 		_body.visible = is_visible
 	if _board:
 		_board.visible = is_visible
+
+
+func _set_rider_fall_proxy_visible(is_visible: bool) -> void:
+	if _rider_fall == null:
+		return
+	var fall_mesh := _rider_fall.get_node_or_null("FallMesh") as Node3D
+	if fall_mesh != null:
+		fall_mesh.visible = is_visible
+	var fall_mark := _rider_fall.get_node_or_null("FallFacingMark") as Node3D
+	if fall_mark != null:
+		fall_mark.visible = is_visible
+
+
+func _attach_skater_to_fall() -> void:
+	if _skater == null or _rider_fall == null or _skater_on_fall:
+		return
+	_hold_skater_idle()
+	var parent := _skater.get_parent()
+	if parent != null:
+		parent.remove_child(_skater)
+	_rider_fall.add_child(_skater)
+	var s := _skater_uniform_scale()
+	_skater.scale = Vector3(s, s, s)
+	# Feet at bottom of the fall box; yaw matches ride offset inside tumble basis.
+	_skater.position = Vector3(0.0, -body_size.y * 0.5, 0.0)
+	_skater.rotation = Vector3(0.0, skater_yaw_offset, 0.0)
+	_skater.visible = true
+	_skater_on_fall = true
+	_set_rider_fall_proxy_visible(false)
+
+
+func _detach_skater_from_fall() -> void:
+	if _skater == null or not _skater_on_fall:
+		return
+	var parent := _skater.get_parent()
+	if parent != null:
+		parent.remove_child(_skater)
+	add_child(_skater)
+	_skater_on_fall = false
+	_skater.visible = true
+	_hold_skater_idle()
+	_set_rider_fall_proxy_visible(true)
 
 
 func _start_fall_bodies(pose: LogicalPose, feet_world: Vector3) -> void:
@@ -323,10 +516,14 @@ func _start_fall_bodies(pose: LogicalPose, feet_world: Vector3) -> void:
 	_board_fall.sleeping = false
 	_board_fall.visible = true
 	_board_fall.apply_impulse(board_basis * Vector3(-lean * 0.6, 0.25, 0.0), Vector3.ZERO)
+	_attach_skater_to_fall()
 	_set_pose_meshes_visible(false)
+	# RiderFall stays visible so the skinned mesh (child) renders while tumbling.
+	_rider_fall.visible = true
 
 
 func _stop_fall_bodies() -> void:
+	_detach_skater_from_fall()
 	for body in _fall_bodies():
 		body.linear_velocity = Vector3.ZERO
 		body.angular_velocity = Vector3.ZERO
@@ -369,17 +566,25 @@ func _interpolated_pose() -> LogicalPose:
 func _process(_delta: float) -> void:
 	if _depth == null or _player == null:
 		_resolve_refs()
+	_update_skater_anim_cutoff()
 	apply_pose(_interpolated_pose())
 
 
 func _physics_process(_delta: float) -> void:
 	if _depth == null or _player == null:
 		_resolve_refs()
+	if (
+		_player != null
+		and _player.has_method("consume_ollie_pop")
+		and bool(_player.call("consume_ollie_pop"))
+	):
+		_play_skater_ollie()
 	var falling := (
 		_player != null and _player.has_method("is_falling") and bool(_player.call("is_falling"))
 	)
 	if falling:
 		if not _was_falling:
+			_hold_skater_idle()
 			var pose := _interpolated_pose()
 			var feet := WorldSpace.logical_to_world(
 				pose.logical_x, pose.logical_z, pose.feet_height

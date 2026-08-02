@@ -438,6 +438,14 @@ func ollie_charge_frac() -> float:
 	return clampf(_sim.ollie_charge, 0.0, 1.0)
 
 
+## Presentation: true once after a successful ollie pop; clears on read.
+func consume_ollie_pop() -> bool:
+	if _sim == null or not _sim.ollie_just_popped:
+		return false
+	_sim.ollie_just_popped = false
+	return true
+
+
 func fall_cooldown_frac() -> float:
 	if _sim == null:
 		return 0.0

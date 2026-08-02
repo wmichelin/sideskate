@@ -37,6 +37,8 @@ var transfer_hold_delay: float = 0.08
 var transfer_hold_eligible: float = 0.0
 var ollie_pressed: bool = false
 var ollie_just_released: bool = false
+## Presentation latch: set when an ollie impulse actually fires; consume via player.
+var ollie_just_popped: bool = false
 ## Hold meter in [0, 1] while charging an available ollie.
 var ollie_charge: float = 0.0
 ## Peak height snapshotted while grounded charging — kept through airborne release.
@@ -91,6 +93,7 @@ func _finish_setup() -> bool:
 	ollie_available = state != null and state.is_grounded()
 	ollie_charge = 0.0
 	ollie_charge_peak_height = 0.0
+	ollie_just_popped = false
 	debug = SimDebugSnapshot.new()
 	trace = SimTrace.new(model.model_hash)
 	trace.record(state, Vector2.ZERO, false)
@@ -123,6 +126,7 @@ func begin_fall() -> void:
 	ollie_charge_peak_height = 0.0
 	ollie_pressed = false
 	ollie_just_released = false
+	ollie_just_popped = false
 	action_just = false
 	action_held = false
 	transfer_hold_eligible = 0.0
@@ -356,6 +360,7 @@ func _try_ollie_jump() -> void:
 		return
 	ollie_available = false
 	_apply_height_impulse(height)
+	ollie_just_popped = true
 
 
 ## Floor/deck → flat height; pipe/ramp/wall → pipe height. Unknown → flat.
