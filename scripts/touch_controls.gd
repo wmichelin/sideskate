@@ -320,9 +320,9 @@ func _reset_stick_visual() -> void:
 
 
 func _style_chrome() -> void:
-	_style_hit_button(_pause_btn, 22)
-	_style_hit_button(_ollie_btn, 26)
-	_style_hit_button(_transfer_btn, 22)
+	_style_hit_button(_pause_btn, 26)
+	_style_hit_button(_ollie_btn, 32)
+	_style_hit_button(_transfer_btn, 26)
 	_stick_base.add_theme_stylebox_override("panel", _panel_style(Color(0.12, 0.13, 0.15, 0.75)))
 	_stick_knob.add_theme_stylebox_override("panel", _panel_style(Color(0.95, 0.65, 0.3, 0.85)))
 
