@@ -6,19 +6,28 @@ extends Control
 
 const LEVELS_DIR := "res://levels"
 const DEBUG_LEVELS_DIR := "res://debug_levels"
+const CONTROLS_SCENE := preload("res://scenes/controls_panel.tscn")
 
 @onready var _list: VBoxContainer = %LevelList
 @onready var _scroll: ScrollContainer = %LevelScroll
 @onready var _status: Label = %StatusLabel
+@onready var _center: VBoxContainer = $Center
+@onready var _controls_btn: Button = %ControlsButton
 
 var _buttons: Array[Button] = []
+var _controls_panel: Control = null
 
 
 func _ready() -> void:
+	# Smaller than level rows (420×48 / 20px); pinned bottom-right in the scene.
+	UiChrome.apply_menu_button(_controls_btn, 16, Vector2(180, 36))
+	_controls_btn.pressed.connect(_open_controls)
 	_populate_levels()
 
 
 func _input(event: InputEvent) -> void:
+	if _controls_panel != null and is_instance_valid(_controls_panel) and _controls_panel.visible:
+		return
 	if _buttons.is_empty():
 		return
 	if event.is_action_pressed("ui_up") or _is_key(event, KEY_W):
@@ -60,8 +69,8 @@ func _populate_levels() -> void:
 		child.free()
 	_buttons.clear()
 
-	var style_normal := _make_button_style(Color(0.14, 0.16, 0.18, 0.95), Color(0.85, 0.55, 0.28, 0.55))
-	var style_hover := _make_button_style(Color(0.22, 0.18, 0.12, 0.98), Color(0.95, 0.65, 0.3, 0.9))
+	var style_normal := UiChrome.button_style(Color(0.14, 0.16, 0.18, 0.95), Color(0.85, 0.55, 0.28, 0.55))
+	var style_hover := UiChrome.button_style(Color(0.22, 0.18, 0.12, 0.98), Color(0.95, 0.65, 0.3, 0.9))
 
 	var paths := _scan_level_paths(LEVELS_DIR)
 	if _debug_levels_enabled():
@@ -101,19 +110,6 @@ func _add_level_button(
 	_buttons.append(btn)
 
 
-func _make_button_style(bg: Color, border: Color) -> StyleBoxFlat:
-	var s := StyleBoxFlat.new()
-	s.bg_color = bg
-	s.border_color = border
-	s.set_border_width_all(1)
-	s.set_corner_radius_all(6)
-	s.content_margin_left = 16
-	s.content_margin_top = 10
-	s.content_margin_right = 16
-	s.content_margin_bottom = 10
-	return s
-
-
 func _scan_level_paths(dir_path: String) -> PackedStringArray:
 	var out: PackedStringArray = PackedStringArray()
 	var dir := DirAccess.open(dir_path)
@@ -149,3 +145,21 @@ func _display_name_for(path: String) -> String:
 func _on_level_pressed(path: String) -> void:
 	_status.text = "Loading…"
 	GameSession.play_level(path)
+
+
+func _open_controls() -> void:
+	_center.visible = false
+	_controls_btn.visible = false
+	if _controls_panel == null or not is_instance_valid(_controls_panel):
+		_controls_panel = CONTROLS_SCENE.instantiate() as Control
+		add_child(_controls_panel)
+		_controls_panel.closed.connect(_on_controls_closed)
+	_controls_panel.visible = true
+
+
+func _on_controls_closed() -> void:
+	if _controls_panel != null and is_instance_valid(_controls_panel):
+		_controls_panel.visible = false
+	_center.visible = true
+	_controls_btn.visible = true
+	_controls_btn.grab_focus()

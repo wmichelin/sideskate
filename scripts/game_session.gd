@@ -14,6 +14,9 @@ func play_level(path: String) -> void:
 
 func return_to_menu() -> void:
 	pending_level_path = ""
+	var tree := get_tree()
+	if tree != null:
+		tree.paused = false
 	_change_scene_deferred(MENU_SCENE)
 
 

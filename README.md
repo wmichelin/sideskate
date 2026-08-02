@@ -15,7 +15,8 @@ Open the project in Godot 4.7+ and play. Starts at the level select menu.
 | WASD / arrows | Move (W = farther) |
 | Space | Hold ollie — forward accel in facing dir |
 | P / T | Spine (rising) / acid drop (falling) |
-| Esc | Back to menu |
+| Esc | Pause (Return to Main Menu from pause) |
+| Y | Fall |
 
 ## Levels
 

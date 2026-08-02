@@ -67,7 +67,7 @@ Playable maps: `res://levels/`. Debug/prototype maps: `res://debug_levels/` (men
 ## Renderer (3D)
 
 - Playable maps live in `res://levels/`; debug maps in `res://debug_levels/`. Both load into `scenes/main.tscn` (Godot 3D park + analytical PlayerSim).
-- Escape (`menu_back`) returns to the start menu.
+- Escape (`menu_back`) opens the in-level pause menu (tree paused); quit from there returns to the start menu.
 
 ### Agent iteration loop
 

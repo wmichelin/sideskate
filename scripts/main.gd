@@ -1,5 +1,8 @@
 extends Node
-## Gameplay root: environment setup + Escape → menu.
+## Gameplay root: environment setup + Escape → pause menu.
+
+
+@onready var _pause_menu: CanvasLayer = $PauseMenu
 
 
 func _ready() -> void:
@@ -10,6 +13,8 @@ func _ready() -> void:
 	var col3d := get_node_or_null("World3D/LevelCollision3D")
 	if col3d != null and col3d.has_method("rebuild"):
 		col3d.call_deferred("rebuild")
+	if _pause_menu != null:
+		_pause_menu.quit_to_menu.connect(_on_quit_to_menu)
 
 
 func _setup_environment() -> void:
@@ -34,7 +39,12 @@ func _setup_environment() -> void:
 		key.shadow_blur = 0.8
 
 
-func _input(event: InputEvent) -> void:
+func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("menu_back") or event.is_action_pressed("ui_cancel"):
-		GameSession.return_to_menu()
-		get_viewport().set_input_as_handled()
+		if _pause_menu != null and _pause_menu.has_method("toggle_pause"):
+			_pause_menu.toggle_pause()
+			get_viewport().set_input_as_handled()
+
+
+func _on_quit_to_menu() -> void:
+	GameSession.return_to_menu()

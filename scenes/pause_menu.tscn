@@ -1,0 +1,71 @@
+[gd_scene format=3 uid="uid://cpausemenu01"]
+
+[ext_resource type="Script" path="res://scripts/pause_menu.gd" id="1_script"]
+[ext_resource type="FontFile" uid="uid://w7jdnx8g3kuy" path="res://assets/fonts/DejaVuSans-Bold.ttf" id="2_bold"]
+
+[node name="PauseMenu" type="CanvasLayer"]
+process_mode = 3
+layer = 80
+script = ExtResource("1_script")
+
+[node name="Root" type="Control" parent="."]
+unique_name_in_owner = true
+process_mode = 3
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Dim" type="ColorRect" parent="Root"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+color = Color(0.04, 0.05, 0.07, 0.72)
+
+[node name="PauseBox" type="VBoxContainer" parent="Root"]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -220.0
+offset_top = -140.0
+offset_right = 220.0
+offset_bottom = 140.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_constants/separation = 14
+
+[node name="Title" type="Label" parent="Root/PauseBox"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.96, 0.93, 0.88, 1)
+theme_override_fonts/font = ExtResource("2_bold")
+theme_override_font_sizes/font_size = 40
+text = "Paused"
+horizontal_alignment = 1
+
+[node name="ResumeButton" type="Button" parent="Root/PauseBox"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 4
+text = "Resume"
+
+[node name="ControlsButton" type="Button" parent="Root/PauseBox"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 4
+text = "Controls"
+
+[node name="QuitButton" type="Button" parent="Root/PauseBox"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 4
+text = "Return to Main Menu"
