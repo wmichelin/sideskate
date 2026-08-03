@@ -74,6 +74,7 @@ func run() -> bool:
 		and _layered_outer_wall_crashes_not_warp()
 		and _layered_hole_not_invisible_wall()
 		and _l1_floor_leave_falls_into_lava_hole()
+		and _l0_floor_ollie_remounts_same_pad()
 		and _deck_hash_no_pin_from_floor()
 		and _l0_lava_gap_no_phantom_wall_climb()
 		and _lava_grounded_contact_kills()
@@ -6142,6 +6143,80 @@ func _layered_outer_wall_crashes_not_warp() -> bool:
 	push_error(
 		"inbound: never fell mode=%s sid=%s h=%.1f"
 		% [sim.state.mode, sim.state.surface_id, sim.state.position.z]
+	)
+	return false
+
+
+func _l0_floor_ollie_remounts_same_pad() -> bool:
+	# Regression: launch-pad edge-leave corridor must not block same-pad ollie
+	# lands (L0 floor support_top was Corridor'd → fall-through).
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://levels/layers.ssk"):
+		push_error("l0 ollie remount: setup")
+		return false
+	var floor_id := ""
+	var start := Vector3.ZERO
+	for pid in sim.model.patches.keys():
+		var pad: SupportPatch = sim.model.patches[pid]
+		if int(pad.kind) != SimKinds.SurfaceKind.FLOOR or pad.lethal:
+			continue
+		if pad.height > 1.0:
+			continue
+		if pad.x_max - pad.x_min < sim.model.cell_w * 4.0:
+			continue
+		if pad.z_max - pad.z_min < sim.model.cell_h * 4.0:
+			continue
+		floor_id = pid
+		start = Vector3(
+			(pad.x_min + pad.x_max) * 0.5,
+			(pad.z_min + pad.z_max) * 0.5,
+			pad.height
+		)
+		break
+	if floor_id.is_empty():
+		push_error("l0 ollie remount: no L0 floor")
+		return false
+	sim.state.mode = SimState.Mode.GROUNDED
+	sim.state.surface_id = floor_id
+	sim.state.position = start
+	sim.state.tangent_velocity = Vector2.ZERO
+	sim.state.velocity = Vector3.ZERO
+	sim.state.clear_hang()
+	sim.state.maneuver = null
+	sim.ollie_accel = 0.0
+	sim.ollie_charge_ms = 0.0
+	sim.ollie_height_flat = 50.0
+	sim.ollie_available = true
+	sim.ollie_charge = 1.0
+	var left := false
+	var peak_z := start.z
+	for i in range(180):
+		# Pop once, then coast — stay over the pad.
+		sim.set_input(Vector2.ZERO, false, false, false, i == 0)
+		sim.tick()
+		peak_z = maxf(peak_z, sim.state.position.z)
+		if sim.state.is_airborne():
+			left = true
+		if left and sim.state.is_grounded():
+			if sim.state.surface_id != floor_id:
+				push_error(
+					"l0 ollie remount: landed sid=%s want %s pos=%s"
+					% [sim.state.surface_id, floor_id, sim.state.position]
+				)
+				return false
+			if peak_z < start.z + 20.0:
+				push_error("l0 ollie remount: never left pad height peak=%.1f" % peak_z)
+				return false
+			return true
+		if left and sim.state.position.z < start.z - 5.0:
+			push_error(
+				"l0 ollie remount: fell through floor z=%.1f pad=%.1f"
+				% [sim.state.position.z, start.z]
+			)
+			return false
+	push_error(
+		"l0 ollie remount: stuck mode=%s sid=%s pos=%s peak=%.1f"
+		% [sim.state.mode, sim.state.surface_id, sim.state.position, peak_z]
 	)
 	return false
 

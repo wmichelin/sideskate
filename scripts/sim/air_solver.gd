@@ -448,7 +448,8 @@ func _disposition_for_contact(
 			return SimKinds.ContactDisposition.CORRIDOR
 		# Just left this floor/lava pad: do not sticky-remount at pad height
 		# (ground leave used to keep on-pad XZ and instantly Mount back).
-		if _launch_pad_edge_leave_corridor(state, contact):
+		# Same-pad ollie / drop from above must still Mount — not Corridor.
+		if _launch_pad_edge_leave_corridor(state, contact, from_height):
 			return SimKinds.ContactDisposition.CORRIDOR
 		if sk == SimKinds.SurfaceKind.PIPE and (
 			state.falling or _foreign_pipe_lip_is_crash_wall(state, contact)
@@ -535,7 +536,10 @@ func _slope_outer_back_is_launch_exit(state: SimState, contact: Dictionary) -> b
 
 
 ## Floor/lava pad we just left: corridor its support_top until we drop below it.
-func _launch_pad_edge_leave_corridor(state: SimState, contact: Dictionary) -> bool:
+## Only for skim / edge leave at pad height — not descending lands (ollie).
+func _launch_pad_edge_leave_corridor(
+	state: SimState, contact: Dictionary, from_height: float = NAN
+) -> bool:
 	var sid := str(contact.get("owner_id", contact.get("surface_id", "")))
 	if sid.is_empty() or sid != state.air_launch_surface_id:
 		return false
@@ -546,6 +550,11 @@ func _launch_pad_edge_leave_corridor(state: SimState, contact: Dictionary) -> bo
 	if pk != SimKinds.SurfaceKind.FLOOR and pk != SimKinds.SurfaceKind.LAVA:
 		return false
 	var sh := float(contact.get("height", patch.height))
+	# Came from above the pad this bout → real land (ollie / drop).
+	if not is_nan(from_height) and from_height > sh + SimTolerances.CONTACT_EPS:
+		return false
+	if state.air_peak_height > sh + SimTolerances.CONTACT_EPS:
+		return false
 	# Still at pad height (edge leave / skim) — not a real descending land.
 	return state.position.z >= sh - SimTolerances.CONTACT_EPS
 
