@@ -172,6 +172,9 @@ func _step_patch(
 	if not top.is_empty() and absf(float(top.height) - patch.height) <= SimTolerances.SEAM_EPS:
 		# Deck → pipe/ramp at matching lip height is not a seam; free-air leave.
 		if on_deck and _is_slope_kind(int(top.kind)):
+			# Step onto the leave sample first — staying on-pad remounts the same
+			# support_top next air tick and freezes the ledge (L1 floor→hole).
+			state.position = Vector3(next.x, next.y, patch.height)
 			_enter_air(state, Vector3(state.tangent_velocity.x, state.tangent_velocity.y, 0.0))
 			return
 		state.surface_id = str(top.surface_id)
@@ -192,6 +195,7 @@ func _step_patch(
 		_update_facing(state)
 		return
 	# Ride-off into air (holes / unsupported interior edges / deck→pipe).
+	state.position = Vector3(next.x, next.y, patch.height)
 	_enter_air(state, Vector3(state.tangent_velocity.x, state.tangent_velocity.y, 0.0))
 
 

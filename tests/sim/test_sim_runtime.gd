@@ -73,6 +73,7 @@ func run() -> bool:
 		and _no_auto_opposite_pipe_snap()
 		and _layered_outer_wall_crashes_not_warp()
 		and _layered_hole_not_invisible_wall()
+		and _l1_floor_leave_falls_into_lava_hole()
 		and _deck_hash_no_pin_from_floor()
 		and _l0_lava_gap_no_phantom_wall_climb()
 		and _lava_grounded_contact_kills()
@@ -6145,6 +6146,60 @@ func _layered_outer_wall_crashes_not_warp() -> bool:
 	return false
 
 
+func _l1_floor_leave_falls_into_lava_hole() -> bool:
+	# layers: L1 floor over the lava gap must free-air leave into the `.` hole
+	# band (then die on L0 lava) — not oscillate remounting the same floor.
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://levels/layers.ssk"):
+		push_error("l1→lava: setup")
+		return false
+	var cell_h := sim.model.cell_h
+	var H := sim.model.grid_h
+	var edge_z := (float(H - 1 - 8) + 0.5) * cell_h
+	var hole_z := (float(H - 1 - 11) + 0.5) * cell_h
+	var floor_id := ""
+	var start_x := 0.0
+	for pid in sim.model.patches.keys():
+		var pad: SupportPatch = sim.model.patches[pid]
+		if pad.height < 100.0 or pad.lethal:
+			continue
+		if pad.x_max - pad.x_min < sim.model.cell_w * 5.0:
+			continue
+		if not pad.contains_xz((pad.x_min + pad.x_max) * 0.5, edge_z):
+			continue
+		floor_id = pid
+		start_x = (pad.x_min + pad.x_max) * 0.5
+		break
+	if floor_id.is_empty():
+		push_error("l1→lava: no L1 floor")
+		return false
+	sim.state.mode = SimState.Mode.GROUNDED
+	sim.state.surface_id = floor_id
+	sim.state.position = Vector3(start_x, edge_z, 120.0)
+	sim.state.tangent_velocity = Vector2.ZERO
+	sim.state.velocity = Vector3.ZERO
+	sim.state.clear_hang()
+	var left := false
+	for _i in range(180):
+		sim.set_input(Vector2(0, -1), false, false)
+		sim.tick()
+		if not sim.state.alive:
+			return true
+		if sim.state.is_airborne() and sim.state.position.y <= hole_z + 10.0:
+			left = true
+		if left and sim.state.position.z < 80.0:
+			return true
+		# Remounting the launch floor after leaving the hole band = freeze bug.
+		if left and sim.state.is_grounded() and sim.state.surface_id == floor_id:
+			push_error("l1→lava: remounted launch floor after leave")
+			return false
+	push_error(
+		"l1→lava: stuck mode=%s sid=%s pos=%s alive=%s"
+		% [sim.state.mode, sim.state.surface_id, sim.state.position, sim.state.alive]
+	)
+	return false
+
+
 func _layered_hole_not_invisible_wall() -> bool:
 	# L1 `.` gap between pipe islands must be fall-through, not a Z wall —
 	# including when skating near the pipe (mount then ride off the pipe end).
@@ -6152,6 +6207,7 @@ func _layered_hole_not_invisible_wall() -> bool:
 	if not sim.setup_from_path("res://debug_levels/layered_demo.ssk"):
 		push_error("hole: setup")
 		return false
+
 	var cell_h := sim.model.cell_h
 	var H := sim.model.grid_h
 	# Last L1 floor row before the hole (ASCII row 8), near the right pipe.

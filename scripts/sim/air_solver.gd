@@ -446,6 +446,10 @@ func _disposition_for_contact(
 			return SimKinds.ContactDisposition.CORRIDOR
 		if state.velocity.z > 0.0:
 			return SimKinds.ContactDisposition.CORRIDOR
+		# Just left this floor/lava pad: do not sticky-remount at pad height
+		# (ground leave used to keep on-pad XZ and instantly Mount back).
+		if _launch_pad_edge_leave_corridor(state, contact):
+			return SimKinds.ContactDisposition.CORRIDOR
 		if sk == SimKinds.SurfaceKind.PIPE and (
 			state.falling or _foreign_pipe_lip_is_crash_wall(state, contact)
 		):
@@ -528,6 +532,22 @@ func _slope_outer_back_is_launch_exit(state: SimState, contact: Dictionary) -> b
 	if model.ramps.has(launch) and model.pipes.has(sid):
 		return _ramp_launch_abuts_pipe(launch, model.pipes[sid], state.position.y)
 	return false
+
+
+## Floor/lava pad we just left: corridor its support_top until we drop below it.
+func _launch_pad_edge_leave_corridor(state: SimState, contact: Dictionary) -> bool:
+	var sid := str(contact.get("owner_id", contact.get("surface_id", "")))
+	if sid.is_empty() or sid != state.air_launch_surface_id:
+		return false
+	if not model.patches.has(sid):
+		return false
+	var patch: SupportPatch = model.patches[sid]
+	var pk := int(patch.kind)
+	if pk != SimKinds.SurfaceKind.FLOOR and pk != SimKinds.SurfaceKind.LAVA:
+		return false
+	var sh := float(contact.get("height", patch.height))
+	# Still at pad height (edge leave / skim) — not a real descending land.
+	return state.position.z >= sh - SimTolerances.CONTACT_EPS
 
 
 func _deck_mount_gates_ok(state: SimState, contact: Dictionary, from_height: float) -> bool:
