@@ -37,6 +37,9 @@ var transfer_hold_delay: float = 0.08
 var transfer_hold_eligible: float = 0.0
 var ollie_pressed: bool = false
 var ollie_just_released: bool = false
+## Air spin hold (Q/E). Ignored while falling; grounded no-ops in AirSolver.
+var rotate_left: bool = false
+var rotate_right: bool = false
 ## Presentation latch: set when an ollie impulse actually fires; consume via player.
 var ollie_just_popped: bool = false
 ## Hold meter in [0, 1] while charging an available ollie.
@@ -106,12 +109,16 @@ func set_input(
 	action_edge: bool,
 	ollie_down: bool = false,
 	ollie_released: bool = false,
+	rotate_left_down: bool = false,
+	rotate_right_down: bool = false,
 ) -> void:
 	last_wish = wish
 	action_held = action_down
 	action_just = action_edge
 	ollie_pressed = ollie_down
 	ollie_just_released = ollie_released
+	rotate_left = rotate_left_down
+	rotate_right = rotate_right_down
 	if not action_held:
 		transfer_hold_eligible = 0.0
 
@@ -129,6 +136,8 @@ func begin_fall() -> void:
 	ollie_just_popped = false
 	action_just = false
 	action_held = false
+	rotate_left = false
+	rotate_right = false
 	transfer_hold_eligible = 0.0
 	last_wish = Vector2.ZERO
 	state.falling = true
@@ -192,6 +201,8 @@ func tick(delta: float = SimTolerances.FIXED_DT) -> void:
 		ollie_just_released = false
 		action_just = false
 		action_held = false
+		rotate_left = false
+		rotate_right = false
 		transfer_hold_eligible = 0.0
 		ollie_pressed = false
 		# Planar schedule before solvers so Reject/depenetrate can cut into-wall
@@ -222,6 +233,8 @@ func tick(delta: float = SimTolerances.FIXED_DT) -> void:
 			ollie_accel,
 		)
 	else:
+		air.rotate_left = rotate_left
+		air.rotate_right = rotate_right
 		air.step(state, wish, delta, max_speed, max_speed_z)
 	if state.request_fall:
 		state.request_fall = false
@@ -582,6 +595,7 @@ func _try_actions() -> void:
 				state.surface_id = ""
 				state.velocity = tplan.start_velocity
 				state.tangent_velocity = Vector2.ZERO
+				state.reset_air_spin()
 			state.clear_hang()
 			state.maneuver = tplan
 			state.last_reject = ""
@@ -590,6 +604,9 @@ func _try_actions() -> void:
 				state.facing = tplan.hold_facing
 				state.visual_facing = tplan.hold_facing
 				state.facing_yaw = 0.0
+				# Keep bout spin reference aligned with held transfer facing.
+				if absf(state.spin_yaw) < 0.0001:
+					state.spin_takeoff_facing = tplan.hold_facing
 			return
 		state.last_reject = str(tr.get("reason", ""))
 	# Fly-out: stick-only at OPEN coping while grounded OR hang-airing above it.
@@ -609,12 +626,15 @@ func _try_actions() -> void:
 		# Same as GroundSolver._enter_air — keep launch ownership for same-slope
 		# remount / crash carve-outs. Grounded stick fly-out used to clear
 		# surface_id without stamping, so air-ollie return hit foreign-lip fall.
+		var was_grounded := state.is_grounded()
 		_stamp_air_launch_from_current()
 		state.mode = SimState.Mode.AIRBORNE
 		state.surface_id = ""
 		state.clear_hang()
 		state.maneuver = plan
 		state.last_reject = ""
+		if was_grounded:
+			state.reset_air_spin()
 		return
 	state.last_reject = str(fo.get("reason", ""))
 

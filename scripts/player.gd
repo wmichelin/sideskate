@@ -30,6 +30,10 @@ const BODY_CYLINDER_H_M := 0.22
 @export_range(0.0, 45.0, 0.5) var depth_turn_degrees: float = 18.0
 @export var facing_coping_cells: int = 3
 @export var acid_coping_cells: int = 16
+## Air spin yaw rate while Q/E held (rad/s).
+@export_range(0.1, 12.0, 0.05) var spin_rate: float = PI
+## Half-width around N×180° for a successful spin land (degrees).
+@export_range(1.0, 90.0, 0.5) var land_spin_window_deg: float = 25.0
 @export_range(0.0, 5.0, 0.01) var fall_anim_duration: float = 0.15
 @export_range(0.0, 5.0, 0.01) var fall_stop_duration: float = 1.0
 @export_range(0.0, 10.0, 0.01) var fall_duration: float = 2.0
@@ -142,10 +146,12 @@ func _physics_process(_delta: float) -> void:
 	var action_edge := Input.is_action_just_pressed("transfer")
 	var ollie_down := Input.is_action_pressed("ollie")
 	var ollie_released := Input.is_action_just_released("ollie")
+	var rot_l := Input.is_action_pressed("rotate_left")
+	var rot_r := Input.is_action_pressed("rotate_right")
 	_sync_tuning_to_sim()
 	if Input.is_action_just_pressed("fall"):
 		_sim.begin_fall()
-	_sim.set_input(wish, action_down, action_edge, ollie_down, ollie_released)
+	_sim.set_input(wish, action_down, action_edge, ollie_down, ollie_released, rot_l, rot_r)
 	# Always fixed-step — never inherit a render-tied physics delta.
 	_sim.tick(SimTolerances.FIXED_DT)
 	_sync_from_sim()
@@ -177,6 +183,8 @@ func _sync_tuning_to_sim() -> void:
 	SimTolerances.APEX_FACING_DELAY = apex_facing_delay
 	SimTolerances.FACING_COPING_CELLS = facing_coping_cells
 	SimTolerances.ACID_COPING_CELLS = acid_coping_cells
+	SimTolerances.SPIN_RATE = spin_rate
+	SimTolerances.LAND_SPIN_WINDOW = deg_to_rad(land_spin_window_deg)
 
 
 func _sync_from_sim() -> void:
@@ -184,7 +192,8 @@ func _sync_from_sim() -> void:
 	var p := st.position
 	facing_h = st.facing
 	visual_facing_h = st.visual_facing
-	facing_yaw = st.facing_yaw
+	# Body display yaw = hang apex lerp + air spin.
+	facing_yaw = st.facing_yaw + st.spin_yaw
 	_airborne = st.is_airborne()
 	air_abs_height = p.z
 	last_surface = {
@@ -348,13 +357,19 @@ func _capture_pose_snapshots() -> void:
 	var facing := 1.0 if visual_facing_h == "r" else -1.0
 	var falling := _sim != null and _sim.state != null and _sim.state.falling
 	var force_snap := _board_force_snap or (_was_falling_board and not falling)
+	var spin_handoff := false
+	if _sim != null and _sim.state != null and _sim.state.spin_handoff:
+		spin_handoff = true
+		_sim.state.spin_handoff = false
 	_was_falling_board = falling
 	var next = _LogicalPose.new()
 	next.copy_from_depth(depth, facing, 0)
 	next.facing_yaw = facing_yaw
 	# Mirror by facing: +Z turns either nose toward +Z, not the same screen side.
 	next.depth_turn_yaw = deg_to_rad(depth_turn_degrees) * _last_wish.y * facing
-	next.board_yaw = _board_yaw.tick(facing, facing_yaw, force_snap or not _pose_snap_ready)
+	next.board_yaw = _board_yaw.tick(
+		facing, facing_yaw, force_snap or not _pose_snap_ready, spin_handoff
+	)
 	_board_force_snap = false
 	if _pose_curr == null:
 		_pose_prev = next

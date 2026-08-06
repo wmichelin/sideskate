@@ -627,6 +627,7 @@ func _enter_air(state: SimState, world_vel: Vector3, hang_edge_id: String = "") 
 	state.maneuver = null
 	state.tangent_velocity = Vector2.ZERO
 	state.air_peak_height = state.position.z
+	state.reset_air_spin()
 	if hang_edge_id.is_empty():
 		state.clear_hang()
 		# Free air may keep lean; fly-out / ramp lip-band leave set upright after.

@@ -73,6 +73,12 @@ var fall_support_normal: Vector3 = Vector3(0.0, 0.0, 1.0)
 var fall_impact_point: Vector3 = Vector3.ZERO
 var fall_impact_normal: Vector3 = Vector3.ZERO
 var fall_has_impact_plane: bool = false
+## Air-bout yaw from bout zero (rad). Presentation composes with facing_yaw.
+var spin_yaw: float = 0.0
+## Discrete facing at bout zero — live flips derived from spin_yaw half-turns.
+var spin_takeoff_facing: String = "r"
+## One-shot: presentation board tracker ignores spin clear (no reverse yaw).
+var spin_handoff: bool = false
 
 
 ## Lock presentation flop to `sign` (usually wall approach / away-from-impact).
@@ -139,6 +145,28 @@ func clear_air_peak() -> void:
 	air_peak_height = -INF
 	air_launch_surface_id = ""
 	free_air_upright = false
+
+
+## New air bout: zero spin; remember takeoff facing for live half-turn flips.
+func reset_air_spin() -> void:
+	if absf(spin_yaw) > 0.0001:
+		spin_handoff = true
+	spin_yaw = 0.0
+	spin_takeoff_facing = facing
+
+
+## Facing after `n` half-turns (π) from takeoff. Odd n flips l↔r.
+static func facing_after_half_turns(takeoff: String, half_turns: int) -> String:
+	var base := "r" if takeoff == "r" else "l"
+	if (abs(half_turns) % 2) == 1:
+		return "l" if base == "r" else "r"
+	return base
+
+
+## Live/snapped facing from continuous spin_yaw vs bout takeoff.
+func facing_from_spin_yaw() -> String:
+	var n := int(floor((absf(spin_yaw) + 0.000001) / PI))
+	return facing_after_half_turns(spin_takeoff_facing, n)
 
 
 func is_falling() -> bool:

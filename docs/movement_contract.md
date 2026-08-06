@@ -27,6 +27,7 @@ Logical axes in this document: **X** left/right, **Z** near/far, **height** up. 
 |------|-------|---------|
 | **Air-out** | hang | Leave a compiled open edge with **X locked** to its anchor. Motion is height (+ optionally Z) only. Stick does **not** unlock X. Keeps surface lean. |
 | **Fly-out** | **deck-out** (same action) | Exit X-lock and travel **away** from the pipe: left on a left pipe, right on a right pipe (world outward). Free-air XZ control after unlock. Resets presentation lean upright. |
+| **Air spin** | — | Hold rotate left/right while airborne (incl. transfer). Continuous yaw from bout zero; live facing flips at odd *N×180°*; never changes `vx`. Land near *N×180°* or fall; success snaps; backwards land may fix facing to momentum without board re-yaw. |
 | **Transfer** | spine / acid pull | Transfer button while a next-spine candidate exists (facing half-plane, opposite side, above target lip). Normal gravity; time-phased progress 0→1 from accept (upright at ballistic apex / mid-pull if falling); lateral X + lean follow (finishes on touch); facing held; `vx` cleared on arrival; re-anchors air-out hang. Logical Z (depth) stays free-air. Deck→pipe remount still TBD. |
 
 ### Fly-out / deck-out activation

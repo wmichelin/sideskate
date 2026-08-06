@@ -13,6 +13,9 @@ var _max_speed: float = 880.0
 var _max_speed_z: float = 400.0
 ## `air_launch_surface_id` at the start of this air tick (reentry along seeding).
 var _bout_launch_id: String = ""
+## Rotate hold from PlayerSim this tick.
+var rotate_left: bool = false
+var rotate_right: bool = false
 
 
 func _init(
@@ -26,6 +29,61 @@ func _init(
 	planner = p if p != null else ManeuverPlanner.new(m, query)
 	ground = g if g != null else GroundSolver.new(m, query)
 	crash = CrashClassifier.new(m)
+
+
+## Integrate / freeze air spin; flip discrete facing at odd half-turns. Never touches vx.
+func _step_air_spin(state: SimState, delta: float) -> void:
+	if state == null or not state.is_airborne() or state.falling or not state.alive:
+		return
+	var sign := 0.0
+	if rotate_left and not rotate_right:
+		sign = 1.0 ## CCW (Q)
+	elif rotate_right and not rotate_left:
+		sign = -1.0 ## CW (E)
+	if absf(sign) > 0.001:
+		state.spin_yaw += sign * SimTolerances.SPIN_RATE * delta
+	# At bout-zero with no spin held, leave facing alone (transfer hold_facing, etc.).
+	if absf(state.spin_yaw) < 0.0001 and absf(sign) < 0.001:
+		return
+	# Live facing from continuous yaw — no velocity rewrite.
+	var next_face := state.facing_from_spin_yaw()
+	if next_face != state.facing:
+		state.facing = next_face
+		state.visual_facing = next_face
+
+
+## Land / seat spin gate. Returns false if fall requested (caller should stop mount work).
+## `momentum_x`: horizontal travel sign source (air vx or post-mount tangent x).
+func resolve_land_spin(state: SimState, momentum_x: float) -> bool:
+	if state == null or not state.alive:
+		return false
+	# No air-spin this bout — leave facing / yaw alone (transfer hold_facing, etc.).
+	if absf(state.spin_yaw) < 0.0001:
+		return true
+	var nearest := roundf(state.spin_yaw / PI) * PI
+	var err := absf(state.spin_yaw - nearest)
+	# Wrap: treat angles near ±π equivalent distance (already nearest Nπ).
+	if err > SimTolerances.LAND_SPIN_WINDOW:
+		state.request_fall = true
+		return false
+	state.spin_yaw = nearest
+	var face := state.facing_from_spin_yaw()
+	state.facing = face
+	state.visual_facing = face
+	state.facing_yaw = 0.0
+	# Momentum facing fix — facing only; board/spin bake stay put.
+	if absf(momentum_x) > 1.0:
+		var mom_face := "r" if momentum_x > 0.0 else "l"
+		if state.facing != mom_face:
+			state.facing = mom_face
+			state.visual_facing = mom_face
+			# Do not zero spin_yaw here — handoff clear below keeps board.
+	# Clear bout spin after successful seat; handoff so board does not unwind.
+	if absf(state.spin_yaw) > 0.0001:
+		state.spin_handoff = true
+	state.spin_yaw = 0.0
+	state.spin_takeoff_facing = state.facing
+	return true
 
 
 func _slope_along_from_world_vx(surf, world_vx: float) -> float:
@@ -119,6 +177,7 @@ func step(
 	_max_speed_z = maxf(max_speed_z, 0.0)
 	# Freeze launch id for this tick so mid-tick clears cannot lose reentry context.
 	_bout_launch_id = state.air_launch_surface_id
+	_step_air_spin(state, delta)
 	if state.has_maneuver():
 		_step_maneuver(state, wish, delta)
 		return
@@ -719,6 +778,7 @@ func _mount_pipe_owner(state: SimState, pipe_id: String, contact: Dictionary) ->
 		state.velocity = Vector3.ZERO
 		state.clear_hang()
 		state.clear_air_peak()
+		resolve_land_spin(state, world_vel.x if absf(world_vel.x) > 1.0 else along)
 		return true
 	if not force_lip and not bool(proj.get("ok", false)):
 		return false
@@ -736,6 +796,7 @@ func _mount_pipe_owner(state: SimState, pipe_id: String, contact: Dictionary) ->
 	state.velocity = Vector3.ZERO
 	state.clear_hang()
 	state.clear_air_peak()
+	resolve_land_spin(state, world_vel.x if absf(world_vel.x) > 1.0 else along)
 	return true
 
 
@@ -794,9 +855,11 @@ func _mount_ramp_owner(state: SimState, ramp_id: String, contact: Dictionary) ->
 	state.v = float(rproj.v)
 	state.position = rproj.point
 	state.tangent_velocity = Vector2(along, state.velocity.y)
+	var mom_r := state.velocity.x
 	state.velocity = Vector3.ZERO
 	state.clear_hang()
 	state.clear_air_peak()
+	resolve_land_spin(state, mom_r if absf(mom_r) > 1.0 else along)
 	return true
 
 
@@ -831,10 +894,12 @@ func _mount_support_top(state: SimState, contact: Dictionary, from_height: float
 	state.v = 0.0
 	state.position = Vector3(state.position.x, state.position.y, sh)
 	state.tangent_velocity = Vector2(state.velocity.x, state.velocity.y)
+	var mom_pad := state.velocity.x
 	state.velocity = Vector3.ZERO
 	state.facing_yaw = 0.0
 	state.clear_hang()
 	state.clear_air_peak()
+	resolve_land_spin(state, mom_pad)
 	if patch.lethal:
 		state.alive = false
 	return true
@@ -2107,6 +2172,8 @@ func _anchor_transfer_dest_hang(state: SimState, plan: ManeuverPlan) -> bool:
 		if state.facing == into:
 			state.hang_apex_facing_done = true
 	state.note_air_height(state.position.z)
+	# Transfer dest seat: same spin land gate (still airborne hang).
+	resolve_land_spin(state, 0.0)
 	return true
 
 
@@ -2193,9 +2260,13 @@ func _try_land(state: SimState, from_height: float = NAN) -> void:
 		state.v = 0.0
 		state.tangent_velocity = Vector2(state.velocity.x, state.velocity.y)
 		state.facing_yaw = 0.0
+	var land_mom := world_vel.x
+	if absf(land_mom) < 1.0:
+		land_mom = state.tangent_velocity.x
 	state.velocity = Vector3.ZERO
 	state.clear_hang()
 	state.clear_air_peak()
+	resolve_land_spin(state, land_mom)
 	if top.get("lethal", false):
 		state.alive = false
 
@@ -2414,9 +2485,11 @@ func _force_near_pad_deck_land(state: SimState, hit: Dictionary) -> bool:
 	state.v = 0.0
 	state.position = Vector3(state.position.x, state.position.y, deck.height)
 	state.tangent_velocity = Vector2(state.velocity.x, vz)
+	var mom := state.velocity.x
 	state.velocity = Vector3.ZERO
 	state.clear_hang()
 	state.clear_air_peak()
+	resolve_land_spin(state, mom)
 	return true
 
 
@@ -2497,6 +2570,7 @@ func _try_return_to_anchor(state: SimState, from_height: float) -> bool:
 		state.tangent_velocity = Vector2(along, vz)
 	state.clear_hang()
 	state.clear_air_peak()
+	resolve_land_spin(state, along)
 	return true
 
 

@@ -9,6 +9,7 @@ static func rows() -> Array:
 		["WASD / arrows", "Move (W = farther)"],
 		["Space", "Hold ollie — accel in facing dir"],
 		["P / T", "Spine (rising) / acid drop (falling)"],
+		["Q / E", "Air spin left (CCW) / right (CW)"],
 		["Y", "Fall"],
 		["Esc", "Pause / back"],
 	]

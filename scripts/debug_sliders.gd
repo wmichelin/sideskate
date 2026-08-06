@@ -14,6 +14,10 @@ extends CanvasLayer
 @export var fly_out_above_max: float = 300.0
 @export var apex_facing_delay_min: float = 0.0
 @export var apex_facing_delay_max: float = 0.5
+@export var spin_rate_min: float = 0.5
+@export var spin_rate_max: float = 12.0
+@export var land_spin_window_min: float = 1.0
+@export var land_spin_window_max: float = 90.0
 @export var transfer_hold_delay_min: float = 0.0
 @export var transfer_hold_delay_max: float = 0.5
 @export var depth_turn_min: float = 0.0
@@ -126,6 +130,8 @@ var _cam_fov_value: Label
 var _apex_facing_value: Label
 var _transfer_hold_value: Label
 var _depth_turn_value: Label
+var _spin_rate_value: Label
+var _land_spin_window_value: Label
 
 
 func _ready() -> void:
@@ -174,6 +180,8 @@ func _ready() -> void:
 	_setup_apex_facing_slider()
 	_setup_transfer_hold_delay_slider()
 	_setup_depth_turn_slider()
+	_setup_spin_rate_slider()
+	_setup_land_spin_window_slider()
 	_bind_float_slider(_ollie_slider, ollie_accel_min, ollie_accel_max, 10.0, _player, "ollie_accel", 650.0, _on_ollie_accel_changed, _refresh_ollie_label)
 	_setup_ollie_jump_sliders()
 	_bind_float_slider(_max_speed_x_slider, max_speed_x_min, max_speed_x_max, 10.0, _player, "max_speed_x", 880.0, _on_max_speed_x_changed, _refresh_max_speed_x_label)
@@ -525,6 +533,56 @@ func _setup_depth_turn_slider() -> void:
 	row["slider"].focus_mode = Control.FOCUS_NONE
 
 
+func _setup_spin_rate_slider() -> void:
+	if _body == null:
+		return
+	if _body.get_node_or_null("SpinRateRow") != null:
+		return
+	var insert_at := 0
+	var depth_row := _body.get_node_or_null("DepthTurnRow")
+	if depth_row != null:
+		insert_at = depth_row.get_index() + 1
+	var row := _make_slider_row("SpinRateRow", "spin rate", insert_at)
+	_spin_rate_value = row["value"]
+	_bind_float_slider(
+		row["slider"],
+		spin_rate_min,
+		spin_rate_max,
+		0.05,
+		_player,
+		"spin_rate",
+		PI,
+		_on_spin_rate_changed,
+		_refresh_spin_rate_label
+	)
+	row["slider"].focus_mode = Control.FOCUS_NONE
+
+
+func _setup_land_spin_window_slider() -> void:
+	if _body == null:
+		return
+	if _body.get_node_or_null("LandSpinWindowRow") != null:
+		return
+	var insert_at := 0
+	var spin_row := _body.get_node_or_null("SpinRateRow")
+	if spin_row != null:
+		insert_at = spin_row.get_index() + 1
+	var row := _make_slider_row("LandSpinWindowRow", "spin land°", insert_at)
+	_land_spin_window_value = row["value"]
+	_bind_float_slider(
+		row["slider"],
+		land_spin_window_min,
+		land_spin_window_max,
+		0.5,
+		_player,
+		"land_spin_window_deg",
+		25.0,
+		_on_land_spin_window_changed,
+		_refresh_land_spin_window_label
+	)
+	row["slider"].focus_mode = Control.FOCUS_NONE
+
+
 func _apply_3d_panel_visibility() -> void:
 	# Canvas2D-only draw tuning — park is rendered via World3D.
 	for row_name in [
@@ -835,6 +893,28 @@ func _on_apex_facing_delay_changed(v: float) -> void:
 func _refresh_apex_facing_delay_label(v: float) -> void:
 	if _apex_facing_value != null:
 		_apex_facing_value.text = "%.2f s" % v
+
+
+func _on_spin_rate_changed(v: float) -> void:
+	if _player != null:
+		_player.set("spin_rate", v)
+	_refresh_spin_rate_label(v)
+
+
+func _refresh_spin_rate_label(v: float) -> void:
+	if _spin_rate_value != null:
+		_spin_rate_value.text = "%.2f rad/s" % v
+
+
+func _on_land_spin_window_changed(v: float) -> void:
+	if _player != null:
+		_player.set("land_spin_window_deg", v)
+	_refresh_land_spin_window_label(v)
+
+
+func _refresh_land_spin_window_label(v: float) -> void:
+	if _land_spin_window_value != null:
+		_land_spin_window_value.text = "%.0f°" % v
 
 
 func _on_transfer_hold_delay_changed(v: float) -> void:

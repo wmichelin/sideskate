@@ -94,6 +94,12 @@ func run() -> bool:
 		and _transfer_shared_x_spine_reanchors_hang()
 		and _transfer_spine_remount_preserves_along()
 		and _transfer_acid_from_deck_air_preserves_along()
+		and _air_spin_hold_advances_yaw_keeps_vx()
+		and _air_spin_live_facing_flips_at_pi()
+		and _air_spin_land_near_pi_snaps_no_fall()
+		and _air_spin_land_near_half_pi_falls()
+		and _air_spin_hold_through_land_uses_contact_angle()
+		and _air_spin_backwards_land_flips_facing_keeps_board_ref()
 		and _transfer_hold_delay_zero_auto()
 		and _transfer_hold_waits_delay()
 		and _transfer_tap_ignores_hold_delay()
@@ -7989,6 +7995,223 @@ func _transfer_acid_from_deck_air_preserves_along() -> bool:
 		push_error(
 			"deck acid along: remount dragged %.1f → %.1f (carry free-air |vx|)"
 			% [takeoff, remount_along]
+		)
+		return false
+	return true
+
+
+## ---- Air spin (Q/E yaw) ----------------------------------------------------
+
+func _air_spin_floor_setup() -> PlayerSim:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_halfpipe.ssk"):
+		return null
+	var floor_id := ""
+	for id in sim.model.patches.keys():
+		var p: SupportPatch = sim.model.patches[id]
+		if int(p.kind) == SimKinds.SurfaceKind.FLOOR and not p.lethal:
+			floor_id = id
+			break
+	if floor_id.is_empty():
+		return null
+	var floor: SupportPatch = sim.model.patches[floor_id]
+	var z := (floor.z_min + floor.z_max) * 0.5
+	var x := (floor.x_min + floor.x_max) * 0.5
+	sim.state.mode = SimState.Mode.AIRBORNE
+	sim.state.surface_id = ""
+	sim.state.air_launch_surface_id = floor_id
+	sim.state.clear_hang()
+	sim.state.maneuver = null
+	sim.state.falling = false
+	sim.state.reset_air_spin()
+	sim.state.set_facing_side("r")
+	sim.state.spin_takeoff_facing = "r"
+	sim.state.position = Vector3(x, z, floor.height + 400.0)
+	sim.state.velocity = Vector3(400.0, 0.0, 0.0)
+	sim.state.note_air_height(sim.state.position.z)
+	sim.state.alive = true
+	return sim
+
+
+func _air_spin_hold_advances_yaw_keeps_vx() -> bool:
+	var sim := _air_spin_floor_setup()
+	if sim == null:
+		push_error("air spin vx: setup")
+		return false
+	# Stay airborne: pin height each tick so gravity cannot land mid-hold.
+	sim.state.velocity = Vector3(400.0, 0.0, 0.0)
+	var hold_h := sim.state.position.z
+	var vx0 := sim.state.velocity.x
+	var yaw0 := sim.state.spin_yaw
+	for _i in range(30):
+		sim.state.position.z = hold_h
+		sim.state.velocity.z = 0.0
+		sim.set_input(Vector2.ZERO, false, false, false, false, true, false)
+		sim.tick()
+		if not sim.state.is_airborne() or sim.state.falling:
+			push_error(
+				"air spin vx: left air mode=%s falling=%s"
+				% [sim.state.mode, sim.state.falling]
+			)
+			return false
+	if absf(sim.state.velocity.x - vx0) > 0.01:
+		push_error(
+			"air spin vx: velocity.x changed %.1f → %.1f"
+			% [vx0, sim.state.velocity.x]
+		)
+		return false
+	if sim.state.spin_yaw <= yaw0 + 0.2:
+		push_error(
+			"air spin vx: spin_yaw did not advance (%.3f → %.3f)"
+			% [yaw0, sim.state.spin_yaw]
+		)
+		return false
+	return true
+
+
+func _air_spin_live_facing_flips_at_pi() -> bool:
+	var sim := _air_spin_floor_setup()
+	if sim == null:
+		push_error("air spin face: setup")
+		return false
+	sim.state.set_facing_side("r")
+	sim.state.spin_takeoff_facing = "r"
+	sim.state.velocity = Vector3(200.0, 0.0, 0.0)
+	var hold_h := sim.state.position.z
+	# Drive past π with CCW hold; pin height so gravity cannot land mid-test.
+	for _i in range(120):
+		sim.state.position.z = hold_h
+		sim.state.velocity.z = 0.0
+		sim.set_input(Vector2.ZERO, false, false, false, false, true, false)
+		sim.tick()
+		if not sim.state.is_airborne() or sim.state.falling:
+			push_error(
+				"air spin face: left air mode=%s falling=%s yaw=%.3f"
+				% [sim.state.mode, sim.state.falling, sim.state.spin_yaw]
+			)
+			return false
+		if sim.state.facing == "l" and sim.state.spin_yaw > PI * 0.9:
+			return true
+	push_error(
+		"air spin face: never flipped facing=%s yaw=%.3f"
+		% [sim.state.facing, sim.state.spin_yaw]
+	)
+	return false
+
+
+func _air_spin_land_near_pi_snaps_no_fall() -> bool:
+	var sim := _air_spin_floor_setup()
+	if sim == null:
+		push_error("air spin land pi: setup")
+		return false
+	var floor: SupportPatch = sim.model.patches[sim.state.air_launch_surface_id]
+	sim.state.spin_yaw = PI - deg_to_rad(10.0)
+	sim.state.facing = sim.state.facing_from_spin_yaw()
+	sim.state.visual_facing = sim.state.facing
+	sim.state.velocity = Vector3(200.0, 0.0, -80.0)
+	sim.state.position.z = floor.height + 5.0
+	# Descend onto floor without holding rotate.
+	for _i in range(60):
+		sim.set_input(Vector2.ZERO, false, false)
+		sim.tick()
+		if sim.state.falling:
+			push_error("air spin land pi: fell unexpectedly")
+			return false
+		if sim.state.is_grounded():
+			if absf(sim.state.spin_yaw) > 0.01:
+				push_error(
+					"air spin land pi: expected cleared spin after snap got %.3f"
+					% sim.state.spin_yaw
+				)
+				return false
+			return true
+	push_error("air spin land pi: never grounded")
+	return false
+
+
+func _air_spin_land_near_half_pi_falls() -> bool:
+	var sim := _air_spin_floor_setup()
+	if sim == null:
+		push_error("air spin land 90: setup")
+		return false
+	var floor: SupportPatch = sim.model.patches[sim.state.air_launch_surface_id]
+	sim.state.spin_yaw = PI * 0.5
+	sim.state.velocity = Vector3(200.0, 0.0, -80.0)
+	sim.state.position.z = floor.height + 5.0
+	for _i in range(60):
+		sim.set_input(Vector2.ZERO, false, false)
+		sim.tick()
+		if sim.state.falling:
+			return true
+	push_error(
+		"air spin land 90: expected fall mode=%s yaw=%.3f"
+		% [sim.state.mode, sim.state.spin_yaw]
+	)
+	return false
+
+
+func _air_spin_hold_through_land_uses_contact_angle() -> bool:
+	var sim := _air_spin_floor_setup()
+	if sim == null:
+		push_error("air spin hold land: setup")
+		return false
+	var floor: SupportPatch = sim.model.patches[sim.state.air_launch_surface_id]
+	# Start near a bad angle; hold through contact so classify uses contact yaw.
+	sim.state.spin_yaw = PI * 0.5 - deg_to_rad(5.0)
+	sim.state.velocity = Vector3(150.0, 0.0, -100.0)
+	sim.state.position.z = floor.height + 4.0
+	for _i in range(60):
+		sim.set_input(Vector2.ZERO, false, false, false, false, true, false)
+		sim.tick()
+		if sim.state.falling:
+			return true
+		if sim.state.is_grounded() and not sim.state.falling:
+			push_error(
+				"air spin hold land: grounded without fall at yaw=%.3f"
+				% sim.state.spin_yaw
+			)
+			return false
+	push_error("air spin hold land: never fell")
+	return false
+
+
+func _air_spin_backwards_land_flips_facing_keeps_board_ref() -> bool:
+	var sim := _air_spin_floor_setup()
+	if sim == null:
+		push_error("air spin back: setup")
+		return false
+	var floor: SupportPatch = sim.model.patches[sim.state.air_launch_surface_id]
+	# 180 from takeoff r → facing l; travel +X → momentum fix to r without board snap.
+	sim.state.spin_yaw = PI
+	sim.state.spin_takeoff_facing = "r"
+	sim.state.facing = "l"
+	sim.state.visual_facing = "l"
+	sim.state.velocity = Vector3(300.0, 0.0, -80.0)
+	sim.state.position.z = floor.height + 5.0
+	var board := BoardYawTracker.new()
+	board.snap_to_facing(-1.0) ## nose left (facing l)
+	var board_before := board.yaw
+	# Simulate presentation tick through land: composed yaw then facing-only fix.
+	for _i in range(60):
+		sim.set_input(Vector2.ZERO, false, false)
+		sim.tick()
+		if sim.state.is_grounded() and not sim.state.falling:
+			break
+	if not sim.state.is_grounded() or sim.state.falling:
+		push_error(
+			"air spin back: expected clean land got grounded=%s falling=%s"
+			% [sim.state.is_grounded(), sim.state.falling]
+		)
+		return false
+	if sim.state.facing != "r":
+		push_error("air spin back: facing should match +X momentum got %s" % sim.state.facing)
+		return false
+	# Facing-only fix must not snap board to new facing.
+	board.tick(1.0, 0.0, false) ## facing r, yaw 0 — without force_snap board stays
+	if absf(board.yaw - board_before) > 0.01:
+		push_error(
+			"air spin back: board yaw moved on facing-only fix %.3f → %.3f"
+			% [board_before, board.yaw]
 		)
 		return false
 	return true
