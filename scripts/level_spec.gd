@@ -31,6 +31,8 @@ var decks: Array = []
 ## radius = X footprint (run_cells × cell_w); rise = height (run_cells × step_height).
 ## Peak height = base + rise.
 var pipes: Array = []
+## Along-X grind rails from `-` glyphs: { x_min, x_max, z, base_height, layer, cells }.
+var rails: Array = []
 ## Floor glyph cells as Vector2i(col, row) — row 0 = far/top (all stories).
 var floor_cells: Array = []
 ## Ground-story (= / @) mask for floor draw. Row-major, row 0 = far/top.

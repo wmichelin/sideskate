@@ -201,7 +201,7 @@ static func _is_map_row(stripped: String) -> bool:
 		return false
 	# Must contain at least one map glyph (not only spaces)
 	for glyph in stripped:
-		if glyph in ["(", ")", "<", ">", "=", ".", "#", "@", "x", "X", " "]:
+		if glyph in ["(", ")", "<", ">", "=", ".", "#", "@", "x", "X", "-", " "]:
 			continue
 		return false
 	for glyph2 in stripped:
@@ -269,6 +269,7 @@ static func _build_layered_geometry(spec: LevelSpec, layers: Array, cell_x: floa
 	spec.floors.clear()
 	spec.decks.clear()
 	spec.pipes.clear()
+	spec.rails.clear()
 	spec.floor_cells.clear()
 	spec.layers.clear()
 	spec.story_floor_masks.clear()
@@ -349,6 +350,7 @@ static func _append_layer_geometry(
 
 	var floor_cells: Array = []
 	var deck_cells: Array = []
+	var rail_cells: Array = []
 	var story_mask := PackedByteArray()
 	story_mask.resize(W * H)
 	story_mask.fill(0)
@@ -379,6 +381,10 @@ static func _append_layer_geometry(
 					spawn.layer = layer_index
 				"#":
 					deck_cells.append(Vector2i(c, r))
+				"-":
+					# Along-X grind rail — playable footprint, not a floor pad.
+					rail_cells.append(Vector2i(c, r))
+					story_mask[r * W + c] = 1
 				"(", ")":
 					pass
 				"<", ">":
@@ -427,7 +433,77 @@ static func _append_layer_geometry(
 		if deck_err != "":
 			return deck_err
 
+	_emit_rail_runs(spec, rail_cells, cw, ch, H, base_height, layer_index)
+
 	return ""
+
+
+## Contiguous `-` on the same map row → one along-X rail descriptor each.
+static func _emit_rail_runs(
+	spec: LevelSpec,
+	rail_cells: Array,
+	cw: float,
+	ch: float,
+	H: int,
+	base_height: float,
+	layer_index: int,
+) -> void:
+	if rail_cells.is_empty():
+		return
+	var by_row := {}
+	for cell in rail_cells:
+		var ci: Vector2i = cell
+		if not by_row.has(ci.y):
+			by_row[ci.y] = []
+		by_row[ci.y].append(ci.x)
+	var rows: Array = by_row.keys()
+	rows.sort()
+	for row in rows:
+		var cols: Array = by_row[row]
+		cols.sort()
+		var run_start: int = cols[0]
+		var prev: int = cols[0]
+		for i in range(1, cols.size()):
+			var c: int = cols[i]
+			if c == prev + 1:
+				prev = c
+				continue
+			_append_rail_dict(
+				spec, run_start, prev, int(row), cw, ch, H, base_height, layer_index
+			)
+			run_start = c
+			prev = c
+		_append_rail_dict(
+			spec, run_start, prev, int(row), cw, ch, H, base_height, layer_index
+		)
+
+
+static func _append_rail_dict(
+	spec: LevelSpec,
+	c0: int,
+	c1: int,
+	row: int,
+	cw: float,
+	ch: float,
+	H: int,
+	base_height: float,
+	layer_index: int,
+) -> void:
+	var x_min := float(c0) * cw
+	var x_max := float(c1 + 1) * cw
+	# Mid-Z of the glyph cell (row 0 = far / high Z).
+	var z := (float(H - 1 - row) + 0.5) * ch
+	var cells: Array = []
+	for c in range(c0, c1 + 1):
+		cells.append(Vector2i(c, row))
+	spec.rails.append({
+		"x_min": x_min,
+		"x_max": x_max,
+		"z": z,
+		"base_height": base_height,
+		"layer": layer_index,
+		"cells": cells,
+	})
 
 
 ## Emit one flat deck (header override) or Z-banded decks by abutting pipe/ramp rise.

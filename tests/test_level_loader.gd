@@ -29,7 +29,30 @@ func run() -> bool:
 	ok = _upper_space_in_footprint_fails() and ok
 	ok = _clamp_to_playable() and ok
 	ok = _deck_edge_never_oob() and ok
+	ok = _rail_glyph_emits_along_x_run() and ok
 	return ok
+
+
+func _rail_glyph_emits_along_x_run() -> bool:
+	var text := """ssk 2
+name sim_rail_x
+---
+layer 0
+height 0
+========
+=----===
+==@=====
+========
+"""
+	var spec := LevelLoader.parse_text(text, "sim_rail_x")
+	if spec == null or spec.rails.is_empty():
+		push_error("rail glyph: expected rails")
+		return false
+	var r: Dictionary = spec.rails[0]
+	if float(r.x_max) - float(r.x_min) < LevelLoader.cell_size_x * 3.5:
+		push_error("rail glyph: expected ~4 cell X run")
+		return false
+	return true
 
 
 func _read(path: String) -> String:
