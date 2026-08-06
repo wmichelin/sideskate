@@ -40,3 +40,11 @@ static var LAND_SPIN_WINDOW: float = deg_to_rad(45.0)
 ## After a successful spun land, lerp contact yaw → nearest N×π (0 = snap).
 ## Board co-rotates; then one-frame rebase clears spin without unwinding.
 static var SPIN_LAND_SETTLE: float = 0.15
+## Rail top above layer.height (fixed; thickness is the tunable).
+const RAIL_OFFSET: float = 28.0
+## Vertical bar thickness (logical); debug slider syncs this.
+static var RAIL_THICKNESS: float = 4.0
+## Airborne + R mount proximity to rail top/centerline.
+const RAIL_SNAP_RADIUS: float = 28.0
+## |grind_balance| >= this → begin_fall while grinding.
+const GRIND_BALANCE_FAIL: float = 1.0

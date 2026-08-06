@@ -10,6 +10,7 @@ enum SurfaceKind {
 	LAVA = 3,
 	WALL = 4,
 	RAMP = 5,
+	RAIL = 6,
 }
 
 enum CopingClass {
@@ -80,5 +81,7 @@ static func surface_kind_name(k: int) -> String:
 			return "wall"
 		SurfaceKind.RAMP:
 			return "ramp"
+		SurfaceKind.RAIL:
+			return "rail"
 		_:
 			return "unknown"

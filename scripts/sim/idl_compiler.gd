@@ -42,6 +42,7 @@ static func compile_spec(spec: LevelSpec) -> ParkModel:
 	_compile_floors(spec, model)
 	_compile_decks(spec, model)
 	_compile_pipes(spec, model)
+	_compile_rails(spec, model)
 	_classify_copings(spec, model)
 	_link_shared_spines(model)
 	_merge_equivalent_coping_spans(model)
@@ -131,6 +132,21 @@ static func _compile_decks(spec: LevelSpec, model: ParkModel) -> void:
 		patch.poly = deck.get("poly", PackedVector2Array())
 		_bounds_from_poly(patch)
 		model.patches[patch.id] = patch
+		i += 1
+
+
+static func _compile_rails(spec: LevelSpec, model: ParkModel) -> void:
+	var i := 0
+	for rail_dict in spec.rails:
+		var rail := RailSurface.new()
+		rail.id = "rail_%d_L%d" % [i, int(rail_dict.get("layer", 0))]
+		rail.x_min = float(rail_dict.get("x_min", 0.0))
+		rail.x_max = float(rail_dict.get("x_max", 0.0))
+		rail.z = float(rail_dict.get("z", 0.0))
+		rail.base_height = float(rail_dict.get("base_height", 0.0))
+		rail.top_height = rail.base_height + SimTolerances.RAIL_OFFSET
+		rail.layer = int(rail_dict.get("layer", 0))
+		model.rails[rail.id] = rail
 		i += 1
 
 
@@ -719,6 +735,12 @@ static func _hash_model(model: ParkModel) -> String:
 				"rs:%.4f:%.4f:%.4f:%.4f"
 				% [rsample.z, rsample.lip_x, rsample.radius, rsample.base_height]
 			)
+	for id in model.all_rail_ids():
+		var rail: RailSurface = model.rails[id]
+		lines.append(
+			"rail:%s:%.4f:%.4f:%.4f:%.4f"
+			% [id, rail.x_min, rail.x_max, rail.z, rail.top_height]
+		)
 	for id in model.all_wall_ids():
 		var wall: WallSurface = model.walls[id]
 		lines.append(

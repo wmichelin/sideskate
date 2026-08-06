@@ -15,7 +15,29 @@ func run() -> bool:
 		and _playable_levels_compile()
 		and _step_height_scales_ramp_and_pipe()
 		and _step_height_defaults_under_cell_w()
+		and _rail_compiles_along_x()
 	)
+
+
+func _rail_compiles_along_x() -> bool:
+	var m: ParkModel = IdlCompiler.compile_path("res://tests/levels/sim/sim_rail_x.ssk")
+	if not m.is_valid():
+		push_error("rail compile: %s" % ",".join(m.compile_errors))
+		return false
+	if m.rails.is_empty():
+		push_error("rail compile: expected rails")
+		return false
+	var rail: RailSurface = m.rails[m.rails.keys()[0]]
+	if absf(rail.top_height - SimTolerances.RAIL_OFFSET) > 0.01:
+		push_error(
+			"rail compile: top want %.1f got %.1f"
+			% [SimTolerances.RAIL_OFFSET, rail.top_height]
+		)
+		return false
+	if rail.x_max - rail.x_min < m.cell_w * 3.5:
+		push_error("rail compile: expected ~4 cell X span")
+		return false
+	return true
 
 
 func _step_height_scales_ramp_and_pipe() -> bool:

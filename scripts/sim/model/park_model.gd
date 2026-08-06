@@ -21,6 +21,7 @@ var patches: Dictionary = {} ## id -> SupportPatch
 var pipes: Dictionary = {} ## id -> PipeSurface
 var ramps: Dictionary = {} ## id -> RampSurface
 var walls: Dictionary = {} ## id -> WallSurface
+var rails: Dictionary = {} ## id -> RailSurface
 var copings: Dictionary = {} ## id -> CopingEdge
 var edges: Dictionary = {} ## id -> TopologyEdge
 var playable_mask: PackedByteArray = PackedByteArray()
@@ -28,6 +29,7 @@ var playable_mask: PackedByteArray = PackedByteArray()
 var _pipe_ids: Array = []
 var _ramp_ids: Array = []
 var _wall_ids: Array = []
+var _rail_ids: Array = []
 var _patch_ids: Array = []
 var _coping_ids: Array = []
 var _edge_ids: Array = []
@@ -46,6 +48,8 @@ func rebuild_id_caches() -> void:
 	_ramp_ids.sort()
 	_wall_ids = walls.keys()
 	_wall_ids.sort()
+	_rail_ids = rails.keys()
+	_rail_ids.sort()
 	_patch_ids = patches.keys()
 	_patch_ids.sort()
 	_coping_ids = copings.keys()
@@ -76,6 +80,10 @@ func get_wall(id: String) -> WallSurface:
 	return walls.get(id) as WallSurface
 
 
+func get_rail(id: String) -> RailSurface:
+	return rails.get(id) as RailSurface
+
+
 func get_coping(id: String) -> CopingEdge:
 	return copings.get(id) as CopingEdge
 
@@ -98,6 +106,11 @@ func all_ramp_ids() -> Array:
 func all_wall_ids() -> Array:
 	_ensure_id_caches()
 	return _wall_ids
+
+
+func all_rail_ids() -> Array:
+	_ensure_id_caches()
+	return _rail_ids
 
 
 func all_coping_ids() -> Array:
