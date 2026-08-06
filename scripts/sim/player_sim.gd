@@ -252,6 +252,7 @@ func tick(delta: float = SimTolerances.FIXED_DT) -> void:
 	else:
 		air.rotate_left = rotate_left
 		air.rotate_right = rotate_right
+		state.tick_grind_remount_cooldown(delta)
 		if not falling and grind != null and grind_held:
 			if grind.try_mount(state, grind_held):
 				ollie_available = true

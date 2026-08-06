@@ -20,6 +20,9 @@ var facing_yaw: float = 0.0
 var depth_turn_yaw: float = 0.0
 ## Persistent presentation board yaw (local Y in lean frame). Independent of facing.
 var board_yaw: float = 0.0
+## True when this snapshot cleared spin_yaw without unwinding (land rebase / bout reset).
+## Pose lerp must not animate facing/board through that jump.
+var yaw_rebase: bool = false
 var active_layer: int = 0
 
 
@@ -36,6 +39,7 @@ func copy_from_depth(depth: PseudoDepthBody, facing: float = 1.0, layer: int = 0
 	facing_h = facing
 	facing_yaw = 0.0
 	depth_turn_yaw = 0.0
+	yaw_rebase = false
 	active_layer = layer
 
 
@@ -54,6 +58,7 @@ func duplicate_pose() -> LogicalPose:
 	p.facing_yaw = facing_yaw
 	p.depth_turn_yaw = depth_turn_yaw
 	p.board_yaw = board_yaw
+	p.yaw_rebase = yaw_rebase
 	p.active_layer = active_layer
 	return p
 
@@ -77,19 +82,22 @@ static func lerp_poses(a: LogicalPose, b: LogicalPose, t: float) -> LogicalPose:
 	out.fall_pitch = lerp_angle(a.fall_pitch, b.fall_pitch, u)
 	out.fall_twist = lerp_angle(a.fall_twist, b.fall_twist, u)
 	out.airborne = b.airborne if u >= 0.5 else a.airborne
+	var spin_rebase := a.yaw_rebase or b.yaw_rebase
 	var equivalent_turn_handoff := (
 		a.facing_h * b.facing_h < 0.0
 		and absf(absf(a.facing_yaw - b.facing_yaw) - PI) < 0.01
 	)
-	if equivalent_turn_handoff:
-		# R(±π) × old-facing and R(0) × new-facing are the same visual pose.
-		# Pick the canonical endpoint instead of animating a second half-turn.
+	if spin_rebase or equivalent_turn_handoff:
+		# Rebase / equivalent facing: snap to the new frame — do not lerp a half-turn
+		# that would desync body vs board.
 		out.facing_h = b.facing_h
 		out.facing_yaw = b.facing_yaw
+		out.board_yaw = b.board_yaw
 	else:
 		out.facing_h = b.facing_h if u >= 0.5 else a.facing_h
 		out.facing_yaw = lerp_angle(a.facing_yaw, b.facing_yaw, u)
+		out.board_yaw = lerp_angle(a.board_yaw, b.board_yaw, u)
 	out.depth_turn_yaw = lerp_angle(a.depth_turn_yaw, b.depth_turn_yaw, u)
-	out.board_yaw = lerp_angle(a.board_yaw, b.board_yaw, u)
+	out.yaw_rebase = b.yaw_rebase
 	out.active_layer = b.active_layer if u >= 0.5 else a.active_layer
 	return out

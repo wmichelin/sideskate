@@ -105,6 +105,7 @@ func run() -> bool:
 		and _rail_grounded_r_no_mount()
 		and _rail_balance_fail_falls()
 		and _rail_end_eject_no_fall()
+		and _rail_end_eject_r_held_no_remount()
 		and _rail_ollie_release_pops()
 		and _transfer_hold_delay_zero_auto()
 		and _transfer_hold_waits_delay()
@@ -8361,6 +8362,44 @@ func _rail_end_eject_no_fall() -> bool:
 		if sim.state.is_airborne() and not sim.state.is_grinding():
 			return true
 	push_error("rail end: never ejected")
+	return false
+
+
+## End-eject with R still held must stay airborne (no magnetic remount past tip).
+func _rail_end_eject_r_held_no_remount() -> bool:
+	var sim := _rail_setup_air_over_rail()
+	if sim == null:
+		push_error("rail end+R: setup")
+		return false
+	for _i in range(30):
+		sim.set_input(Vector2.ZERO, false, false, false, false, false, false, true)
+		sim.tick()
+		if sim.state.is_grinding():
+			break
+	if not sim.state.is_grinding():
+		push_error("rail end+R: never mounted")
+		return false
+	var rail: RailSurface = sim.model.rails[sim.state.grind_rail_id]
+	sim.state.grind_along = 400.0
+	sim.state.position.x = rail.x_max - 1.0
+	var saw_air := false
+	for _i in range(45):
+		sim.set_input(Vector2.ZERO, false, false, false, false, false, false, true)
+		sim.tick()
+		if sim.state.is_airborne() and not sim.state.is_grinding():
+			saw_air = true
+			# Hold R past the tip for several ticks — must not snap back on.
+			for _j in range(20):
+				sim.set_input(Vector2.ZERO, false, false, false, false, false, false, true)
+				sim.tick()
+				if sim.state.is_grinding():
+					push_error("rail end+R: remounted while R held")
+					return false
+			return true
+		if sim.state.falling and not saw_air:
+			push_error("rail end+R: fell before eject")
+			return false
+	push_error("rail end+R: never ejected")
 	return false
 
 

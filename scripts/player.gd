@@ -367,9 +367,16 @@ func _capture_pose_snapshots() -> void:
 	var falling := _sim != null and _sim.state != null and _sim.state.falling
 	var force_snap := _board_force_snap or (_was_falling_board and not falling)
 	var spin_handoff := false
-	if _sim != null and _sim.state != null and _sim.state.spin_handoff:
-		spin_handoff = true
-		_sim.state.spin_handoff = false
+	var yaw_rebase := false
+	if _sim != null and _sim.state != null:
+		if _sim.state.spin_handoff:
+			spin_handoff = true
+			yaw_rebase = true
+			_sim.state.spin_handoff = false
+		if _sim.state.board_align_to_facing:
+			force_snap = true
+			yaw_rebase = true
+			_sim.state.board_align_to_facing = false
 	_was_falling_board = falling
 	var next = _LogicalPose.new()
 	next.copy_from_depth(depth, facing, 0)
@@ -379,6 +386,7 @@ func _capture_pose_snapshots() -> void:
 	next.board_yaw = _board_yaw.tick(
 		facing, facing_yaw, force_snap or not _pose_snap_ready, spin_handoff
 	)
+	next.yaw_rebase = yaw_rebase
 	_board_force_snap = false
 	if _pose_curr == null:
 		_pose_prev = next

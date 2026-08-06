@@ -20,10 +20,15 @@ func try_mount(state: SimState, grind_held: bool) -> bool:
 		return false
 	if state.has_maneuver() or state.is_hanging():
 		return false
+	if state.grind_remount_cooldown > 0.0:
+		return false
 	var best_id := ""
 	var best_d := INF
 	for id in model.all_rail_ids():
 		var rail: RailSurface = model.rails[id]
+		# Past either end: do not remount (end-eject + R held used to snap back).
+		if not rail.contains_x(state.position.x, SimTolerances.CONTACT_EPS):
+			continue
 		var d := rail.distance_to_pose(state.position)
 		if d < best_d:
 			best_d = d
@@ -43,6 +48,13 @@ func _enter_grind(state: SimState, rail_id: String) -> void:
 	state.grind_rail_id = rail_id
 	state.grind_along = state.velocity.x
 	state.grind_balance = 0.0
+	state.grind_remount_cooldown = 0.0
+	# Drop any air-spin residue so grind / leave start upright and aligned.
+	state.spin_yaw = 0.0
+	state.spin_takeoff_facing = state.facing
+	state.spin_handoff = false
+	state.board_align_to_facing = true
+	state.cancel_spin_land_settle()
 	state.velocity = Vector3.ZERO
 	state.tangent_velocity = Vector2.ZERO
 	state.position.x = clampf(state.position.x, rail.x_min, rail.x_max)
@@ -88,9 +100,11 @@ func step(state: SimState, wish: Vector2, delta: float) -> void:
 	if state.position.x < rail.x_min - 0.01 or state.position.x > rail.x_max + 0.01:
 		state.position.x = clampf(state.position.x, rail.x_min, rail.x_max)
 		_exit_to_air(state, along, 0.0)
-		# Nudge past the end so we do not remount instantly.
-		state.position.x += signf(along) * 2.0
+		# Nudge past the end so we do not remount instantly (even with R held).
+		state.position.x += signf(along) * maxf(SimTolerances.CONTACT_EPS * 2.0, 4.0)
 		state.position.z = rail.top_height + 2.0
+		state.grind_remount_cooldown = 0.25
+		return
 
 
 ## Ollie release while grinding → free air with pop.
@@ -104,6 +118,7 @@ func ollie_out(state: SimState, pop_height_speed: float) -> void:
 	_exit_to_air(state, along, maxf(pop_height_speed, 0.0))
 	# Clear the rail solid volume so same-tick air contact does not Reject.
 	state.position.z = top + SimTolerances.CONTACT_EPS + 2.0
+	state.grind_remount_cooldown = 0.2
 
 
 func _exit_to_air(state: SimState, vx: float, vz: float) -> void:

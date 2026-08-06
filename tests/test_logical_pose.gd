@@ -8,10 +8,12 @@ func run() -> bool:
 	return (
 		_lerp_midpoint()
 		and _lerp_flags()
+		and _lerp_yaw_rebase_snaps()
 		and _centered_y_turn_presentation()
 		and _board_yaw_tracker_rules()
 		and _board_yaw_depth_turn_not_persisted()
 		and _player_pose_snapshots_track_board_yaw()
+		and _player_land_rebase_snaps_board_to_facing()
 		and _fall_box_stays_above_support_planes()
 		and _board_fall_box_stays_above_support_planes()
 		and _fall_box_stays_on_impact_approach_side()
@@ -77,6 +79,30 @@ func _lerp_flags() -> bool:
 	var late := LogicalPose.lerp_poses(a, b, 0.5)
 	if not late.airborne or late.facing_h < 0.0 or late.active_layer != 1:
 		push_error("u>=0.5 must take b flags")
+		return false
+	return true
+
+
+## Spin land rebase: body yaw N×π → 0 must not lerp-unwind against a snapped board.
+func _lerp_yaw_rebase_snaps() -> bool:
+	var a := LogicalPose.new()
+	a.facing_h = -1.0
+	a.facing_yaw = PI
+	a.board_yaw = 0.0
+	var b := LogicalPose.new()
+	b.facing_h = 1.0
+	b.facing_yaw = 0.0
+	b.board_yaw = PI
+	b.yaw_rebase = true
+	var mid := LogicalPose.lerp_poses(a, b, 0.5)
+	if absf(mid.facing_yaw) > 0.001:
+		push_error("yaw rebase lerp must snap facing_yaw to 0, got %s" % mid.facing_yaw)
+		return false
+	if absf(angle_difference(mid.board_yaw, PI)) > 0.001:
+		push_error("yaw rebase lerp must snap board_yaw, got %s" % mid.board_yaw)
+		return false
+	if mid.facing_h < 0.0:
+		push_error("yaw rebase lerp must take b facing_h")
 		return false
 	return true
 
@@ -253,6 +279,47 @@ func _player_pose_snapshots_track_board_yaw() -> bool:
 		player.free()
 		return false
 
+	player.depth.free()
+	player.free()
+	return true
+
+
+## After spun-land rebase, board snaps to facing so it matches body at yaw 0.
+func _player_land_rebase_snaps_board_to_facing() -> bool:
+	var player = _PlayerScript.new()
+	player.depth = PseudoDepthBody.new()
+	player._sim = PlayerSim.new()
+	player._sim.state = SimState.new()
+	player.visual_facing_h = "r"
+	player.facing_yaw = 0.0
+	player._capture_pose_snapshots()
+	# Simulate mid-spin co-rotation, then land rebase + align.
+	player.facing_yaw = PI
+	player._capture_pose_snapshots()
+	player.facing_yaw = 0.0
+	player.visual_facing_h = "l"
+	player._sim.state.spin_handoff = true
+	player._sim.state.board_align_to_facing = true
+	player._capture_pose_snapshots()
+	if absf(player._pose_curr.facing_yaw) > 0.001:
+		push_error("land rebase: facing_yaw must be 0")
+		player.depth.free()
+		player.free()
+		return false
+	if not player._pose_curr.yaw_rebase:
+		push_error("land rebase: pose must mark yaw_rebase")
+		player.depth.free()
+		player.free()
+		return false
+	# Left facing snap → board yaw 0.
+	if absf(player._pose_curr.board_yaw) > 0.01:
+		push_error(
+			"land rebase: board must snap to left facing (0), got %s"
+			% player._pose_curr.board_yaw
+		)
+		player.depth.free()
+		player.free()
+		return false
 	player.depth.free()
 	player.free()
 	return true

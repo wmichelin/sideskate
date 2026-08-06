@@ -80,6 +80,8 @@ var spin_yaw: float = 0.0
 var spin_takeoff_facing: String = "r"
 ## One-shot: presentation board tracker ignores spin clear (no reverse / unwind).
 var spin_handoff: bool = false
+## After land rebase: snap board yaw to current facing (aligned with body at yaw 0).
+var board_align_to_facing: bool = false
 ## After spun land: lerp contact yaw → nearest N×π (board co-rotates).
 var spin_settling: bool = false
 var spin_settle_from: float = 0.0
@@ -93,6 +95,8 @@ var spin_land_momentum_x: float = 0.0
 var grind_rail_id: String = ""
 var grind_along: float = 0.0
 var grind_balance: float = 0.0
+## Seconds before R can remount after end-eject / ollie-out.
+var grind_remount_cooldown: float = 0.0
 
 
 ## Lock presentation flop to `sign` (usually wall approach / away-from-impact).
@@ -120,6 +124,13 @@ func clear_grind() -> void:
 	grind_rail_id = ""
 	grind_along = 0.0
 	grind_balance = 0.0
+
+
+func tick_grind_remount_cooldown(delta: float) -> void:
+	if grind_remount_cooldown <= 0.0:
+		grind_remount_cooldown = 0.0
+		return
+	grind_remount_cooldown = maxf(grind_remount_cooldown - maxf(delta, 0.0), 0.0)
 
 
 func is_hanging() -> bool:
@@ -233,14 +244,14 @@ func step_spin_land_settle(delta: float) -> void:
 		commit_spin_land_snap()
 
 
-## After spun land snap: rebase spin_yaw to 0 without unwinding the trick
-## (board/body keep the snapped orientation via spin_handoff).
+## After spun land snap: rebase spin_yaw to 0 without unwinding the trick,
+## then snap board to facing so rider and board share the yaw-0 frame.
 func commit_spin_land_snap() -> void:
 	spin_takeoff_facing = facing
-	if absf(spin_yaw) < 0.0001:
-		return
-	spin_handoff = true
-	spin_yaw = 0.0
+	if absf(spin_yaw) > 0.0001:
+		spin_handoff = true
+		spin_yaw = 0.0
+	board_align_to_facing = true
 
 
 func _apply_spin_land_momentum_fix() -> void:
