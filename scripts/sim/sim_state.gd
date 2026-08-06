@@ -162,7 +162,7 @@ func reset_air_spin() -> void:
 	spin_settle_elapsed = 0.0
 
 
-## After spun land snap: body lerps spin_yaw → 0; board ignores reverse via handoff.
+## After spun land snap: body + board lerp spin_yaw → 0 together.
 func begin_spin_land_settle() -> void:
 	if absf(spin_yaw) < 0.0001:
 		spin_settling = false
@@ -173,7 +173,6 @@ func begin_spin_land_settle() -> void:
 	spin_settling = true
 	spin_settle_from = spin_yaw
 	spin_settle_elapsed = 0.0
-	spin_handoff = true
 	spin_takeoff_facing = facing
 
 
@@ -183,8 +182,6 @@ func step_spin_land_settle(delta: float) -> bool:
 		return false
 	var dur := maxf(SimTolerances.SPIN_LAND_SETTLE, 0.0)
 	spin_settle_elapsed += maxf(delta, 0.0)
-	# Board must not unwind while body eases to yaw 0.
-	spin_handoff = true
 	if dur <= 0.0001:
 		spin_yaw = 0.0
 		spin_settling = false

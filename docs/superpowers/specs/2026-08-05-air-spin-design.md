@@ -73,11 +73,12 @@ Sim owns the spin; presentation only displays it.
 
 - `nearest = round(spin_yaw / π) * π`
 - `err = abs(angle_difference(spin_yaw, nearest))` (or equivalent absolute error to nearest *N×π*)
-- If `err ≤ LAND_SPIN_WINDOW` → success: snap `spin_yaw = nearest`; sync facing from half-turns; begin **land settle** (body lerps `spin_yaw` → 0 over `SPIN_LAND_SETTLE`, board ignores reverse via `spin_handoff`).
+- If `err ≤ LAND_SPIN_WINDOW` → success: snap `spin_yaw = nearest`; sync facing from half-turns; begin **land settle** (body **and board** lerp `spin_yaw` → 0 over `SPIN_LAND_SETTLE`).
 - Else → `begin_fall()`; freeze spin; leave mid-angle for fall presentation.
 
 **Momentum facing fix** (success only): if horizontal momentum sign is clearly
-nonzero and opposes `facing`, `set_facing_side(momentum)` only.
+nonzero and opposes `facing`, set facing to momentum only (no `snap_to_facing` on
+the board). Land settle still co-rotates rider and board to yaw 0.
 
 **Compose with existing systems:** hang apex turn still runs (does not reset
 `spin_yaw`); depth-turn unchanged; transfer X-lerp unchanged; fall bout ignores

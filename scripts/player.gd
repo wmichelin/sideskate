@@ -34,7 +34,7 @@ const BODY_CYLINDER_H_M := 0.22
 @export_range(0.1, 12.0, 0.05) var spin_rate: float = PI
 ## Half-width around N×180° for a successful spin land (degrees).
 @export_range(1.0, 90.0, 0.5) var land_spin_window_deg: float = 25.0
-## After a spun land, seconds to lerp body yaw → 0 (0 = snap). Board stays put.
+## After a spun land, seconds to lerp body+board yaw → 0 (0 = snap).
 @export_range(0.0, 1.0, 0.01) var spin_land_settle: float = 0.15
 @export_range(0.0, 5.0, 0.01) var fall_anim_duration: float = 0.15
 @export_range(0.0, 5.0, 0.01) var fall_stop_duration: float = 1.0

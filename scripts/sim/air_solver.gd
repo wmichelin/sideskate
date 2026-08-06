@@ -79,7 +79,7 @@ func resolve_land_spin(state: SimState, momentum_x: float) -> bool:
 		if state.facing != mom_face:
 			state.facing = mom_face
 			state.visual_facing = mom_face
-	# Body lerps snapped yaw → 0; board ignores reverse via spin_handoff.
+	# Body + board lerp snapped yaw → 0 together (BoardYawTracker follows spin deltas).
 	state.begin_spin_land_settle()
 	return true
 
