@@ -31,9 +31,11 @@ const BODY_CYLINDER_H_M := 0.22
 @export var facing_coping_cells: int = 3
 @export var acid_coping_cells: int = 16
 ## Air spin yaw rate while Q/E held (rad/s).
-@export_range(0.1, 12.0, 0.05) var spin_rate: float = PI
+@export_range(0.1, 12.0, 0.05) var spin_rate: float = 7.95
 ## Half-width around N×180° for a successful spin land (degrees).
-@export_range(1.0, 90.0, 0.5) var land_spin_window_deg: float = 25.0
+@export_range(1.0, 90.0, 0.5) var land_spin_window_deg: float = 45.0
+## After a spun land, seconds to lerp contact yaw → nearest N×180° (0 = snap).
+@export_range(0.0, 1.0, 0.01) var spin_land_settle: float = 0.15
 @export_range(0.0, 5.0, 0.01) var fall_anim_duration: float = 0.15
 @export_range(0.0, 5.0, 0.01) var fall_stop_duration: float = 1.0
 @export_range(0.0, 10.0, 0.01) var fall_duration: float = 2.0
@@ -185,6 +187,7 @@ func _sync_tuning_to_sim() -> void:
 	SimTolerances.ACID_COPING_CELLS = acid_coping_cells
 	SimTolerances.SPIN_RATE = spin_rate
 	SimTolerances.LAND_SPIN_WINDOW = deg_to_rad(land_spin_window_deg)
+	SimTolerances.SPIN_LAND_SETTLE = spin_land_settle
 
 
 func _sync_from_sim() -> void:

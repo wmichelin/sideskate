@@ -8110,23 +8110,31 @@ func _air_spin_land_near_pi_snaps_no_fall() -> bool:
 	sim.state.visual_facing = sim.state.facing
 	sim.state.velocity = Vector3(200.0, 0.0, -80.0)
 	sim.state.position.z = floor.height + 5.0
+	var saw_snap := false
 	# Descend onto floor without holding rotate.
-	for _i in range(60):
+	for _i in range(120):
 		sim.set_input(Vector2.ZERO, false, false)
 		sim.tick()
 		if sim.state.falling:
 			push_error("air spin land pi: fell unexpectedly")
 			return false
 		if sim.state.is_grounded():
-			# Snap + rebase to 0 (handoff keeps the 180 — must not lerp π→0).
-			if absf(sim.state.spin_yaw) > 0.01:
-				push_error(
-					"air spin land pi: expected rebased spin_yaw≈0 got %.3f"
-					% sim.state.spin_yaw
-				)
-				return false
-			return true
-	push_error("air spin land pi: never grounded")
+			# Contact → N×π settle (board co-rotates), then deferred rebase to 0.
+			if absf(sim.state.spin_yaw - PI) < 0.02:
+				saw_snap = true
+			if (
+				not sim.state.spin_settling
+				and not sim.state.spin_pending_rebase
+				and absf(sim.state.spin_yaw) < 0.01
+			):
+				if not saw_snap:
+					push_error("air spin land pi: rebased without ever reaching π")
+					return false
+				return true
+	push_error(
+		"air spin land pi: never finished settle yaw=%.3f settling=%s pending=%s"
+		% [sim.state.spin_yaw, sim.state.spin_settling, sim.state.spin_pending_rebase]
+	)
 	return false
 
 
@@ -8193,10 +8201,12 @@ func _air_spin_backwards_land_flips_facing_keeps_board_ref() -> bool:
 	board.snap_to_facing(-1.0) ## nose left (facing l)
 	var board_before := board.yaw
 	# Simulate presentation tick through land: composed yaw then facing-only fix.
-	for _i in range(60):
+	for _i in range(120):
 		sim.set_input(Vector2.ZERO, false, false)
 		sim.tick()
 		if sim.state.is_grounded() and not sim.state.falling:
+			if sim.state.spin_settling or sim.state.spin_pending_rebase:
+				continue
 			break
 	if not sim.state.is_grounded() or sim.state.falling:
 		push_error(

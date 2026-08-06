@@ -79,6 +79,15 @@ var spin_yaw: float = 0.0
 var spin_takeoff_facing: String = "r"
 ## One-shot: presentation board tracker ignores spin clear (no reverse / unwind).
 var spin_handoff: bool = false
+## After spun land: lerp contact yaw → nearest N×π (board co-rotates).
+var spin_settling: bool = false
+var spin_settle_from: float = 0.0
+var spin_settle_to: float = 0.0
+var spin_settle_elapsed: float = 0.0
+## After settle hits N×π: hold one tick so board sees it, then handoff-clear.
+var spin_pending_rebase: bool = false
+## Momentum sign for facing fix after settle (0 = skip).
+var spin_land_momentum_x: float = 0.0
 
 
 ## Lock presentation flop to `sign` (usually wall approach / away-from-impact).
@@ -149,10 +158,64 @@ func clear_air_peak() -> void:
 
 ## New air bout: zero spin; remember takeoff facing for live half-turn flips.
 func reset_air_spin() -> void:
-	if absf(spin_yaw) > 0.0001:
+	if absf(spin_yaw) > 0.0001 or spin_settling or spin_pending_rebase:
 		spin_handoff = true
 	spin_yaw = 0.0
 	spin_takeoff_facing = facing
+	_clear_spin_land_settle()
+
+
+## Abort land settle (fall / death). Leaves mid-angle for presentation.
+func cancel_spin_land_settle() -> void:
+	_clear_spin_land_settle()
+
+
+## After successful land classify: lerp contact → nearest N×π (co-rotate board).
+## `momentum_x` applied for facing fix once settle reaches the snap.
+func begin_spin_land_settle(nearest: float, momentum_x: float) -> void:
+	spin_settle_from = spin_yaw
+	spin_settle_to = nearest
+	spin_settle_elapsed = 0.0
+	spin_land_momentum_x = momentum_x
+	spin_pending_rebase = false
+	# Gameplay facing from the snap target immediately (visual yaw still lerps).
+	var saved_yaw := spin_yaw
+	spin_yaw = nearest
+	var face := facing_from_spin_yaw()
+	spin_yaw = saved_yaw
+	facing = face
+	visual_facing = face
+	facing_yaw = 0.0
+	if absf(spin_settle_from - spin_settle_to) < 0.0001:
+		spin_yaw = spin_settle_to
+		spin_settling = false
+		_apply_spin_land_momentum_fix()
+		spin_pending_rebase = true
+		return
+	spin_settling = true
+
+
+## Advance land settle / deferred rebase. Call every physics tick while alive.
+func step_spin_land_settle(delta: float) -> void:
+	if spin_settling:
+		var dur := maxf(SimTolerances.SPIN_LAND_SETTLE, 0.0)
+		spin_settle_elapsed += maxf(delta, 0.0)
+		if dur <= 0.0001:
+			spin_yaw = spin_settle_to
+		else:
+			var t := clampf(spin_settle_elapsed / dur, 0.0, 1.0)
+			spin_yaw = lerpf(spin_settle_from, spin_settle_to, t)
+			if t < 1.0 - 0.0001:
+				return
+			spin_yaw = spin_settle_to
+		spin_settling = false
+		_apply_spin_land_momentum_fix()
+		# Hold exact N×π for this pose capture so board receives residual.
+		spin_pending_rebase = true
+		return
+	if spin_pending_rebase:
+		spin_pending_rebase = false
+		commit_spin_land_snap()
 
 
 ## After spun land snap: rebase spin_yaw to 0 without unwinding the trick
@@ -163,6 +226,24 @@ func commit_spin_land_snap() -> void:
 		return
 	spin_handoff = true
 	spin_yaw = 0.0
+
+
+func _apply_spin_land_momentum_fix() -> void:
+	if absf(spin_land_momentum_x) <= 1.0:
+		return
+	var mom_face := "r" if spin_land_momentum_x > 0.0 else "l"
+	if facing != mom_face:
+		facing = mom_face
+		visual_facing = mom_face
+
+
+func _clear_spin_land_settle() -> void:
+	spin_settling = false
+	spin_settle_from = 0.0
+	spin_settle_to = 0.0
+	spin_settle_elapsed = 0.0
+	spin_pending_rebase = false
+	spin_land_momentum_x = 0.0
 
 
 ## Facing after `n` half-turns (π) from takeoff. Odd n flips l↔r.

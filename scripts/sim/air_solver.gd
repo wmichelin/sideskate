@@ -35,6 +35,8 @@ func _init(
 func _step_air_spin(state: SimState, delta: float) -> void:
 	if state == null or not state.is_airborne() or state.falling or not state.alive:
 		return
+	if state.spin_settling or state.spin_pending_rebase:
+		return
 	var sign := 0.0
 	if rotate_left and not rotate_right:
 		sign = 1.0 ## CCW (Q)
@@ -60,25 +62,17 @@ func resolve_land_spin(state: SimState, momentum_x: float) -> bool:
 	# No air-spin this bout — leave facing / yaw alone (transfer hold_facing, etc.).
 	if absf(state.spin_yaw) < 0.0001:
 		return true
+	# Already settling / holding snap from this seat — do not re-classify.
+	if state.spin_settling or state.spin_pending_rebase:
+		return true
 	var nearest := roundf(state.spin_yaw / PI) * PI
 	var err := absf(state.spin_yaw - nearest)
 	# Wrap: treat angles near ±π equivalent distance (already nearest Nπ).
 	if err > SimTolerances.LAND_SPIN_WINDOW:
 		state.request_fall = true
 		return false
-	state.spin_yaw = nearest
-	var face := state.facing_from_spin_yaw()
-	state.facing = face
-	state.visual_facing = face
-	state.facing_yaw = 0.0
-	# Momentum facing fix — facing only; no board snap_to_facing.
-	if absf(momentum_x) > 1.0:
-		var mom_face := "r" if momentum_x > 0.0 else "l"
-		if state.facing != mom_face:
-			state.facing = mom_face
-			state.visual_facing = mom_face
-	# Rebase yaw frame to 0 without rotating back through the spin (keeps the 180).
-	state.commit_spin_land_snap()
+	# Lerp contact → exact N×π (board co-rotates); deferred handoff rebase keeps the 180.
+	state.begin_spin_land_settle(nearest, momentum_x)
 	return true
 
 

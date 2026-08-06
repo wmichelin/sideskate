@@ -34,6 +34,9 @@ static var GRAVITY: float = -1900.0
 ## Seconds of centered local-Y hang turn into the source pipe (0 = instant).
 static var APEX_FACING_DELAY: float = 0.05
 ## Air spin yaw rate while rotate left/right held (rad/s).
-static var SPIN_RATE: float = PI
+static var SPIN_RATE: float = 7.95
 ## Half-width around nearest N×π for a successful spin land (radians).
-static var LAND_SPIN_WINDOW: float = deg_to_rad(25.0)
+static var LAND_SPIN_WINDOW: float = deg_to_rad(45.0)
+## After a successful spun land, lerp contact yaw → nearest N×π (0 = snap).
+## Board co-rotates; then one-frame rebase clears spin without unwinding.
+static var SPIN_LAND_SETTLE: float = 0.15

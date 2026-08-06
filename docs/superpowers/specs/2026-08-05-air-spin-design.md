@@ -65,14 +65,15 @@ Sim owns the spin; presentation only displays it.
 
 ### Defaults
 
-- Spin rate ≈ `π` rad/s (debug tunable).
-- Land success half-width ≈ `25°` (debug tunable).
+- Spin rate ≈ `7.95` rad/s (debug tunable).
+- Land success half-width ≈ `45°` (debug tunable).
+- Land settle ≈ `0.15` s to lerp contact → *N×π* (0 = snap; debug tunable).
 
 ## Land gate
 
 - `nearest = round(spin_yaw / π) * π`
 - `err = abs(angle_difference(spin_yaw, nearest))` (or equivalent absolute error to nearest *N×π*)
-- If `err ≤ LAND_SPIN_WINDOW` → success: snap `spin_yaw = nearest`; sync facing from half-turns; **rebase** `spin_yaw` to 0 with `spin_handoff` so presentation does **not** rotate back through the spin (the 180 sticks).
+- If `err ≤ LAND_SPIN_WINDOW` → success: **lerp** `spin_yaw` from contact → `nearest` (board co-rotates); sync facing from half-turns; then **rebase** `spin_yaw` to 0 with `spin_handoff` one tick after the snap so presentation does **not** rotate back through the spin (nose/tail finish axis-aligned).
 - Else → `begin_fall()`; freeze spin; leave mid-angle for fall presentation.
 
 **Momentum facing fix** (success only): if horizontal momentum sign is clearly
