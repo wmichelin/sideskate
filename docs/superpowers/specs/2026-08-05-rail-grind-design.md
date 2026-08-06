@@ -1,7 +1,7 @@
 # Rail grind (along-X glyph)
 
-**Status:** approved design (2026-08-05). Implementation plan to follow at
-`docs/superpowers/plans/2026-08-05-rail-grind.md` after this spec is reviewed.
+**Status:** approved design (2026-08-05). Implementation plan:
+[`docs/superpowers/plans/2026-08-05-rail-grind.md`](../plans/2026-08-05-rail-grind.md).
 
 ## Goal
 
