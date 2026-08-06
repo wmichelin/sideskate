@@ -278,6 +278,11 @@ func _sync_from_sim() -> void:
 				support_anchor = _sim.query.edge_anchor_sample(launch_edge, z_ref)
 		if not support_anchor.is_empty():
 			support_h = float(support_anchor.height)
+	elif st.is_airborne():
+		# Pin shadow / underfoot reference to the launch floor/deck (not feet in air).
+		var launch_id := st.air_launch_surface_id
+		if _sim.model.patches.has(launch_id):
+			support_h = float((_sim.model.patches[launch_id] as SupportPatch).height)
 	if depth:
 		depth.logical_x = p.x
 		depth.logical_z = p.y
@@ -444,6 +449,17 @@ func consume_ollie_pop() -> bool:
 		return false
 	_sim.ollie_just_popped = false
 	return true
+
+
+## Logical vertical velocity while airborne (0 on ground). Presentation sync.
+func air_vertical_velocity() -> float:
+	if _sim == null or _sim.state == null or not _sim.state.is_airborne():
+		return 0.0
+	return _sim.state.velocity.z
+
+
+func is_airborne() -> bool:
+	return _airborne
 
 
 func fall_cooldown_frac() -> float:
