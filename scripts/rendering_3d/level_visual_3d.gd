@@ -98,6 +98,10 @@ func _material_for(key: String) -> StandardMaterial3D:
 			mat.albedo_color = Color(0.72, 0.74, 0.78, 1.0)
 			mat.metallic = 0.65
 			mat.roughness = 0.35
+		"rail_post":
+			mat.albedo_color = Color(0.55, 0.57, 0.62, 1.0)
+			mat.metallic = 0.55
+			mat.roughness = 0.45
 		_:
 			mat.albedo_color = Color(0.32, 0.38, 0.42, 1.0)
 	_materials[key] = mat

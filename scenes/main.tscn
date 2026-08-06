@@ -81,10 +81,10 @@ player_path = NodePath("../../Player")
 script = ExtResource("17_pdbg3d")
 player_path = NodePath("../../Player")
 
-[node name="GrindBalanceHud" type="Node" parent="World3D"]
+[node name="GrindBalanceHud" type="CanvasLayer" parent="."]
 script = ExtResource("22_grindhud")
-player_path = NodePath("../../Player")
-visual_path = NodePath("../PlayerVisual")
+player_path = NodePath("Player")
+visual_path = NodePath("World3D/PlayerVisual")
 
 [node name="RampLevel" type="Node2D" parent="." unique_id=1434297277]
 script = ExtResource("1_level")

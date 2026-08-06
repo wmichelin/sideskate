@@ -60,7 +60,19 @@ func step(state: SimState, wish: Vector2, delta: float) -> void:
 		_exit_to_air(state, state.grind_along, 0.0)
 		return
 	var rail: RailSurface = model.rails[state.grind_rail_id]
-	state.grind_balance = clampf(wish.x + wish.y, -1.0, 1.0)
+	# Stick tips the meter over time; neutral stick recovers toward center.
+	# Instant wish→lean mapped |stick|==1 to fail and made every approach fall.
+	var tip := clampf(wish.x + wish.y, -1.0, 1.0)
+	var dt := maxf(delta, 0.0)
+	if absf(tip) > 0.05:
+		state.grind_balance += tip * SimTolerances.GRIND_BALANCE_RATE * dt
+	elif absf(state.grind_balance) > 0.0001:
+		var recover := SimTolerances.GRIND_BALANCE_RECOVER * dt
+		if absf(state.grind_balance) <= recover:
+			state.grind_balance = 0.0
+		else:
+			state.grind_balance -= signf(state.grind_balance) * recover
+	state.grind_balance = clampf(state.grind_balance, -1.25, 1.25)
 	if absf(state.grind_balance) >= SimTolerances.GRIND_BALANCE_FAIL - 0.0001:
 		state.clear_grind()
 		state.mode = SimState.Mode.AIRBORNE

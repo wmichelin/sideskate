@@ -8326,7 +8326,8 @@ func _rail_balance_fail_falls() -> bool:
 	if not sim.state.is_grinding():
 		push_error("rail balance: never mounted")
 		return false
-	for _i in range(10):
+	# Accumulating tip — full stick must hold briefly before fail.
+	for _i in range(90):
 		sim.set_input(Vector2(1.0, 1.0), false, false, false, false, false, false, false)
 		sim.tick()
 		if sim.state.falling:

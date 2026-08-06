@@ -41,10 +41,14 @@ static var LAND_SPIN_WINDOW: float = deg_to_rad(45.0)
 ## Board co-rotates; then one-frame rebase clears spin without unwinding.
 static var SPIN_LAND_SETTLE: float = 0.15
 ## Rail top above layer.height (fixed; thickness is the tunable).
-const RAIL_OFFSET: float = 28.0
+const RAIL_OFFSET: float = 56.0
 ## Vertical bar thickness (logical); debug slider syncs this.
 static var RAIL_THICKNESS: float = 4.0
 ## Airborne + R mount proximity to rail top/centerline.
-const RAIL_SNAP_RADIUS: float = 28.0
+const RAIL_SNAP_RADIUS: float = 36.0
 ## |grind_balance| >= this → begin_fall while grinding.
 const GRIND_BALANCE_FAIL: float = 1.0
+## How fast stick tips the balance meter (units/sec toward ±fail).
+const GRIND_BALANCE_RATE: float = 1.35
+## How fast lean returns to center with stick released (units/sec).
+const GRIND_BALANCE_RECOVER: float = 0.85

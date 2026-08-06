@@ -107,6 +107,6 @@ First-class analytical rail + grind mode (not a `ManeuverPlan`, not hang reuse).
 
 - Glyph: `-`
 - Grind input: `grind` / **R**
-- `RAIL_OFFSET`: fixed (chosen at implement so board sits naturally on a thin bar)
+- `RAIL_OFFSET`: `56` logical (~board/knee height above layer floor)
 - Thickness: small logical height (~few pixels at default cam); debug slider range covers thinner→thicker bar
-- Balance fail: threshold constant; both stick axes contribute to `|lean|`
+- Balance: stick tips a meter over time (`GRIND_BALANCE_RATE`); neutral stick recovers; fail at `|lean| ≥ 1`
