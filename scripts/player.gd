@@ -36,6 +36,8 @@ const BODY_CYLINDER_H_M := 0.22
 @export_range(1.0, 90.0, 0.5) var land_spin_window_deg: float = 45.0
 ## After a spun land, seconds to lerp contact yaw → nearest N×180° (0 = snap).
 @export_range(0.0, 1.0, 0.01) var spin_land_settle: float = 0.15
+## Vertical thickness of grind rails (logical units).
+@export_range(1.0, 24.0, 0.5) var rail_thickness: float = 4.0
 @export_range(0.0, 5.0, 0.01) var fall_anim_duration: float = 0.15
 @export_range(0.0, 5.0, 0.01) var fall_stop_duration: float = 1.0
 @export_range(0.0, 10.0, 0.01) var fall_duration: float = 2.0
@@ -150,10 +152,13 @@ func _physics_process(_delta: float) -> void:
 	var ollie_released := Input.is_action_just_released("ollie")
 	var rot_l := Input.is_action_pressed("rotate_left")
 	var rot_r := Input.is_action_pressed("rotate_right")
+	var grind_down := Input.is_action_pressed("grind")
 	_sync_tuning_to_sim()
 	if Input.is_action_just_pressed("fall"):
 		_sim.begin_fall()
-	_sim.set_input(wish, action_down, action_edge, ollie_down, ollie_released, rot_l, rot_r)
+	_sim.set_input(
+		wish, action_down, action_edge, ollie_down, ollie_released, rot_l, rot_r, grind_down
+	)
 	# Always fixed-step — never inherit a render-tied physics delta.
 	_sim.tick(SimTolerances.FIXED_DT)
 	_sync_from_sim()
@@ -188,6 +193,7 @@ func _sync_tuning_to_sim() -> void:
 	SimTolerances.SPIN_RATE = spin_rate
 	SimTolerances.LAND_SPIN_WINDOW = deg_to_rad(land_spin_window_deg)
 	SimTolerances.SPIN_LAND_SETTLE = spin_land_settle
+	SimTolerances.RAIL_THICKNESS = rail_thickness
 
 
 func _sync_from_sim() -> void:
@@ -478,6 +484,17 @@ func air_vertical_velocity() -> float:
 
 func is_airborne() -> bool:
 	return _airborne
+
+
+func is_grinding() -> bool:
+	return _sim != null and _sim.state != null and _sim.state.is_grinding()
+
+
+## Signed grind lean in [-1, 1]; 0 when not grinding.
+func grind_balance_frac() -> float:
+	if _sim == null or _sim.state == null or not _sim.state.is_grinding():
+		return 0.0
+	return clampf(_sim.state.grind_balance, -1.0, 1.0)
 
 
 func fall_cooldown_frac() -> float:

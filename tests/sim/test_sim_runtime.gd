@@ -100,6 +100,12 @@ func run() -> bool:
 		and _air_spin_land_near_half_pi_falls()
 		and _air_spin_hold_through_land_uses_contact_angle()
 		and _air_spin_backwards_land_flips_facing_keeps_board_ref()
+		and _rail_mount_air_hold_r()
+		and _rail_no_r_rejects()
+		and _rail_grounded_r_no_mount()
+		and _rail_balance_fail_falls()
+		and _rail_end_eject_no_fall()
+		and _rail_ollie_release_pops()
 		and _transfer_hold_delay_zero_auto()
 		and _transfer_hold_waits_delay()
 		and _transfer_tap_ignores_hold_delay()
@@ -8224,6 +8230,166 @@ func _air_spin_backwards_land_flips_facing_keeps_board_ref() -> bool:
 			"air spin back: board yaw moved on facing-only fix %.3f → %.3f"
 			% [board_before, board.yaw]
 		)
+		return false
+	return true
+
+
+## ---- Rail grind -------------------------------------------------------------
+
+func _rail_setup_air_over_rail() -> PlayerSim:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_rail_x.ssk"):
+		return null
+	if sim.model.rails.is_empty():
+		return null
+	var rail: RailSurface = sim.model.rails[sim.model.rails.keys()[0]]
+	sim.state.mode = SimState.Mode.AIRBORNE
+	sim.state.surface_id = ""
+	sim.state.clear_hang()
+	sim.state.maneuver = null
+	sim.state.falling = false
+	sim.state.clear_grind()
+	sim.state.set_facing_side("r")
+	sim.state.position = Vector3(
+		(rail.x_min + rail.x_max) * 0.5, rail.z, rail.top_height + 10.0
+	)
+	sim.state.velocity = Vector3(200.0, 0.0, -40.0)
+	sim.state.air_launch_surface_id = ""
+	sim.state.alive = true
+	sim.ollie_available = true
+	return sim
+
+
+func _rail_mount_air_hold_r() -> bool:
+	var sim := _rail_setup_air_over_rail()
+	if sim == null:
+		push_error("rail mount: setup")
+		return false
+	for _i in range(30):
+		sim.set_input(Vector2.ZERO, false, false, false, false, false, false, true)
+		sim.tick()
+		if sim.state.is_grinding():
+			return true
+		if sim.state.falling:
+			push_error("rail mount: fell before grind")
+			return false
+	push_error("rail mount: never grinding")
+	return false
+
+
+func _rail_no_r_rejects() -> bool:
+	var sim := _rail_setup_air_over_rail()
+	if sim == null:
+		push_error("rail reject: setup")
+		return false
+	# Dive into the bar without R — expect fall (Reject crash), never grind.
+	sim.state.velocity = Vector3(0.0, 0.0, -200.0)
+	for _i in range(45):
+		sim.set_input(Vector2.ZERO, false, false, false, false, false, false, false)
+		sim.tick()
+		if sim.state.is_grinding():
+			push_error("rail reject: mounted without R")
+			return false
+		if sim.state.falling:
+			return true
+	push_error("rail reject: expected fall")
+	return false
+
+
+func _rail_grounded_r_no_mount() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/sim_rail_x.ssk"):
+		push_error("rail grounded: setup")
+		return false
+	if not sim.state.is_grounded():
+		push_error("rail grounded: spawn not grounded")
+		return false
+	for _i in range(10):
+		sim.set_input(Vector2.ZERO, false, false, false, false, false, false, true)
+		sim.tick()
+		if sim.state.is_grinding():
+			push_error("rail grounded: mounted from ground")
+			return false
+	return true
+
+
+func _rail_balance_fail_falls() -> bool:
+	var sim := _rail_setup_air_over_rail()
+	if sim == null:
+		push_error("rail balance: setup")
+		return false
+	for _i in range(30):
+		sim.set_input(Vector2.ZERO, false, false, false, false, false, false, true)
+		sim.tick()
+		if sim.state.is_grinding():
+			break
+	if not sim.state.is_grinding():
+		push_error("rail balance: never mounted")
+		return false
+	for _i in range(10):
+		sim.set_input(Vector2(1.0, 1.0), false, false, false, false, false, false, false)
+		sim.tick()
+		if sim.state.falling:
+			return true
+	push_error("rail balance: expected fall")
+	return false
+
+
+func _rail_end_eject_no_fall() -> bool:
+	var sim := _rail_setup_air_over_rail()
+	if sim == null:
+		push_error("rail end: setup")
+		return false
+	for _i in range(30):
+		sim.set_input(Vector2.ZERO, false, false, false, false, false, false, true)
+		sim.tick()
+		if sim.state.is_grinding():
+			break
+	if not sim.state.is_grinding():
+		push_error("rail end: never mounted")
+		return false
+	var rail: RailSurface = sim.model.rails[sim.state.grind_rail_id]
+	sim.state.grind_along = 400.0
+	sim.state.position.x = rail.x_max - 1.0
+	for _i in range(30):
+		sim.set_input(Vector2.ZERO, false, false, false, false, false, false, false)
+		sim.tick()
+		if sim.state.falling:
+			push_error("rail end: fell on eject")
+			return false
+		if sim.state.is_airborne() and not sim.state.is_grinding():
+			return true
+	push_error("rail end: never ejected")
+	return false
+
+
+func _rail_ollie_release_pops() -> bool:
+	var sim := _rail_setup_air_over_rail()
+	if sim == null:
+		push_error("rail ollie: setup")
+		return false
+	for _i in range(30):
+		sim.set_input(Vector2.ZERO, false, false, false, false, false, false, true)
+		sim.tick()
+		if sim.state.is_grinding():
+			break
+	if not sim.state.is_grinding():
+		push_error("rail ollie: never mounted")
+		return false
+	sim.ollie_charge_ms = 0.0
+	for _i in range(5):
+		sim.set_input(Vector2.ZERO, false, false, true, false, false, false, false)
+		sim.tick()
+	sim.set_input(Vector2.ZERO, false, false, false, true, false, false, false)
+	sim.tick()
+	if sim.state.falling:
+		push_error("rail ollie: fell")
+		return false
+	if not sim.state.is_airborne():
+		push_error("rail ollie: not airborne after pop")
+		return false
+	if sim.state.velocity.z <= 0.0:
+		push_error("rail ollie: expected upward pop got vz=%.1f" % sim.state.velocity.z)
 		return false
 	return true
 

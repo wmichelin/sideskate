@@ -13,6 +13,7 @@
 [ext_resource type="Script" uid="uid://bohj4hsqpxfqu" path="res://scripts/rendering_3d/camera_rig_3d.gd" id="15_cam3d"]
 [ext_resource type="Script" uid="uid://dbamdercsg2at" path="res://scripts/rendering_3d/level_debug_3d.gd" id="16_dbg3d"]
 [ext_resource type="Script" uid="uid://c0m4x4te3awdd" path="res://scripts/rendering_3d/player_debug_3d.gd" id="17_pdbg3d"]
+[ext_resource type="Script" path="res://scripts/rendering_3d/grind_balance_hud.gd" id="22_grindhud"]
 [ext_resource type="Script" uid="uid://cjlnvlwo6kwnm" path="res://scripts/physics/level_collision_3d.gd" id="18_col3d"]
 [ext_resource type="PackedScene" uid="uid://cpausemenu01" path="res://scenes/pause_menu.tscn" id="19_pause"]
 [ext_resource type="PackedScene" uid="uid://dd2p54r525sjh" path="res://assets/characters/freemocap_skater.glb" id="20_skater"]
@@ -79,6 +80,11 @@ player_path = NodePath("../../Player")
 [node name="PlayerDebug3D" type="Node3D" parent="World3D" unique_id=1251104233]
 script = ExtResource("17_pdbg3d")
 player_path = NodePath("../../Player")
+
+[node name="GrindBalanceHud" type="Node" parent="World3D"]
+script = ExtResource("22_grindhud")
+player_path = NodePath("../../Player")
+visual_path = NodePath("../PlayerVisual")
 
 [node name="RampLevel" type="Node2D" parent="." unique_id=1434297277]
 script = ExtResource("1_level")

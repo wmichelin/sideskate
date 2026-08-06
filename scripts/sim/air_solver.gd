@@ -194,7 +194,7 @@ func _step_free(state: SimState, wish: Vector2, delta: float) -> void:
 	if not embedded.is_empty():
 		var ek := str(embedded.get("kind", ""))
 		if ek == "pipe" or ek == "ramp" or ek == "deck" or ek == "wall" \
-				or ek == "feature_wall" or ek == "bounds":
+				or ek == "feature_wall" or ek == "bounds" or ek == "rail":
 			embedded["t"] = 0.0
 			embedded["point"] = from
 			var ann := query.annotate_contact_ownership(embedded, from)
@@ -393,6 +393,9 @@ func _disposition_for_contact(
 	# Hang remount always mounts the retained edge.
 	if role == SimKinds.ContactRole.HANG_ANCHOR or kind == "hang_anchor":
 		return SimKinds.ContactDisposition.MOUNT
+	# Rails are solid barricades unless GrindSolver already mounted this tick.
+	if kind == "rail":
+		return SimKinds.ContactDisposition.REJECT
 	# Hang: remount retained source, or clear onto flat floor/deck/lava/void.
 	# Foreign lips/walls Corridor so opposite-layer coping never steals.
 	if state.is_hanging():

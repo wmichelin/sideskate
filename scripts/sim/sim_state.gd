@@ -6,6 +6,7 @@ extends RefCounted
 enum Mode {
 	GROUNDED = 0,
 	AIRBORNE = 1,
+	GRINDING = 2,
 }
 
 var mode: int = Mode.GROUNDED
@@ -88,6 +89,10 @@ var spin_settle_elapsed: float = 0.0
 var spin_pending_rebase: bool = false
 ## Momentum sign for facing fix after settle (0 = skip).
 var spin_land_momentum_x: float = 0.0
+## Grind lock: along-X rail ride.
+var grind_rail_id: String = ""
+var grind_along: float = 0.0
+var grind_balance: float = 0.0
 
 
 ## Lock presentation flop to `sign` (usually wall approach / away-from-impact).
@@ -105,6 +110,16 @@ func is_grounded() -> bool:
 
 func is_airborne() -> bool:
 	return mode == Mode.AIRBORNE
+
+
+func is_grinding() -> bool:
+	return mode == Mode.GRINDING
+
+
+func clear_grind() -> void:
+	grind_rail_id = ""
+	grind_along = 0.0
+	grind_balance = 0.0
 
 
 func is_hanging() -> bool:

@@ -60,6 +60,8 @@ Stick → wish. Per axis:
 
 **Air spin:** hold **Q** (CCW) / **E** (CW) while airborne (including transfer) to yaw. Does not change `velocity.x`. Release freezes yaw; landing always freezes at contact. Live `facing` flips at odd *N×180°* from bout takeoff. Land within tunable window of nearest *N×180°* (debug **spin land°**, default 45°) or fall; success **lerps** rider+board from contact yaw onto exact *N×π* (debug **spin settle**, default 0.15s), then **rebases** the yaw frame to 0 **without rotating back** (keeps the 180 — nose/tail stay axis-aligned B↔R or R↔B). If facing then opposes horizontal momentum, facing flips to momentum without an extra board snap. Spin rate: debug **spin rate** (default 7.95 rad/s).
 
+**Rail grind:** glyph `-` (along-X). Airborne near a rail + hold **R** mounts; coast with mount `vx`; stick (both axes) is signed balance only — fail → fall. Always-on balance HUD while grinding. Hold Space (shared ollie charge / debug bar) and release to pop off; riding past either end ejects into free air. Without R the rail is a solid Reject/bonk. Thickness: debug **rail thick** (collision live; remesh on level reload).
+
 **Air-out** (and ollie free air) keep pre-takeoff pipe/wall lean. Do not confuse with fly-out.
 
 **Free-air land on pipe/ramp:** along is the projection of world velocity onto the
@@ -104,7 +106,7 @@ Gated by autoload `DebugTools` (`OS.is_debug_build()` or export feature `debug_t
 |-------|------|
 | Head arrows | INPUT / MOMENTUM / ACTUAL |
 | Overlay | Zone / surface / next coping candidate |
-| TUNING sliders | Gravity, fly-out window, apex turn duration, depth-turn angle, spin rate, spin land°, spin settle, spine/acid cast cells, ollie accel / charge ms / height / lip %, ollie charge bar, speeds, accel, brake, friction, cell size, camera |
+| TUNING sliders | Gravity, fly-out window, apex turn duration, depth-turn angle, spin rate, spin land°, spin settle, rail thick, spine/acid cast cells, ollie accel / charge ms / height / lip %, ollie charge bar, speeds, accel, brake, friction, cell size, camera |
 | Cell / facing cast / edge lattice | Presentation-only highlight |
 
 Tunable sim values sync into `SimTolerances` / `PlayerSim` each physics tick. Cast-cell highlight distance is debug draw only (not a separate gameplay path).

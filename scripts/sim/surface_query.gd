@@ -456,6 +456,9 @@ func _blocker_at(p: Vector3) -> Dictionary:
 	var face := _feature_wall_at(x, z, h)
 	if not face.is_empty():
 		return face
+	var rail_hit := _rail_blocker_at(x, z, h)
+	if not rail_hit.is_empty():
+		return rail_hit
 	# Pipe solid interiors are one-sided and exclude the coping boundary.
 	for pipe_id in model.all_pipe_ids():
 		var pipe: PipeSurface = model.pipes[pipe_id]
@@ -569,6 +572,48 @@ func _blocker_at(p: Vector3) -> Dictionary:
 
 ## Exterior vertical faces of slopes/decks: endcaps, outer backs, open deck sides.
 ## Returned hits use kind "feature_wall" and must stop motion like "bounds".
+## Thin along-X rail bar — solid unless grind mount claims it.
+func _rail_blocker_at(x: float, z: float, h: float) -> Dictionary:
+	if model == null:
+		return {}
+	var half_z := maxf(SimTolerances.RAIL_THICKNESS * 0.5, SimTolerances.CAPSULE_RADIUS * 0.35)
+	for id in model.all_rail_ids():
+		var rail: RailSurface = model.rails[id]
+		if x < rail.x_min - SimTolerances.CONTACT_EPS or x > rail.x_max + SimTolerances.CONTACT_EPS:
+			continue
+		if absf(z - rail.z) > half_z + SimTolerances.CONTACT_EPS:
+			continue
+		var bottom := rail.bottom_height()
+		var top := rail.top_height
+		if h < bottom - SimTolerances.CONTACT_EPS or h > top + SimTolerances.CONTACT_EPS:
+			continue
+		var nx := 0.0
+		if x < rail.x_min + 1.0:
+			nx = -1.0
+		elif x > rail.x_max - 1.0:
+			nx = 1.0
+		elif h < (bottom + top) * 0.5:
+			# Underside / approach — push down-away via +Z normal bias using X from vel later.
+			nx = signf(x - (rail.x_min + rail.x_max) * 0.5)
+			if absf(nx) < 0.001:
+				nx = 1.0
+		else:
+			nx = signf(x - (rail.x_min + rail.x_max) * 0.5)
+			if absf(nx) < 0.001:
+				nx = 1.0
+		return {
+			"kind": "rail",
+			"feature_id": rail.id,
+			"surface_id": rail.id,
+			"owner_id": rail.id,
+			"role": SimKinds.ContactRole.SOLID,
+			"normal": Vector3(nx, 0.0, 0.0),
+			"projection": Vector3(clampf(x, rail.x_min, rail.x_max), rail.z, top),
+			"reason": "rail bar",
+		}
+	return {}
+
+
 func _feature_wall_at(x: float, z: float, h: float) -> Dictionary:
 	var thick := SimTolerances.CAPSULE_RADIUS
 	for pipe_id in model.all_pipe_ids():

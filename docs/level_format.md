@@ -95,6 +95,7 @@ height 120
 | `.` | Hole (nil) on this layer — fall through | — |
 | `#` | Deck (spine / coping flat) | `layer.height + pipe/ramp rise` |
 | `@` | Spawn + floor | `layer.height` |
+| `-` | Grind rail (along-X run) | top = `layer.height + RAIL_OFFSET`; thickness tunable |
 | `(` | Left-facing pipe (lip on **right** edge of run) | `base + rise·(1−cosθ)` |
 | `)` | Right-facing pipe (lip on **left** edge of run) | `base + rise·(1−cosθ)` |
 | `<` | Left-facing **ramp** (lip on **right** edge of run) | `base + rise·u` (straight incline) |

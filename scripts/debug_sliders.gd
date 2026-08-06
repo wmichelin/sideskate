@@ -20,6 +20,8 @@ extends CanvasLayer
 @export var land_spin_window_max: float = 90.0
 @export var spin_land_settle_min: float = 0.0
 @export var spin_land_settle_max: float = 1.0
+@export var rail_thickness_min: float = 1.0
+@export var rail_thickness_max: float = 24.0
 @export var transfer_hold_delay_min: float = 0.0
 @export var transfer_hold_delay_max: float = 0.5
 @export var depth_turn_min: float = 0.0
@@ -135,6 +137,7 @@ var _depth_turn_value: Label
 var _spin_rate_value: Label
 var _land_spin_window_value: Label
 var _spin_land_settle_value: Label
+var _rail_thickness_value: Label
 
 
 func _ready() -> void:
@@ -186,6 +189,7 @@ func _ready() -> void:
 	_setup_spin_rate_slider()
 	_setup_land_spin_window_slider()
 	_setup_spin_land_settle_slider()
+	_setup_rail_thickness_slider()
 	_bind_float_slider(_ollie_slider, ollie_accel_min, ollie_accel_max, 10.0, _player, "ollie_accel", 650.0, _on_ollie_accel_changed, _refresh_ollie_label)
 	_setup_ollie_jump_sliders()
 	_bind_float_slider(_max_speed_x_slider, max_speed_x_min, max_speed_x_max, 10.0, _player, "max_speed_x", 880.0, _on_max_speed_x_changed, _refresh_max_speed_x_label)
@@ -612,6 +616,31 @@ func _setup_spin_land_settle_slider() -> void:
 	row["slider"].focus_mode = Control.FOCUS_NONE
 
 
+func _setup_rail_thickness_slider() -> void:
+	if _body == null:
+		return
+	if _body.get_node_or_null("RailThicknessRow") != null:
+		return
+	var insert_at := 0
+	var settle_row := _body.get_node_or_null("SpinLandSettleRow")
+	if settle_row != null:
+		insert_at = settle_row.get_index() + 1
+	var row := _make_slider_row("RailThicknessRow", "rail thick", insert_at)
+	_rail_thickness_value = row["value"]
+	_bind_float_slider(
+		row["slider"],
+		rail_thickness_min,
+		rail_thickness_max,
+		0.5,
+		_player,
+		"rail_thickness",
+		4.0,
+		_on_rail_thickness_changed,
+		_refresh_rail_thickness_label
+	)
+	row["slider"].focus_mode = Control.FOCUS_NONE
+
+
 func _apply_3d_panel_visibility() -> void:
 	# Canvas2D-only draw tuning — park is rendered via World3D.
 	for row_name in [
@@ -955,6 +984,17 @@ func _on_spin_land_settle_changed(v: float) -> void:
 func _refresh_spin_land_settle_label(v: float) -> void:
 	if _spin_land_settle_value != null:
 		_spin_land_settle_value.text = "%.2f s" % v
+
+
+func _on_rail_thickness_changed(v: float) -> void:
+	if _player != null:
+		_player.set("rail_thickness", v)
+	_refresh_rail_thickness_label(v)
+
+
+func _refresh_rail_thickness_label(v: float) -> void:
+	if _rail_thickness_value != null:
+		_rail_thickness_value.text = "%.1f" % v
 
 
 func _on_transfer_hold_delay_changed(v: float) -> void:

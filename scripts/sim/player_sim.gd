@@ -7,6 +7,7 @@ var model: ParkModel
 var query: SurfaceQuery
 var ground: GroundSolver
 var air: AirSolver
+var grind: GrindSolver
 var planner: ManeuverPlanner
 var crash: CrashClassifier
 var state: SimState
@@ -40,6 +41,8 @@ var ollie_just_released: bool = false
 ## Air spin hold (Q/E). Ignored while falling; grounded no-ops in AirSolver.
 var rotate_left: bool = false
 var rotate_right: bool = false
+## Grind lock hold (R). Required to mount; not required to stay locked.
+var grind_held: bool = false
 ## Presentation latch: set when an ollie impulse actually fires; consume via player.
 var ollie_just_popped: bool = false
 ## Hold meter in [0, 1] while charging an available ollie.
@@ -91,6 +94,7 @@ func _finish_setup() -> bool:
 	planner = ManeuverPlanner.new(model, query)
 	air = AirSolver.new(model, query, planner, ground)
 	air.crash = crash
+	grind = GrindSolver.new(model, query)
 	state = ground.spawn_state()
 	_seed_checkpoint_from_state()
 	ollie_available = state != null and state.is_grounded()
@@ -111,6 +115,7 @@ func set_input(
 	ollie_released: bool = false,
 	rotate_left_down: bool = false,
 	rotate_right_down: bool = false,
+	grind_down: bool = false,
 ) -> void:
 	last_wish = wish
 	action_held = action_down
@@ -119,6 +124,7 @@ func set_input(
 	ollie_just_released = ollie_released
 	rotate_left = rotate_left_down
 	rotate_right = rotate_right_down
+	grind_held = grind_down
 	if not action_held:
 		transfer_hold_eligible = 0.0
 
@@ -128,6 +134,11 @@ func begin_fall() -> void:
 	if state == null or not state.alive or state.falling:
 		return
 	state.clear_hang()
+	var was_grinding := state.is_grinding()
+	state.clear_grind()
+	if was_grinding:
+		state.mode = SimState.Mode.AIRBORNE
+		state.surface_id = ""
 	state.maneuver = null
 	ollie_charge = 0.0
 	ollie_charge_peak_height = 0.0
@@ -138,6 +149,7 @@ func begin_fall() -> void:
 	action_held = false
 	rotate_left = false
 	rotate_right = false
+	grind_held = false
 	transfer_hold_eligible = 0.0
 	last_wish = Vector2.ZERO
 	state.falling = true
@@ -219,7 +231,10 @@ func tick(delta: float = SimTolerances.FIXED_DT) -> void:
 	var planned_surface_change := state.has_maneuver()
 	if crash != null:
 		crash.set_ollie_lip_frac(ollie_lip_frac)
-	if state.is_grounded():
+	if state.is_grinding():
+		if grind != null:
+			grind.step(state, wish, delta)
+	elif state.is_grounded():
 		ground.ollie_lip_frac = ollie_lip_frac
 		ground.step(
 			state,
@@ -237,7 +252,13 @@ func tick(delta: float = SimTolerances.FIXED_DT) -> void:
 	else:
 		air.rotate_left = rotate_left
 		air.rotate_right = rotate_right
-		air.step(state, wish, delta, max_speed, max_speed_z)
+		if not falling and grind != null and grind_held:
+			if grind.try_mount(state, grind_held):
+				ollie_available = true
+		if state.is_grinding():
+			pass
+		else:
+			air.step(state, wish, delta, max_speed, max_speed_z)
 	if not falling and not state.falling:
 		state.step_spin_land_settle(delta)
 	if state.request_fall:
@@ -340,11 +361,13 @@ func _update_ollie_charge(delta: float) -> void:
 		ollie_charge = 0.0
 		ollie_charge_peak_height = 0.0
 		return
-	# Hold meter only builds while grounded — cannot start charging in air.
-	# Peak height is snapshotted on the grounded surface and kept through air-out.
-	if state == null or not state.is_grounded():
+	# Hold meter builds while grounded or grinding — not free air / hang.
+	if state == null or (not state.is_grounded() and not state.is_grinding()):
 		return
-	ollie_charge_peak_height = _ollie_peak_height_for_surface()
+	if state.is_grinding():
+		ollie_charge_peak_height = ollie_height_flat
+	else:
+		ollie_charge_peak_height = _ollie_peak_height_for_surface()
 	if ollie_charge_ms <= 0.0:
 		ollie_charge = 1.0
 		return
@@ -359,6 +382,18 @@ func _try_ollie_jump() -> void:
 	ollie_charge = 0.0
 	ollie_charge_peak_height = 0.0
 	if not ollie_available:
+		return
+	# Grind ollie-out: pop off the rail into free air.
+	if state != null and state.is_grinding() and grind != null:
+		if peak <= 0.0:
+			peak = ollie_height_flat
+		var height := frac * peak
+		var pop_v := 0.0
+		if height > 0.0:
+			pop_v = sqrt(maxf(2.0 * absf(SimTolerances.GRAVITY) * height, 0.0))
+		grind.ollie_out(state, pop_v)
+		ollie_available = false
+		ollie_just_popped = true
 		return
 	# Airborne release: launch surface wins over a stale flat snapshot from
 	# earlier floor charging (hold through floor→pipe→air-out).
@@ -407,7 +442,7 @@ func _refresh_ollie_charge_peak() -> void:
 
 
 func _replenish_ollie_on_ground() -> void:
-	if state != null and state.alive and state.is_grounded():
+	if state != null and state.alive and (state.is_grounded() or state.is_grinding()):
 		ollie_available = true
 
 
@@ -582,7 +617,7 @@ func _update_transfer_hold(delta: float) -> void:
 
 
 func _try_actions() -> void:
-	if state.has_maneuver():
+	if state.has_maneuver() or state.is_grinding():
 		return
 	# Transfer: tap immediate, or hold after eligible time ≥ delay.
 	var hold_ready := (
@@ -677,6 +712,13 @@ func _assert_finite() -> void:
 
 func _assert_invariants(previous_surface_id: String, planned_surface_change: bool) -> void:
 	if not state.alive:
+		return
+	if state.is_grinding():
+		if not model.rails.has(state.grind_rail_id) and not model.rails.has(state.surface_id):
+			push_error(
+				"PlayerSim grind owner invariant at tick %d: %s"
+				% [state.tick, state.grind_rail_id]
+			)
 		return
 	if state.is_grounded():
 		var owners := int(model.patches.has(state.surface_id)) \

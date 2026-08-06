@@ -10,6 +10,7 @@ static func rows() -> Array:
 		["Space", "Hold ollie — accel in facing dir"],
 		["P / T", "Spine (rising) / acid drop (falling)"],
 		["Q / E", "Air spin left (CCW) / right (CW)"],
+		["R", "Grind lock (airborne near rail)"],
 		["Y", "Fall"],
 		["Esc", "Pause / back"],
 	]

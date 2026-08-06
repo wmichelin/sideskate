@@ -53,6 +53,8 @@ func is_crash(state: SimState, contact: Dictionary, ctx: Dictionary = {}) -> boo
 		if is_launch_outward_deck(state, sid, ctx):
 			return false
 		return true
+	if kind == "rail":
+		return true
 	if kind == "deck" or role == SimKinds.ContactRole.OUTWARD_DECK:
 		if is_launch_outward_deck(state, sid, ctx):
 			return false
