@@ -142,6 +142,10 @@ func begin_fall() -> void:
 	last_wish = Vector2.ZERO
 	state.falling = true
 	state.fall_elapsed = 0.0
+	# Freeze mid-spin for fall presentation — do not continue land settle.
+	state.spin_settling = false
+	state.spin_settle_from = 0.0
+	state.spin_settle_elapsed = 0.0
 	# Support plane is the surface under the feet — never mid-air feet height
 	# (that pinned the presentation FallBox and cancelled gravity).
 	refresh_fall_support_plane()
@@ -236,6 +240,8 @@ func tick(delta: float = SimTolerances.FIXED_DT) -> void:
 		air.rotate_left = rotate_left
 		air.rotate_right = rotate_right
 		air.step(state, wish, delta, max_speed, max_speed_z)
+	if not falling:
+		state.step_spin_land_settle(delta)
 	if state.request_fall:
 		state.request_fall = false
 		begin_fall()

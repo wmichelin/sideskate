@@ -67,12 +67,13 @@ Sim owns the spin; presentation only displays it.
 
 - Spin rate ≈ `π` rad/s (debug tunable).
 - Land success half-width ≈ `25°` (debug tunable).
+- Land settle duration ≈ `0.15` s (debug tunable; 0 = snap body yaw to 0).
 
 ## Land gate
 
 - `nearest = round(spin_yaw / π) * π`
 - `err = abs(angle_difference(spin_yaw, nearest))` (or equivalent absolute error to nearest *N×π*)
-- If `err ≤ LAND_SPIN_WINDOW` → success: snap `spin_yaw = nearest`; sync facing from half-turns; bake via tracker deltas (no nose-to-facing snap).
+- If `err ≤ LAND_SPIN_WINDOW` → success: snap `spin_yaw = nearest`; sync facing from half-turns; begin **land settle** (body lerps `spin_yaw` → 0 over `SPIN_LAND_SETTLE`, board ignores reverse via `spin_handoff`).
 - Else → `begin_fall()`; freeze spin; leave mid-angle for fall presentation.
 
 **Momentum facing fix** (success only): if horizontal momentum sign is clearly

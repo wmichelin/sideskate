@@ -35,6 +35,8 @@ func _init(
 func _step_air_spin(state: SimState, delta: float) -> void:
 	if state == null or not state.is_airborne() or state.falling or not state.alive:
 		return
+	if state.spin_settling:
+		return
 	var sign := 0.0
 	if rotate_left and not rotate_right:
 		sign = 1.0 ## CCW (Q)
@@ -77,12 +79,8 @@ func resolve_land_spin(state: SimState, momentum_x: float) -> bool:
 		if state.facing != mom_face:
 			state.facing = mom_face
 			state.visual_facing = mom_face
-			# Do not zero spin_yaw here — handoff clear below keeps board.
-	# Clear bout spin after successful seat; handoff so board does not unwind.
-	if absf(state.spin_yaw) > 0.0001:
-		state.spin_handoff = true
-	state.spin_yaw = 0.0
-	state.spin_takeoff_facing = state.facing
+	# Body lerps snapped yaw → 0; board ignores reverse via spin_handoff.
+	state.begin_spin_land_settle()
 	return true
 
 
