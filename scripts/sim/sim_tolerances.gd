@@ -37,5 +37,3 @@ static var APEX_FACING_DELAY: float = 0.05
 static var SPIN_RATE: float = PI
 ## Half-width around nearest N×π for a successful spin land (radians).
 static var LAND_SPIN_WINDOW: float = deg_to_rad(25.0)
-## After a successful spun land, lerp body spin_yaw → 0 over this many seconds (0 = snap).
-static var SPIN_LAND_SETTLE: float = 0.15

@@ -58,7 +58,7 @@ Stick → wish. Per axis:
 
 **Fly-out / deck-out:** same unlock — clear X-lock, keep rising height, seed outward free-air X from climb/air speed, and **reset surface lean upright**. Stick must be outward to accept; after unlock X is ballistic. Cross-story walls gate the height window on the connected upper lip; outward stick stays with the source-pipe climb direction.
 
-**Air spin:** hold **Q** (CCW) / **E** (CW) while airborne (including transfer) to yaw. Does not change `velocity.x`. Release freezes yaw; landing always freezes at contact. Live `facing` flips at odd *N×180°* from bout takeoff. Land within tunable window of nearest *N×180°* (debug **spin land°**, default 25°) or fall; success snaps to exact *N×π*, then body **and board** yaw **lerp to 0** over **spin settle** (default 0.15s). If facing then opposes horizontal momentum, facing flips to momentum **without** an extra board snap (settle still co-rotates both). Spin rate: debug **spin rate** (default π rad/s).
+**Air spin:** hold **Q** (CCW) / **E** (CW) while airborne (including transfer) to yaw. Does not change `velocity.x`. Release freezes yaw; landing always freezes at contact. Live `facing` flips at odd *N×180°* from bout takeoff. Land within tunable window of nearest *N×180°* (debug **spin land°**, default 25°) or fall; success snaps to exact *N×π*, then **rebases** the yaw frame to 0 **without rotating back** (keeps the 180 — board/rider stay put via handoff). If facing then opposes horizontal momentum, facing flips to momentum without an extra board snap. Spin rate: debug **spin rate** (default π rad/s).
 
 **Air-out** (and ollie free air) keep pre-takeoff pipe/wall lean. Do not confuse with fly-out.
 
@@ -104,7 +104,7 @@ Gated by autoload `DebugTools` (`OS.is_debug_build()` or export feature `debug_t
 |-------|------|
 | Head arrows | INPUT / MOMENTUM / ACTUAL |
 | Overlay | Zone / surface / next coping candidate |
-| TUNING sliders | Gravity, fly-out window, apex turn duration, depth-turn angle, spin rate, spin land°, spin settle, spine/acid cast cells, ollie accel / charge ms / height / lip %, ollie charge bar, speeds, accel, brake, friction, cell size, camera |
+| TUNING sliders | Gravity, fly-out window, apex turn duration, depth-turn angle, spin rate, spin land°, spine/acid cast cells, ollie accel / charge ms / height / lip %, ollie charge bar, speeds, accel, brake, friction, cell size, camera |
 | Cell / facing cast / edge lattice | Presentation-only highlight |
 
 Tunable sim values sync into `SimTolerances` / `PlayerSim` each physics tick. Cast-cell highlight distance is debug draw only (not a separate gameplay path).

@@ -8110,28 +8110,23 @@ func _air_spin_land_near_pi_snaps_no_fall() -> bool:
 	sim.state.visual_facing = sim.state.facing
 	sim.state.velocity = Vector3(200.0, 0.0, -80.0)
 	sim.state.position.z = floor.height + 5.0
-	SimTolerances.SPIN_LAND_SETTLE = 0.15
-	var saw_settle := false
 	# Descend onto floor without holding rotate.
-	for _i in range(120):
+	for _i in range(60):
 		sim.set_input(Vector2.ZERO, false, false)
 		sim.tick()
 		if sim.state.falling:
 			push_error("air spin land pi: fell unexpectedly")
 			return false
 		if sim.state.is_grounded():
-			if sim.state.spin_settling and absf(sim.state.spin_yaw) > 0.5:
-				saw_settle = true
-			if not sim.state.spin_settling and absf(sim.state.spin_yaw) <= 0.01:
-				if not saw_settle and SimTolerances.SPIN_LAND_SETTLE > 0.05:
-					# Instant path only if settle duration is ~0; otherwise must have lerped.
-					push_error("air spin land pi: cleared yaw without settle lerp")
-					return false
-				return true
-	push_error(
-		"air spin land pi: never settled yaw=%.3f settling=%s"
-		% [sim.state.spin_yaw, sim.state.spin_settling]
-	)
+			# Snap + rebase to 0 (handoff keeps the 180 — must not lerp π→0).
+			if absf(sim.state.spin_yaw) > 0.01:
+				push_error(
+					"air spin land pi: expected rebased spin_yaw≈0 got %.3f"
+					% sim.state.spin_yaw
+				)
+				return false
+			return true
+	push_error("air spin land pi: never grounded")
 	return false
 
 

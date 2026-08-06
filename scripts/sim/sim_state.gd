@@ -77,12 +77,8 @@ var fall_has_impact_plane: bool = false
 var spin_yaw: float = 0.0
 ## Discrete facing at bout zero — live flips derived from spin_yaw half-turns.
 var spin_takeoff_facing: String = "r"
-## One-shot / settle: presentation board tracker ignores reverse spin (no unwind).
+## One-shot: presentation board tracker ignores spin clear (no reverse / unwind).
 var spin_handoff: bool = false
-## After spun land: lerp spin_yaw from snap → 0 while board stays put.
-var spin_settling: bool = false
-var spin_settle_from: float = 0.0
-var spin_settle_elapsed: float = 0.0
 
 
 ## Lock presentation flop to `sign` (usually wall approach / away-from-impact).
@@ -153,50 +149,20 @@ func clear_air_peak() -> void:
 
 ## New air bout: zero spin; remember takeoff facing for live half-turn flips.
 func reset_air_spin() -> void:
-	if absf(spin_yaw) > 0.0001 or spin_settling:
+	if absf(spin_yaw) > 0.0001:
 		spin_handoff = true
 	spin_yaw = 0.0
 	spin_takeoff_facing = facing
-	spin_settling = false
-	spin_settle_from = 0.0
-	spin_settle_elapsed = 0.0
 
 
-## After spun land snap: body + board lerp spin_yaw → 0 together.
-func begin_spin_land_settle() -> void:
-	if absf(spin_yaw) < 0.0001:
-		spin_settling = false
-		spin_settle_from = 0.0
-		spin_settle_elapsed = 0.0
-		spin_takeoff_facing = facing
-		return
-	spin_settling = true
-	spin_settle_from = spin_yaw
-	spin_settle_elapsed = 0.0
+## After spun land snap: rebase spin_yaw to 0 without unwinding the trick
+## (board/body keep the snapped orientation via spin_handoff).
+func commit_spin_land_snap() -> void:
 	spin_takeoff_facing = facing
-
-
-## Advance land settle. Returns true while still settling.
-func step_spin_land_settle(delta: float) -> bool:
-	if not spin_settling:
-		return false
-	var dur := maxf(SimTolerances.SPIN_LAND_SETTLE, 0.0)
-	spin_settle_elapsed += maxf(delta, 0.0)
-	if dur <= 0.0001:
-		spin_yaw = 0.0
-		spin_settling = false
-		spin_settle_from = 0.0
-		spin_settle_elapsed = 0.0
-		return false
-	var t := clampf(spin_settle_elapsed / dur, 0.0, 1.0)
-	spin_yaw = lerpf(spin_settle_from, 0.0, t)
-	if t >= 1.0 - 0.0001:
-		spin_yaw = 0.0
-		spin_settling = false
-		spin_settle_from = 0.0
-		spin_settle_elapsed = 0.0
-		return false
-	return true
+	if absf(spin_yaw) < 0.0001:
+		return
+	spin_handoff = true
+	spin_yaw = 0.0
 
 
 ## Facing after `n` half-turns (π) from takeoff. Odd n flips l↔r.

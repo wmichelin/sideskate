@@ -67,18 +67,17 @@ Sim owns the spin; presentation only displays it.
 
 - Spin rate ≈ `π` rad/s (debug tunable).
 - Land success half-width ≈ `25°` (debug tunable).
-- Land settle duration ≈ `0.15` s (debug tunable; 0 = snap body yaw to 0).
 
 ## Land gate
 
 - `nearest = round(spin_yaw / π) * π`
 - `err = abs(angle_difference(spin_yaw, nearest))` (or equivalent absolute error to nearest *N×π*)
-- If `err ≤ LAND_SPIN_WINDOW` → success: snap `spin_yaw = nearest`; sync facing from half-turns; begin **land settle** (body **and board** lerp `spin_yaw` → 0 over `SPIN_LAND_SETTLE`).
+- If `err ≤ LAND_SPIN_WINDOW` → success: snap `spin_yaw = nearest`; sync facing from half-turns; **rebase** `spin_yaw` to 0 with `spin_handoff` so presentation does **not** rotate back through the spin (the 180 sticks).
 - Else → `begin_fall()`; freeze spin; leave mid-angle for fall presentation.
 
 **Momentum facing fix** (success only): if horizontal momentum sign is clearly
 nonzero and opposes `facing`, set facing to momentum only (no `snap_to_facing` on
-the board). Land settle still co-rotates rider and board to yaw 0.
+the board).
 
 **Compose with existing systems:** hang apex turn still runs (does not reset
 `spin_yaw`); depth-turn unchanged; transfer X-lerp unchanged; fall bout ignores

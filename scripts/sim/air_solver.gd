@@ -35,8 +35,6 @@ func _init(
 func _step_air_spin(state: SimState, delta: float) -> void:
 	if state == null or not state.is_airborne() or state.falling or not state.alive:
 		return
-	if state.spin_settling:
-		return
 	var sign := 0.0
 	if rotate_left and not rotate_right:
 		sign = 1.0 ## CCW (Q)
@@ -73,14 +71,14 @@ func resolve_land_spin(state: SimState, momentum_x: float) -> bool:
 	state.facing = face
 	state.visual_facing = face
 	state.facing_yaw = 0.0
-	# Momentum facing fix — facing only; board/spin bake stay put.
+	# Momentum facing fix — facing only; no board snap_to_facing.
 	if absf(momentum_x) > 1.0:
 		var mom_face := "r" if momentum_x > 0.0 else "l"
 		if state.facing != mom_face:
 			state.facing = mom_face
 			state.visual_facing = mom_face
-	# Body + board lerp snapped yaw → 0 together (BoardYawTracker follows spin deltas).
-	state.begin_spin_land_settle()
+	# Rebase yaw frame to 0 without rotating back through the spin (keeps the 180).
+	state.commit_spin_land_snap()
 	return true
 
 
