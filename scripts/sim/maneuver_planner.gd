@@ -52,8 +52,8 @@ func try_transfer(state: SimState) -> Dictionary:
 	plan.travel_sign = signf(land_x - state.position.x)
 	if plan.travel_sign == 0.0:
 		plan.travel_sign = -1.0 if state.facing == "l" else 1.0
-	# Carry climb |along| across clear_hang → dest hang remount. Without this,
-	# dest remount falls to the 120 floor and the landing pipe feels like drag.
+	# Carry climb |along| (or free-air |vx|) across clear_hang → dest hang remount.
+	# Without this, dest remount falls to the 120 floor and the landing feels like drag.
 	plan.land_along = _transfer_carry_along(state)
 	# Time-phased 0→1 from accept (never pre-seed mid progress — that snaps).
 	# Upright lean at ballistic apex; if already falling, upright at mid pull.
@@ -82,7 +82,7 @@ func try_transfer(state: SimState) -> Dictionary:
 	return {"ok": true, "plan": plan}
 
 
-## Takeoff |along| to restore on dest hang remount (hang stamp, else ground).
+## Takeoff |along| to restore on dest hang remount (hang stamp, else ground / air).
 func _transfer_carry_along(state: SimState) -> float:
 	if state == null:
 		return 0.0
@@ -90,6 +90,9 @@ func _transfer_carry_along(state: SimState) -> float:
 		return state.hang_launch_along
 	if state.is_grounded():
 		return absf(state.tangent_velocity.x)
+	# Free-air acid (deck ollie / skate-off): hang stamp is cleared; carry |vx|.
+	if state.is_airborne():
+		return absf(state.velocity.x)
 	return 0.0
 
 

@@ -93,6 +93,7 @@ func run() -> bool:
 		and _transfer_button_lerps_x_holds_facing()
 		and _transfer_shared_x_spine_reanchors_hang()
 		and _transfer_spine_remount_preserves_along()
+		and _transfer_acid_from_deck_air_preserves_along()
 		and _transfer_hold_delay_zero_auto()
 		and _transfer_hold_waits_delay()
 		and _transfer_tap_ignores_hold_delay()
@@ -7913,6 +7914,80 @@ func _transfer_spine_remount_preserves_along() -> bool:
 	if remount_along < takeoff * 0.85:
 		push_error(
 			"spine along: remount dragged %.1f → %.1f (transfer must carry hang_launch_along)"
+			% [takeoff, remount_along]
+		)
+		return false
+	return true
+
+
+## ####(((===== acid from free air (deck launch, hang_launch_along cleared) must
+## carry |vx| into plan.land_along — otherwise dest remount floors at 120 (drag).
+func _transfer_acid_from_deck_air_preserves_along() -> bool:
+	var sim := PlayerSim.new()
+	if not sim.setup_from_path("res://tests/levels/sim/deck_to_left_pipe.ssk"):
+		push_error("deck acid along: setup")
+		return false
+	var left: PipeSurface = null
+	for id in sim.model.pipes.keys():
+		var p: PipeSurface = sim.model.pipes[id]
+		if p.side == SimKinds.PipeSide.LEFT:
+			left = p
+			break
+	var deck: SupportPatch = null
+	for pid in sim.model.patches.keys():
+		var pad: SupportPatch = sim.model.patches[pid]
+		if int(pad.kind) == SimKinds.SurfaceKind.DECK:
+			deck = pad
+			break
+	if left == null or deck == null:
+		push_error("deck acid along: need deck + left pipe")
+		return false
+	var z := (left.z_min + left.z_max) * 0.5
+	var lip_x := float(left.coping_x_at(z))
+	var lip_h := left.height_at_theta(z, PI * 0.5)
+	var takeoff := 500.0
+	sim.state.mode = SimState.Mode.AIRBORNE
+	sim.state.surface_id = ""
+	sim.state.air_launch_surface_id = deck.id
+	sim.state.position = Vector3(lip_x - 40.0, z, lip_h + 50.0)
+	sim.state.velocity = Vector3(takeoff, 0.0, 50.0)
+	sim.state.hang_launch_along = 0.0
+	sim.state.clear_hang()
+	sim.state.maneuver = null
+	sim.state.set_facing_side("r")
+	sim.state.alive = true
+	var cands := sim.query.transfer_candidates(sim.state)
+	if cands.is_empty() or str(cands[0].coping_id) != left.coping_id:
+		push_error("deck acid along: want left coping got %s" % [cands])
+		return false
+	sim.set_input(Vector2.ZERO, false, true)
+	sim.tick()
+	if not sim.state.has_maneuver() \
+			or (sim.state.maneuver as ManeuverPlan).kind != ManeuverPlan.Kind.TRANSFER:
+		push_error("deck acid along: expected TRANSFER reject=%s" % sim.state.last_reject)
+		return false
+	var plan: ManeuverPlan = sim.state.maneuver
+	if plan.land_along < takeoff * 0.85:
+		push_error(
+			"deck acid along: plan.land_along=%.1f lost free-air vx %.1f"
+			% [plan.land_along, takeoff]
+		)
+		return false
+	var remount_along := 0.0
+	var remounted := false
+	for _i in range(300):
+		sim.set_input(Vector2.ZERO, false, false)
+		sim.tick()
+		if sim.state.is_grounded() and sim.model.pipes.has(sim.state.surface_id):
+			remounted = true
+			remount_along = absf(sim.state.tangent_velocity.x)
+			break
+	if not remounted:
+		push_error("deck acid along: never remounted pipe")
+		return false
+	if remount_along < takeoff * 0.85:
+		push_error(
+			"deck acid along: remount dragged %.1f → %.1f (carry free-air |vx|)"
 			% [takeoff, remount_along]
 		)
 		return false
