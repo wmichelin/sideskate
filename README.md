@@ -12,10 +12,12 @@ Open the project in Godot 4.7+ and play. Starts at the level select menu.
 
 | Input | Action |
 |-------|--------|
-| WASD / arrows | Move (W = farther) |
-| Space | Hold ollie — forward accel in facing dir |
-| P / T | Spine (rising) / acid drop (falling) |
-| Esc | Pause (Return to Main Menu from pause) |
+| WASD / arrows / left stick | Move (W = farther) |
+| Space / Cross (×) | Hold ollie — forward accel in facing dir |
+| P / T / Square (□) | Spine (rising) / acid drop (falling) |
+| Q / L1 · E / Triangle (△) | Air spin CCW / CW |
+| R / R1 | Grind lock (airborne near rail) |
+| Esc / Options | Pause (Return to Main Menu from pause) |
 | Y | Fall |
 
 ## Levels
