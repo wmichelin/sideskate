@@ -79,7 +79,7 @@ func _populate_levels() -> void:
 		_status.text = "No levels found in res://levels/"
 		return
 
-	_status.text = "Select a level  ·  ↑↓ / WS  ·  Enter"
+	_status.text = "Select a level  ·  ↑↓ / WS  ·  Enter / Cross"
 	for path in paths:
 		_add_level_button(path, _display_name_for(path), style_normal, style_hover)
 

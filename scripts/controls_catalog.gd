@@ -13,5 +13,6 @@ static func rows() -> Array:
 		["R / Triangle (△)", "Grind lock (airborne near rail)"],
 		["Y", "Fall"],
 		["Esc / Options", "Pause / back"],
+		["Cross (×)", "Confirm / select in menus"],
 		["Circle (○)", "Cancel / close menus"],
 	]
