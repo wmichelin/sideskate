@@ -8,10 +8,9 @@ static func rows() -> Array:
 	return [
 		["WASD / arrows / stick", "Move (W = farther)"],
 		["Space / Cross (×)", "Hold ollie — accel in facing dir"],
-		["P / T / Square (□)", "Spine (rising) / acid drop (falling)"],
-		["Q / L1", "Air spin left (CCW)"],
-		["E / Triangle (△)", "Air spin right (CW)"],
-		["R / R1", "Grind lock (airborne near rail)"],
+		["P / T / R2", "Spine (rising) / acid drop (falling)"],
+		["Q / L1 · E / R1", "Air spin left (CCW) / right (CW)"],
+		["R / Triangle (△)", "Grind lock (airborne near rail)"],
 		["Y", "Fall"],
 		["Esc / Options", "Pause / back"],
 		["Circle (○)", "Cancel / close menus"],
