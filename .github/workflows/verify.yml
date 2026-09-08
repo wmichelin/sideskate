@@ -91,7 +91,9 @@ jobs:
       - run: ./tools/check.sh setup --web
       - run: npm ci --prefix tools/browser
       - run: npm run --prefix tools/browser install-browser -- --with-deps
-      - run: ./tools/check.sh web --timeout 240
+      # Hosted SwiftShader reached touch ollie at 238s; allow the remaining
+      # pause/menu assertions while keeping the browser workload bounded.
+      - run: ./tools/check.sh web --timeout 360
       - uses: actions/upload-artifact@v4
         if: always()
         with:
