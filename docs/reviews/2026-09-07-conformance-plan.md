@@ -19,8 +19,8 @@ That direction authorizes the reversible work below without another approval rou
 - Fresh `./tools/check.sh all --out artifacts/checks/review-2026-09-07/baseline
   --timeout 240`: 178 tests, 179 real-input gameplay checks, 13 recording replays,
   and all five render gates pass. `python3 -m unittest discover -s tools/tests -v`:
-  nine pass. Fresh local Web baseline is being recorded separately in that output
-  directory; it is not assumed to establish hosted-runner performance.
+  nine pass. Fresh local Web baseline: 32 browser checks and 14 package checks
+  pass in 110 seconds; this does not establish hosted-runner performance.
 - Hosted baseline [run 34174786568](https://github.com/wmichelin/sideskate/actions/runs/34174786568):
   native and replay pass; Web times out after 27 passing checks, before completing
   the touch scenario. Downloaded Web evidence establishes the failure phase.
