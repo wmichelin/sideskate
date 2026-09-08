@@ -4,7 +4,7 @@ extends Node
 ## Observations follow Player. Presentation state is read only.
 const DIAGNOSTICS := preload("res://tests/support/runtime_diagnostics.gd")
 const OBSERVER := preload("res://tests/runtime/physics_observer.gd")
-const SCENARIOS := ["spawn", "gameplay", "air-out", "fly-out", "spine", "acid", "ramp-peak", "grind", "fall", "lava", "animation", "spin-landing", "all"]
+const SCENARIOS := ["spawn", "gameplay", "air-out", "fly-out", "spine", "acid", "ramp-peak", "grind", "fall", "lava", "animation", "spin-landing", "wall-return", "all"]
 const FIXTURES := "res://tests/levels/runtime/"
 
 var report: Dictionary = {"schema_version": 1, "completed": false, "checks": [], "errors": [], "screenshots": [], "scenarios": [], "checkpoints": {}, "failure_traces": [], "recordings": []}
@@ -135,7 +135,7 @@ func _run() -> void:
 		report["escape_ok"] = report.errors.is_empty()
 	if scenario == "gameplay" or scenario == "all":
 		await _gameplay()
-	var stories: Array = ["air-out", "fly-out", "spine", "acid", "ramp-peak", "grind", "fall", "lava", "animation", "spin-landing"] if scenario == "all" else [scenario]
+	var stories: Array = ["air-out", "fly-out", "spine", "acid", "ramp-peak", "grind", "fall", "lava", "animation", "spin-landing", "wall-return"] if scenario == "all" else [scenario]
 	for story in stories:
 		if story not in ["spawn", "gameplay"]:
 			await _story(story)
@@ -356,6 +356,46 @@ func _story(story: String) -> void:
 			await _animation_story()
 		"spin-landing":
 			await _spin_landing_story()
+		"wall-return":
+			await _wall_return_story()
+
+
+func _wall_return_story() -> void:
+	if not await _load_level("res://levels/layers.ssk"):
+		return
+	var sim := _sim()
+	# Skate off the upper run into the left bowl and toward the middle deck span.
+	_key(KEY_A, true)
+	_key(KEY_S, true)
+	await _ticks(120)
+	_key(KEY_A, false)
+	_key(KEY_S, false)
+	_key(KEY_D, true)
+	var reached := await _until(func(): return sim.state.is_hanging() and sim.model.walls.has(sim.model.edges[sim.state.hang_edge_id].from_surface_id), 180)
+	_key(KEY_D, false)
+	_check("wall_return:deck_backed_air_out", reached and not sim.state.falling, _snapshot())
+	if not reached:
+		return
+	var wall_id: String = sim.model.edges[sim.state.hang_edge_id].from_surface_id
+	_check("wall_return:middle_span", sim.state.position.y > 799.0 and sim.state.position.y < 1316.0,
+		_snapshot())
+	await _capture("wall-return-air")
+	reached = await _until(func(): return sim.state.is_grounded(), 120)
+	_check("wall_return:source_wall_without_fall", reached and sim.state.surface_id == wall_id
+		and not sim.state.falling and sim.state.tangent_velocity.x < -100.0, _snapshot())
+	_checkpoint("wall_return_remount")
+	await _capture("wall-return-contact")
+	var safe := true
+	var floor_reached := false
+	for tick in 90:
+		await _ticks(1)
+		safe = safe and sim.state.alive and not sim.state.falling
+		if sim.state.is_grounded() and sim.state.position.z < 0.01:
+			floor_reached = true
+			break
+	_check("wall_return:roll_away_without_fall", safe and floor_reached, _snapshot())
+	_checkpoint("wall_return_floor")
+	await _capture("wall-return-floor")
 
 
 func _landing_yaws() -> Vector2:

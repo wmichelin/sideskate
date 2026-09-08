@@ -356,6 +356,22 @@ func _is_hang_lip_column_deck(
 		return false
 	if int((model.patches[deck_id] as SupportPatch).kind) != SimKinds.SurfaceKind.DECK:
 		return false
+	# A wall extension can end beside an upper-story deck that is not the
+	# lower pipe's outward_deck_id. Its shared top edge is still return space.
+	var edge: TopologyEdge = model.edges.get(state.hang_edge_id)
+	if edge != null and edge.contains_z(state.position.y) and model.walls.has(edge.from_surface_id):
+		var wall: WallSurface = model.walls[edge.from_surface_id]
+		var sample := wall.sample_at_z(state.position.y)
+		var source: PipeSurface = model.pipes.get(wall.source_pipe_id)
+		var deck: SupportPatch = model.patches[deck_id]
+		if source != null and not sample.is_empty():
+			var wx := float(sample.x)
+			var deck_edge := deck.x_min if source.outward_sign() > 0 else deck.x_max
+			if absf(deck_edge - wx) <= SimTolerances.ALIGN_EPS \
+					and absf(deck.height - float(sample.top_height)) <= SimTolerances.CONTACT_EPS \
+					and deck.contains_xz(wx, state.position.y) \
+					and absf(state.position.x - wx) <= SimTolerances.CAPSULE_RADIUS * 2.0:
+				return true
 	var pipe := _hang_source_pipe(state)
 	if pipe == null:
 		return false

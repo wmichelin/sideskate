@@ -69,7 +69,8 @@ While air-out (X-locked):
 - Ordinary contact must **never** accept an opposite-facing pipe; that requires an explicit spine or acid plan.
 - Hang remount prefers same-facing X-aligned pipe/wall via the retained/retargeted
   edge anchor. Cross-story rear decks under the lock must not steal remount while a
-  remountable pipe/wall is available.
+  remountable pipe/wall is available. Touching an upper-story deck edge at the
+  retained wall’s top is a return corridor and must not queue a fall.
 - If no remountable pipe is under the lock (outside the pipe / gap), land the nearest
   floor, deck, lava, or void. Floor/deck flat land clears hang and starts a **fall bout**;
   lava still kills.
