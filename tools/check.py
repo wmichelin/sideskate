@@ -205,35 +205,59 @@ def export_web(binary: str, out: Path, args, env: dict[str, str]) -> Path:
     if not (godot.template_dir() / "web_nothreads_release.zip").is_file():
         raise RuntimeError("Matching Web templates missing. Run ./tools/check.sh setup --web")
     destination = ROOT / "build/html5"
-    destination.mkdir(parents=True, exist_ok=True)
+    destination.parent.mkdir(parents=True, exist_ok=True)
     (ROOT / "build/.gdignore").touch()
     preset = ROOT / "export_presets.cfg"
     previous = preset.read_bytes() if preset.exists() else None
-    html = destination / "index.html"
-    html.unlink(missing_ok=True)
+    working = Path(tempfile.mkdtemp(prefix=".html5-export-", dir=destination.parent))
+    staged = working / "html5"
+    staged.mkdir()
+    backup = working / "previous"
+    promoted = False
+    html = staged / "index.html"
     log = out / "web/export.log"
     try:
-        shutil.copyfile(ROOT / "export/html5_prod.cfg", preset)
-        code = run([binary, "--headless", "--path", str(ROOT), "--export-release", "HTML5 Prod", str(html)], log, args.timeout, env)
+        try:
+            shutil.copyfile(ROOT / "export/html5_prod.cfg", preset)
+            code = run([binary, "--headless", "--path", str(ROOT), "--export-release", "HTML5 Prod", str(html)], log, args.timeout, env)
+        finally:
+            if previous is None:
+                preset.unlink(missing_ok=True)
+            else:
+                preset.write_bytes(previous)
+        errors = log_errors(log)
+        if code or errors or any(not (staged / ("index." + suffix)).is_file() or (staged / ("index." + suffix)).stat().st_size == 0 for suffix in ("html", "js", "wasm", "pck")):
+            raise RuntimeError(f"Web export failed ({code}): {log}: {errors[:3]}")
+        audit = out / "web/package.json"
+        audit.unlink(missing_ok=True)
+        with tempfile.TemporaryDirectory(prefix="sideskate-package-") as temporary:
+            project = Path(temporary)
+            (project / "project.godot").write_text("config_version=5\n")
+            audit_log = out / "web/package.log"
+            code = run([binary, "--headless", "--path", str(project), "--script", str(ROOT / "tools/verification/export_audit.gd"), "--", str(staged / "index.pck"), str(audit)], audit_log, args.timeout, env)
+        validate_report(audit)
+        if code or log_errors(audit_log):
+            raise RuntimeError(f"Exported package audit failed: {audit_log}")
+        # Both directories share a filesystem. Keep the last valid build until
+        # the fresh export and package audit pass, then replace it as a whole.
+        if destination.exists():
+            destination.rename(backup)
+        try:
+            staged.rename(destination)
+        except OSError as error:
+            if backup.exists():
+                try:
+                    backup.rename(destination)
+                except OSError as rollback_error:
+                    raise RuntimeError(f"Build promotion failed; previous build preserved at {backup}: {rollback_error}") from error
+            raise
+        promoted = True
     finally:
-        if previous is None:
-            preset.unlink(missing_ok=True)
-        else:
-            preset.write_bytes(previous)
-    errors = log_errors(log)
-    if code or errors or any(not (destination / ("index." + suffix)).is_file() or (destination / ("index." + suffix)).stat().st_size == 0 for suffix in ("html", "js", "wasm", "pck")):
-        raise RuntimeError(f"Web export failed ({code}): {log}: {errors[:3]}")
-    audit = out / "web/package.json"
-    audit.unlink(missing_ok=True)
-    with tempfile.TemporaryDirectory(prefix="sideskate-package-") as temporary:
-        project = Path(temporary)
-        (project / "project.godot").write_text("config_version=5\n")
-        audit_log = out / "web/package.log"
-        code = run([binary, "--headless", "--path", str(project), "--script", str(ROOT / "tools/verification/export_audit.gd"), "--", str(destination / "index.pck"), str(audit)], audit_log, args.timeout, env)
-    validate_report(audit)
-    if code or log_errors(audit_log):
-        raise RuntimeError(f"Exported package audit failed: {audit_log}")
-    print(f"PASS: local release export: {html}")
+        # If filesystem trouble also prevents rollback, retain the only copy of
+        # the previous build at the path reported above for manual recovery.
+        if promoted or not backup.exists():
+            shutil.rmtree(working)
+    print(f"PASS: local release export: {destination / 'index.html'}")
     return destination
 
 
