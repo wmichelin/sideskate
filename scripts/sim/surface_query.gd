@@ -1084,6 +1084,11 @@ func _append_support_top_crossings(from: Vector3, to: Vector3, out: Array) -> vo
 				var local := clampf((prev.z - sh) / (prev.z - p.z), 0.0, 1.0)
 				t_cross = lerpf(float(i - 1) / float(steps), t, local)
 			var pt := from.lerp(to, t_cross)
+			# The endpoint can enter a pad after the height crossing already
+			# happened outside it (or inside a hole). That is not a support hit.
+			var support = s.get("patch", s.get("pipe", s.get("ramp")))
+			if not support.contains_xz(pt.x, pt.y):
+				continue
 			var raw := {
 				"t": t_cross,
 				"kind": "support_top",

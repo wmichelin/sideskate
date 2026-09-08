@@ -686,7 +686,13 @@ func _mount_air_contact(state: SimState, contact: Dictionary, from_height: float
 		mounted = _try_land_through_slope_back(state, contact, from_height)
 	# Support top / solid mount via existing snap + land helpers.
 	elif kind == "support_top":
+		# The sweep cursor stays just before contact for Reject. A landing must
+		# consume the validated crossing so an edge cannot seat feet beside it.
+		var before_contact := state.position
+		state.position = contact.get("point", before_contact)
 		mounted = _mount_support_top(state, contact, from_height)
+		if not mounted:
+			state.position = before_contact
 	else:
 		# Remap owner into a solid-shaped hit for snap.
 		var hit := contact.duplicate()
