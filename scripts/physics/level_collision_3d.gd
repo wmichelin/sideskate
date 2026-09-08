@@ -1,8 +1,8 @@
 class_name LevelCollision3D
 extends Node3D
 ## StaticBody3D colliders from shared MeshPart geometry.
-## Trimesh parts that share face_role + layer bit are merged into one body so
-## pipe farms (spine_demo) do not spawn 200+ PhysicsServer objects.
+## Parts that share face_role + collision layer use one body. Their triangles
+## remain identical to the shared rendered geometry, including holes.
 
 
 const LevelGeometryScript := preload("res://scripts/mesh/level_geometry.gd")
@@ -18,6 +18,7 @@ var _level: RampLevel
 var _body_root: Node3D
 var part_count: int = 0
 var last_aabb: AABB = AABB()
+var source_model: ParkModel
 ## Collider owner_id → MeshPart.meta for contact adapters.
 var _meta_by_owner: Dictionary = {}
 
@@ -48,28 +49,20 @@ func rebuild() -> void:
 	part_count = 0
 	last_aabb = AABB()
 	_meta_by_owner.clear()
-	var parts: Array = LevelGeometryScript.build_parts(_level.spec, _level.pipes)
+	source_model = _level.model
+	set_meta("sim_model_hash", source_model.model_hash)
+	var parts: Array = _level.geometry_parts
 	last_aabb = LevelGeometryScript.merged_aabb(parts)
 	if not build_bodies:
 		return
-	# Merge concave trimeshes by (face_role, collision layer). Keep unique
-	# convex slabs (pipe backs) and AABB floors as individual bodies.
+	# All collision surfaces use the exact rendered faces. Bounding boxes filled
+	# floor/lava holes and independent back slabs extended beyond compiled solids.
 	var trimesh_batches: Dictionary = {} ## batch_key → {faces, meta, layer_bit}
 	for part in parts:
 		if part == null or not part.has_method("is_empty") or part.is_empty():
 			continue
 		var face_role := str(part.meta.get("face_role", "top"))
 		var zone := str(part.meta.get("zone", ""))
-		if zone == "deck" and face_role == "top":
-			_accumulate_trimesh(trimesh_batches, part, face_role, zone)
-			continue
-		if face_role == "back":
-			_add_pipe_back(part)
-			continue
-		if face_role == "top" or face_role == "lava":
-			_add_aabb_top(part, face_role, zone)
-			continue
-		# ride / endcap / wall / deck_wall → merged concave
 		_accumulate_trimesh(trimesh_batches, part, face_role, zone)
 	for key in trimesh_batches.keys():
 		var batch: Dictionary = trimesh_batches[key]
@@ -104,10 +97,15 @@ func _accumulate_trimesh(
 			"layer_bit": layer_bit,
 			"material_key": str(part.material_key),
 			"layer": int(part.meta.get("layer", part.layer)),
+			"surface_ids": [],
 		}
 	var faces: PackedVector3Array = batches[key].faces
 	faces.append_array(part.faces)
 	batches[key].faces = faces
+	var ids: Array = batches[key].surface_ids
+	var owner := str(part.meta.get("surface_id", ""))
+	if not ids.has(owner):
+		ids.append(owner)
 
 
 func _add_merged_trimesh(batch: Dictionary) -> void:
@@ -115,53 +113,21 @@ func _add_merged_trimesh(batch: Dictionary) -> void:
 	if faces.is_empty():
 		return
 	var shape := ConcavePolygonShape3D.new()
+	shape.backface_collision = true
 	shape.set_faces(faces)
 	var meta: Dictionary = {
 		"face_role": str(batch.get("face_role", "")),
 		"zone": str(batch.get("zone", "")),
 		"layer": int(batch.get("layer", 0)),
 		"merged": true,
+		"surface_ids": batch.get("surface_ids", []).duplicate(),
+		"model_hash": source_model.model_hash,
 	}
 	_add_body(
 		"%s_merged_%s" % [str(batch.get("material_key", "mesh")), str(batch.get("face_role", ""))],
 		int(batch.get("layer_bit", 0)),
 		meta,
 		shape,
-		Vector3.ZERO,
-	)
-
-
-func _add_aabb_top(part, face_role: String, zone: String) -> void:
-	var ab: AABB = part.aabb()
-	if ab.size.length() < 0.0001:
-		return
-	var box := BoxShape3D.new()
-	var sz := ab.size
-	sz.y = maxf(sz.y, 0.05)
-	box.size = sz
-	var meta: Dictionary = part.meta.duplicate(true)
-	meta["face_role"] = face_role
-	meta["zone"] = zone
-	_add_body(
-		"%s_L%s_%s" % [part.material_key, part.layer, face_role],
-		CollisionLayersScript.bit(CollisionLayersScript.ride_layers_for_face(face_role)),
-		meta,
-		box,
-		ab.position + sz * 0.5,
-	)
-
-
-func _add_pipe_back(part) -> void:
-	var back := _pipe_back_solid_shape(part)
-	if back == null:
-		return
-	var meta: Dictionary = part.meta.duplicate(true)
-	meta["face_role"] = "back"
-	_add_body(
-		"%s_L%s_back" % [part.material_key, part.layer],
-		CollisionLayersScript.bit(CollisionLayersScript.WORLD_WALL),
-		meta,
-		back,
 		Vector3.ZERO,
 	)
 
@@ -189,65 +155,6 @@ func _add_body(
 	_body_root.add_child(body)
 	_meta_by_owner[body.get_instance_id()] = meta.duplicate(true)
 	part_count += 1
-
-
-## Outer pipe wall as a convex slab. Thickens through any outward `#` deck that
-## anchors on this coping so the deck back is a solid wall extension — not a
-## hollow you can fly into from the lip.
-func _pipe_back_solid_shape(part) -> Shape3D:
-	var side := int(part.meta.get("side", -1))
-	var radius := float(part.meta.get("radius", 0.0))
-	var base_h := float(part.meta.get("base_height", 0.0))
-	var z0 := float(part.meta.get("z_min", 0.0))
-	var z1 := float(part.meta.get("z_max", 0.0))
-	var cope := float(part.meta.get("top_coping", NAN))
-	if is_nan(cope):
-		var lip := float(part.meta.get("lip_x", NAN))
-		if side < 0 or is_nan(lip) or radius <= 0.001:
-			return null
-		cope = lip - radius if side == 0 else lip + radius
-	if side < 0 or radius <= 0.001 or absf(z1 - z0) < 0.01:
-		return null
-	var top_h := base_h + float(part.meta.get("rise", radius))
-	# Outward from bowl: LEFT → −X logical, RIGHT → +X.
-	var outward := -1.0 if side == 0 else 1.0
-	var thick_logic := 8.0
-	if _level != null and _level.spec != null:
-		for deck in _level.spec.decks:
-			if typeof(deck) != TYPE_DICTIONARY:
-				continue
-			var deck_h := float(deck.get("height", top_h))
-			var matched := false
-			for anchor in deck.get("anchors", []):
-				if typeof(anchor) != TYPE_DICTIONARY:
-					continue
-				if int(anchor.get("side", -2)) != side:
-					continue
-				if absf(float(anchor.get("coping_x", NAN)) - cope) > 0.75:
-					continue
-				matched = true
-				break
-			if not matched:
-				continue
-			var poly = deck.get("poly", PackedVector2Array())
-			if typeof(poly) != TYPE_PACKED_VECTOR2_ARRAY:
-				continue
-			for p in poly:
-				var out_d: float = (p.x - cope) * outward
-				if out_d > 0.5:
-					thick_logic = maxf(thick_logic, out_d)
-			# Raise the wall through the deck top when the pad sits on this coping.
-			top_h = maxf(top_h, deck_h)
-	var x_in := cope
-	var x_out := cope + outward * thick_logic
-	var pts := PackedVector3Array()
-	for x in [x_in, x_out]:
-		for z in [z0, z1]:
-			for h in [base_h, top_h]:
-				pts.append(_WorldSpace.logical_to_world(x, z, h))
-	var convex := ConvexPolygonShape3D.new()
-	convex.points = pts
-	return convex
 
 
 func _clear() -> void:

@@ -65,12 +65,14 @@ func run() -> bool:
 	var mid_x := qp.lip_x + (1.0 if qp.side == QuarterPipe.PipeSide.RIGHT else -1.0) * qp.radius * 0.5
 	var hit: Dictionary = qp.query_surface(mid_x, (qp.z_min + qp.z_max) * 0.5)
 	if not hit.get("active", false):
+		qp.free()
 		push_error("pipe sample inactive")
 		return false
 	var theta := asin(0.5)
 	var profile: Vector2 = _PipeMeshBuilder._profile_point(
 		qp, theta, qp.side == QuarterPipe.PipeSide.LEFT
 	)
+	qp.free()
 	if absf(profile.y - float(hit.height)) > 0.5:
 		push_error(
 			"pipe mesh profile vs query_surface height mismatch %s vs %s"

@@ -45,6 +45,9 @@ func to_array_mesh() -> ArrayMesh:
 		return null
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	# Curved ride faces share vertex normals; slab and box corners stay sharp.
+	if str(meta.get("face_role", "")) != "ride":
+		st.set_smooth_group(-1)
 	for v in faces:
 		st.add_vertex(v)
 	st.generate_normals()

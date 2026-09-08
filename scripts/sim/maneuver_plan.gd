@@ -57,19 +57,34 @@ func transfer_progress_at_elapsed(t: float) -> float:
 	return clampf(maxf(t, 0.0) / span, 0.0, 1.0)
 
 
+const SNAPSHOT_FIELDS := [
+	"kind",
+	"source_coping_id",
+	"dest_coping_id",
+	"dest_pipe_id",
+	"start_position",
+	"start_velocity",
+	"land_time",
+	"elapsed",
+	"z_start",
+	"z_end",
+	"land_height",
+	"land_x",
+	"travel_sign",
+	"land_along",
+	"hold_facing",
+	"tilt_end",
+	"progress",
+	"rise_time",
+	"apex_frac",
+]
+
+
 func to_dict() -> Dictionary:
-	return {
-		"kind": kind,
-		"source_coping_id": source_coping_id,
-		"dest_coping_id": dest_coping_id,
-		"dest_pipe_id": dest_pipe_id,
-		"land_time": land_time,
-		"elapsed": elapsed,
-		"progress": progress,
-		"rise_time": rise_time,
-		"apex_frac": apex_frac,
-		"land_x": land_x,
-		"land_height": land_height,
-		"land_along": land_along,
-		"travel_sign": travel_sign,
-	}
+	return SimSnapshot.fields(self, SNAPSHOT_FIELDS)
+
+
+static func from_dict(data: Dictionary) -> ManeuverPlan:
+	var restored := ManeuverPlan.new()
+	SimSnapshot.restore_fields(restored, data, SNAPSHOT_FIELDS)
+	return restored

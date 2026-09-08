@@ -34,6 +34,7 @@ static func build_parts_from_pipes(pipes: Array) -> Array:
 			qp.z_max = float(pipe.z_max)
 			qp.kind = "ramp"
 			out.append_array(build_one_parts(qp))
+			qp.free()
 	return out
 
 

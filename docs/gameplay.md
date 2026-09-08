@@ -4,13 +4,18 @@ Intent brief for humans and agents. Motion law lives in [`movement_contract.md`]
 
 ## Product shape
 
-Godot 4 **pseudo-3D** skate prototype. Simulation lives in **logical** space:
+Godot 4.7 **3D** skate prototype with an analytical simulation in **logical** space:
 
 - **X** — left/right across the plaza
 - **Z** — near/far depth (stick “up” = farther)
 - **Height** — feet elevation above flat (pipe arc, deck, air)
 
-Screen placement is a **projection** of `(x, z, height)`. The camera sits on the skater. Depth uses a homogeneous scale so skating in Z dollies the park projectively. World size is `columns × cell_x` / `rows × cell_z` (defaults both **47**). Visuals draw floors, pipe ride ribbons, outer walls/endcaps, and deck tops. Park draw uses a **Far → Player → Near** Z-split at the skater’s `logical_z`.
+`WorldSpace` maps `(x, z, height)` to Godot meters as `(-x, height, z) / 100`.
+`CameraRig3D` follows the interpolated skater with a perspective `Camera3D`;
+distance, pitch, yaw and field of view control the view. World dimensions remain
+`columns × cell_x` / `rows × cell_z` (both cell sizes default to **47**).
+The 3D park contains floors, decks, elliptical pipe ribbons, ramps, rails and walls.
+Legacy projection helpers support debug/calibration queries.
 
 ## Simulation law
 
@@ -22,7 +27,7 @@ See also [AGENTS.md](../AGENTS.md) and [movement_contract.md](movement_contract.
 
 ## Park model (compiled)
 
-`.ssk` → `IdlCompiler` → immutable `ParkModel`: support patches, pipe surfaces, explicit wall surfaces, behavior-partitioned coping spans, and topology edges. Adjacent equivalent spans are merged so unrelated story breakpoints never create physical coping seams.
+`.ssk` → `IdlCompiler` → immutable `ParkModel`: support footprints (including holes), pipes, ramps, rails, explicit walls, coping spans, and topology edges. Adjacent equivalent spans are merged so unrelated story breakpoints never create physical coping seams.
 
 | Coping class | Behavior |
 |--------------|----------|
@@ -30,6 +35,8 @@ See also [AGENTS.md](../AGENTS.md) and [movement_contract.md](movement_contract.
 | `SUPPORT_SEAM` | Auto-roll onto abutting **floor** at matching height |
 | `WALL_EXTENSION` | Pipe seam to an explicit vertical wall; wall top then mounts or opens to air |
 | `SHARED_SPINE` | Same-height opposite-facing pair; action target; air/fly like `OPEN` |
+
+`RampLevel` shares the compiled model with `PlayerSim` and the `MeshPart` builders consumed by visual and collision nodes. Numerical geometry checks cover surface positions, normals and support footprints. Model hashes include dimensions, spawn, footprint, geometric samples and topology.
 
 Classification is per Z span. Cross-story upper copings are action-only targets, not automatic seams. Same-height outward `#` is an air/fly corridor (`OPEN`), not an auto-mount.
 
@@ -44,7 +51,7 @@ Stick → wish. Per axis:
 
 **Facing** `l`/`r`: follows world X speed when X-dominant. Spawn from `spawn_facing`.
 
-**Ollie** (Space): hold for mild facing accel (skipped while stick brakes opposite) and to charge a jump **while grounded**; release pops up to charge% × `ollie_height_flat` (floor/deck) or `ollie_height_pipe` (pipe/ramp/wall) level units (tunable charge time / heights). One jump charge — spent on release, restored when grounded on any surface. Below the lip / air-out band on pipes, free-air takeoff carries full along → world X. Pipe upper band (`ollie lip` slider, default top 50%) X-locks into hang air. **Ramps never hang / X-lock / fly-out** — peak leave and lip-band ollie are free air (adjacent pipes do not steal the ride). Pipe air keeps pre-takeoff lean until fly-out; ramp free-air leave from the upper `ollie lip` band (and peak leave) sets `free_air_upright` and presentation lerps lean upright (`free_air_upright_duration`), mid-ramp keeps lean.
+**Ollie** (Space): hold for mild facing accel (skipped while stick brakes opposite) and to charge a jump **while grounded or grinding**; release pops up to charge% × `ollie_height_flat` (floor/deck) or `ollie_height_pipe` (pipe/ramp/wall) level units (tunable charge time / heights). One jump charge — spent on release, restored on grounded contact or a grind mount. Below the lip / air-out band on pipes, free-air takeoff carries full along → world X. Pipe upper band (`ollie lip` slider, default top 50%) X-locks into hang air. **Ramps never hang / X-lock / fly-out** — peak leave and lip-band ollie are free air (adjacent pipes do not steal the ride). Pipe air keeps pre-takeoff lean until fly-out; ramp free-air leave from the upper `ollie lip` band (and peak leave) sets `free_air_upright` and presentation lerps lean upright (`free_air_upright_duration`), mid-ramp keeps lean.
 
 **Pipe:** UV along-arc (+along = toward coping), always `u∈[0,1]`; gravity projects onto the tangent. A compiled seam enters a separate `WallSurface`, whose own `u∈[0,1]` runs bottom→top. Rise scales with glyph run × `step_height` (see `level_format.md`).
 
@@ -60,7 +67,15 @@ Stick → wish. Per axis:
 
 **Air spin:** hold **Q** (CCW) / **E** (CW) while airborne (including transfer) to yaw. Does not change `velocity.x`. Release freezes yaw; landing always freezes at contact. Live `facing` flips at odd *N×180°* from bout takeoff. Land within tunable window of nearest *N×180°* (debug **spin land°**, default 45°) or fall; success **lerps** rider+board from contact yaw onto exact *N×π* (debug **spin settle**, default 0.15s), then **rebases** the yaw frame to 0 **without rotating back** (keeps the 180 — nose/tail stay axis-aligned B↔R or R↔B). If facing then opposes horizontal momentum, facing flips to momentum without an extra board snap. Spin rate: debug **spin rate** (default 7.95 rad/s).
 
-**Rail grind:** glyph `-` (along-X). Airborne near a rail + hold **R** mounts; coast with mount `vx`; stick (both axes) is signed balance only — fail → fall. Always-on balance HUD while grinding. Hold Space (shared ollie charge / debug bar) and release to pop off; riding past either end ejects into free air. Without R the rail is a solid Reject/bonk. Thickness: debug **rail thick** (collision live; remesh on level reload).
+**Rail grind:** glyph `-` (along-X), represented by `SimState.Mode.GRINDING`.
+Airborne near a rail + hold **R** mounts when no hang, transfer, fall or remount
+cooldown is active. Retain signed entry `vx`; depth and height stay on the rail.
+Stick X+Z changes signed balance; neutral returns it toward center. The balance
+HUD is gameplay UI and remains available with debug tools off. Releasing R keeps
+an existing grind. Hold Space and release to ollie off; riding past either end
+also enters free air. Both preserve signed speed and briefly prevent remount.
+Balance failure carries that same speed into fall deceleration. Without R the rail
+is a solid Reject. Thickness: debug **rail thick** (collision live; remesh on reload).
 
 **Air-out** (and ollie free air) keep pre-takeoff pipe/wall lean. Do not confuse with fly-out.
 
@@ -96,7 +111,22 @@ Fly-out gates on **INPUT** only.
 
 ## Presentation
 
-Physics ticks publish `_pose_prev` / `_pose_curr`. `LogicalPosePresenter3D` and `CameraRig3D` interpolate on `_process`. Orange rider on a red **nose** / blue **tail** placeholder board. Board yaw is presentation-owned and independent of facing; hang apex co-rotates the board; depth-turn yaw is temporary on both. Hang keeps coping lean (body perpendicular to flat). Z-stick input adds a subtle centered local-Y body turn toward/away from the camera, mirrored by facing. During a fall bout **RiderFall** + **BoardFall** RigidBodies tumble (visual only); the camera tracks **RiderFall** X (sim pose often parks) — world Y/Z stay locked at fall start, then full follow resumes when the bout ends.
+Physics ticks publish `_pose_prev` / `_pose_curr`; `LogicalPosePresenter3D` and
+`CameraRig3D` interpolate on `_process`. `scenes/main.tscn` uses the original
+low-poly skater (`assets/characters/ssk_skater.glb`) on a red **nose** / blue
+**tail** board. The capsule remains the fallback for an unassigned skinned rider.
+`SkaterAnimationController` observes completed physics ticks and blends riding,
+charge crouch, successful ollie pop, airborne, landing, grind and fall clips.
+Charge scrubs from the actual charge fraction; contact triggers landing recovery.
+Animation clocks stop with the pause menu. Feet stay on the board plane throughout
+the clips; bone motion never adds a second height offset to the board or sim.
+
+Board yaw is presentation-owned and independent of facing; hang apex co-rotates
+the board, and depth-turn yaw is temporary on both. Hang keeps coping lean.
+Depth input adds a centered local-Y body turn mirrored by facing. During a fall,
+the skater attaches to **RiderFall** while **BoardFall** tumbles separately;
+both bodies are visual-only. The camera tracks RiderFall X while holding world
+Y/Z from fall start, then resumes full follow after recovery.
 
 ## Debug overlays
 
@@ -122,17 +152,28 @@ Tunable sim values sync into `SimTolerances` / `PlayerSim` each physics tick. Ca
 | [`sim/surface_query.gd`](../scripts/sim/surface_query.gd) | Separate support projection, edge lookup, and deterministic swept solid contact |
 | [`sim/ground_solver.gd`](../scripts/sim/ground_solver.gd) | Grounded + wall climb + seams |
 | [`sim/air_solver.gd`](../scripts/sim/air_solver.gd) | Free air + maneuvers |
+| [`sim/grind_solver.gd`](../scripts/sim/grind_solver.gd) | Rail mount, balance, ollie/end leave |
 | [`sim/crash_classifier.gd`](../scripts/sim/crash_classifier.gd) | Sudden-stop fall / wipeout policy |
 | [`sim/maneuver_planner.gd`](../scripts/sim/maneuver_planner.gd) | Fly-out + transfer X-lerp plans |
 | [`sim/sim_tolerances.gd`](../scripts/sim/sim_tolerances.gd) | Epsilons, gravity, cast ranges |
+| [`sim/sim_state.gd`](../scripts/sim/sim_state.gd) | Authoritative motion/action state |
+| [`sim/sim_snapshot.gd`](../scripts/sim/sim_snapshot.gd) | Versioned canonical serialization and hashes |
+| [`sim/sim_trace.gd`](../scripts/sim/sim_trace.gd) | Bounded diagnostic history, explicit recording and replay |
 | [`player.gd`](../scripts/player.gd) | Input → tick → pose sync |
-| [`ramp_level.gd`](../scripts/ramp_level.gd) | Load `.ssk`, projection helpers, debug sample |
+| [`ramp_level.gd`](../scripts/ramp_level.gd) | Load `.ssk`, compile shared model, debug sample |
+| [`mesh/level_geometry.gd`](../scripts/mesh/level_geometry.gd) | Compiled model → shared `MeshPart` geometry |
+| [`mesh/compiled_park_mesh_builder.gd`](../scripts/mesh/compiled_park_mesh_builder.gd) | Tessellates authoritative support footprints, slopes, walls and rails |
+| [`world_space.gd`](../scripts/world_space.gd) | Logical units ↔ Godot meters |
 | [`physics/level_collision_3d.gd`](../scripts/physics/level_collision_3d.gd) | Visual/blocker trimeshes (not gameplay authority) |
 | [`rendering_3d/*`](../scripts/rendering_3d/) | Park mesh + pose presenter + camera |
-| [`rendering_3d/logical_pose_presenter_3d.gd`](../scripts/rendering_3d/logical_pose_presenter_3d.gd) | Orange rider + nose/tail board; dual fall bodies |
+| [`rendering_3d/logical_pose_presenter_3d.gd`](../scripts/rendering_3d/logical_pose_presenter_3d.gd) | Skinned rider, board and fall bodies; capsule fallback |
+| [`rendering_3d/skater_animation_controller.gd`](../scripts/rendering_3d/skater_animation_controller.gd) | Gameplay-driven clip transitions and fixed-tick animation playback |
 | [`rendering_3d/fall_box_constraint.gd`](../scripts/rendering_3d/fall_box_constraint.gd) | RiderFall / BoardFall plane clamp (visual only) |
 | [`platform_caps.gd`](../scripts/platform_caps.gd) | OS feature gates (`should_show_touch_controls`) |
 | [`touch_controls.gd`](../scripts/touch_controls.gd) | Mobile in-level virtual stick / Ollie / Transfer / Pause |
+| [`tests/runtime/gameplay_driver.gd`](../tests/runtime/gameplay_driver.gd) | Real scene/input scenarios, checkpoints, screenshots and recordings |
+| [`tests/runtime/physics_observer.gd`](../tests/runtime/physics_observer.gd) | Observe scenario state after the player's physics tick |
+| [`tools/check.sh`](../tools/check.sh) | Supervised setup, tests, gameplay, render and local Web checks |
 
 ## Mobile touch controls
 
@@ -140,7 +181,7 @@ When `PlatformCaps.should_show_touch_controls()` is true — native `OS.has_feat
 
 ### Fall bout
 
-`PlayerSim.begin_fall()` starts a soft wipeout: clears hang/maneuver/ollie charge, ignores stick/transfer/ollie, keeps analytical collision + gravity, lerps planar X/depth to 0 over `fall_stop_duration`, leans onto the approach / facing side over `fall_anim_duration`, and after `fall_duration` soft-restores to the last floor/deck checkpoint (same ~1.5s history as lava, no death overlay) — even if still airborne against a Reject crash wall. Triggers live in [`sim/crash_classifier.gd`](../scripts/sim/crash_classifier.gd): level walls, deck walls/volumes, ramp/pipe outer-back, an actual deck-launch outer/back, underside, or lateral solid-face hit before a real descending ride-surface crossing, free-air **into-face** on a foreign pipe’s upper `ollie_lip_frac` band (Reject + fall, never Mount), hang clip/land onto floor/deck. Non-falling deck-seam support/lip ownership Corridor, same-slope remount, the valid descending deck-launch ride-surface crossing, hang on the coping lip-column of an abutting `#`, and free-air into the launch slope’s own outward `#` (lip/peak leave) stay playable. `SimState` stamps support/impact planes on Reject; presentation hides the rider/board pose meshes and unfreezes two visual-only `FallBoxConstraint` RigidBodies — **RiderFall** (orange box + facing mark) and **BoardFall** (nose/tail board, lighter mass) — that tumble under gravity but clamp to those planes (never writes sim state). Camera and debug HUD track **RiderFall** X only. Dev invoke: **Y** / InputMap `fall`. Debug TUNING exposes the three durations and a head countdown bar (`show_fall_cooldown`).
+`PlayerSim.begin_fall()` starts a soft wipeout: clears hang/maneuver/ollie charge, ignores stick/transfer/ollie, keeps analytical collision + gravity, lerps planar X/depth to 0 over `fall_stop_duration`, leans onto the approach / facing side over `fall_anim_duration`, and after `fall_duration` soft-restores to the last floor/deck checkpoint (same ~1.5s history as lava, no death overlay) — even if still airborne against a Reject crash wall. Triggers live in [`sim/crash_classifier.gd`](../scripts/sim/crash_classifier.gd): level walls, deck walls/volumes, ramp/pipe outer-back, an actual deck-launch outer/back, underside, or lateral solid-face hit before a real descending ride-surface crossing, free-air **into-face** on a foreign pipe’s upper `ollie_lip_frac` band (Reject + fall, never Mount), hang clip/land onto floor/deck. Non-falling deck-seam support/lip ownership Corridor, same-slope remount, the valid descending deck-launch ride-surface crossing, hang on the coping lip-column of an abutting `#`, and free-air into the launch slope’s own outward `#` (lip/peak leave) stay playable. `SimState` stamps support/impact planes on Reject; presentation moves the character onto **RiderFall** and replaces the ride board with **BoardFall**. These visual-only `FallBoxConstraint` bodies tumble under gravity and clamp to those planes; they never write sim state. Camera and debug HUD track **RiderFall** X only. Dev invoke: **Y** / InputMap `fall`. Debug TUNING exposes the three durations and a head countdown bar (`show_fall_cooldown`).
 
 Analytical suites: [`tests/sim/`](../tests/sim/).
 
@@ -150,6 +191,35 @@ Analytical suites: [`tests/sim/`](../tests/sim/).
 2. No gameplay state depends on layer index, collider order, scene-tree order, render FPS, or depenetration.
 3. Every grounded pose has one surface owner; pipe/wall `u` always stays in `[0,1]`.
 4. Fly-out plans unlock free air immediately; they never retarget.
-5. Ordinary contact cannot switch to an opposite-facing pipe (transfers TBD).
+5. Ordinary contact cannot switch to an opposite-facing pipe; an explicit spine/acid plan is required.
 6. Shared boundaries have one compiled owner and every crossing consumes motion once.
-7. Presentation + collision stamp the same full-geometry `ParkModel.model_hash` as `PlayerSim`.
+7. Sim, presentation and collision consume the same compiled `ParkModel`; sampled geometry agreement must also pass.
+
+## Autonomous verification and recordings
+
+Use `./tools/check.sh tests` for imported headless checks and
+`./tools/check.sh gameplay --scenario all` for real scene-tree input scenarios.
+The latter covers menu controls, movement/braking, charged ollie, pause/resume,
+Controls back, quit/reload and the aerial, rail, fall and lava stories. Inputs are
+scheduled on physics ticks; rendering only observes and captures their results.
+Only the `spawn` capture pose is supported. A `pair` render gate uses real Escape
+routing through pause and the menu before reloading.
+
+Reports under `artifacts/checks/` include completion, named checks, diagnostics,
+state checkpoints, screenshots and recording paths. A successful process exit
+alone is insufficient: the wrapper requires a completed nonempty report and
+rejects unexpected engine/script errors or invariant diagnostics. Compare complete
+`gameplay_hash()` checkpoints at equal physics ticks when varying render rate;
+PNG bytes are not a portable rendering identity. See [README](../README.md) for
+setup, scenario selection and local browser checks.
+
+Ordinary debug history uses a 180-frame ring. Release and `--no-debug-tools` retain
+no diagnostic frames and avoid full per-tick serialization. Explicit recordings
+still work: `PlayerSim.start_recording(path)` streams a versioned JSONL file;
+`stop_recording()` closes it and returns the event count/final hash/error status.
+With no path, recording retains the complete session in memory. Use
+`SimSnapshot.encode()`/`decode()` for typed JSON transport,
+`SimTrace.read_recording(path)` to load a stream and `SimTrace.replay(data, sim)`
+to restore the initial state and verify every event against the compiled model.
+Check each returned error/`ok` field. `trace.final_hash()` hashes the current full
+gameplay state on demand; `trace.replay_hashes()` covers only the retained window.

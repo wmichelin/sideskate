@@ -1,0 +1,13 @@
+{
+  "name": "sideskate-browser-smoke",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "smoke": "node smoke.mjs",
+    "install-browser": "node install.mjs"
+  },
+  "devDependencies": {
+    "playwright": "1.55.1",
+    "pngjs": "7.0.0"
+  }
+}

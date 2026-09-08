@@ -84,6 +84,7 @@ static func _compile_floors(spec: LevelSpec, model: ParkModel) -> void:
 		patch.height = float(floor.get("height", 0.0))
 		patch.base_height = patch.height
 		patch.poly = floor.get("poly", PackedVector2Array())
+		patch.holes.assign(floor.get("holes", []))
 		_bounds_from_poly(patch)
 		model.patches[patch.id] = patch
 		i += 1
@@ -115,7 +116,9 @@ static func _compile_lava_from_layers(spec: LevelSpec, model: ParkModel) -> void
 			patch.height = base_h
 			patch.base_height = base_h
 			patch.lethal = true
-			patch.poly = _outline_poly(comp, spec.cell_w, spec.cell_h, spec.grid_h)
+			var outline := LevelLoader._surface_outline(comp, spec.cell_w, spec.cell_h, spec.grid_h)
+			patch.poly = outline.poly
+			patch.holes.assign(outline.holes)
 			_bounds_from_poly(patch)
 			model.patches[patch.id] = patch
 			lava_i += 1
@@ -130,6 +133,7 @@ static func _compile_decks(spec: LevelSpec, model: ParkModel) -> void:
 		patch.height = float(deck.get("height", 0.0))
 		patch.base_height = float(deck.get("base_height", 0.0))
 		patch.poly = deck.get("poly", PackedVector2Array())
+		patch.holes.assign(deck.get("holes", []))
 		_bounds_from_poly(patch)
 		model.patches[patch.id] = patch
 		i += 1
@@ -692,119 +696,67 @@ static func _components(cells: Array) -> Array:
 	return out
 
 
-static func _outline_poly(comp: Array, cw: float, ch: float, grid_h: int) -> PackedVector2Array:
-	# Axis-aligned bbox outline (sufficient for support queries).
-	var c0 := 999999
-	var c1 := -999999
-	var r0 := 999999
-	var r1 := -999999
-	for cell in comp:
-		c0 = mini(c0, cell.x)
-		c1 = maxi(c1, cell.x)
-		r0 = mini(r0, cell.y)
-		r1 = maxi(r1, cell.y)
-	var x0 := float(c0) * cw
-	var x1 := float(c1 + 1) * cw
-	var z0 := float(grid_h - 1 - r1) * ch
-	var z1 := float(grid_h - r0) * ch
-	return PackedVector2Array([
-		Vector2(x0, z0), Vector2(x1, z0), Vector2(x1, z1), Vector2(x0, z1)
-	])
-
-
+## Full compiled identity includes spawn, dimensions, exact footprint boundaries,
+## derived bounds, every geometric sample (including rise), and topology gates.
 static func _hash_model(model: ParkModel) -> String:
-	var ctx := HashingContext.new()
-	ctx.start(HashingContext.HASH_SHA256)
-	var lines: PackedStringArray = PackedStringArray()
-	lines.append("name:%s" % model.name)
-	for id in model.all_pipe_ids():
-		var pipe: PipeSurface = model.pipes[id]
-		lines.append("pipe:%s:%d:%.4f:%.4f" % [id, pipe.side, pipe.z_min, pipe.z_max])
-		for sample_value in pipe.samples:
-			var sample: Dictionary = sample_value
-			lines.append(
-				"ps:%.4f:%.4f:%.4f:%.4f"
-				% [sample.z, sample.lip_x, sample.radius, sample.base_height]
-			)
-	for id in model.all_ramp_ids():
-		var ramp: RampSurface = model.ramps[id]
-		lines.append("ramp:%s:%d:%.4f:%.4f" % [id, ramp.side, ramp.z_min, ramp.z_max])
-		for sample_value in ramp.samples:
-			var rsample: Dictionary = sample_value
-			lines.append(
-				"rs:%.4f:%.4f:%.4f:%.4f"
-				% [rsample.z, rsample.lip_x, rsample.radius, rsample.base_height]
-			)
-	for id in model.all_rail_ids():
-		var rail: RailSurface = model.rails[id]
-		lines.append(
-			"rail:%s:%.4f:%.4f:%.4f:%.4f"
-			% [id, rail.x_min, rail.x_max, rail.z, rail.top_height]
-		)
-	for id in model.all_wall_ids():
-		var wall: WallSurface = model.walls[id]
-		lines.append(
-			"wall:%s:%s:%s:%s:%.4f:%.4f"
-			% [
-				id,
-				wall.source_pipe_id,
-				wall.top_support_id,
-				wall.upper_partner_pipe_id,
-				wall.z_min,
-				wall.z_max,
-			]
-		)
-		for sample_value in wall.samples:
-			var sample: Dictionary = sample_value
-			lines.append(
-				"ws:%.4f:%.4f:%.4f:%.4f"
-				% [sample.z, sample.x, sample.bottom_height, sample.top_height]
-			)
-	for id in model.all_coping_ids():
-		var c: CopingEdge = model.copings[id]
-		lines.append("cope:%s:%d:%s" % [id, c.coping_class, c.shared_with_id])
-		for span_value in c.spans:
-			var span: CopingSpan = span_value
-			lines.append(
-				"span:%s:%d:%.4f:%.4f:%s:%s:%s:%s:%s:%s:%d"
-				% [
-					span.id,
-					span.coping_class,
-					span.z_min,
-					span.z_max,
-					span.support_patch_id,
-					span.outward_deck_id,
-					span.wall_id,
-					span.partner_coping_id,
-					span.lip_owner_id,
-					span.outward_owner_id,
-					1 if span.is_open_corridor else 0,
-				]
-			)
-	var patch_ids: Array = model.all_patch_ids()
-	patch_ids.sort()
-	for id in patch_ids:
-		var patch: SupportPatch = model.patches[id]
-		lines.append(
-			"patch:%s:%d:%.4f:%.4f:%s"
-			% [id, patch.kind, patch.height, patch.base_height, patch.lethal]
-		)
-		for point in patch.poly:
-			lines.append("pp:%.4f:%.4f" % [point.x, point.y])
-	for id in model.all_edge_ids():
-		var edge: TopologyEdge = model.edges[id]
-		lines.append(
-			"edge:%s:%d:%s:%s:%s:%.4f:%.4f:%s"
-			% [
-				id,
-				edge.kind,
-				edge.from_surface_id,
-				edge.to_surface_id,
-				edge.boundary,
-				edge.z_min,
-				edge.z_max,
-				edge.transfer_target_id,
-			]
-		)
-	ctx.update("\n".join(lines).to_utf8_buffer())
-	return ctx.finish().hex_encode()
+	var data := SimSnapshot.fields(model, [
+		"name", "cell_w", "cell_h", "grid_w", "grid_h", "width", "depth", "spawn_x", "spawn_z",
+		"spawn_height", "spawn_facing", "playable_mask",
+	])
+	data["version"] = SimSnapshot.VERSION
+	data["pipes"] = {}
+	for id in model.pipes:
+		var item := SimSnapshot.fields(model.pipes[id], [
+			"id", "side", "z_min", "z_max", "samples", "coping_id", "bound_x_min", "bound_x_max",
+			"bound_h_min", "bound_h_max",
+		])
+		data.pipes[id] = item
+	data["ramps"] = {}
+	for id in model.ramps:
+		var item := SimSnapshot.fields(model.ramps[id], [
+			"id", "side", "z_min", "z_max", "samples", "coping_id", "bound_x_min", "bound_x_max",
+			"bound_h_min", "bound_h_max",
+		])
+		data.ramps[id] = item
+	data["rails"] = {}
+	for id in model.rails:
+		var item := SimSnapshot.fields(model.rails[id], [
+			"id", "x_min", "x_max", "z", "top_height", "base_height", "layer",
+		])
+		data.rails[id] = item
+	data["walls"] = {}
+	for id in model.walls:
+		var item := SimSnapshot.fields(model.walls[id], [
+			"id", "source_pipe_id", "source_coping_id", "coping_span_id", "z_min", "z_max", "samples",
+			"top_support_id", "upper_partner_pipe_id",
+		])
+		data.walls[id] = item
+	data["patches"] = {}
+	for id in model.patches:
+		var item := SimSnapshot.fields(model.patches[id], [
+			"id", "kind", "height", "base_height", "poly", "holes", "x_min", "x_max", "z_min", "z_max",
+			"lethal",
+		])
+		data.patches[id] = item
+	data["edges"] = {}
+	for id in model.edges:
+		var item := SimSnapshot.fields(model.edges[id], [
+			"id", "kind", "from_surface_id", "to_surface_id", "coping_id", "u_gate", "z_min", "z_max",
+			"boundary", "transfer_target_id",
+		])
+		data.edges[id] = item
+	data["copings"] = {}
+	for id in model.copings:
+		var item := SimSnapshot.fields(model.copings[id], [
+			"id", "pipe_id", "side", "coping_class", "z_min", "z_max", "height_samples",
+			"support_patch_id", "shared_with_id", "outward_sign", "allows_hang",
+		])
+		item["spans"] = []
+		for span in model.copings[id].spans:
+			item.spans.append(SimSnapshot.fields(span, [
+				"id", "coping_id", "z_min", "z_max", "coping_class", "effective_height_samples",
+				"support_patch_id", "outward_deck_id", "wall_id", "partner_coping_id", "lip_owner_id",
+				"outward_owner_id", "is_open_corridor",
+			]))
+		data.copings[id] = item
+	return SimSnapshot.digest(data)

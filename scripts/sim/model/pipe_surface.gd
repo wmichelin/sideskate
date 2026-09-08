@@ -148,16 +148,18 @@ func project(x: float, z: float, h: float) -> Dictionary:
 	var n_h: float
 	var t_x: float
 	var t_h: float
+	# Differentiate x = lip ± radius*sin(theta), h = base + rise*(1-cos(theta)).
+	# The floor lip is horizontal and the coping is vertical, including ellipses.
 	if side == SimKinds.PipeSide.LEFT:
-		n_x = rise * cos(th)
-		n_h = r * sin(th)
-		t_x = -r * sin(th)
-		t_h = rise * cos(th)
+		n_x = rise * sin(th)
+		n_h = r * cos(th)
+		t_x = -r * cos(th)
+		t_h = rise * sin(th)
 	else:
-		n_x = -rise * cos(th)
-		n_h = r * sin(th)
-		t_x = r * sin(th)
-		t_h = rise * cos(th)
+		n_x = -rise * sin(th)
+		n_h = r * cos(th)
+		t_x = r * cos(th)
+		t_h = rise * sin(th)
 	return {
 		"ok": true,
 		"point": Vector3(px, z, ph),

@@ -16,7 +16,7 @@
 [ext_resource type="Script" path="res://scripts/rendering_3d/grind_balance_hud.gd" id="22_grindhud"]
 [ext_resource type="Script" uid="uid://cjlnvlwo6kwnm" path="res://scripts/physics/level_collision_3d.gd" id="18_col3d"]
 [ext_resource type="PackedScene" uid="uid://cpausemenu01" path="res://scenes/pause_menu.tscn" id="19_pause"]
-[ext_resource type="PackedScene" uid="uid://dd2p54r525sjh" path="res://assets/characters/freemocap_skater.glb" id="20_skater"]
+[ext_resource type="PackedScene" path="res://assets/characters/ssk_skater.glb" id="20_skater"]
 [ext_resource type="PackedScene" uid="uid://ctouchctrl01" path="res://scenes/touch_controls.tscn" id="21_touch"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_player"]
@@ -66,9 +66,9 @@ script = ExtResource("14_pose3d")
 depth_path = NodePath("../../Player/PseudoDepthBody")
 player_path = NodePath("../../Player")
 skater_mesh = ExtResource("20_skater")
-skater_scale = 1.27
-skater_anim_speed = 3.4499999999999997
-skater_anim_end_frac = 0.52
+skater_height_m = 1.738
+skater_yaw_offset = 3.141592653589793
+body_size = Vector3(0.40, 0.55, 0.24)
 
 [node name="CameraRig3D" type="Node3D" parent="World3D" unique_id=797045660]
 script = ExtResource("15_cam3d")

@@ -8,6 +8,8 @@ var kind: int = 0 ## SimKinds.SurfaceKind
 var height: float = 0.0
 var base_height: float = 0.0
 var poly: PackedVector2Array = PackedVector2Array() ## (x, z) vertices
+## Interior boundaries excluded from this support and its solid volume.
+var holes: Array[PackedVector2Array] = []
 var x_min: float = 0.0
 var x_max: float = 0.0
 var z_min: float = 0.0
@@ -20,6 +22,9 @@ func contains_xz(x: float, z: float) -> bool:
 		return false
 	if z < z_min - 0.001 or z > z_max + 0.001:
 		return false
+	for hole in holes:
+		if Geometry2D.is_point_in_polygon(Vector2(x, z), hole):
+			return false
 	if _point_in_poly(x, z):
 		return true
 	# Even-odd ray cast treats the max-X vertical edge as outside. Hang lock X
@@ -59,19 +64,4 @@ func world_normal() -> Vector3:
 
 
 func _point_in_poly(x: float, z: float) -> bool:
-	var n := poly.size()
-	if n < 3:
-		return false
-	var inside := false
-	var j := n - 1
-	for i in range(n):
-		var xi := poly[i].x
-		var zi := poly[i].y
-		var xj := poly[j].x
-		var zj := poly[j].y
-		var intersect := ((zi > z) != (zj > z)) and \
-			(x < (xj - xi) * (z - zi) / maxf(zj - zi, 0.0001) + xi)
-		if intersect:
-			inside = not inside
-		j = i
-	return inside
+	return Geometry2D.is_point_in_polygon(Vector2(x, z), poly)

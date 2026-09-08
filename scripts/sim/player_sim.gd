@@ -67,6 +67,7 @@ var checkpoint_facing: String = "r"
 ## Throttle solid-penetration push_error — spam on dense spine farms tanks FPS.
 var _last_penetration_log_tick: int = -999999
 const _PENETRATION_LOG_EVERY_TICKS := 60
+var _inside_tick: bool = false
 
 
 func setup_from_path(path: String) -> bool:
@@ -81,6 +82,12 @@ func setup_from_text(text: String, name_hint: String = "") -> bool:
 
 func setup_from_spec(spec: LevelSpec) -> bool:
 	model = IdlCompiler.compile_spec(spec)
+	return _finish_setup()
+
+
+## Level bootstrap can share the same immutable model with mesh consumers.
+func setup_from_model(compiled: ParkModel) -> bool:
+	model = compiled
 	return _finish_setup()
 
 
@@ -102,8 +109,8 @@ func _finish_setup() -> bool:
 	ollie_charge_peak_height = 0.0
 	ollie_just_popped = false
 	debug = SimDebugSnapshot.new()
-	trace = SimTrace.new(model.model_hash)
-	trace.record(state, Vector2.ZERO, false)
+	trace = SimTrace.new(model.model_hash, self)
+	trace.record(self, {"kind": "initial"})
 	return true
 
 
@@ -131,6 +138,13 @@ func set_input(
 
 ## Start a fall bout (Y key / business logic). No-op if already falling or dead.
 func begin_fall() -> void:
+	var event := trace.capture_event(self, "fall") if trace != null and not _inside_tick else {}
+	_begin_fall()
+	if not event.is_empty():
+		trace.record(self, event)
+
+
+func _begin_fall() -> void:
 	if state == null or not state.alive or state.falling:
 		return
 	state.clear_hang()
@@ -205,8 +219,14 @@ func fall_anim_frac() -> float:
 
 
 func tick(delta: float = SimTolerances.FIXED_DT) -> void:
-	if state == null or not state.alive:
+	if state == null:
 		return
+	var event := trace.capture_event(self, "tick", delta) if trace != null else {}
+	if not state.alive:
+		if trace != null:
+			trace.record(self, event)
+		return
+	_inside_tick = true
 	var previous_surface_id := state.surface_id
 	state.tick += 1
 	var falling := state.falling
@@ -277,9 +297,11 @@ func tick(delta: float = SimTolerances.FIXED_DT) -> void:
 	_assert_finite()
 	_assert_invariants(previous_surface_id, planned_surface_change)
 	debug.capture(state, model, query)
-	trace.record(state, wish, action_just)
 	action_just = false
 	ollie_just_released = false
+	_inside_tick = false
+	if trace != null:
+		trace.record(self, event)
 
 
 ## Time-based planar stop envelope (does not advance fall_elapsed).
@@ -704,18 +726,50 @@ func _stamp_air_launch_from_current() -> void:
 		state.air_launch_surface_id = sid
 
 
-func _assert_finite() -> void:
-	var p := state.position
-	var v := state.velocity
-	if is_nan(p.x) or is_nan(p.y) or is_nan(p.z) or is_nan(v.x) or is_nan(v.y) or is_nan(v.z):
-		push_error("PlayerSim NaN at tick %d" % state.tick)
+const FINITE_STATE_FIELDS := [
+	"position", "velocity", "tangent_velocity", "u", "v",
+	"hang_launch_along", "hang_apex_timer", "hang_apex_from_yaw", "hang_apex_to_yaw",
+	"fall_elapsed", "fall_start_vx", "fall_start_vy", "fall_lean_sign",
+	"fall_support_point", "fall_support_normal", "fall_impact_point", "fall_impact_normal",
+	"spin_yaw", "facing_yaw", "spin_settle_from", "spin_settle_to",
+	"spin_settle_elapsed", "spin_land_momentum_x", "grind_along", "grind_balance",
+	"grind_remount_cooldown",
+]
+
+
+func _assert_finite() -> bool:
+	for field in FINITE_STATE_FIELDS:
+		if not _finite_motion_value(state.get(field)):
+			return _nonfinite(field)
+	# -INF deliberately means no air peak has been observed this bout.
+	if state.air_peak_height != -INF and not is_finite(state.air_peak_height):
+		return _nonfinite("air_peak_height")
+	for field in ["last_wish", "ollie_charge", "ollie_charge_peak_height", "checkpoint_position"]:
+		if not _finite_motion_value(get(field)):
+			return _nonfinite(field)
+	if state.maneuver != null:
+		for field in ManeuverPlan.SNAPSHOT_FIELDS:
+			if not _finite_motion_value(state.maneuver.get(field)):
+				return _nonfinite("maneuver." + field)
+	return true
+
+
+static func _finite_motion_value(value: Variant) -> bool:
+	if value is Vector2 or value is Vector3:
+		return value.is_finite()
+	return not value is float or is_finite(value)
+
+
+func _nonfinite(field: String) -> bool:
+	push_error("PlayerSim non-finite motion at tick %d: %s" % [state.tick, field])
+	return false
 
 
 func _assert_invariants(previous_surface_id: String, planned_surface_change: bool) -> void:
 	if not state.alive:
 		return
 	if state.is_grinding():
-		if not model.rails.has(state.grind_rail_id) and not model.rails.has(state.surface_id):
+		if not model.rails.has(state.grind_rail_id) or state.surface_id != state.grind_rail_id:
 			push_error(
 				"PlayerSim grind owner invariant at tick %d: %s"
 				% [state.tick, state.grind_rail_id]
@@ -809,12 +863,13 @@ func _restore_to_checkpoint() -> void:
 	ollie_charge_peak_height = 0.0
 	if debug != null:
 		debug.capture(state, model, query)
-	if trace != null:
-		trace.record(state, Vector2.ZERO, false)
 
 
 func respawn() -> void:
+	var event := trace.capture_event(self, "respawn") if trace != null else {}
 	_restore_to_checkpoint()
+	if trace != null:
+		trace.record(self, event)
 
 
 func pose_dict() -> Dictionary:
@@ -828,3 +883,157 @@ func pose_dict() -> Dictionary:
 		"surface_id": state.surface_id,
 		"model_hash": model.model_hash if model else "",
 	}
+
+
+const INPUT_FIELDS := [
+	"last_wish",
+	"action_just",
+	"action_held",
+	"ollie_pressed",
+	"ollie_just_released",
+	"rotate_left",
+	"rotate_right",
+	"grind_held",
+]
+
+
+const TUNING_FIELDS := [
+	"accel",
+	"max_speed",
+	"max_speed_z",
+	"ollie_accel",
+	"ollie_charge_ms",
+	"ollie_height_flat",
+	"ollie_height_pipe",
+	"ollie_lip_frac",
+	"brake",
+	"friction",
+	"ramp_friction",
+	"transfer_hold_delay",
+	"fall_anim_duration",
+	"fall_stop_duration",
+	"fall_duration",
+]
+
+
+const SNAPSHOT_FIELDS := [
+	"transfer_hold_eligible",
+	"ollie_just_popped",
+	"ollie_charge",
+	"ollie_charge_peak_height",
+	"ollie_available",
+	"checkpoint_history",
+	"checkpoint_surface_id",
+	"checkpoint_position",
+	"checkpoint_facing",
+]
+
+
+func input_snapshot() -> Dictionary:
+	return SimSnapshot.fields(self, INPUT_FIELDS)
+
+
+func restore_input(data: Dictionary) -> void:
+	set_input(
+		data.last_wish, data.action_held, data.action_just,
+		data.ollie_pressed, data.ollie_just_released,
+		data.rotate_left, data.rotate_right, data.grind_held,
+	)
+
+
+func tuning_snapshot() -> Dictionary:
+	return {"player": SimSnapshot.fields(self, TUNING_FIELDS), "global": {
+		"FLY_OUT_ABOVE": SimTolerances.FLY_OUT_ABOVE,
+		"CHECKPOINT_HISTORY_SEC": SimTolerances.CHECKPOINT_HISTORY_SEC,
+		"FACING_COPING_CELLS": SimTolerances.FACING_COPING_CELLS,
+		"ACID_COPING_CELLS": SimTolerances.ACID_COPING_CELLS,
+		"GRAVITY": SimTolerances.GRAVITY,
+		"APEX_FACING_DELAY": SimTolerances.APEX_FACING_DELAY,
+		"SPIN_RATE": SimTolerances.SPIN_RATE,
+		"LAND_SPIN_WINDOW": SimTolerances.LAND_SPIN_WINDOW,
+		"SPIN_LAND_SETTLE": SimTolerances.SPIN_LAND_SETTLE,
+		"RAIL_THICKNESS": SimTolerances.RAIL_THICKNESS,
+	}}
+
+
+func apply_tuning(data: Dictionary) -> bool:
+	if not SimSnapshot.same_shape(data, tuning_snapshot()):
+		return false
+	SimSnapshot.restore_fields(self, data.player, TUNING_FIELDS)
+	SimTolerances.FLY_OUT_ABOVE = data.global["FLY_OUT_ABOVE"]
+	SimTolerances.CHECKPOINT_HISTORY_SEC = data.global["CHECKPOINT_HISTORY_SEC"]
+	SimTolerances.FACING_COPING_CELLS = data.global["FACING_COPING_CELLS"]
+	SimTolerances.ACID_COPING_CELLS = data.global["ACID_COPING_CELLS"]
+	SimTolerances.GRAVITY = data.global["GRAVITY"]
+	SimTolerances.APEX_FACING_DELAY = data.global["APEX_FACING_DELAY"]
+	SimTolerances.SPIN_RATE = data.global["SPIN_RATE"]
+	SimTolerances.LAND_SPIN_WINDOW = data.global["LAND_SPIN_WINDOW"]
+	SimTolerances.SPIN_LAND_SETTLE = data.global["SPIN_LAND_SETTLE"]
+	SimTolerances.RAIL_THICKNESS = data.global["RAIL_THICKNESS"]
+	return true
+
+
+## Includes every value needed to continue simulation, independently of the
+## render shell. Model identity includes spawn; initial state can be seeded.
+func gameplay_snapshot() -> Dictionary:
+	return {
+		"version": SimSnapshot.VERSION,
+		"model_hash": model.model_hash if model != null else "",
+		"state": state.to_dict() if state != null else {},
+		"sim": SimSnapshot.fields(self, SNAPSHOT_FIELDS),
+		"input": input_snapshot(), "tuning": tuning_snapshot(),
+	}
+
+
+static func snapshot_hash(snapshot: Dictionary) -> String:
+	var identity := snapshot.duplicate(true)
+	for key in SimState.PRESENTATION_LATCHES:
+		identity.state.erase(key)
+	identity.state.erase("last_reject")
+	identity.sim.erase("ollie_just_popped")
+	return SimSnapshot.digest(identity)
+
+
+func gameplay_hash() -> String:
+	return snapshot_hash(gameplay_snapshot())
+
+
+func restore_snapshot(snapshot: Dictionary) -> bool:
+	if model == null or snapshot.get("version") != SimSnapshot.VERSION \
+			or snapshot.get("model_hash") != model.model_hash:
+		return false
+	var expected := gameplay_snapshot()
+	# Maneuver can be null or a full plan, independent of the current pose.
+	var checked := snapshot.duplicate(true)
+	if not checked.get("state") is Dictionary:
+		return false
+	var plan: Variant = checked.state.get("maneuver")
+	if plan != null and (not plan is Dictionary \
+			or not SimSnapshot.same_shape(plan, ManeuverPlan.new().to_dict())):
+		return false
+	checked.state["maneuver"] = null
+	expected.state["maneuver"] = null
+	if not SimSnapshot.same_shape(checked, expected):
+		return false
+	for checkpoint in snapshot.sim.checkpoint_history:
+		if not SimSnapshot.same_shape(checkpoint, {
+			"surface_id": "", "position": Vector3.ZERO, "facing": "r",
+		}):
+			return false
+	state = SimState.from_dict(snapshot.state)
+	restore_input(snapshot.input)
+	SimSnapshot.restore_fields(self, snapshot.sim, SNAPSHOT_FIELDS)
+	apply_tuning(snapshot.tuning)
+	_inside_tick = false
+	_last_penetration_log_tick = -999999
+	if debug != null:
+		debug.capture(state, model, query)
+	return true
+
+
+func start_recording(path: String = "") -> bool:
+	return trace != null and trace.start_recording(self, path)
+
+
+func stop_recording() -> Dictionary:
+	return trace.stop_recording() if trace != null else {}

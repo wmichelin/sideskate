@@ -917,6 +917,14 @@ func _reject_air_contact(state: SimState, contact: Dictionary, from: Vector3) ->
 			if absf(approach) < 0.001:
 				approach = -1.0 if state.facing == "r" else 1.0
 			state.stamp_fall_lean(approach)
+	# Preserve a stacked joint's approach before normal projection can reverse vx.
+	# A later support-top Reject has no X normal; its fall clear must keep this side.
+	# Ordinary pipe tip skims retain their existing exterior-eject behavior.
+	if state.request_fall and _contact_is_slope_body(contact):
+		var slope = _contact_slope_surf(contact)
+		if slope is PipeSurface \
+				and not _joint_wall_face_for_partner(slope.id, state.position.y).is_empty():
+			_stamp_slope_fall_planes(state, contact, from)
 	if kind == "bounds" or kind == "feature_wall":
 		_resolve_bounds_hit(state, contact, from)
 		_ensure_air_outside_slopes(state)
@@ -1137,7 +1145,7 @@ func _assert_air_invariants(state: SimState) -> void:
 		push_warning(
 			"AirSolver invariant: dual air owner at %s" % state.position
 		)
-	var blk := query.blocker_at(state.position)
+	var blk := _air_invariant_blocker(state)
 	if blk.is_empty():
 		return
 	var kind := str(blk.get("kind", ""))
@@ -1154,6 +1162,24 @@ func _assert_air_invariants(state: SimState) -> void:
 			"AirSolver invariant: residual penetration in %s (%s) at %s"
 			% [blk.get("surface_id", kind), kind, state.position]
 		)
+
+
+## Wall-face contact is expected while an owned, X-locked ollie rises to its
+## effective wall-top lip. Keep the collision query solid and apply the existing
+## contact policy only to this diagnostic exception.
+func _air_invariant_blocker(state: SimState) -> Dictionary:
+	var blocker := query.blocker_at(state.position)
+	if str(blocker.get("kind", "")) != "wall" or not state.is_hanging() or state.falling:
+		return blocker
+	if not is_zero_approx(state.velocity.x) \
+			or not is_equal_approx(state.position.x, _hang_lock_x(state)):
+		return blocker
+	var contact := query.annotate_contact_ownership(blocker, state.position)
+	if _hang_owns_contact(state, contact) and _disposition_for_contact(
+		state, contact, state.position, state.position
+	) == SimKinds.ContactDisposition.CORRIDOR:
+		return {}
+	return blocker
 
 
 func _hang_launch_edge(state: SimState) -> TopologyEdge:

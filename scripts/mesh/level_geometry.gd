@@ -7,6 +7,11 @@ const _PipeMeshBuilder := preload("res://scripts/mesh/pipe_mesh_builder.gd")
 const _RampMeshBuilder := preload("res://scripts/mesh/ramp_mesh_builder.gd")
 const _DeckMeshBuilder := preload("res://scripts/mesh/deck_mesh_builder.gd")
 const _RailMeshBuilder := preload("res://scripts/mesh/rail_mesh_builder.gd")
+const _CompiledParkMeshBuilder := preload("res://scripts/mesh/compiled_park_mesh_builder.gd")
+
+
+static func build_model_parts(model: ParkModel) -> Array:
+	return _CompiledParkMeshBuilder.build_parts(model)
 
 
 static func build_parts(spec: LevelSpec, pipes: Array) -> Array:

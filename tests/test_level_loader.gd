@@ -2,6 +2,15 @@ extends RefCounted
 ## LevelLoader.parse_text: fixtures, spawn, pipe radii, decks, uneven rows, layers.
 
 
+func expected_errors() -> Dictionary:
+	return {
+		"Malformed level 'bad_uneven':": 1,
+		"Malformed level 'old':": 1,
+		"Malformed level 'lr_conflict':": 1,
+		"Malformed level 'bad_space':": 1,
+	}
+
+
 func run() -> bool:
 	var ok := true
 	ok = _smoke_fixture("res://tests/levels/test_halfpipe.ssk") and ok
@@ -619,6 +628,7 @@ func _deck_edge_never_oob() -> bool:
 		qp.z_min = float(pd.z_min)
 		qp.z_max = float(pd.z_max)
 		qp.layer = int(pd.get("layer", 0))
+		level.add_child(qp)
 		level.pipes.append(qp)
 	# Far-left of map = deck `#` columns. Sample near x=0 edge.
 	var z := spec.spawn_z
@@ -659,6 +669,7 @@ func _lava_glyph_samples() -> bool:
 		qp.z_min = float(pd.z_min)
 		qp.z_max = float(pd.z_max)
 		qp.layer = int(pd.get("layer", 0))
+		level.add_child(qp)
 		level.pipes.append(qp)
 	# Row with xxxx: grid row 1 (0-based from top). Cell centers.
 	var cw := spec.cell_w

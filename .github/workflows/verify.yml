@@ -1,0 +1,100 @@
+name: Verify game
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: '23 6 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/sideskate/4.7-stable
+            ~/.cache/sideskate/xvfb
+          key: sideskate-linux-godot-4.7-v1
+      - run: ./tools/check.sh setup
+      - run: python3 -m unittest discover -s tools/tests -v
+      - run: python3 tools/verification/runner_contract.py
+      - run: ./tools/check.sh all --timeout 240
+      - name: Both shipped maps without debug UI
+        run: |
+          ./tools/check.sh render --level res://levels/layers.ssk --no-debug-tools --out artifacts/checks/playable
+          ./tools/check.sh render --level res://levels/offset_demo.ssk --no-debug-tools --out artifacts/checks/playable
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: native-evidence
+          path: artifacts/checks/
+          retention-days: 14
+
+  replay:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/sideskate/4.7-stable
+            ~/.cache/sideskate/xvfb
+          key: sideskate-linux-godot-4.7-v1
+      - run: ./tools/check.sh setup
+      - run: ./tools/check.sh replay --timeout 240
+      - name: Longer trace memory checks
+        if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+        run: |
+          ./tools/check.sh tests --test test_sim_replay.gd --sim-soak --out artifacts/checks/soak
+          ./tools/check.sh tests --test test_sim_replay.gd --sim-soak --no-debug-tools --out artifacts/checks/soak-debug-off
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: replay-evidence
+          path: artifacts/checks/
+          retention-days: 14
+
+  web:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: tools/browser/package-lock.json
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/sideskate/4.7-stable
+            ~/.cache/sideskate/xvfb
+            ~/.cache/sideskate/data/godot/export_templates/4.7.stable
+          key: sideskate-linux-godot-4.7-web-v1
+      - run: ./tools/check.sh setup --web
+      - run: npm ci --prefix tools/browser
+      - run: npm run --prefix tools/browser install-browser -- --with-deps
+      - run: ./tools/check.sh web --timeout 240
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: web-evidence
+          path: artifacts/checks/
+          retention-days: 14

@@ -38,12 +38,15 @@ Level extents are automatic:
 
 Add glyphs to grow the plaza; do not set `width` / `depth` in the header (ignored if present). Cell sizes are game-wide (RampLevel exports + TUNING sliders `cell x` / `cell z`).
 
-Pipe radius follows run width in cells (`(((` → 3 × cell_x, `((((` → 4 × cell_x), so
-glyph count sets the quarter-circle size. Draw code builds a **screen-space** 90°
-circle from that projected width; deck tops/walls use `deck_visual_height` so the
-pad lowers/raises to meet those pipe copings (physics still uses logical `base + radius`).
+The pipe/ramp X footprint follows run width (`(((` → 3 × cell_x). Height rise
+follows run width × `step_height`, or the legacy `pipe_radius` override. Pipe
+cross-sections are elliptical when footprint and rise differ; coping height is
+`base + rise`. The 3D mesh samples the same compiled shape used by simulation.
+Deck bands use their compiled top heights.
 
-Perspective (`perspective_inset`, `far_geometry_scale`, `reference_depth`, `reference_width`) lives on **RampLevel** / TUNING only — not in `.ssk` files.
+The active view uses `CameraRig3D` (distance, pitch, yaw and field of view).
+Legacy projection parameters remain in presentation/debug helpers; they are not
+`.ssk` geometry or gameplay inputs.
 
 ## Header keys
 
@@ -67,7 +70,7 @@ Deprecated (ignored with a warning): `width`, `depth`, `perspective_inset`, `far
 layer 0
 height 0
 (((======)))
-(((==@==)))
+(((==@===)))
 (((======)))
 ---
 layer 1
@@ -157,14 +160,14 @@ height 0
 ```
 
 `>>>=======<<<` = right-ramp → floor → left-ramp.  
-`>===(` = right-ramp → deck → left-pipe (deck rises to the shared peak/radius).
+`>===(` = right-ramp → floor → left-pipe. Use `#` for a raised deck.
 
 Riding off a ramp peak launches free air along the incline tangent — **no X-lock /
 hang**. Stick fly-out / spine / acid do not originate from ramps.
 
 ## Multi-story example
 
-See `levels/layered_demo.ssk`: ground halfpipe plus an upper floor with a hole. Ride the pipe to the upper story, or fall through `.` cells with gravity.
+See `debug_levels/layered_demo.ssk`: ground halfpipe plus an upper floor with a hole. Ride the pipe to the upper story, or fall through `.` cells with gravity.
 
 ## Sampling
 
@@ -209,12 +212,24 @@ Every pipe coping edge is classified exactly once:
 | Class | When | Behavior |
 |-------|------|----------|
 | `OPEN` | No outward solid at coping height | Explicit fly-out allowed |
-| `SUPPORT_SEAM` | Outward deck/floor top matches coping height (within seam eps) | Auto-roll onto pad |
+| `SUPPORT_SEAM` | Outward `=` floor matches coping height (within seam eps) | Auto-roll onto that floor |
 | `WALL_EXTENSION` | Outward floor above coping, or taller opposite pipe (cross-story) | Climb to effective lip; mount floor or air/fly |
 | `SHARED_SPINE` | Opposite-facing coping at matching height (`)))##(((`, `)))(((`) | Spine target relation |
 
-An outward `#` deck abutting a coping is never simultaneously fly-out space and a
-catch wall. See [`docs/movement_contract.md`](movement_contract.md).
+An outward `#` deck remains `OPEN` even when its top matches the coping. It does
+not become a support seam: fly-out and descending deck contact use the movement
+contract's explicit air-contact rules. See [`movement_contract.md`](movement_contract.md).
+
+### Support footprints and consumers
+
+Support patches retain their outer polygon and interior holes. A hole is absent
+support, even when surrounded by one connected floor/deck component. Sim queries
+and generated mesh triangles must agree on that footprint.
+
+`RampLevel` supplies the compiled `ParkModel` to `PlayerSim` and the shared
+`MeshPart` geometry pipeline. Visual and Godot collision consumers use that model;
+Godot collision remains non-authoritative. Geometry agreement is checked with
+sampled positions/normals and footprint tests, not by copying a model-hash label.
 
 ### Validation
 

@@ -34,6 +34,7 @@ static func build_parts_from_pipes(pipes: Array) -> Array:
 			qp.z_min = float(pipe.z_min)
 			qp.z_max = float(pipe.z_max)
 			out.append_array(build_one_parts(qp))
+			qp.free()
 	return out
 
 

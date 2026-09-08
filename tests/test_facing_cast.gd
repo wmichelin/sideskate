@@ -160,11 +160,11 @@ func run() -> bool:
 	var pure := FacingCastMath.resolve_surface(spec, pipes, mid_x, z, prefer)
 	if absf(float(wrap.get("height", -1)) - float(pure.get("height", -2))) > 0.01:
 		push_error("RampLevel wrapper diverged from FacingCastMath")
-		level.pipes.clear()
+		level.pipes = []
 		level.free()
 		_free_pipes(pipes)
 		return false
-	level.pipes.clear()
+	level.pipes = []
 	level.free()
 
 	_free_pipes(pipes)

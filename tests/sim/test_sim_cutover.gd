@@ -6,7 +6,7 @@ func run() -> bool:
 	return (
 		_player_sim_boots()
 		and _playable_idls_compile()
-		and _hash_stamped_on_presentation()
+		and _shared_model_and_faces()
 	)
 
 
@@ -89,7 +89,7 @@ func _playable_idls_compile() -> bool:
 	return true
 
 
-func _hash_stamped_on_presentation() -> bool:
+func _shared_model_and_faces() -> bool:
 	var tree := Engine.get_main_loop() as SceneTree
 	if tree == null:
 		return false
@@ -110,6 +110,12 @@ func _hash_stamped_on_presentation() -> bool:
 		main.queue_free()
 		GameSession.pending_level_path = ""
 		return false
+	var sim: PlayerSim = player.get_sim()
+	if level.model != sim.model or col.source_model != sim.model or vis.source_model != sim.model:
+		push_error("player, visual and collision did not share the compiled model")
+		main.queue_free()
+		GameSession.pending_level_path = ""
+		return false
 	if str(col.get_meta("sim_model_hash", "")) != hash_s:
 		push_error("collision hash mismatch")
 		main.queue_free()
@@ -120,6 +126,43 @@ func _hash_stamped_on_presentation() -> bool:
 		main.queue_free()
 		GameSession.pending_level_path = ""
 		return false
+	col.build_bodies = true
+	col.rebuild()
+	var expected: Array[String] = []
+	for part in level.geometry_parts:
+		expected.append_array(_triangle_keys(part.faces))
+	expected.sort()
+	var collision_faces: Array[String] = []
+	for body in col.get_node("Bodies").get_children():
+		if body.is_queued_for_deletion():
+			continue
+		var shape: Shape3D = body.get_node("Shape").shape
+		if not shape is ConcavePolygonShape3D:
+			push_error("canonical collision substituted an independent solid")
+			main.queue_free()
+			GameSession.pending_level_path = ""
+			return false
+		collision_faces.append_array(_triangle_keys(shape.get_faces()))
+	collision_faces.sort()
+	var visible_faces: Array[String] = []
+	for mesh_node in vis.get_node("Meshes").get_children():
+		if mesh_node.is_queued_for_deletion():
+			continue
+		var arrays: Array = mesh_node.mesh.surface_get_arrays(0)
+		visible_faces.append_array(_triangle_keys(arrays[Mesh.ARRAY_VERTEX]))
+	visible_faces.sort()
+	if expected != collision_faces or expected != visible_faces:
+		push_error("rendered or collision triangles differ from compiled MeshParts")
+		main.queue_free()
+		GameSession.pending_level_path = ""
+		return false
 	main.queue_free()
 	GameSession.pending_level_path = ""
 	return true
+
+
+func _triangle_keys(faces: PackedVector3Array) -> Array[String]:
+	var keys: Array[String] = []
+	for i in range(0, faces.size(), 3):
+		keys.append(var_to_bytes(faces.slice(i, i + 3)).hex_encode())
+	return keys

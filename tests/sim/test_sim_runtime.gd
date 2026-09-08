@@ -2,160 +2,167 @@ extends RefCounted
 ## Ground ride + deck seam + fly-out / spine / acid matrices.
 
 
+func cases() -> PackedStringArray:
+	return PackedStringArray([
+		"_ride_halfpipe",
+		"_fly_out_open_vs_backed",
+		"_hang_x_lock_until_fly_out",
+		"_fly_out_seeds_ballistic_outward_x",
+		"_hang_land_into_bowl",
+		"_hang_apex_faces_into_ramp",
+		"_hang_apex_with_depth_stick",
+		"_deterministic_replay",
+		"_layered_spawn_respects_story",
+		"_supports_sorted_high_to_low",
+		"_pipe_along_wish_and_lip_exit",
+		"_ollie_faces_direction",
+		"_ollie_jump_charge_scales_impulse",
+		"_ollie_height_picks_flat_vs_pipe",
+		"_ollie_airborne_release_uses_launch_pipe_height",
+		"_wall_ollie_hangs_x_locked",
+		"_pipe_lip_ollie_respects_height_not_along",
+		"_layered_wall_lip_ollie_peak_is_ollie_height_above_lip",
+		"_layered_ollie_into_l1_pipe_back_crashes",
+		"_layered_floor_ollie_into_joint_rear_falls_clear",
+		"_layered_past_joint_fall_does_not_tunnel_partner",
+		"_layered_joint_crash_fall_leans_away_from_wall",
+		"_layered_pipe_top_skim_fall_stays_outside",
+		"_layered_union_wall_crash_does_not_tunnel",
+		"_layered_rtl_joint_crash_stays_on_approach",
+		"_layered_union_open_lips_fly_out",
+		"_ollie_jump_caps_at_full_charge",
+		"_ollie_jump_airborne_adds_impulse",
+		"_ramp_air_ollie_peak_matches_lip_ollie",
+		"_ollie_single_charge_replenishes_on_ground",
+		"_ollie_on_pipe_pops_world_up_not_along_tangent",
+		"_ollie_on_pipe_lip_enters_hang",
+		"_ollie_pipe_lip_outward_deck_no_crash",
+		"_ollie_short_deck_return_no_tunnel",
+		"_ollie_pipe_low_vx_descending_remounts",
+		"_ollie_climbing_ramp_stays_above_solid",
+		"_ollie_into_pipe_with_stick_stays_outside",
+		"_ramp_ollie_onto_abutting_deck_no_freeze",
+		"_coast_with_zero_friction",
+		"_air_no_x_friction",
+		"_max_speed_x_is_absolute_ceiling",
+		"_wall_extension_climbs",
+		"_layered_deck_back_air_outs_at_upper_lip",
+		"_upper_deck_flyout_hold_right_decks_out",
+		"_upper_deck_2_no_stick_air_out",
+		"_upper_deck_2_hold_right_keeps_rise",
+		"_upper_deck_2_hang_return_past_deck_rear",
+		"_upper_deck_2_apex_no_deck_snap",
+		"_upper_deck_2_wall_bottom_no_deck_steal",
+		"_l0_air_out_not_stuck_on_l1_opposite_deck",
+		"_l0_pipe_ollie_not_stuck_on_l1_deck",
+		"_l0_launch_does_not_force_land_inward_deck",
+		"_l0_free_air_at_cope_remounts_wall_not_freeze",
+		"_floor_ollie_coping_crashes_not_deck",
+		"_air_contact_stream_lip_owns_coping_column",
+		"_airborne_reject_leaves_exterior",
+		"_void_floor_catches_fall",
+		"_hang_flat_land_clears_lock",
+		"_world_border_contains",
+		"_edge_fly_out_wall_slide",
+		"_edge_pipe_coping_not_in_wall",
+		"_pipe_body_no_clip",
+		"_embedded_pipe_no_phase_through",
+		"_embedded_pipe_mounts_not_sticks",
+		"_spine_deck_solid_from_floor",
+		"_land_snaps_out_of_pipe_solid",
+		"_no_auto_opposite_pipe_snap",
+		"_layered_outer_wall_crashes_not_warp",
+		"_layered_hole_not_invisible_wall",
+		"_l1_floor_leave_falls_into_lava_hole",
+		"_l0_floor_ollie_remounts_same_pad",
+		"_deck_hash_no_pin_from_floor",
+		"_l0_lava_gap_no_phantom_wall_climb",
+		"_lava_grounded_contact_kills",
+		"_respawn_at_prior_floor_or_deck",
+		"_hang_persists_off_edge_z_span",
+		"_hang_lip_column_remount_preserves_along",
+		"_hang_depth_transfer_lands_edge_floor",
+		"_hang_depth_transfer_lands_edge_lava",
+		"_deck_ride_off_corridors_seam_support_contact",
+		"_deck_ride_off_mounts_only_on_descending_surface_crossing",
+		"_deck_ride_off_rejects_actual_pipe_solid",
+		"_falling_deck_launch_rejects_abutting_l1_pipe",
+		"_right_pipe_deck_slow_leave_lands_floor",
+		"_joint_wipeout_fall_tip_stays_approach",
+		"_layered_next_spine_keeps_l1_past_l0_lip",
+		"_transfer_button_lerps_x_holds_facing",
+		"_transfer_shared_x_spine_reanchors_hang",
+		"_transfer_spine_remount_preserves_along",
+		"_transfer_acid_from_deck_air_preserves_along",
+		"_air_spin_hold_advances_yaw_keeps_vx",
+		"_air_spin_live_facing_flips_at_pi",
+		"_air_spin_land_near_pi_snaps_no_fall",
+		"_air_spin_land_near_half_pi_falls",
+		"_air_spin_hold_through_land_uses_contact_angle",
+		"_air_spin_backwards_land_flips_facing_keeps_board_ref",
+		"_rail_mount_air_hold_r",
+		"_rail_no_r_rejects",
+		"_rail_grounded_r_no_mount",
+		"_rail_balance_fail_falls",
+		"_rail_end_eject_no_fall",
+		"_rail_end_eject_r_held_no_remount",
+		"_rail_ollie_release_pops",
+		"_transfer_hold_delay_zero_auto",
+		"_transfer_hold_waits_delay",
+		"_transfer_tap_ignores_hold_delay",
+		"_transfer_rejects_below_hang_lip_after_floor_ollie",
+		"_layered_deck_back_ride_off_stays_free",
+		"_map_edge_deck_no_void_exit",
+		"_layered_outer_coping_seam_stays_anchored",
+		"_layered_hang_remounts_wall_height",
+		"_layered_l1_coping_returns_source",
+		"_wall_z_exit_consumes_motion",
+		"_ramp_peak_free_air_launch",
+		"_ramp_deck_seam_and_launch",
+		"_feature_walls_block_endcaps_and_sides",
+		"_air_land_ramp_keeps_uphill_along",
+		"_air_land_pipe_maps_vx_via_outward",
+		"_air_out_reenter_ramp_not_fake_uphill",
+		"_air_out_reenter_pipe_not_fake_uphill",
+		"_ollie_near_lip_stick_out_no_coping_hang",
+		"_pipe_ollie_below_lip_keeps_peakward_x",
+		"_ramp_adjacent_pipe_z_leave_no_hang",
+		"_ramp_lip_ollie_is_free_air",
+		"_ramp_lip_ollie_sets_free_air_upright",
+		"_ramp_mid_ollie_keeps_lean",
+		"_ramp_peak_leave_sets_free_air_upright",
+		"_ramp_peak_beside_pipe_keeps_outward_x",
+		"_fall_clears_hang_ignores_wish",
+		"_fall_stops_planar_keeps_gravity",
+		"_fall_air_waits_for_land_then_recovers",
+		"_fall_crash_air_recovers_without_land",
+		"_fall_midair_still_collides_pipe",
+		"_fall_impact_bounds_requests_fall",
+		"_fall_impact_deck_wall_requests_fall",
+		"_fall_hang_flat_floor_requests_fall",
+		"_fall_peak_leave_does_not_bail",
+		"_fall_support_plane_lies_under_airborne_feet",
+		"_ramp_lip_ollie_own_outward_deck_no_crash",
+		"_fall_recovery_restores_checkpoint",
+		"_crash_foreign_pipe_lip_rejects_and_falls",
+		"_crash_foreign_pipe_below_lip_may_mount",
+		"_crash_same_slope_upper_remount_no_bail",
+		"_fly_out_ollie_same_pipe_no_crash",
+		"_air_out_hang_return_deck_pipe_no_crash",
+		"_air_out_hang_ollie_same_pipe_no_crash",
+		"_crash_hang_clips_deck_requests_fall",
+		"_ramp_edge_lip_stick_out_faces_and_climbs",
+		"_z_band_short_coping_owns_short_deck",
+		"_z_band_tall_to_short_leave_airs",
+		"_z_band_short_to_tall_riser_falls",
+	])
+
+
 func run() -> bool:
-	return (
-		_ride_halfpipe()
-		and _fly_out_open_vs_backed()
-		and _hang_x_lock_until_fly_out()
-		and _fly_out_seeds_ballistic_outward_x()
-		and _hang_land_into_bowl()
-		and _hang_apex_faces_into_ramp()
-		and _hang_apex_with_depth_stick()
-		and _deterministic_replay()
-		and _layered_spawn_respects_story()
-		and _supports_sorted_high_to_low()
-		and _pipe_along_wish_and_lip_exit()
-		and _ollie_faces_direction()
-		and _ollie_jump_charge_scales_impulse()
-		and _ollie_height_picks_flat_vs_pipe()
-		and _ollie_airborne_release_uses_launch_pipe_height()
-		and _wall_ollie_hangs_x_locked()
-		and _pipe_lip_ollie_respects_height_not_along()
-		and _layered_wall_lip_ollie_peak_is_ollie_height_above_lip()
-		and _layered_ollie_into_l1_pipe_back_crashes()
-		and _layered_floor_ollie_into_joint_rear_falls_clear()
-		and _layered_past_joint_fall_does_not_tunnel_partner()
-		and _layered_joint_crash_fall_leans_away_from_wall()
-		and _layered_pipe_top_skim_fall_stays_outside()
-		and _layered_union_wall_crash_does_not_tunnel()
-		and _layered_rtl_joint_crash_stays_on_approach()
-		and _layered_union_open_lips_fly_out()
-		and _ollie_jump_caps_at_full_charge()
-		and _ollie_jump_airborne_adds_impulse()
-		and _ramp_air_ollie_peak_matches_lip_ollie()
-		and _ollie_single_charge_replenishes_on_ground()
-		and _ollie_on_pipe_pops_world_up_not_along_tangent()
-		and _ollie_on_pipe_lip_enters_hang()
-		and _ollie_pipe_lip_outward_deck_no_crash()
-		and _ollie_short_deck_return_no_tunnel()
-		and _ollie_pipe_low_vx_descending_remounts()
-		and _ollie_climbing_ramp_stays_above_solid()
-		and _ollie_into_pipe_with_stick_stays_outside()
-		and _ramp_ollie_onto_abutting_deck_no_freeze()
-		and _coast_with_zero_friction()
-		and _air_no_x_friction()
-		and _max_speed_x_is_absolute_ceiling()
-		and _wall_extension_climbs()
-		and _layered_deck_back_air_outs_at_upper_lip()
-		and _upper_deck_flyout_hold_right_decks_out()
-		and _upper_deck_2_no_stick_air_out()
-		and _upper_deck_2_hold_right_keeps_rise()
-		and _upper_deck_2_hang_return_past_deck_rear()
-		and _upper_deck_2_apex_no_deck_snap()
-		and _upper_deck_2_wall_bottom_no_deck_steal()
-		and _l0_air_out_not_stuck_on_l1_opposite_deck()
-		and _l0_pipe_ollie_not_stuck_on_l1_deck()
-		and _l0_launch_does_not_force_land_inward_deck()
-		and _l0_free_air_at_cope_remounts_wall_not_freeze()
-		and _floor_ollie_coping_crashes_not_deck()
-		and _air_contact_stream_lip_owns_coping_column()
-		and _airborne_reject_leaves_exterior()
-		and _void_floor_catches_fall()
-		and _hang_flat_land_clears_lock()
-		and _world_border_contains()
-		and _edge_fly_out_wall_slide()
-		and _edge_pipe_coping_not_in_wall()
-		and _pipe_body_no_clip()
-		and _embedded_pipe_no_phase_through()
-		and _embedded_pipe_mounts_not_sticks()
-		and _spine_deck_solid_from_floor()
-		and _land_snaps_out_of_pipe_solid()
-		and _no_auto_opposite_pipe_snap()
-		and _layered_outer_wall_crashes_not_warp()
-		and _layered_hole_not_invisible_wall()
-		and _l1_floor_leave_falls_into_lava_hole()
-		and _l0_floor_ollie_remounts_same_pad()
-		and _deck_hash_no_pin_from_floor()
-		and _l0_lava_gap_no_phantom_wall_climb()
-		and _lava_grounded_contact_kills()
-		and _respawn_at_prior_floor_or_deck()
-		and _hang_persists_off_edge_z_span()
-		and _hang_lip_column_remount_preserves_along()
-		and _hang_depth_transfer_lands_edge_floor()
-		and _hang_depth_transfer_lands_edge_lava()
-		and _deck_ride_off_corridors_seam_support_contact()
-		and _deck_ride_off_mounts_only_on_descending_surface_crossing()
-		and _deck_ride_off_rejects_actual_pipe_solid()
-		and _falling_deck_launch_rejects_abutting_l1_pipe()
-		and _right_pipe_deck_slow_leave_lands_floor()
-		and _joint_wipeout_fall_tip_stays_approach()
-		and _layered_next_spine_keeps_l1_past_l0_lip()
-		and _transfer_button_lerps_x_holds_facing()
-		and _transfer_shared_x_spine_reanchors_hang()
-		and _transfer_spine_remount_preserves_along()
-		and _transfer_acid_from_deck_air_preserves_along()
-		and _air_spin_hold_advances_yaw_keeps_vx()
-		and _air_spin_live_facing_flips_at_pi()
-		and _air_spin_land_near_pi_snaps_no_fall()
-		and _air_spin_land_near_half_pi_falls()
-		and _air_spin_hold_through_land_uses_contact_angle()
-		and _air_spin_backwards_land_flips_facing_keeps_board_ref()
-		and _rail_mount_air_hold_r()
-		and _rail_no_r_rejects()
-		and _rail_grounded_r_no_mount()
-		and _rail_balance_fail_falls()
-		and _rail_end_eject_no_fall()
-		and _rail_end_eject_r_held_no_remount()
-		and _rail_ollie_release_pops()
-		and _transfer_hold_delay_zero_auto()
-		and _transfer_hold_waits_delay()
-		and _transfer_tap_ignores_hold_delay()
-		and _transfer_rejects_below_hang_lip_after_floor_ollie()
-		and _layered_deck_back_ride_off_stays_free()
-		and _map_edge_deck_no_void_exit()
-		and _layered_outer_coping_seam_stays_anchored()
-		and _layered_hang_remounts_wall_height()
-		and _layered_l1_coping_returns_source()
-		and _wall_z_exit_consumes_motion()
-		and _ramp_peak_free_air_launch()
-		and _ramp_deck_seam_and_launch()
-		and _feature_walls_block_endcaps_and_sides()
-		and _air_land_ramp_keeps_uphill_along()
-		and _air_land_pipe_maps_vx_via_outward()
-		and _air_out_reenter_ramp_not_fake_uphill()
-		and _air_out_reenter_pipe_not_fake_uphill()
-		and _ollie_near_lip_stick_out_no_coping_hang()
-		and _pipe_ollie_below_lip_keeps_peakward_x()
-		and _ramp_adjacent_pipe_z_leave_no_hang()
-		and _ramp_lip_ollie_is_free_air()
-		and _ramp_lip_ollie_sets_free_air_upright()
-		and _ramp_mid_ollie_keeps_lean()
-		and _ramp_peak_leave_sets_free_air_upright()
-		and _ramp_peak_beside_pipe_keeps_outward_x()
-		and _fall_clears_hang_ignores_wish()
-		and _fall_stops_planar_keeps_gravity()
-		and _fall_air_waits_for_land_then_recovers()
-		and _fall_crash_air_recovers_without_land()
-		and _fall_midair_still_collides_pipe()
-		and _fall_impact_bounds_requests_fall()
-		and _fall_impact_deck_wall_requests_fall()
-		and _fall_hang_flat_floor_requests_fall()
-		and _fall_peak_leave_does_not_bail()
-		and _fall_support_plane_lies_under_airborne_feet()
-		and _ramp_lip_ollie_own_outward_deck_no_crash()
-		and _fall_recovery_restores_checkpoint()
-		and _crash_foreign_pipe_lip_rejects_and_falls()
-		and _crash_foreign_pipe_below_lip_may_mount()
-		and _crash_same_slope_upper_remount_no_bail()
-		and _fly_out_ollie_same_pipe_no_crash()
-		and _air_out_hang_return_deck_pipe_no_crash()
-		and _air_out_hang_ollie_same_pipe_no_crash()
-		and _crash_hang_clips_deck_requests_fall()
-		and _ramp_edge_lip_stick_out_faces_and_climbs()
-		and _z_band_short_coping_owns_short_deck()
-		and _z_band_tall_to_short_leave_airs()
-		and _z_band_short_to_tall_riser_falls()
-	)
+	var ok := true
+	for method in cases():
+		ok = bool(call(method)) and ok
+	return ok
 
 
 func _fall_clears_hang_ignores_wish() -> bool:
@@ -4160,7 +4167,7 @@ func _ramp_ollie_onto_abutting_deck_no_freeze() -> bool:
 	sim.state.surface_id = ramp.id
 	sim.state.u = u
 	sim.state.v = 0.5
-	sim.state.tangent_velocity = Vector2(600.0, 0.0)
+	sim.state.tangent_velocity = Vector2(300.0, 0.0)
 	sim.state.position = Vector3(ramp.x_at_theta(z, th), z, ramp.height_at_theta(z, th))
 	sim.ollie_available = true
 	sim.ollie_charge = 1.0
@@ -4174,6 +4181,9 @@ func _ramp_ollie_onto_abutting_deck_no_freeze() -> bool:
 	for _i in range(180):
 		sim.set_input(Vector2(1, 0), false, false, false, false)
 		sim.tick()
+		if sim.state.falling:
+			push_error("ramp→deck ollie entered a fall before deck landing")
+			return false
 		var moved := (sim.state.position - last).length()
 		last = sim.state.position
 		if sim.state.is_airborne() and moved < 0.05:
@@ -4186,28 +4196,27 @@ func _ramp_ollie_onto_abutting_deck_no_freeze() -> bool:
 				return false
 		else:
 			stuck = 0
-		if sim.state.is_grounded() and sim.state.surface_id == deck_id:
-			# Must still accept stick input on the deck.
+		if sim.state.is_grounded():
+			if sim.state.surface_id != deck_id:
+				push_error("ramp→deck ollie landed on %s instead of %s" % [sim.state.surface_id, deck_id])
+				return false
+			var deck: SupportPatch = sim.model.patches[deck_id]
+			if not sim.query.blocker_at(sim.state.position).is_empty() \
+					or absf(sim.state.position.z - deck.height) > SimTolerances.CONTACT_EPS:
+				push_error("ramp→deck ollie landed at an invalid pose")
+				return false
+			# Brake after landing to prove controls resumed on the named deck.
 			var tv0 := sim.state.tangent_velocity.x
-			sim.set_input(Vector2(1, 0), false, false, false, false)
+			sim.set_input(Vector2.LEFT, false, false)
 			sim.tick()
-			if sim.state.is_grounded() and absf(sim.state.tangent_velocity.x - tv0) < 0.01 \
-					and absf(tv0) < 1.0:
-				# Coasting at zero is ok if we just landed; give accel a tick.
-				sim.set_input(Vector2(1, 0), false, false, false, false)
-				sim.tick()
-			if sim.state.is_grounded() and absf(sim.state.tangent_velocity.x) < 1.0:
-				# Still fine if friction/brake — just ensure mode isn't soft-locked.
-				pass
+			if sim.state.falling or not sim.state.is_grounded() \
+					or sim.state.surface_id != deck_id \
+					or sim.state.tangent_velocity.x >= tv0 - 0.01:
+				push_error("ramp→deck ollie did not regain braking control")
+				return false
 			return true
-	if sim.state.is_airborne():
-		push_error(
-			"never landed after ramp→deck ollie; pos=%s v=%s"
-			% [sim.state.position, sim.state.velocity]
-		)
-		return false
-	return true
-
+	push_error("ramp→deck ollie never landed on %s; pos=%s" % [deck_id, sim.state.position])
+	return false
 
 func _coast_with_zero_friction() -> bool:
 	var sim := PlayerSim.new()

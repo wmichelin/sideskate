@@ -1,6 +1,6 @@
 class_name LogicalPosePresenter3D
 extends Node3D
-## Drives a 3D skater placeholder from LogicalPose / PseudoDepthBody.
+## Drives the rider and board from LogicalPose / PseudoDepthBody.
 ## Simulation stays on physics ticks; visible pose interpolates on render frames.
 ## Fall: presentation RigidBodies bounded by sim support/impact planes.
 
@@ -8,12 +8,12 @@ const CollisionLayersScript := preload("res://scripts/physics/collision_layers.g
 
 @export var depth_path: NodePath = NodePath("../Player/PseudoDepthBody")
 @export var player_path: NodePath = NodePath("../Player")
-## Placeholder skater size in meters. Root origin is the feet / ground contact.
+## Capsule bounds in meters. Root origin is the feet / ground contact.
 @export var body_size: Vector3 = Vector3(0.18, 0.40, 0.14)
 @export var board_size: Vector3 = Vector3(0.40, 0.05, 0.14)
 ## Keep the board bottom this far above the feet/support plane (avoids floor Z-fight).
 @export_range(0.0, 0.05, 0.001) var board_clearance: float = 0.012
-## Optional skinned skater (GLB). When set, replaces the orange box while riding.
+## Optional skinned skater (GLB). When set, replaces the orange capsule while riding.
 @export var skater_mesh: PackedScene
 @export_group("Skater Look")
 ## Authored standing height of `skater_mesh` in meters (bind/export scale).
@@ -22,15 +22,6 @@ const CollisionLayersScript := preload("res://scripts/physics/collision_layers.g
 @export_range(0.25, 3.0, 0.01) var skater_scale: float = 1.0
 ## Extra yaw so mesh forward matches board nose (+X).
 @export_range(-PI, PI, 0.01) var skater_yaw_offset: float = -PI * 0.5
-@export_group("Skater Ollie Anim")
-## Clip name inside the skater GLB (FreeMoCap export defaults to `kickflip`).
-@export var skater_ollie_anim: String = "kickflip"
-## Playback rate for the ollie clip. Higher = faster (1 = authored, 4 = 4×).
-@export_range(0.05, 12.0, 0.05) var skater_anim_speed: float = 2.5
-## Safety cutoff as a fraction of the clip if apex never arrives (1 = full).
-@export_range(0.05, 1.0, 0.01) var skater_anim_end_frac: float = 0.45
-## Scale pelvis-track lift onto the board so it rises with the character pop.
-@export_range(0.0, 4.0, 0.05) var skater_board_lift_scale: float = 1.0
 
 const _SKATER_BASE_DISPLAY_HEIGHT_M := 0.55
 
@@ -39,14 +30,7 @@ var _facing_mark: MeshInstance3D
 var _board: Node3D
 var _skater: Node3D
 var _skater_anim: AnimationPlayer
-var _skater_anim_playing: bool = false
-var _skater_anim_end_sec: float = 0.0
-var _skater_ollie_bout: bool = false
-var _skater_held_at_apex: bool = false
-var _skater_saw_air: bool = false
-var _skater_pelvis_track: int = -1
-var _skater_pelvis_rest_y: float = 0.0
-var _board_anim_lift: float = 0.0
+var _skater_animator: SkaterAnimationController
 var _skater_on_fall: bool = false
 var _rider_fall: FallBoxConstraint
 var _board_fall: FallBoxConstraint
@@ -58,6 +42,8 @@ var _board_fall_mat: StandardMaterial3D
 
 
 func _ready() -> void:
+	# Observe Player after it has published the completed physics tick.
+	process_physics_priority = 10
 	_build_meshes()
 	_resolve_refs()
 	call_deferred("_reparent_fall_bodies")
@@ -93,9 +79,7 @@ func _build_meshes() -> void:
 
 	_body = MeshInstance3D.new()
 	_body.name = "SkaterBody"
-	var box := BoxMesh.new()
-	box.size = body_size
-	_body.mesh = box
+	_body.mesh = _make_rider_mesh(body_size)
 	# Stand on the board top (board floats board_clearance above support).
 	_body.position = Vector3(0.0, board_clearance + board_size.y + body_size.y * 0.5, 0.0)
 	_body.material_override = _body_mat
@@ -109,7 +93,7 @@ func _build_meshes() -> void:
 	fmat.albedo_color = Color(0.98, 0.85, 0.2, 1.0)
 	fmat.cull_mode = BaseMaterial3D.CULL_DISABLED
 	_facing_mark.material_override = fmat
-	_facing_mark.position = Vector3(body_size.x * 0.5 + 0.01, 0.0, 0.0)
+	_facing_mark.position = Vector3(minf(body_size.x, body_size.z) * 0.5 + 0.01, 0.0, 0.0)
 	_body.add_child(_facing_mark)
 
 	_mount_skater_mesh()
@@ -196,163 +180,14 @@ func _polish_skater_meshes(root: Node) -> void:
 
 
 func _configure_skater_animation(root: Node) -> void:
-	_skater_anim = null
-	_skater_anim_playing = false
-	_skater_ollie_bout = false
-	_skater_held_at_apex = false
-	_skater_saw_air = false
-	_skater_pelvis_track = -1
-	_board_anim_lift = 0.0
 	var players: Array[AnimationPlayer] = []
 	_collect_animation_players(root, players)
 	if players.is_empty():
+		push_error("Skinned rider has no AnimationPlayer")
 		return
 	_skater_anim = players[0]
-	if not _skater_anim.animation_finished.is_connected(_on_skater_anim_finished):
-		_skater_anim.animation_finished.connect(_on_skater_anim_finished)
-	_cache_pelvis_track()
-	_hold_skater_idle()
-
-
-func _cache_pelvis_track() -> void:
-	_skater_pelvis_track = -1
-	_skater_pelvis_rest_y = 0.0
-	if _skater_anim == null:
-		return
-	var clip := _skater_clip_name()
-	if clip.is_empty() or not _skater_anim.has_animation(clip):
-		return
-	var anim := _skater_anim.get_animation(clip)
-	if anim == null:
-		return
-	for ti in range(anim.get_track_count()):
-		if anim.track_get_type(ti) != Animation.TYPE_POSITION_3D:
-			continue
-		if "pelvis" in str(anim.track_get_path(ti)).to_lower():
-			_skater_pelvis_track = ti
-			_skater_pelvis_rest_y = anim.position_track_interpolate(ti, 0.0).y
-			return
-
-
-func _skater_clip_name() -> String:
-	if _skater_anim == null:
-		return ""
-	if _skater_anim.has_animation(skater_ollie_anim):
-		return skater_ollie_anim
-	var clips := _skater_anim.get_animation_list()
-	return clips[0] if not clips.is_empty() else ""
-
-
-func _hold_skater_idle() -> void:
-	if _skater_anim == null:
-		return
-	var clip := _skater_clip_name()
-	if clip.is_empty():
-		return
-	_skater_anim_playing = false
-	_skater_ollie_bout = false
-	_skater_held_at_apex = false
-	_skater_saw_air = false
-	_skater_anim_end_sec = 0.0
-	_board_anim_lift = 0.0
-	_skater_anim.speed_scale = 1.0
-	_skater_anim.play(clip)
-	_skater_anim.seek(0.0, true)
-	_skater_anim.pause()
-
-
-func _play_skater_ollie() -> void:
-	if _skater_anim == null:
-		return
-	var clip := _skater_clip_name()
-	if clip.is_empty():
-		return
-	if _skater_pelvis_track < 0:
-		_cache_pelvis_track()
-	var anim := _skater_anim.get_animation(clip)
-	var length := anim.length if anim != null else 0.0
-	_skater_anim_end_sec = length * clampf(skater_anim_end_frac, 0.05, 1.0)
-	_skater_anim_playing = true
-	_skater_ollie_bout = true
-	_skater_held_at_apex = false
-	_skater_saw_air = false
-	_board_anim_lift = 0.0
-	_skater_anim.speed_scale = maxf(skater_anim_speed, 0.01)
-	_skater_anim.play(clip)
-	_skater_anim.seek(0.0, true)
-
-
-func _on_skater_anim_finished(_anim_name: StringName) -> void:
-	# Mid-air: hold last frame. Land / fall clears via `_hold_skater_idle`.
-	if _skater_ollie_bout:
-		_skater_anim_playing = false
-		_skater_held_at_apex = true
-		if _skater_anim != null:
-			_skater_anim.pause()
-		return
-	if _skater_anim_playing:
-		_hold_skater_idle()
-
-
-func _pelvis_lift_at(anim_t: float) -> float:
-	if _skater_anim == null or _skater_pelvis_track < 0:
-		return 0.0
-	var clip := _skater_clip_name()
-	if clip.is_empty() or not _skater_anim.has_animation(clip):
-		return 0.0
-	var anim := _skater_anim.get_animation(clip)
-	if anim == null:
-		return 0.0
-	var y := anim.position_track_interpolate(_skater_pelvis_track, anim_t).y
-	return maxf(0.0, (y - _skater_pelvis_rest_y) * _skater_uniform_scale() * skater_board_lift_scale)
-
-
-func _player_airborne() -> bool:
-	return (
-		_player != null
-		and _player.has_method("is_airborne")
-		and bool(_player.call("is_airborne"))
-	)
-
-
-func _player_air_vz() -> float:
-	if _player != null and _player.has_method("air_vertical_velocity"):
-		return float(_player.call("air_vertical_velocity"))
-	return 0.0
-
-
-func _freeze_skater_at_apex() -> void:
-	if _skater_anim == null or _skater_held_at_apex:
-		return
-	_skater_held_at_apex = true
-	_skater_anim_playing = false
-	_skater_anim.pause()
-	_board_anim_lift = _pelvis_lift_at(_skater_anim.current_animation_position)
-
-
-func _update_skater_anim_cutoff() -> void:
-	if not _skater_ollie_bout or _skater_anim == null:
-		return
-	var airborne := _player_airborne()
-	if airborne:
-		_skater_saw_air = true
-	# Board rides the pelvis pop while the clip advances (and while held).
-	if not _skater_held_at_apex:
-		_board_anim_lift = _pelvis_lift_at(_skater_anim.current_animation_position)
-	# Freeze at sim jump apex (descending after leaving the ground).
-	if not _skater_held_at_apex and _skater_saw_air:
-		var vz := _player_air_vz()
-		if airborne and vz <= 0.0:
-			_freeze_skater_at_apex()
-		elif _skater_anim_playing and _skater_anim_end_sec > 0.0 \
-				and _skater_anim.current_animation_position >= _skater_anim_end_sec - 0.0001:
-			_freeze_skater_at_apex()
-	# Land / fall after we've been airborne: return to idle stance.
-	var falling := (
-		_player != null and _player.has_method("is_falling") and bool(_player.call("is_falling"))
-	)
-	if _skater_saw_air and (falling or not airborne):
-		_hold_skater_idle()
+	_skater_animator = SkaterAnimationController.new()
+	_skater_animator.configure(_skater_anim)
 
 
 func _collect_animation_players(node: Node, out: Array[AnimationPlayer]) -> void:
@@ -360,6 +195,13 @@ func _collect_animation_players(node: Node, out: Array[AnimationPlayer]) -> void
 		out.append(node as AnimationPlayer)
 	for child in node.get_children():
 		_collect_animation_players(child, out)
+
+
+func _make_rider_mesh(size: Vector3) -> CapsuleMesh:
+	var capsule := CapsuleMesh.new()
+	capsule.radius = minf(size.x, size.z) * 0.5
+	capsule.height = size.y
+	return capsule
 
 
 func _make_fall_body(
@@ -387,9 +229,12 @@ func _make_fall_body(
 	body.add_child(fall_cs)
 	var fall_mesh := MeshInstance3D.new()
 	fall_mesh.name = "FallMesh"
-	var fall_box_mesh := BoxMesh.new()
-	fall_box_mesh.size = size
-	fall_mesh.mesh = fall_box_mesh
+	if with_mark:
+		fall_mesh.mesh = _make_rider_mesh(size)
+	else:
+		var fall_box_mesh := BoxMesh.new()
+		fall_box_mesh.size = size
+		fall_mesh.mesh = fall_box_mesh
 	fall_mesh.material_override = mat
 	body.add_child(fall_mesh)
 	if with_mark:
@@ -400,7 +245,7 @@ func _make_fall_body(
 		fall_fmat.albedo_color = Color(0.98, 0.85, 0.2, 1.0)
 		fall_fmat.cull_mode = BaseMaterial3D.CULL_DISABLED
 		fall_mark.material_override = fall_fmat
-		fall_mark.position = Vector3(size.x * 0.5 + 0.01, 0.0, 0.0)
+		fall_mark.position = Vector3(minf(size.x, size.z) * 0.5 + 0.01, 0.0, 0.0)
 		body.add_child(fall_mark)
 	return body
 
@@ -477,10 +322,8 @@ func apply_pose(pose: LogicalPose) -> void:
 	scale = Vector3.ONE
 
 	# Board above support plane; rider stands on the board top.
-	# During ollie, lift the board with the pelvis pop so it stays with the body.
-	var board_lift := _board_anim_lift if _skater_ollie_bout else 0.0
-	var board_pos := Vector3(0.0, board_clearance + board_size.y * 0.5 + board_lift, 0.0)
-	var body_pos := Vector3(0.0, board_clearance + board_size.y + body_size.y * 0.5 + board_lift, 0.0)
+	var board_pos := Vector3(0.0, board_clearance + board_size.y * 0.5, 0.0)
+	var body_pos := Vector3(0.0, board_clearance + board_size.y + body_size.y * 0.5, 0.0)
 	var skater_pos := Vector3(0.0, board_clearance + board_size.y, 0.0)
 	var body_basis_yaw := Vector3(0.0, body_yaw, 0.0)
 	var body_scl := Vector3(-face, 1.0, 1.0)
@@ -531,7 +374,6 @@ func _set_rider_fall_proxy_visible(is_visible: bool) -> void:
 func _attach_skater_to_fall() -> void:
 	if _skater == null or _rider_fall == null or _skater_on_fall:
 		return
-	_hold_skater_idle()
 	var parent := _skater.get_parent()
 	if parent != null:
 		parent.remove_child(_skater)
@@ -555,7 +397,8 @@ func _detach_skater_from_fall() -> void:
 	add_child(_skater)
 	_skater_on_fall = false
 	_skater.visible = true
-	_hold_skater_idle()
+	if _skater_animator != null:
+		_skater_animator.reset()
 	_set_rider_fall_proxy_visible(true)
 
 
@@ -671,25 +514,21 @@ func _interpolated_pose() -> LogicalPose:
 func _process(_delta: float) -> void:
 	if _depth == null or _player == null:
 		_resolve_refs()
-	_update_skater_anim_cutoff()
 	apply_pose(_interpolated_pose())
 
 
-func _physics_process(_delta: float) -> void:
+func _physics_process(delta: float) -> void:
 	if _depth == null or _player == null:
 		_resolve_refs()
-	if (
-		_player != null
-		and _player.has_method("consume_ollie_pop")
+	var popped := (
+		_player != null and _player.has_method("consume_ollie_pop")
 		and bool(_player.call("consume_ollie_pop"))
-	):
-		_play_skater_ollie()
+	)
 	var falling := (
 		_player != null and _player.has_method("is_falling") and bool(_player.call("is_falling"))
 	)
 	if falling:
 		if not _was_falling:
-			_hold_skater_idle()
 			var pose := _interpolated_pose()
 			var feet := WorldSpace.logical_to_world(
 				pose.logical_x, pose.logical_z, pose.feet_height
@@ -700,6 +539,10 @@ func _physics_process(_delta: float) -> void:
 	elif _was_falling:
 		_stop_fall_bodies()
 	_was_falling = falling
+	if _skater_animator != null and _player != null:
+		_skater_animator.tick(delta, bool(_player.call("is_airborne")), falling,
+			float(_player.call("ollie_charge_frac")), popped,
+			bool(_player.call("is_grinding")), float(_player.call("air_vertical_velocity")))
 
 
 func _refresh_fall_body_planes() -> void:

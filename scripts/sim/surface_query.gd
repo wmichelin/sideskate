@@ -768,43 +768,46 @@ func _deck_feature_wall(patch: SupportPatch, x: float, z: float, h: float, thick
 		return {}
 	var best := {}
 	var best_d := thick + 1.0
-	for i in range(n):
-		var a: Vector2 = patch.poly[i]
-		var b: Vector2 = patch.poly[(i + 1) % n]
-		if a.distance_squared_to(b) < 0.01:
-			continue
-		if _deck_edge_is_coping_aligned(a, b):
-			continue
-		var closest := _closest_on_segment(Vector2(x, z), a, b)
-		var d := Vector2(x, z).distance_to(closest)
-		if d > thick or d >= best_d:
-			continue
-		# Outward normal (away from poly interior).
-		var edge := b - a
-		var nrm := Vector2(-edge.y, edge.x)
-		if nrm.length_squared() < 0.0001:
-			continue
-		nrm = nrm.normalized()
-		var mid := (a + b) * 0.5
-		var inward := mid - nrm * 0.5
-		if patch.contains_xz(inward.x, inward.y):
-			pass ## nrm already points outward
-		else:
-			nrm = -nrm
-		# Only hit when standing on the exterior side of the edge.
-		var side := Vector2(x - mid.x, z - mid.y).dot(nrm)
-		if side < -0.001:
-			continue
-		best_d = d
-		var axis := "x" if absf(nrm.x) >= absf(nrm.y) else "z"
-		var sign := nrm.x if axis == "x" else nrm.y
-		best = _feature_wall_hit(
-			patch.id,
-			axis,
-			sign,
-			Vector3(nrm.x, nrm.y, 0.0),
-			"deck open side"
-		)
+	var loops: Array = [patch.poly]
+	loops.append_array(patch.holes)
+	for loop in loops:
+		for i in range(loop.size()):
+			var a: Vector2 = loop[i]
+			var b: Vector2 = loop[(i + 1) % loop.size()]
+			if a.distance_squared_to(b) < 0.01:
+				continue
+			if _deck_edge_is_coping_aligned(a, b):
+				continue
+			var closest := _closest_on_segment(Vector2(x, z), a, b)
+			var d := Vector2(x, z).distance_to(closest)
+			if d > thick or d >= best_d:
+				continue
+			# Outward normal (away from poly interior).
+			var edge := b - a
+			var nrm := Vector2(-edge.y, edge.x)
+			if nrm.length_squared() < 0.0001:
+				continue
+			nrm = nrm.normalized()
+			var mid := (a + b) * 0.5
+			var inward := mid - nrm * 0.5
+			if patch.contains_xz(inward.x, inward.y):
+				pass ## nrm already points outward
+			else:
+				nrm = -nrm
+			# Only hit when standing on the exterior side of the edge.
+			var side := Vector2(x - mid.x, z - mid.y).dot(nrm)
+			if side < -0.001:
+				continue
+			best_d = d
+			var axis := "x" if absf(nrm.x) >= absf(nrm.y) else "z"
+			var sign := nrm.x if axis == "x" else nrm.y
+			best = _feature_wall_hit(
+				patch.id,
+				axis,
+				sign,
+				Vector3(nrm.x, nrm.y, 0.0),
+				"deck open side"
+			)
 	return best
 
 

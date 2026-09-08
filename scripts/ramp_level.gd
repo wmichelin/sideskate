@@ -4,6 +4,7 @@ extends Node2D
 
 const _PerspectiveMath := preload("res://scripts/perspective_math.gd")
 const ContactMath := preload("res://scripts/contact_math.gd")
+const _LevelGeometry := preload("res://scripts/mesh/level_geometry.gd")
 
 @export var level_path: String = "res://levels/layers.ssk"
 
@@ -36,6 +37,9 @@ const ContactMath := preload("res://scripts/contact_math.gd")
 signal rebuilt
 
 var spec: LevelSpec
+## Shared immutable authority for the player and all 3D geometry consumers.
+var model: ParkModel
+var geometry_parts: Array = []
 var pipes: Array = []  # QuarterPipe nodes
 
 var z_min: float = 0.0
@@ -79,7 +83,6 @@ func load_level(path: String) -> bool:
 	if loaded == null:
 		return false
 	apply_spec(loaded)
-	rebuilt.emit()
 	return true
 
 
@@ -93,6 +96,8 @@ func reload() -> bool:
 
 func apply_spec(s: LevelSpec) -> void:
 	spec = s
+	model = IdlCompiler.compile_spec(s)
+	geometry_parts = _LevelGeometry.build_model_parts(model)
 	z_min = s.z_min
 	z_max = s.z_max
 
@@ -124,6 +129,7 @@ func apply_spec(s: LevelSpec) -> void:
 		_visual.refresh()
 	elif _visual:
 		_visual.queue_redraw()
+	rebuilt.emit()
 
 
 ## Keep lean Z locked to the current view / skater truck.

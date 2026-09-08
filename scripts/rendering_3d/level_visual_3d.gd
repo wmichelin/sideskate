@@ -13,6 +13,7 @@ var _level: RampLevel
 var _mesh_root: Node3D
 var mesh_count: int = 0
 var last_aabb: AABB = AABB()
+var source_model: ParkModel
 var _materials: Dictionary = {} ## material_key → StandardMaterial3D
 
 
@@ -40,7 +41,9 @@ func rebuild() -> void:
 	_clear_meshes()
 	mesh_count = 0
 	last_aabb = AABB()
-	var parts: Array = LevelGeometryScript.build_parts(_level.spec, _level.pipes)
+	source_model = _level.model
+	set_meta("sim_model_hash", source_model.model_hash)
+	var parts: Array = _level.geometry_parts
 	for part in parts:
 		if part == null or not part.has_method("is_empty") or part.is_empty():
 			continue
@@ -50,6 +53,7 @@ func rebuild() -> void:
 		var mi := MeshInstance3D.new()
 		mi.name = "%s_L%s" % [str(part.material_key), str(part.layer)]
 		mi.mesh = mesh
+		mi.set_meta("mesh_part_meta", part.meta.duplicate(true))
 		mi.material_override = _material_for(str(part.material_key))
 		# Shadows over a 100m park are pure fill cost; analytical play needs none.
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF

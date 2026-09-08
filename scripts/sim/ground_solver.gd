@@ -1212,6 +1212,11 @@ func _contain_ground_xz(state: SimState, proposed: Vector3) -> Dictionary:
 				state.tangent_velocity.x = 0.0
 			if absf(c.y - proposed.y) > 0.001:
 				state.tangent_velocity.y = 0.0
+			# A successful axis slide still stopped motion into a solid face.
+			# In particular, the zero-depth fallback must not silently cancel an
+			# outer-back crash just because the unchanged position is clear.
+			if hit_bail and not state.falling:
+				state.request_fall = true
 			# Soft AABB clamp (blocker never sees x>width) — level-wall wipeout
 			# unless already riding a map-edge deck (border pad stay playable).
 			if (

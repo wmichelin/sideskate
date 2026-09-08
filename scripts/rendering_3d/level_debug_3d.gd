@@ -198,7 +198,7 @@ func _edge_rebuild_key() -> String:
 
 func _rebuild_edge_lines() -> void:
 	_clear_children(_edge_root)
-	var parts: Array = LevelGeometryScript.build_parts(_level.spec, _level.pipes)
+	var parts: Array = _level.geometry_parts
 	# Lift along world +Y so wires sit just above the shared collision faces.
 	var lift := Vector3(0.0, edge_lift, 0.0)
 	_add_line_mesh("Edges", _edge_mat, func(st: SurfaceTool) -> void:

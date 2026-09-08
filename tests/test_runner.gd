@@ -9,4 +9,4 @@ func _initialize() -> void:
 
 
 func _run() -> void:
-	quit(Harness.run_all())
+	quit(await Harness.run_all())

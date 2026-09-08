@@ -5,5 +5,9 @@ const Harness = preload("res://tests/test_harness.gd")
 
 
 func _ready() -> void:
-	var code := Harness.run_all()
+	call_deferred("_run")
+
+
+func _run() -> void:
+	var code: int = await Harness.run_all()
 	get_tree().quit(code)

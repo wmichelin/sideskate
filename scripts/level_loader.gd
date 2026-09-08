@@ -382,7 +382,8 @@ static func _append_layer_geometry(
 				"#":
 					deck_cells.append(Vector2i(c, r))
 				"-":
-					# Along-X grind rail — playable footprint, not a floor pad.
+					# Rails stand over the same floor support as the story mask.
+					floor_cells.append(Vector2i(c, r))
 					rail_cells.append(Vector2i(c, r))
 					story_mask[r * W + c] = 1
 				"(", ")":
@@ -418,9 +419,10 @@ static func _append_layer_geometry(
 	spec.story_floor_masks.append({"height": base_height, "mask": story_mask, "layer": layer_index})
 
 	for comp in _components(floor_cells):
-		var poly := _outline_poly(comp, cw, ch, H)
+		var outline := _surface_outline(comp, cw, ch, H)
 		spec.floors.append({
-			"poly": poly,
+			"poly": outline.poly,
+			"holes": outline.holes,
 			"height": base_height,
 			"layer": layer_index,
 		})
@@ -613,8 +615,10 @@ static func _append_deck_dict(
 			"rise": float(pipe.get("rise", pipe.radius)),
 			"coping_x": float(pipe.x_min) if is_left else float(pipe.x_max),
 		})
+	var outline := _surface_outline(cells, cw, ch, H)
 	spec.decks.append({
-		"poly": _outline_poly(cells, cw, ch, H),
+		"poly": outline.poly,
+		"holes": outline.holes,
 		"cells": cells.duplicate(),
 		"height": height,
 		"anchors": anchors,
@@ -875,6 +879,12 @@ static func _components(cells: Array) -> Array:
 
 ## Build rectilinear outline in XZ (Vector2 x,z) from tile cells.
 static func _outline_poly(comp: Array, cw: float, ch: float, H: int) -> PackedVector2Array:
+	return _surface_outline(comp, cw, ch, H).poly
+
+
+## Preserve every boundary of a connected cell component, including enclosed
+## floor/deck holes. A single outer loop silently filled those holes in the sim.
+static func _surface_outline(comp: Array, cw: float, ch: float, H: int) -> Dictionary:
 	# Edge map: undirected edges as string keys; count occurrences
 	var edges := {}
 	for cell in comp:
@@ -900,44 +910,48 @@ static func _outline_poly(comp: Array, cw: float, ch: float, H: int) -> PackedVe
 				Vector2(float(b_parts[0]), float(b_parts[1])),
 			])
 
-	if boundary.is_empty():
-		return PackedVector2Array()
-
-	# Chain into a loop
-	var poly := PackedVector2Array()
-	var current: Vector2 = boundary[0][0]
-	var next: Vector2 = boundary[0][1]
+	var loops: Array[PackedVector2Array] = []
 	var used := {}
-	used[0] = true
-	poly.append(current)
-
-	for _i in range(boundary.size()):
-		poly.append(next)
-		current = next
-		var found := false
-		for j in range(boundary.size()):
-			if used.has(j):
-				continue
-			var e: Array = boundary[j]
-			if e[0].distance_to(current) < 0.0001:
-				next = e[1]
+	for start in range(boundary.size()):
+		if used.has(start):
+			continue
+		var poly := PackedVector2Array([boundary[start][0]])
+		var next: Vector2 = boundary[start][1]
+		used[start] = true
+		for _i in range(boundary.size()):
+			if next.is_equal_approx(poly[0]):
+				break
+			poly.append(next)
+			var found := false
+			for j in range(boundary.size()):
+				if used.has(j):
+					continue
+				var edge: Array = boundary[j]
+				if edge[0].is_equal_approx(next):
+					next = edge[1]
+				elif edge[1].is_equal_approx(next):
+					next = edge[0]
+				else:
+					continue
 				used[j] = true
 				found = true
 				break
-			if e[1].distance_to(current) < 0.0001:
-				next = e[0]
-				used[j] = true
-				found = true
+			if not found:
 				break
-		if not found:
-			break
-		if next.distance_to(poly[0]) < 0.0001:
-			break
+		if poly.size() >= 3:
+			loops.append(_simplify_colinear(poly))
+	loops.sort_custom(func(a, b): return _outline_area(a) > _outline_area(b))
+	var holes: Array[PackedVector2Array] = []
+	for i in range(1, loops.size()):
+		holes.append(loops[i])
+	return {"poly": loops[0] if not loops.is_empty() else PackedVector2Array(), "holes": holes}
 
-	# Remove duplicate closing point if present
-	if poly.size() > 1 and poly[poly.size() - 1].distance_to(poly[0]) < 0.0001:
-		poly.resize(poly.size() - 1)
-	return _simplify_colinear(poly)
+
+static func _outline_area(poly: PackedVector2Array) -> float:
+	var twice_area := 0.0
+	for i in range(poly.size()):
+		twice_area += poly[i].cross(poly[(i + 1) % poly.size()])
+	return absf(twice_area)
 
 
 static func _simplify_colinear(poly: PackedVector2Array) -> PackedVector2Array:

@@ -108,8 +108,8 @@ func _boot_sim() -> void:
 		depth.z_max = _level.z_max
 	_sim = PlayerSim.new()
 	_sync_tuning_to_sim()
-	if not _sim.setup_from_spec(_level.spec):
-		push_error("PlayerSim failed to compile level")
+	if not _sim.setup_from_model(_level.model):
+		push_error("PlayerSim failed to use the compiled level")
 		_sim = null
 		return
 	_model_hash = _sim.model.model_hash
@@ -123,19 +123,18 @@ func _on_level_rebuilt() -> void:
 
 
 func _assert_presentation_hash() -> void:
-	## Presentation/collision must consume the same compiled IDL as the sim.
-	## Mesh builders still derive from LevelSpec; stamp the sim hash for gate checks.
+	## Consumers retain the model they actually built; the player never stamps a
+	## success label onto independently generated presentation geometry.
 	var root := get_tree().current_scene if get_tree() else null
 	if root == null:
 		root = get_parent()
 	if root == null:
 		return
 	var col := root.get_node_or_null("World3D/LevelCollision3D")
-	if col != null:
-		col.set_meta("sim_model_hash", _model_hash)
 	var vis := root.get_node_or_null("World3D/LevelVisual3D")
-	if vis != null:
-		vis.set_meta("sim_model_hash", _model_hash)
+	for consumer in [col, vis]:
+		if consumer != null and consumer.source_model != _sim.model:
+			push_error("Presentation did not consume PlayerSim's compiled model: %s" % consumer.name)
 
 
 func _physics_process(_delta: float) -> void:

@@ -323,34 +323,85 @@ func clear_fall_planes() -> void:
 	fall_has_impact_plane = false
 
 
+## Full restore data. One-shot presenter acknowledgements are excluded only from
+## gameplay identity: consuming them must not change a replay checkpoint.
+const SNAPSHOT_FIELDS := [
+	"mode",
+	"surface_id",
+	"u",
+	"v",
+	"tangent_velocity",
+	"position",
+	"velocity",
+	"facing",
+	"visual_facing",
+	"facing_yaw",
+	"hang_edge_id",
+	"hang_launch_edge_id",
+	"hang_launch_along",
+	"air_peak_height",
+	"air_launch_surface_id",
+	"free_air_upright",
+	"hang_apex_facing_done",
+	"hang_apex_timer",
+	"hang_apex_from_yaw",
+	"hang_apex_to_yaw",
+	"alive",
+	"tick",
+	"last_reject",
+	"falling",
+	"fall_elapsed",
+	"fall_lean_sign",
+	"fall_lean_locked",
+	"fall_start_vx",
+	"fall_start_vy",
+	"request_fall",
+	"fall_eject_pipe_id",
+	"fall_support_point",
+	"fall_support_normal",
+	"fall_impact_point",
+	"fall_impact_normal",
+	"fall_has_impact_plane",
+	"spin_yaw",
+	"spin_takeoff_facing",
+	"spin_handoff",
+	"board_align_to_facing",
+	"spin_settling",
+	"spin_settle_from",
+	"spin_settle_to",
+	"spin_settle_elapsed",
+	"spin_pending_rebase",
+	"spin_land_momentum_x",
+	"grind_rail_id",
+	"grind_along",
+	"grind_balance",
+	"grind_remount_cooldown",
+]
+const PRESENTATION_LATCHES := ["spin_handoff", "board_align_to_facing"]
+
+
 func to_dict() -> Dictionary:
-	return {
-		"mode": mode,
-		"surface_id": surface_id,
-		"u": u,
-		"v": v,
-		"tangent_velocity": tangent_velocity,
-		"position": position,
-		"velocity": velocity,
-		"facing": facing,
-		"visual_facing": visual_facing,
-		"facing_yaw": facing_yaw,
-		"alive": alive,
-		"tick": tick,
-		"has_maneuver": has_maneuver(),
-		"hang_edge_id": hang_edge_id,
-		"last_reject": last_reject,
-	}
+	var out := SimSnapshot.fields(self, SNAPSHOT_FIELDS)
+	out["maneuver"] = maneuver.to_dict() if maneuver != null else null
+	return out
+
+
+static func from_dict(data: Dictionary) -> SimState:
+	var restored := SimState.new()
+	SimSnapshot.restore_fields(restored, data, SNAPSHOT_FIELDS)
+	if data.get("maneuver") != null:
+		restored.maneuver = ManeuverPlan.from_dict(data.maneuver)
+	return restored
+
+
+func gameplay_dict() -> Dictionary:
+	var out := to_dict()
+	for key in PRESENTATION_LATCHES:
+		out.erase(key)
+	# Diagnostic text does not drive a future gameplay decision.
+	out.erase("last_reject")
+	return out
 
 
 func state_hash() -> String:
-	var ctx := HashingContext.new()
-	ctx.start(HashingContext.HASH_MD5)
-	var s := "%d|%s|%.4f|%.4f|%.4f|%.4f|%.4f|%.4f|%.4f|%.4f|%s|%s|%.4f|%s|%d" % [
-		mode, surface_id, u, v,
-		position.x, position.y, position.z,
-		velocity.x, velocity.y, velocity.z,
-		facing, visual_facing, facing_yaw, hang_edge_id, tick,
-	]
-	ctx.update(s.to_utf8_buffer())
-	return ctx.finish().hex_encode()
+	return SimSnapshot.digest({"version": SimSnapshot.VERSION, "state": gameplay_dict()})

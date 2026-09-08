@@ -86,10 +86,11 @@ func step(state: SimState, wish: Vector2, delta: float) -> void:
 			state.grind_balance -= signf(state.grind_balance) * recover
 	state.grind_balance = clampf(state.grind_balance, -1.25, 1.25)
 	if absf(state.grind_balance) >= SimTolerances.GRIND_BALANCE_FAIL - 0.0001:
+		var fall_along := state.grind_along
 		state.clear_grind()
 		state.mode = SimState.Mode.AIRBORNE
 		state.surface_id = ""
-		state.velocity = Vector3(state.grind_along, 0.0, 0.0)
+		state.velocity = Vector3(fall_along, 0.0, 0.0)
 		state.position.z = rail.top_height + 1.0
 		state.request_fall = true
 		return
