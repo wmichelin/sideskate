@@ -537,11 +537,67 @@ func _lava_story() -> void:
 	var reached := await _until(func(): return not sim.state.alive, 150)
 	_key(KEY_D, false)
 	_check("lava:input_reaches_hazard", reached, _snapshot())
-	if reached:
-		reached = await _until(func(): return sim.state.alive, 300)
-		_checkpoint("lava_respawn")
-		_check("lava:automatic_respawn", reached and sim.state.is_grounded() and sim.state.position.distance_to(sim.checkpoint_position) < 1.0, _snapshot())
+	if not reached:
+		return
+	var overlay := get_tree().get_first_node_in_group("death_overlay")
+	var recovery := {"count": 0, "physics": false, "alive": false, "tick": 0}
+	overlay.finished.connect(func():
+		recovery.count += 1
+		recovery.physics = Engine.is_in_physics_frame()
+		recovery.alive = sim.state.alive
+		recovery.tick = _physics_tick)
+	await _tap(KEY_ESCAPE)
+	var pause := get_tree().current_scene.get_node("PauseMenu")
+	var dead_hash := sim.gameplay_hash()
+	var hold_ticks := ceili(float(overlay.hold_seconds) / SimTolerances.FIXED_DT)
+	await _ticks(hold_ticks + 12)
+	_check("lava:pause_freezes_death", get_tree().paused and pause.is_open()
+		and not sim.state.alive and sim.gameplay_hash() == dead_hash and recovery.count == 0)
+	await _capture("lava-paused")
+	# Queue Escape through real input. The remaining hold must still elapse.
+	var resume_tick := _physics_tick
+	_key(KEY_ESCAPE, true)
+	await _ticks(1)
+	_key(KEY_ESCAPE, false)
+	reached = await _until(func(): return sim.state.alive, hold_ticks + 12)
+	_checkpoint("lava_respawn")
+	_check("lava:automatic_respawn", reached and sim.state.is_grounded()
+		and sim.state.position.distance_to(sim.checkpoint_position) < 1.0, _snapshot())
+	_check("lava:physics_recovery_after_resume", recovery.count == 1 and recovery.physics
+		and recovery.alive and recovery.tick - resume_tick >= hold_ticks - 2, recovery)
+	await _ticks(hold_ticks + 12)
+	_check("lava:recovers_once", recovery.count == 1 and sim.state.alive)
 	await _capture("lava")
+	await _lava_exit_story()
+
+
+func _lava_exit_story() -> void:
+	if not await _load_level(FIXTURES + "lava.ssk"):
+		return
+	var sim := _sim()
+	_key(KEY_D, true)
+	var reached := await _until(func(): return not sim.state.alive, 150)
+	_key(KEY_D, false)
+	if not _check("lava:exit_reaches_hazard", reached, _snapshot()):
+		return
+	var overlay := get_tree().get_first_node_in_group("death_overlay")
+	var recovery := {"count": 0}
+	overlay.finished.connect(func(): recovery.count += 1)
+	var hold_ticks := ceili(float(overlay.hold_seconds) / SimTolerances.FIXED_DT)
+	await _tap(KEY_ESCAPE)
+	var dead_hash := sim.gameplay_hash()
+	_stop_recording()
+	var pause := get_tree().current_scene.get_node("PauseMenu")
+	pause.get_node("%QuitButton").grab_focus()
+	await _tap(KEY_ENTER)
+	await _scene_ready(GameSession.MENU_SCENE)
+	await _tap(KEY_ENTER)
+	await _scene_ready(GameSession.GAMEPLAY_SCENE)
+	var replacement := _sim()
+	await _ticks(hold_ticks + 12)
+	_check("lava:exit_cancels_recovery", not is_instance_valid(overlay)
+		and recovery.count == 0 and sim.gameplay_hash() == dead_hash
+		and replacement != null and replacement != sim and replacement.state.alive)
 
 
 func _until(predicate: Callable, limit: int) -> bool:

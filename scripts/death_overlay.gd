@@ -1,8 +1,9 @@
 extends CanvasLayer
-## Full-screen death flash (display only). Calls `on_done` after hold.
+## Full-screen death flash. Player owns the pausable physics recovery clock.
 
 signal finished
 
+## Sampled by Player when death begins; this overlay never schedules recovery.
 @export var hold_seconds: float = 1.25
 
 var _veil: ColorRect
@@ -43,7 +44,7 @@ func _ensure_ui() -> void:
 	add_child(_label)
 
 
-## Show red veil + message, wait, hide, emit finished.
+## Display commands only. No timers or simulation mutations.
 func play() -> void:
 	if _busy:
 		return
@@ -51,7 +52,11 @@ func play() -> void:
 	_busy = true
 	_veil.visible = true
 	_label.visible = true
-	await get_tree().create_timer(hold_seconds).timeout
+
+
+func finish() -> void:
+	if not _busy:
+		return
 	_veil.visible = false
 	_label.visible = false
 	_busy = false

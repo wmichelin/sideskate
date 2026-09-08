@@ -58,6 +58,8 @@ var _pose_curr
 var _pose_snap_ready: bool = false
 var _model_hash: String = ""
 var _death_busy: bool = false
+var _death_ticks_remaining: int = 0
+var _death_overlay: Node
 var _last_wish: Vector2 = Vector2.ZERO
 ## Last grounded pipe/wall lean — kept while airborne so ollie doesn't snap upright.
 var _carry_tilt: float = 0.0
@@ -138,7 +140,12 @@ func _assert_presentation_hash() -> void:
 
 
 func _physics_process(_delta: float) -> void:
-	if _sim == null or _sim.state == null or _death_busy:
+	if _sim == null or _sim.state == null:
+		return
+	if _death_busy:
+		_death_ticks_remaining -= 1
+		if _death_ticks_remaining <= 0:
+			_finish_death()
 		return
 	var wish := Vector2(
 		Input.get_axis("move_left", "move_right"),
@@ -400,16 +407,16 @@ func _begin_death() -> void:
 	if _death_busy:
 		return
 	_death_busy = true
-	var overlay := get_tree().get_first_node_in_group("death_overlay")
-	if overlay != null and overlay.has_method("play"):
-		if not overlay.finished.is_connected(_on_death_finished):
-			overlay.finished.connect(_on_death_finished, CONNECT_ONE_SHOT)
-		overlay.play()
+	_death_overlay = get_tree().get_first_node_in_group("death_overlay")
+	if _death_overlay != null and _death_overlay.has_method("play"):
+		# Recovery belongs to pausable physics, never an overlay/idle callback.
+		_death_ticks_remaining = maxi(1, ceili(_death_overlay.hold_seconds / SimTolerances.FIXED_DT))
+		_death_overlay.play()
 	else:
-		_on_death_finished()
+		_finish_death()
 
 
-func _on_death_finished() -> void:
+func _finish_death() -> void:
 	if _sim != null:
 		_sim.respawn()
 	_death_busy = false
@@ -419,6 +426,9 @@ func _on_death_finished() -> void:
 	_sync_from_sim()
 	_board_force_snap = true
 	_capture_pose_snapshots()
+	if is_instance_valid(_death_overlay):
+		_death_overlay.finish()
+	_death_overlay = null
 
 
 func cell_sample_xz() -> Vector2:
