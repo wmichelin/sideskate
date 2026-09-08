@@ -318,6 +318,9 @@ static func _classify_copings(spec: LevelSpec, model: ParkModel) -> void:
 				continue
 			breaks.append(clampf(patch.z_min, cope.z_min, cope.z_max))
 			breaks.append(clampf(patch.z_max, cope.z_min, cope.z_max))
+			_append_coping_outline_breaks(spec, cope, patch.poly, breaks)
+			for hole in patch.holes:
+				_append_coping_outline_breaks(spec, cope, hole, breaks)
 		for pipe_id in model.pipes.keys():
 			var other: PipeSurface = model.pipes[pipe_id]
 			if other.id == cope.pipe_id:
@@ -378,6 +381,25 @@ static func _classify_copings(spec: LevelSpec, model: ParkModel) -> void:
 			cope.spans.append(span)
 
 
+## IDL support outlines are axis-aligned. A horizontal boundary crossing the
+## outward probe changes occupancy even inside one connected patch's Z bounds.
+static func _append_coping_outline_breaks(
+	spec: LevelSpec, cope: CopingEdge, outline: PackedVector2Array, breaks: Array[float]
+) -> void:
+	for i in range(outline.size()):
+		var a := outline[i]
+		var b := outline[(i + 1) % outline.size()]
+		if absf(a.y - b.y) > 0.001 or a.y <= cope.z_min or a.y >= cope.z_max:
+			continue
+		var probe_x := _coping_probe_x(spec, cope, a.y)
+		if probe_x >= minf(a.x, b.x) and probe_x <= maxf(a.x, b.x):
+			breaks.append(a.y)
+
+
+static func _coping_probe_x(spec: LevelSpec, cope: CopingEdge, z: float) -> float:
+	return float(cope.sample_at_z(z).coping_x) + cope.outward_sign * maxf(spec.cell_w * 0.25, 1.0)
+
+
 ## Non-overlapping air-contact owners for this span's coping column.
 static func _assign_span_contact_owners(cope: CopingEdge, span: CopingSpan) -> void:
 	# WALL_EXTENSION: wall owns the climb / effective lip; pipe remains source.
@@ -400,9 +422,8 @@ static func _classify_coping_at(
 		return {"class": SimKinds.CopingClass.OPEN}
 	var cx := float(samp.coping_x)
 	var ch := float(samp.height)
-	var out := cope.outward_sign
 	var desc := {"class": SimKinds.CopingClass.OPEN}
-	var probe_x := cx + out * maxf(spec.cell_w * 0.25, 1.0)
+	var probe_x := _coping_probe_x(spec, cope, z)
 	var best_patch: SupportPatch = null
 	for pid in model.patches.keys():
 		var patch: SupportPatch = model.patches[pid]
