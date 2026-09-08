@@ -62,12 +62,14 @@ func run() -> bool:
 		return false
 	overlay.call("force_show_for_test")
 	overlay.call("apply_stick_for_test", Vector2(1, 0))
+	Input.flush_buffered_events()
 	var axis_x := Input.get_axis("move_left", "move_right")
 	if axis_x < 0.5:
 		push_error("stick should press move_right, got axis=%s" % axis_x)
 		_teardown(overlay)
 		return false
 	overlay.call("notify_joypad_activity_for_test")
+	Input.flush_buffered_events()
 	if bool(overlay.call("is_overlay_active")):
 		push_error("overlay should hide after joypad activity")
 		_teardown(overlay)

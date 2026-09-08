@@ -12,6 +12,9 @@ const MOVE_UP := &"move_up"
 const MOVE_DOWN := &"move_down"
 const ACTION_OLLIE := &"ollie"
 const ACTION_TRANSFER := &"transfer"
+## InputEventAction tracks this source separately from keyboard/gamepad events.
+## Input.action_release would clear every device's state for the action.
+const TOUCH_INPUT_DEVICE := -100
 
 @export var pause_menu_path: NodePath = NodePath("../PauseMenu")
 
@@ -24,6 +27,7 @@ const ACTION_TRANSFER := &"transfer"
 
 var _pause_menu: Node = null
 var _joypad_hidden: bool = false
+var _window_focused: bool = true
 ## Ignore phantom gamepad noise briefly after the overlay appears (common on mobile Web).
 var _joypad_hide_armed_msec: int = 0
 var _stick_active: bool = false
@@ -69,6 +73,8 @@ func _ready() -> void:
 	_transfer_btn.button_down.connect(func() -> void: _set_action(ACTION_TRANSFER, true))
 	_transfer_btn.button_up.connect(func() -> void: _set_action(ACTION_TRANSFER, false))
 	_stick_base.gui_input.connect(_on_stick_gui_input)
+	visibility_changed.connect(_cancel_when_inactive)
+	_root.visibility_changed.connect(_cancel_when_inactive)
 	_apply_safe_area()
 	_refresh_visibility()
 
@@ -79,8 +85,11 @@ func _exit_tree() -> void:
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_WINDOW_FOCUS_OUT:
+		_window_focused = false
 		_clear_all_actions()
 		_reset_stick_visual()
+	elif what == NOTIFICATION_WM_WINDOW_FOCUS_IN:
+		_window_focused = true
 
 
 func _process(_delta: float) -> void:
@@ -95,8 +104,8 @@ func _input(event: InputEvent) -> void:
 	# Even while hidden: finger down re-enables Web touch UI (after keyboard dismiss).
 	if event is InputEventScreenTouch and (event as InputEventScreenTouch).pressed:
 		_PlatformCaps.note_screen_touch()
-		if not _joypad_hidden:
-			_refresh_visibility()
+		_joypad_hidden = false
+		_refresh_visibility()
 	# Desktop Web: pressing gameplay keys dismisses the virtual pad.
 	if event is InputEventKey and (event as InputEventKey).pressed and not (event as InputEventKey).echo:
 		if _is_gameplay_key(event as InputEventKey):
@@ -121,7 +130,8 @@ func _input(event: InputEvent) -> void:
 
 
 func is_overlay_active() -> bool:
-	return visible and _root != null and _root.visible and not _joypad_hidden
+	return visible and _root != null and _root.visible and not _joypad_hidden \
+		and _window_focused and not _is_pause_open()
 
 
 func force_show_for_test() -> void:
@@ -144,7 +154,11 @@ func _refresh_visibility() -> void:
 		_joypad_hide_armed_msec = Time.get_ticks_msec() + 1500
 	visible = show_overlay
 	_root.visible = show_overlay and not _is_pause_open()
-	if not show_overlay:
+	_cancel_when_inactive()
+
+
+func _cancel_when_inactive() -> void:
+	if not is_overlay_active():
 		_clear_all_actions()
 		_reset_stick_visual()
 
@@ -168,6 +182,7 @@ func _is_pause_open() -> bool:
 func _on_pause_pressed() -> void:
 	if _pause_menu != null and _pause_menu.has_method("open_pause"):
 		_pause_menu.call("open_pause")
+		_refresh_visibility()
 
 
 func _apply_safe_area() -> void:
@@ -252,6 +267,8 @@ func _update_stick_from_local(local_pos: Vector2) -> void:
 
 
 func _apply_stick_vector(v: Vector2) -> void:
+	if not is_overlay_active():
+		return
 	var axes := axes_from_stick(v)
 	_set_move_axis(MOVE_LEFT, float(axes.left), "left")
 	_set_move_axis(MOVE_RIGHT, float(axes.right), "right")
@@ -261,14 +278,16 @@ func _apply_stick_vector(v: Vector2) -> void:
 
 func _set_move_axis(action: StringName, strength: float, key: String) -> void:
 	if strength > 0.001:
-		Input.action_press(action, strength)
+		_send_action(action, true, strength)
 		_move_held[key] = true
 	elif _move_held[key]:
-		Input.action_release(action)
+		_send_action(action, false)
 		_move_held[key] = false
 
 
 func _set_action(action: StringName, down: bool) -> void:
+	if down and not is_overlay_active():
+		return
 	if action == ACTION_OLLIE:
 		if down == _ollie_held:
 			return
@@ -279,10 +298,16 @@ func _set_action(action: StringName, down: bool) -> void:
 		_transfer_held = down
 	else:
 		return
-	if down:
-		Input.action_press(action)
-	else:
-		Input.action_release(action)
+	_send_action(action, down, 1.0 if down else 0.0)
+
+
+func _send_action(action: StringName, down: bool, strength: float = 0.0) -> void:
+	var event := InputEventAction.new()
+	event.device = TOUCH_INPUT_DEVICE
+	event.action = action
+	event.pressed = down
+	event.strength = strength
+	Input.parse_input_event(event)
 
 
 func _clear_all_actions() -> void:
@@ -300,13 +325,13 @@ func _clear_all_actions() -> void:
 					action = MOVE_DOWN
 				_:
 					continue
-			Input.action_release(action)
+			_send_action(action, false)
 			_move_held[key] = false
 	if _ollie_held:
-		Input.action_release(ACTION_OLLIE)
+		_send_action(ACTION_OLLIE, false)
 		_ollie_held = false
 	if _transfer_held:
-		Input.action_release(ACTION_TRANSFER)
+		_send_action(ACTION_TRANSFER, false)
 		_transfer_held = false
 	_stick_active = false
 	_stick_touch_index = -1
