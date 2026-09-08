@@ -957,7 +957,8 @@ func tuning_snapshot() -> Dictionary:
 
 
 func apply_tuning(data: Dictionary) -> bool:
-	if not SimSnapshot.same_shape(data, tuning_snapshot()):
+	if not SimSnapshot.same_shape(data, tuning_snapshot()) \
+			or not SimSnapshot.all_numbers_finite(data):
 		return false
 	SimSnapshot.restore_fields(self, data.player, TUNING_FIELDS)
 	SimTolerances.FLY_OUT_ABOVE = data.global["FLY_OUT_ABOVE"]
@@ -1009,11 +1010,18 @@ func restore_snapshot(snapshot: Dictionary) -> bool:
 		return false
 	var plan: Variant = checked.state.get("maneuver")
 	if plan != null and (not plan is Dictionary \
-			or not SimSnapshot.same_shape(plan, ManeuverPlan.new().to_dict())):
+			or not SimSnapshot.same_shape(plan, ManeuverPlan.new().to_dict()) \
+			or not SimSnapshot.all_numbers_finite(plan)):
 		return false
 	checked.state["maneuver"] = null
 	expected.state["maneuver"] = null
 	if not SimSnapshot.same_shape(checked, expected):
+		return false
+	# The only nonfinite gameplay value is the documented "no air peak" sentinel.
+	# Validate the detached copy before restoring any state, input or global tuning.
+	if checked.state.air_peak_height == -INF:
+		checked.state.air_peak_height = 0.0
+	if not SimSnapshot.all_numbers_finite(checked):
 		return false
 	for checkpoint in snapshot.sim.checkpoint_history:
 		if not SimSnapshot.same_shape(checkpoint, {

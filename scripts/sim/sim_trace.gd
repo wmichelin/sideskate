@@ -212,7 +212,13 @@ static func _replay_events(data: Dictionary, sim: PlayerSim) -> Dictionary:
 		if not event is Dictionary or event.get("index") != index \
 				or not event.get("input") is Dictionary or not event.get("tuning") is Dictionary:
 			return {"ok": false, "index": index, "error": "Invalid recording event"}
+		if event.get("kind") not in ["input", "tick", "fall", "respawn"]:
+			return {"ok": false, "index": index, "error": "Unknown recording command"}
+		if event.kind == "tick" and (not event.get("delta") is float \
+				or not is_finite(event.delta) or event.delta <= 0.0):
+			return {"ok": false, "index": index, "error": "Invalid physics delta"}
 		if not SimSnapshot.same_shape(event.input, sim.input_snapshot()) \
+				or not SimSnapshot.all_numbers_finite(event.input) \
 				or not sim.apply_tuning(event.tuning):
 			return {"ok": false, "index": index, "error": "Invalid recording input/tuning"}
 		sim.restore_input(event.input)
@@ -220,15 +226,11 @@ static func _replay_events(data: Dictionary, sim: PlayerSim) -> Dictionary:
 			"input":
 				pass # Input/tuning were applied above; do not advance physics.
 			"tick":
-				if not event.get("delta") is float or not is_finite(event.delta) or event.delta <= 0.0:
-					return {"ok": false, "index": index, "error": "Invalid physics delta"}
 				sim.tick(event.delta)
 			"fall":
 				sim.begin_fall()
 			"respawn":
 				sim.respawn()
-			_:
-				return {"ok": false, "index": index, "error": "Unknown recording command"}
 		if sim.gameplay_hash() != event.get("hash"):
 			return {"ok": false, "index": index, "error": "Gameplay checkpoint mismatch"}
 	var hash_str := sim.gameplay_hash()

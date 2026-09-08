@@ -57,6 +57,24 @@ static func same_shape(value: Variant, expected: Variant) -> bool:
 	return true
 
 
+## Transported gameplay data contains scalar/vector numbers inside dictionaries
+## and arrays. Callers must handle any field-specific sentinel before this check.
+static func all_numbers_finite(value: Variant) -> bool:
+	if value is float:
+		return is_finite(value)
+	if value is Vector2 or value is Vector3:
+		return value.is_finite()
+	if value is Dictionary:
+		for key in value:
+			if not all_numbers_finite(value[key]):
+				return false
+	elif value is Array:
+		for item in value:
+			if not all_numbers_finite(item):
+				return false
+	return true
+
+
 static func digest(data: Dictionary) -> String:
 	var ctx := HashingContext.new()
 	ctx.start(HashingContext.HASH_SHA256)
