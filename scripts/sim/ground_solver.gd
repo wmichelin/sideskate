@@ -8,6 +8,8 @@ var query: SurfaceQuery
 var crash: CrashClassifier
 ## Synced from PlayerSim each tick — lip band for ramp free-air upright.
 var ollie_lip_frac: float = 0.50
+## Derived at each step entry; only a new/reversed roll changes ground facing.
+var _step_motion_x: float = 0.0
 
 
 func _init(m: ParkModel = null, q: SurfaceQuery = null) -> void:
@@ -75,6 +77,10 @@ func step(
 	if not state.is_grounded() or not state.alive:
 		return
 	assert(delta > 0.0)
+	var facing_surface := state.surface_id
+	if model.walls.has(facing_surface):
+		facing_surface = model.walls[facing_surface].source_pipe_id
+	_step_motion_x = state.tangent_velocity.x * _slope_outward(facing_surface)
 	# Feet must sit on the analytical surface — never remain buried in solids.
 	_ensure_surface_contact(state)
 	if not state.is_grounded() or not state.alive:
@@ -1275,8 +1281,7 @@ func _ground_on_border_deck(state: SimState) -> bool:
 
 
 func _update_facing(state: SimState) -> void:
-	if absf(state.tangent_velocity.x) > 1.0:
-		state.set_facing_side("r" if state.tangent_velocity.x > 0.0 else "l")
+	_update_facing_from_motion(state, state.tangent_velocity.x)
 
 
 func _update_facing_pipe(state: SimState, pipe: PipeSurface) -> void:
@@ -1286,6 +1291,16 @@ func _update_facing_pipe(state: SimState, pipe: PipeSurface) -> void:
 func _update_facing_slope(state: SimState, surface_id: String) -> void:
 	# Facing follows world X, not along-arc sign.
 	var world_vx := state.tangent_velocity.x * _slope_outward(surface_id)
+	_update_facing_from_motion(state, world_vx)
+
+
+func _update_facing_from_motion(state: SimState, world_vx: float) -> void:
+	if state.spin_settling or state.spin_pending_rebase:
+		return
+	# Landing may face against momentum. Continuing that roll must not turn
+	# the rider; preserve existing steering when starting or reversing a roll.
+	if absf(_step_motion_x) > 1.0 and _step_motion_x * world_vx > 0.0:
+		return
 	if absf(world_vx) > 1.0:
 		state.set_facing_side("r" if world_vx > 0.0 else "l")
 

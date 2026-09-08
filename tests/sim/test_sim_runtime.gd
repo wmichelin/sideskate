@@ -99,7 +99,7 @@ func cases() -> PackedStringArray:
 		"_air_spin_land_near_pi_snaps_no_fall",
 		"_air_spin_land_near_half_pi_falls",
 		"_air_spin_hold_through_land_uses_contact_angle",
-		"_air_spin_backwards_land_flips_facing_keeps_board_ref",
+		"_air_spin_backwards_land_keeps_facing_and_board_ref",
 		"_rail_mount_air_hold_r",
 		"_rail_no_r_rejects",
 		"_rail_grounded_r_no_mount",
@@ -8200,13 +8200,13 @@ func _air_spin_hold_through_land_uses_contact_angle() -> bool:
 	return false
 
 
-func _air_spin_backwards_land_flips_facing_keeps_board_ref() -> bool:
+func _air_spin_backwards_land_keeps_facing_and_board_ref() -> bool:
 	var sim := _air_spin_floor_setup()
 	if sim == null:
 		push_error("air spin back: setup")
 		return false
 	var floor: SupportPatch = sim.model.patches[sim.state.air_launch_surface_id]
-	# 180 from takeoff r → facing l; travel +X → momentum fix to r without board snap.
+	# 180 from takeoff r → facing l; travel +X must remain a backwards landing.
 	sim.state.spin_yaw = PI
 	sim.state.spin_takeoff_facing = "r"
 	sim.state.facing = "l"
@@ -8216,7 +8216,7 @@ func _air_spin_backwards_land_flips_facing_keeps_board_ref() -> bool:
 	var board := BoardYawTracker.new()
 	board.snap_to_facing(-1.0) ## nose left (facing l)
 	var board_before := board.yaw
-	# Simulate presentation tick through land: composed yaw then facing-only fix.
+	# Simulate contact and the complete settle/rebase.
 	for _i in range(120):
 		sim.set_input(Vector2.ZERO, false, false)
 		sim.tick()
@@ -8230,14 +8230,14 @@ func _air_spin_backwards_land_flips_facing_keeps_board_ref() -> bool:
 			% [sim.state.is_grounded(), sim.state.falling]
 		)
 		return false
-	if sim.state.facing != "r":
-		push_error("air spin back: facing should match +X momentum got %s" % sim.state.facing)
+	if sim.state.facing != "l":
+		push_error("air spin back: landing must retain left facing despite +X momentum, got %s" % sim.state.facing)
 		return false
-	# Facing-only fix must not snap board to new facing.
-	board.tick(1.0, 0.0, false) ## facing r, yaw 0 — without force_snap board stays
+	# Rebase must not snap the board to momentum.
+	board.tick(-1.0, 0.0, false)
 	if absf(board.yaw - board_before) > 0.01:
 		push_error(
-			"air spin back: board yaw moved on facing-only fix %.3f → %.3f"
+			"air spin back: board yaw moved during rebase %.3f → %.3f"
 			% [board_before, board.yaw]
 		)
 		return false

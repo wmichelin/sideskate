@@ -80,7 +80,7 @@ var spin_yaw: float = 0.0
 var spin_takeoff_facing: String = "r"
 ## One-shot: presentation board tracker ignores spin clear (no reverse / unwind).
 var spin_handoff: bool = false
-## After land rebase: snap board yaw to current facing (aligned with body at yaw 0).
+## Legacy explicit board-snap latch retained in version-1 snapshots; landing leaves it off.
 var board_align_to_facing: bool = false
 ## After spun land: lerp contact yaw → nearest N×π (board co-rotates).
 var spin_settling: bool = false
@@ -89,7 +89,7 @@ var spin_settle_to: float = 0.0
 var spin_settle_elapsed: float = 0.0
 ## After settle hits N×π: hold one tick so board sees it, then handoff-clear.
 var spin_pending_rebase: bool = false
-## Momentum sign for facing fix after settle (0 = skip).
+## Recorded landing momentum; retained in version-1 snapshots, never turns the rider.
 var spin_land_momentum_x: float = 0.0
 ## Grind lock: along-X rail ride.
 var grind_rail_id: String = ""
@@ -197,7 +197,7 @@ func cancel_spin_land_settle() -> void:
 
 
 ## After successful land classify: lerp contact → nearest N×π (co-rotate board).
-## `momentum_x` applied for facing fix once settle reaches the snap.
+## Momentum never chooses the landing facing: backwards landings stay backwards.
 func begin_spin_land_settle(nearest: float, momentum_x: float) -> void:
 	spin_settle_from = spin_yaw
 	spin_settle_to = nearest
@@ -210,12 +210,11 @@ func begin_spin_land_settle(nearest: float, momentum_x: float) -> void:
 	var face := facing_from_spin_yaw()
 	spin_yaw = saved_yaw
 	facing = face
-	visual_facing = face
+	visual_facing = spin_takeoff_facing
 	facing_yaw = 0.0
 	if absf(spin_settle_from - spin_settle_to) < 0.0001:
 		spin_yaw = spin_settle_to
 		spin_settling = false
-		_apply_spin_land_momentum_fix()
 		spin_pending_rebase = true
 		return
 	spin_settling = true
@@ -235,7 +234,6 @@ func step_spin_land_settle(delta: float) -> void:
 				return
 			spin_yaw = spin_settle_to
 		spin_settling = false
-		_apply_spin_land_momentum_fix()
 		# Hold exact N×π for this pose capture so board receives residual.
 		spin_pending_rebase = true
 		return
@@ -245,22 +243,15 @@ func step_spin_land_settle(delta: float) -> void:
 
 
 ## After spun land snap: rebase spin_yaw to 0 without unwinding the trick,
-## then snap board to facing so rider and board share the yaw-0 frame.
+## preserving the landed orientation of both rider and board.
 func commit_spin_land_snap() -> void:
 	spin_takeoff_facing = facing
+	visual_facing = facing
+	facing_yaw = 0.0
 	if absf(spin_yaw) > 0.0001:
 		spin_handoff = true
 		spin_yaw = 0.0
-	board_align_to_facing = true
-
-
-func _apply_spin_land_momentum_fix() -> void:
-	if absf(spin_land_momentum_x) <= 1.0:
-		return
-	var mom_face := "r" if spin_land_momentum_x > 0.0 else "l"
-	if facing != mom_face:
-		facing = mom_face
-		visual_facing = mom_face
+	board_align_to_facing = false
 
 
 func _clear_spin_land_settle() -> void:

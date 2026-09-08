@@ -13,7 +13,7 @@ func run() -> bool:
 		and _board_yaw_tracker_rules()
 		and _board_yaw_depth_turn_not_persisted()
 		and _player_pose_snapshots_track_board_yaw()
-		and _player_land_rebase_snaps_board_to_facing()
+		and _player_land_rebase_preserves_board_orientation()
 		and _fall_box_stays_above_support_planes()
 		and _board_fall_box_stays_above_support_planes()
 		and _fall_box_stays_on_impact_approach_side()
@@ -284,8 +284,8 @@ func _player_pose_snapshots_track_board_yaw() -> bool:
 	return true
 
 
-## After spun-land rebase, board snaps to facing so it matches body at yaw 0.
-func _player_land_rebase_snaps_board_to_facing() -> bool:
+## Rebase consumes the spin without reorienting the board to a facing-derived yaw.
+func _player_land_rebase_preserves_board_orientation() -> bool:
 	var player = _PlayerScript.new()
 	player.depth = PseudoDepthBody.new()
 	player._sim = PlayerSim.new()
@@ -293,13 +293,15 @@ func _player_land_rebase_snaps_board_to_facing() -> bool:
 	player.visual_facing_h = "r"
 	player.facing_yaw = 0.0
 	player._capture_pose_snapshots()
-	# Simulate mid-spin co-rotation, then land rebase + align.
+	# Simulate mid-spin co-rotation, then the actual sim rebase.
 	player.facing_yaw = PI
 	player._capture_pose_snapshots()
+	var board_before: float = player._pose_curr.board_yaw
 	player.facing_yaw = 0.0
 	player.visual_facing_h = "l"
-	player._sim.state.spin_handoff = true
-	player._sim.state.board_align_to_facing = true
+	player._sim.state.spin_yaw = PI
+	player._sim.state.facing = "l"
+	player._sim.state.commit_spin_land_snap()
 	player._capture_pose_snapshots()
 	if absf(player._pose_curr.facing_yaw) > 0.001:
 		push_error("land rebase: facing_yaw must be 0")
@@ -311,10 +313,9 @@ func _player_land_rebase_snaps_board_to_facing() -> bool:
 		player.depth.free()
 		player.free()
 		return false
-	# Left facing snap → board yaw 0.
-	if absf(player._pose_curr.board_yaw) > 0.01:
+	if absf(player._pose_curr.board_yaw - board_before) > 0.01:
 		push_error(
-			"land rebase: board must snap to left facing (0), got %s"
+			"land rebase: board must preserve its accumulated yaw, got %s"
 			% player._pose_curr.board_yaw
 		)
 		player.depth.free()

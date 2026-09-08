@@ -4,7 +4,7 @@ extends Node
 ## Observations follow Player. Presentation state is read only.
 const DIAGNOSTICS := preload("res://tests/support/runtime_diagnostics.gd")
 const OBSERVER := preload("res://tests/runtime/physics_observer.gd")
-const SCENARIOS := ["spawn", "gameplay", "air-out", "fly-out", "spine", "acid", "ramp-peak", "grind", "fall", "lava", "animation", "all"]
+const SCENARIOS := ["spawn", "gameplay", "air-out", "fly-out", "spine", "acid", "ramp-peak", "grind", "fall", "lava", "animation", "spin-landing", "all"]
 const FIXTURES := "res://tests/levels/runtime/"
 
 var report: Dictionary = {"schema_version": 1, "completed": false, "checks": [], "errors": [], "screenshots": [], "scenarios": [], "checkpoints": {}, "failure_traces": [], "recordings": []}
@@ -135,7 +135,7 @@ func _run() -> void:
 		report["escape_ok"] = report.errors.is_empty()
 	if scenario == "gameplay" or scenario == "all":
 		await _gameplay()
-	var stories: Array = ["air-out", "fly-out", "spine", "acid", "ramp-peak", "grind", "fall", "lava", "animation"] if scenario == "all" else [scenario]
+	var stories: Array = ["air-out", "fly-out", "spine", "acid", "ramp-peak", "grind", "fall", "lava", "animation", "spin-landing"] if scenario == "all" else [scenario]
 	for story in stories:
 		if story not in ["spawn", "gameplay"]:
 			await _story(story)
@@ -354,6 +354,58 @@ func _story(story: String) -> void:
 			await _lava_story()
 		"animation":
 			await _animation_story()
+		"spin-landing":
+			await _spin_landing_story()
+
+
+func _landing_yaws() -> Vector2:
+	var player := get_tree().current_scene.get_node("Player")
+	var pose: LogicalPose = player._pose_curr
+	return Vector2(pose.facing_yaw + (PI if pose.facing_h < 0 else 0.0), pose.board_yaw)
+
+
+func _spin_landing_story() -> void:
+	for side in ["r", "l"]:
+		if not await _load_level(FIXTURES + "spin_landing.ssk"):
+			return
+		var sim := _sim()
+		var move_key := KEY_D if side == "r" else KEY_A
+		var spin_key := KEY_Q if side == "r" else KEY_E
+		_key(move_key, true)
+		await _ticks(12)
+		_key(move_key, false)
+		_key(KEY_SPACE, true)
+		await _ticks(30)
+		_key(KEY_SPACE, false)
+		_key(spin_key, true)
+		var previous := _landing_yaws()
+		var max_step := Vector2.ZERO
+		var released := false
+		var saw_air := false
+		var coast_ticks := 0
+		for tick in 150:
+			await _ticks(1)
+			var current := _landing_yaws()
+			max_step.x = maxf(max_step.x, absf(angle_difference(previous.x, current.x)))
+			max_step.y = maxf(max_step.y, absf(angle_difference(previous.y, current.y)))
+			previous = current
+			saw_air = saw_air or sim.state.is_airborne()
+			if not released and absf(sim.state.spin_yaw) >= PI:
+				_key(spin_key, false)
+				released = true
+			if saw_air and sim.state.is_grounded():
+				coast_ticks += 1
+				if coast_ticks >= 45:
+					break
+		_key(spin_key, false)
+		var landed_side := "l" if side == "r" else "r"
+		_check("spin-landing:%s:backwards_coast" % side, released and coast_ticks == 45
+			and not sim.state.falling and sim.state.facing == landed_side
+			and sim.state.tangent_velocity.x * (1.0 if side == "r" else -1.0) > 50.0, _snapshot())
+		_check("spin-landing:%s:continuous_orientation" % side, max_step.x < 0.2 and max_step.y < 0.2,
+			{"max_rider_step": max_step.x, "max_board_step": max_step.y})
+		_checkpoint("spin_landing_" + side)
+		await _capture("spin-landing-" + side)
 
 
 func _skater_pose(label: String, expected: StringName) -> bool:

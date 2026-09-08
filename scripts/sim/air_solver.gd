@@ -51,7 +51,8 @@ func _step_air_spin(state: SimState, delta: float) -> void:
 	var next_face := state.facing_from_spin_yaw()
 	if next_face != state.facing:
 		state.facing = next_face
-		state.visual_facing = next_face
+		# The continuous yaw already displays this turn. Keep the visual base
+		# until rebase, otherwise crossing PI rotates the rider a second time.
 
 
 ## Land / seat spin gate. Returns false if fall requested (caller should stop mount work).

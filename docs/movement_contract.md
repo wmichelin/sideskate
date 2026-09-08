@@ -27,7 +27,7 @@ Logical axes in this document: **X** left/right, **Z** near/far, **height** up. 
 |------|-------|---------|
 | **Air-out** | hang | Leave a compiled open edge with **X locked** to its anchor. Motion is height (+ optionally Z) only. Stick does **not** unlock X. Keeps surface lean. |
 | **Fly-out** | **deck-out** (same action) | Exit X-lock and travel **away** from the pipe: left on a left pipe, right on a right pipe (world outward). Free-air XZ control after unlock. Resets presentation lean upright. |
-| **Air spin** | — | Hold rotate left/right while airborne (incl. transfer). Continuous yaw from bout zero; live facing flips at odd *N×180°*; never changes `vx`. Land near *N×180°* or fall; success snaps; backwards land may fix facing to momentum without board re-yaw. |
+| **Air spin** | — | Hold rotate left/right while airborne (incl. transfer). Continuous yaw from bout zero; live facing flips at odd *N×180°*; never changes `vx`. Land near *N×180°* or fall; success settles to that half-turn and rebases without rotating rider or board. Landing and continued grounded coasting preserve that orientation, even against momentum. |
 | **Spine** | — | Explicit transfer to an opposite-facing pipe. Requires the transfer input and an eligible target; ordinary contact never performs a spine. |
 | **Acid** | — | Explicit descending transfer onto a pipe, using the same transfer input and `TRANSFER` plan. |
 
