@@ -2,6 +2,8 @@
 
 ## Read first
 
+- Read and follow [ENGINEERING_PHILOSOPHY.md](ENGINEERING_PHILOSOPHY.md).
+
 - [docs/movement_contract.md](docs/movement_contract.md) — frozen analytical sim contract
 - [docs/gameplay.md](docs/gameplay.md) — presentation, debug, **key scripts map**
 - [docs/level_format.md](docs/level_format.md) — `.ssk` IDL + derived topology
