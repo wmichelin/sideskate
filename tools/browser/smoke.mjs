@@ -107,8 +107,19 @@ function menuTitle(image) {
 }
 
 async function snapshot(page, name) {
-  const buffer = await page.locator('#canvas').screenshot({ timeout: 20000 });
+  const captureStarted = performance.now();
+  const box = await page.locator('#canvas').boundingBox();
+  if (!box || box.width <= 0 || box.height <= 0) throw new Error('Missing game canvas bounds');
+  // The canvas already fills the viewport. Capture its rendered pixels without
+  // element scrolling/stability waits across extra costly SwiftShader frames.
+  // Playwright preserves viewport/device emulation for desktop and touch.
+  const buffer = await page.screenshot({ clip: box, timeout: 20000 });
   const image = PNG.sync.read(buffer);
+  if (image.width !== Math.round(box.width) || image.height !== Math.round(box.height)) {
+    throw new Error('Screenshot dimensions do not match the game canvas');
+  }
+  report.capture_count = (report.capture_count || 0) + 1;
+  report.capture_elapsed_ms = (report.capture_elapsed_ms || 0) + Math.round(performance.now() - captureStarted);
   if (name) {
     const path = join(args.out, name + '.png');
     await writeFile(path, buffer);
@@ -127,6 +138,7 @@ async function menuReady(page, label) {
     }
     await sleep(250);
   }
+  await snapshot(page, label.replaceAll(':', '-') + '-timeout');
   throw new Error(label + ': exported menu did not appear');
 }
 
@@ -155,6 +167,9 @@ async function boot(context, label) {
 
 async function press(page, key, delay = 250) {
   await page.keyboard.press(key);
+  // Let Godot consume the event and render the resulting focus/menu state
+  // before sending another command, even when a frame takes longer than delay.
+  await page.evaluate(() => new Promise(resolveFrame => requestAnimationFrame(() => requestAnimationFrame(resolveFrame))));
   await sleep(delay);
 }
 
@@ -289,13 +304,18 @@ try {
   await mkdir(args.out, { recursive: true });
   await writeFile(join(args.out, 'report.json'), JSON.stringify(report, null, 2));
   report.url = args.url;
-  browser = await chromium.launch({ headless: true, args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--disable-vulkan'] });
+  browser = await chromium.launch({ headless: true, timeout: Math.min(args.timeout, 30000), args: ['--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--disable-vulkan'] });
   report.browser = browser.version();
   let timer;
   try {
     await Promise.race([
       (async () => { await desktopSmoke(); await touchSmoke(); })(),
-      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('Browser smoke timed out after ' + args.timeout + ' ms')), args.timeout); }),
+      new Promise((_, reject) => {
+        // Include browser startup in the workload budget. The Python supervisor
+        // separately permits bounded cleanup and final diagnostic report writes.
+        timer = setTimeout(() => reject(new Error('Browser smoke timed out after ' + args.timeout + ' ms')),
+          Math.max(1, args.timeout - (performance.now() - started)));
+      }),
     ]);
   } finally {
     clearTimeout(timer);

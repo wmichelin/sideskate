@@ -1,5 +1,6 @@
 """Regression checks for false success, incomplete reports and process timeouts."""
 import json
+import argparse
 from pathlib import Path
 import os
 import signal
@@ -7,6 +8,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import check
@@ -59,6 +61,31 @@ class CheckFailures(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "Timed out"):
             check.run([sys.executable, "-c", "import time; time.sleep(20)"], self.folder / "engine.log", .1, os.environ.copy())
         self.assertLess(time.monotonic() - started, 3)
+
+    def test_browser_timeout_can_finish_failure_report_before_supervisor_cleanup(self):
+        (self.folder / "tools/browser/node_modules/playwright").mkdir(parents=True)
+        report_path = self.folder / "web/report.json"
+        report_path.parent.mkdir()
+        failure = {"completed": True, "check_count": 1, "failed": 0,
+                   "checks": [{"ok": True}], "errors": ["Browser smoke timed out"]}
+        # Simulate the browser writing diagnostics after its workload deadline.
+        # The outer supervisor must permit this, and still reject the report.
+        child = "import pathlib,sys,time; time.sleep(.05); pathlib.Path(sys.argv[1]).write_text(sys.argv[2]); sys.exit(1)"
+        real_run = check.run
+
+        def browser_timeout(command, log, timeout, env):
+            workload = int(command[command.index("--timeout") + 1]) / 1000
+            self.assertGreater(timeout, workload)
+            self.assertLessEqual(timeout - workload, 30)
+            return real_run([sys.executable, "-c", child, str(report_path), json.dumps(failure)], log, timeout, env)
+
+        with patch.object(check, "ROOT", self.folder), \
+                patch.object(check, "export_web", return_value=self.folder), \
+                patch.object(check.shutil, "which", return_value="node"), \
+                patch.object(check, "run", side_effect=browser_timeout):
+            with self.assertRaisesRegex(RuntimeError, "Checks failed"):
+                check.web("godot", self.folder, argparse.Namespace(timeout=.01), os.environ.copy())
+        self.assertEqual(json.loads(report_path.read_text())["errors"], failure["errors"])
 
     @unittest.skipUnless(sys.platform.startswith("linux"), "Linux process-state check")
     def test_timeout_stops_descendant_after_leader_exits(self):

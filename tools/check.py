@@ -248,7 +248,9 @@ def web(binary: str, out: Path, args, env: dict[str, str]) -> None:
     thread.start()
     log = out / "web/browser.log"
     try:
-        code = run(["node", str(ROOT / "tools/browser/smoke.mjs"), "--url", f"http://127.0.0.1:{server.server_port}", "--out", str(out / "web"), "--timeout", str(int(args.timeout * 1000))], log, args.timeout, env)
+        # Let the browser report its own workload timeout before terminating its
+        # process group. Cleanup remains bounded if Chromium or Node hangs.
+        code = run(["node", str(ROOT / "tools/browser/smoke.mjs"), "--url", f"http://127.0.0.1:{server.server_port}", "--out", str(out / "web"), "--timeout", str(int(args.timeout * 1000))], log, args.timeout + 15, env)
     finally:
         server.shutdown()
         server.server_close()
