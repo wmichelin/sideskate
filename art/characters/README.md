@@ -35,8 +35,11 @@ deform skeleton, fingers and controls. Left and right bones have different color
 
 The gameplay actions are `ride_idle`, `ollie_charge`, `ollie_pop`, `airborne`,
 `landing`, `grind` and `fall`. `crouch_preview` and `rig_check` remain authoring
-previews. All gameplay clips use a sideways stance with planted feet; charge
-lowers the pelvis, the pop extends and tucks the knees, and landing absorbs impact.
+previews. Gameplay clips use a sideways stance with knees tracking over the feet.
+Charge sits the hips back and lowers the hands; the pop extends with the front
+knee leading, then tucks both knees and levels the board before a soft landing.
+The `board_pose` animation marker drives the existing game's board tilt from the
+same baked clip as the feet. It adds no gameplay translation or collision motion.
 The face has static geometry, without facial controls or expressions.
 
 ## Files
@@ -52,7 +55,8 @@ The face has static geometry, without facial controls or expressions.
 | [godot_validation.json](godot_validation.json) | Actual Godot import, skin and animation checks |
 
 The authored model has 3,738 vertices, 7,180 triangles, 10 flat-color materials,
-42 deform bones and 8 authoring controls. Blender height is **1.738 m**, with
+42 character deform bones, one exported `board_pose` marker and 8 authoring controls.
+Blender height is **1.738 m**, with
 feet on Z=0, +Z up and -Y forward. The GLB converts to +Y up / +Z forward.
 Flat normals and material boundaries may split vertices during export.
 

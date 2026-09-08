@@ -31,6 +31,8 @@ var _board: Node3D
 var _skater: Node3D
 var _skater_anim: AnimationPlayer
 var _skater_animator: SkaterAnimationController
+var _skater_skeleton: Skeleton3D
+var _board_pose_bone: int = -1
 var _skater_on_fall: bool = false
 var _rider_fall: FallBoxConstraint
 var _board_fall: FallBoxConstraint
@@ -141,6 +143,8 @@ func _build_meshes() -> void:
 
 func _mount_skater_mesh() -> void:
 	_skater = null
+	_skater_skeleton = null
+	_board_pose_bone = -1
 	if skater_mesh == null:
 		return
 	var inst := skater_mesh.instantiate()
@@ -159,6 +163,10 @@ func _mount_skater_mesh() -> void:
 	if _facing_mark != null:
 		_facing_mark.visible = false
 	_configure_skater_animation(_skater)
+	var skeletons := _skater.find_children("*", "Skeleton3D", true, false)
+	if not skeletons.is_empty():
+		_skater_skeleton = skeletons[0] as Skeleton3D
+		_board_pose_bone = _skater_skeleton.find_bone("board_pose")
 	_polish_skater_meshes(_skater)
 
 
@@ -346,6 +354,17 @@ func apply_pose(pose: LogicalPose) -> void:
 		_board.scale = Vector3.ONE
 		_board.position = board_pos
 		_board.rotation = Vector3(0.0, pose.board_yaw + pose.depth_turn_yaw, 0.0)
+		if _skater_skeleton != null and _board_pose_bone >= 0 and not _skater_on_fall:
+			# The same baked pose drives soles and board: no second timing curve,
+			# gameplay jump offset, or change to the analytical support plane.
+			var marker := _skater_skeleton.get_bone_global_pose(_board_pose_bone)
+			var rest := _skater_skeleton.get_bone_global_rest(_board_pose_bone)
+			var local_tilt := (marker * rest.affine_inverse()).basis.orthonormalized()
+			var rider_yaw := Basis(Vector3.UP, skater_yaw)
+			var board_tilt := rider_yaw * local_tilt * rider_yaw.inverse()
+			_board.basis = board_tilt * _board.basis
+			# Pivot at the board top, where the character's authored soles sit.
+			_board.position = skater_pos - board_tilt * Vector3(0, board_size.y * 0.5, 0)
 
 
 func _set_pose_meshes_visible(is_visible: bool) -> void:

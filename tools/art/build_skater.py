@@ -139,6 +139,8 @@ def bone(name, head, tail, parent=None, deform=True):
 
 
 bone("root", (0, 0, 0), (0, 0, 0.18))
+# Exported animation marker: the existing game board follows this local rotation.
+bone("board_pose", (0, 0, 0), (0, 0, 0.10), "root")
 bone("pelvis", (0, 0, 0.89), (0, 0, 1.01), "root")
 bone("spine", (0, 0, 1.01), (0, 0, 1.17), "pelvis")
 bone("chest", (0, 0, 1.17), (0, 0, 1.34), "spine")
@@ -413,16 +415,26 @@ def rotate_world(name, axis, angle):
     pb.rotation_quaternion = rest.inverted() @ Quaternion(axis, angle) @ rest
 
 
-def pose_ride(depth=.085, sway=0):
+def pose_ride(depth=.085, sway=0, reach=0.0, pitch=0.0):
     reset_pose()
-    offset("pelvis", (0, .023, -depth))
-    rotate_world("spine", (1, 0, 0), .14 + depth * .20)
-    rotate_world("chest", (1, 0, 0), .07)
+    # Sit the hips back and hinge the torso over the board, rather than just
+    # dropping a vertical torso between inward-collapsing knees.
+    offset("pelvis", (-pitch * .08, .025 + depth * .35, -depth))
+    rotate_world("spine", (1, 0, 0), .12 + depth * .95)
+    rotate_world("chest", (1, 0, 0), .06 + depth * .22)
     rotate_world("head", (0, 0, 1), 1.05)
+    board_rotation = Quaternion((0, 1, 0), -pitch)
+    rotate_world("board_pose", (0, 1, 0), -pitch)
     for side, s in (("L", 1), ("R", -1)):
-        # Sideways skating stance: both soles stay on the board plane.
-        offset("CTRL_foot." + side, (s * .18, 0, 0))
-        target = Vector((s * .47, -.12 + sway * s, 1.005 - depth * .8))
+        # Soles stay on the authored board plane, including the front-foot lead
+        # during pop. Move the knee poles with the wide stance and turn them out.
+        foot = board_rotation @ Vector((s * .32, 0, .13))
+        offset("CTRL_foot." + side, foot - bone_specs["CTRL_foot." + side][0])
+        rotate_world("CTRL_foot." + side, (0, 1, 0), -pitch)
+        knee = Vector((s * .62, -.62, .48))
+        offset("CTRL_knee." + side, knee - bone_specs["CTRL_knee." + side][0])
+        target = Vector((s * (.43 + reach * .16), -.16 + sway * s,
+                         .94 - depth * 1.25 + reach * .47))
         offset("CTRL_hand." + side, target - bone_specs["CTRL_hand." + side][0])
         for finger in ("index", "middle", "ring", "pinky"):
             for n in ("01", "02"):
@@ -446,20 +458,23 @@ for name in ("ride_idle", "ollie_charge", "ollie_pop", "airborne", "landing", "g
             pose_ride(depth, sway)
             insert_pose(frame)
     elif name == "ollie_charge":
-        for frame, depth in ((1, .085), (16, .26)):
+        for frame, depth in ((1, .085), (16, .32)):
             pose_ride(depth)
             insert_pose(frame)
     elif name == "ollie_pop":
-        for frame, depth in ((1, .26), (4, .055), (10, .17)):
-            pose_ride(depth)
+        # Reference sequence compressed from slow motion into the game's jump:
+        # extend, lead with the front knee, bring the rear knee up, level out.
+        for frame, depth, reach, pitch in ((1, .32, 0, 0), (3, .09, .75, .38),
+                                           (6, .24, 1, .24), (10, .36, .85, 0)):
+            pose_ride(depth, reach=reach, pitch=pitch)
             insert_pose(frame)
     elif name == "airborne":
         for frame in (1, 31):
-            pose_ride(.17)
+            pose_ride(.36, reach=.85)
             insert_pose(frame)
     elif name == "landing":
-        for frame, depth in ((1, .17), (4, .27), (10, .085)):
-            pose_ride(depth)
+        for frame, depth, reach in ((1, .36, .85), (4, .32, .25), (13, .085, 0)):
+            pose_ride(depth, reach=reach)
             insert_pose(frame)
     elif name == "grind":
         for frame, sway in ((1, -.012), (16, .012), (31, -.012)):
@@ -476,7 +491,7 @@ for name in ("ride_idle", "ollie_charge", "ollie_pop", "airborne", "landing", "g
                 offset("CTRL_hand." + side, target - bone_specs["CTRL_hand." + side][0])
             insert_pose(frame)
     elif name == "crouch_preview":
-        for frame, depth in ((1, .085), (16, .24), (31, .085)):
+        for frame, depth in ((1, .085), (16, .32), (31, .085)):
             pose_ride(depth)
             insert_pose(frame)
     else:

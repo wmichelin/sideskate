@@ -6,7 +6,7 @@
   "vertices": 3738,
   "triangles": 7180,
   "materials": 10,
-  "deform_bones": 42,
+  "deform_bones": 43,
   "control_bones": 8,
   "height_m": 1.7380000352859497,
   "actions": [
@@ -57,22 +57,22 @@
     {
       "name": "airborne:1:shin.L:IK",
       "ok": true,
-      "error": 2.565635961724892e-05
+      "error": 2.1899678502992104e-05
     },
     {
       "name": "airborne:1:forearm.L:IK",
       "ok": true,
-      "error": 2.2964217177233248e-05
+      "error": 2.644520794277518e-05
     },
     {
       "name": "airborne:1:shin.R:IK",
       "ok": true,
-      "error": 2.5664493617970727e-05
+      "error": 2.1899678502992104e-05
     },
     {
       "name": "airborne:1:forearm.R:IK",
       "ok": true,
-      "error": 2.2964217177233248e-05
+      "error": 2.644520794277518e-05
     },
     {
       "name": "airborne:1:finite",
@@ -81,22 +81,22 @@
     {
       "name": "airborne:4:shin.L:IK",
       "ok": true,
-      "error": 2.565635961724892e-05
+      "error": 2.1899678502992104e-05
     },
     {
       "name": "airborne:4:forearm.L:IK",
       "ok": true,
-      "error": 2.2964217177233248e-05
+      "error": 2.644520794277518e-05
     },
     {
       "name": "airborne:4:shin.R:IK",
       "ok": true,
-      "error": 2.5664493617970727e-05
+      "error": 2.1899678502992104e-05
     },
     {
       "name": "airborne:4:forearm.R:IK",
       "ok": true,
-      "error": 2.2964217177233248e-05
+      "error": 2.644520794277518e-05
     },
     {
       "name": "airborne:4:finite",
@@ -105,22 +105,22 @@
     {
       "name": "airborne:7:shin.L:IK",
       "ok": true,
-      "error": 2.565635961724892e-05
+      "error": 2.1899678502992104e-05
     },
     {
       "name": "airborne:7:forearm.L:IK",
       "ok": true,
-      "error": 2.2964217177233248e-05
+      "error": 2.644520794277518e-05
     },
     {
       "name": "airborne:7:shin.R:IK",
       "ok": true,
-      "error": 2.5664493617970727e-05
+      "error": 2.1899678502992104e-05
     },
     {
       "name": "airborne:7:forearm.R:IK",
       "ok": true,
-      "error": 2.2964217177233248e-05
+      "error": 2.644520794277518e-05
     },
     {
       "name": "airborne:7:finite",
@@ -129,22 +129,22 @@
     {
       "name": "airborne:10:shin.L:IK",
       "ok": true,
-      "error": 2.565635961724892e-05
+      "error": 2.1899678502992104e-05
     },
     {
       "name": "airborne:10:forearm.L:IK",
       "ok": true,
-      "error": 2.2964217177233248e-05
+      "error": 2.644520794277518e-05
     },
     {
       "name": "airborne:10:shin.R:IK",
       "ok": true,
-      "error": 2.5664493617970727e-05
+      "error": 2.1899678502992104e-05
     },
     {
       "name": "airborne:10:forearm.R:IK",
       "ok": true,
-      "error": 2.2964217177233248e-05
+      "error": 2.644520794277518e-05
     },
     {
       "name": "airborne:10:finite",
@@ -153,22 +153,22 @@
     {
       "name": "airborne:13:shin.L:IK",
       "ok": true,
-      "error": 2.565635961724892e-05
+      "error": 2.1899678502992104e-05
     },
     {
       "name": "airborne:13:forearm.L:IK",
       "ok": true,
-      "error": 2.2964217177233248e-05
+      "error": 2.644520794277518e-05
     },
     {
       "name": "airborne:13:shin.R:IK",
       "ok": true,
-      "error": 2.5664493617970727e-05
+      "error": 2.1899678502992104e-05
     },
     {
       "name": "airborne:13:forearm.R:IK",
       "ok": true,
-      "error": 2.2964217177233248e-05
+      "error": 2.644520794277518e-05
     },
     {
       "name": "airborne:13:finite",
@@ -177,22 +177,22 @@
     {
       "name": "airborne:16:shin.L:IK",
       "ok": true,
-      "error": 2.565635961724892e-05
+      "error": 2.1899678502992104e-05
     },
     {
       "name": "airborne:16:forearm.L:IK",
       "ok": true,
-      "error": 2.2964217177233248e-05
+      "error": 2.644520794277518e-05
     },
     {
       "name": "airborne:16:shin.R:IK",
       "ok": true,
-      "error": 2.5664493617970727e-05
+      "error": 2.1899678502992104e-05
     },
     {
       "name": "airborne:16:forearm.R:IK",
       "ok": true,
-      "error": 2.2964217177233248e-05
+      "error": 2.644520794277518e-05
     },
     {
       "name": "airborne:16:finite",
@@ -201,22 +201,22 @@
     {
       "name": "airborne:19:shin.L:IK",
       "ok": true,
-      "error": 2.565635961724892e-05
+      "error": 2.1899678502992104e-05
     },
     {
       "name": "airborne:19:forearm.L:IK",
       "ok": true,
-      "error": 2.2964217177233248e-05
+      "error": 2.644520794277518e-05
     },
     {
       "name": "airborne:19:shin.R:IK",
       "ok": true,
-      "error": 2.5664493617970727e-05
+      "error": 2.1899678502992104e-05
     },
     {
       "name": "airborne:19:forearm.R:IK",
       "ok": true,
-      "error": 2.2964217177233248e-05
+      "error": 2.644520794277518e-05
     },
     {
       "name": "airborne:19:finite",
@@ -225,22 +225,22 @@
     {
       "name": "airborne:22:shin.L:IK",
       "ok": true,
-      "error": 2.565635961724892e-05
+      "error": 2.1899678502992104e-05
     },
     {
       "name": "airborne:22:forearm.L:IK",
       "ok": true,
-      "error": 2.2964217177233248e-05
+      "error": 2.644520794277518e-05
     },
     {
       "name": "airborne:22:shin.R:IK",
       "ok": true,
-      "error": 2.5664493617970727e-05
+      "error": 2.1899678502992104e-05
     },
     {
       "name": "airborne:22:forearm.R:IK",
       "ok": true,
-      "error": 2.2964217177233248e-05
+      "error": 2.644520794277518e-05
     },
     {
       "name": "airborne:22:finite",
@@ -249,22 +249,22 @@
     {
       "name": "airborne:25:shin.L:IK",
       "ok": true,
-      "error": 2.565635961724892e-05
+      "error": 2.1899678502992104e-05
     },
     {
       "name": "airborne:25:forearm.L:IK",
       "ok": true,
-      "error": 2.2964217177233248e-05
+      "error": 2.644520794277518e-05
     },
     {
       "name": "airborne:25:shin.R:IK",
       "ok": true,
-      "error": 2.5664493617970727e-05
+      "error": 2.1899678502992104e-05
     },
     {
       "name": "airborne:25:forearm.R:IK",
       "ok": true,
-      "error": 2.2964217177233248e-05
+      "error": 2.644520794277518e-05
     },
     {
       "name": "airborne:25:finite",
@@ -273,22 +273,22 @@
     {
       "name": "airborne:28:shin.L:IK",
       "ok": true,
-      "error": 2.565635961724892e-05
+      "error": 2.1899678502992104e-05
     },
     {
       "name": "airborne:28:forearm.L:IK",
       "ok": true,
-      "error": 2.2964217177233248e-05
+      "error": 2.644520794277518e-05
     },
     {
       "name": "airborne:28:shin.R:IK",
       "ok": true,
-      "error": 2.5664493617970727e-05
+      "error": 2.1899678502992104e-05
     },
     {
       "name": "airborne:28:forearm.R:IK",
       "ok": true,
-      "error": 2.2964217177233248e-05
+      "error": 2.644520794277518e-05
     },
     {
       "name": "airborne:28:finite",
@@ -297,22 +297,22 @@
     {
       "name": "airborne:31:shin.L:IK",
       "ok": true,
-      "error": 2.565635961724892e-05
+      "error": 2.1899678502992104e-05
     },
     {
       "name": "airborne:31:forearm.L:IK",
       "ok": true,
-      "error": 2.2964217177233248e-05
+      "error": 2.644520794277518e-05
     },
     {
       "name": "airborne:31:shin.R:IK",
       "ok": true,
-      "error": 2.5664493617970727e-05
+      "error": 2.1899678502992104e-05
     },
     {
       "name": "airborne:31:forearm.R:IK",
       "ok": true,
-      "error": 2.2964217177233248e-05
+      "error": 2.644520794277518e-05
     },
     {
       "name": "airborne:31:finite",
@@ -321,22 +321,22 @@
     {
       "name": "crouch_preview:1:shin.L:IK",
       "ok": true,
-      "error": 3.5088096210625404e-05
+      "error": 2.516105523569549e-05
     },
     {
       "name": "crouch_preview:1:forearm.L:IK",
       "ok": true,
-      "error": 7.075164858779192e-06
+      "error": 1.4600096599955427e-07
     },
     {
       "name": "crouch_preview:1:shin.R:IK",
       "ok": true,
-      "error": 3.508000783460455e-05
+      "error": 2.515256973570692e-05
     },
     {
       "name": "crouch_preview:1:forearm.R:IK",
       "ok": true,
-      "error": 7.074023185846629e-06
+      "error": 1.341104507446289e-07
     },
     {
       "name": "crouch_preview:1:finite",
@@ -345,22 +345,22 @@
     {
       "name": "crouch_preview:4:shin.L:IK",
       "ok": true,
-      "error": 3.2445371745053596e-05
+      "error": 1.4912781431371734e-05
     },
     {
       "name": "crouch_preview:4:forearm.L:IK",
       "ok": true,
-      "error": 1.0511269494527658e-05
+      "error": 0.0019388786460994597
     },
     {
       "name": "crouch_preview:4:shin.R:IK",
       "ok": true,
-      "error": 3.24374184548166e-05
+      "error": 1.4912781431371734e-05
     },
     {
       "name": "crouch_preview:4:forearm.R:IK",
       "ok": true,
-      "error": 1.0513550685722284e-05
+      "error": 0.0019388786460994597
     },
     {
       "name": "crouch_preview:4:finite",
@@ -369,22 +369,22 @@
     {
       "name": "crouch_preview:7:shin.L:IK",
       "ok": true,
-      "error": 2.4232513722118045e-05
+      "error": 1.9570983388220434e-05
     },
     {
       "name": "crouch_preview:7:forearm.L:IK",
       "ok": true,
-      "error": 1.793805844637777e-05
+      "error": 0.010732890698069517
     },
     {
       "name": "crouch_preview:7:shin.R:IK",
       "ok": true,
-      "error": 2.4232513722118045e-05
+      "error": 1.9597536776632646e-05
     },
     {
       "name": "crouch_preview:7:forearm.R:IK",
       "ok": true,
-      "error": 1.793577448471204e-05
+      "error": 0.010732890698069517
     },
     {
       "name": "crouch_preview:7:finite",
@@ -393,22 +393,22 @@
     {
       "name": "crouch_preview:10:shin.L:IK",
       "ok": true,
-      "error": 3.8478757021533086e-05
+      "error": 4.432996029500196e-05
     },
     {
       "name": "crouch_preview:10:forearm.L:IK",
       "ok": true,
-      "error": 2.513180675115186e-05
+      "error": 0.020284716377821966
     },
     {
       "name": "crouch_preview:10:shin.R:IK",
       "ok": true,
-      "error": 3.853922266238999e-05
+      "error": 4.430215214458302e-05
     },
     {
       "name": "crouch_preview:10:forearm.R:IK",
       "ok": true,
-      "error": 2.51130160856298e-05
+      "error": 0.020284716377821966
     },
     {
       "name": "crouch_preview:10:finite",
@@ -417,22 +417,22 @@
     {
       "name": "crouch_preview:13:shin.L:IK",
       "ok": true,
-      "error": 3.964308239859876e-05
+      "error": 4.327934722024688e-05
     },
     {
       "name": "crouch_preview:13:forearm.L:IK",
       "ok": true,
-      "error": 3.492333747660516e-05
+      "error": 0.027552791359271526
     },
     {
       "name": "crouch_preview:13:shin.R:IK",
       "ok": true,
-      "error": 3.964308239859876e-05
+      "error": 4.328406445609225e-05
     },
     {
       "name": "crouch_preview:13:forearm.R:IK",
       "ok": true,
-      "error": 3.490527671656581e-05
+      "error": 0.027552791359271526
     },
     {
       "name": "crouch_preview:13:finite",
@@ -441,22 +441,22 @@
     {
       "name": "crouch_preview:16:shin.L:IK",
       "ok": true,
-      "error": 5.2965772391030135e-05
+      "error": 6.273035613736238e-05
     },
     {
       "name": "crouch_preview:16:forearm.L:IK",
       "ok": true,
-      "error": 1.0540978632342932e-05
+      "error": 0.03041684297663964
     },
     {
       "name": "crouch_preview:16:shin.R:IK",
       "ok": true,
-      "error": 5.2965772391030135e-05
+      "error": 6.27053416289882e-05
     },
     {
       "name": "crouch_preview:16:forearm.R:IK",
       "ok": true,
-      "error": 1.0540978632342932e-05
+      "error": 0.03041684297663964
     },
     {
       "name": "crouch_preview:16:finite",
@@ -465,22 +465,22 @@
     {
       "name": "crouch_preview:19:shin.L:IK",
       "ok": true,
-      "error": 3.962814707034169e-05
+      "error": 4.327934722024688e-05
     },
     {
       "name": "crouch_preview:19:forearm.L:IK",
       "ok": true,
-      "error": 3.492223195177381e-05
+      "error": 0.027552689954922733
     },
     {
       "name": "crouch_preview:19:shin.R:IK",
       "ok": true,
-      "error": 3.967378970218895e-05
+      "error": 4.328406445609225e-05
     },
     {
       "name": "crouch_preview:19:forearm.R:IK",
       "ok": true,
-      "error": 3.490416902930603e-05
+      "error": 0.027552689954922733
     },
     {
       "name": "crouch_preview:19:finite",
@@ -489,22 +489,22 @@
     {
       "name": "crouch_preview:22:shin.L:IK",
       "ok": true,
-      "error": 3.8478757021533086e-05
+      "error": 4.430215214458302e-05
     },
     {
       "name": "crouch_preview:22:forearm.L:IK",
       "ok": true,
-      "error": 2.512958018145866e-05
+      "error": 0.020284716377821966
     },
     {
       "name": "crouch_preview:22:shin.R:IK",
       "ok": true,
-      "error": 3.853922266238999e-05
+      "error": 4.4312545917189315e-05
     },
     {
       "name": "crouch_preview:22:forearm.R:IK",
       "ok": true,
-      "error": 2.512958018145866e-05
+      "error": 0.020284716377821966
     },
     {
       "name": "crouch_preview:22:finite",
@@ -513,22 +513,22 @@
     {
       "name": "crouch_preview:25:shin.L:IK",
       "ok": true,
-      "error": 2.4232513722118045e-05
+      "error": 1.96301633415073e-05
     },
     {
       "name": "crouch_preview:25:forearm.L:IK",
       "ok": true,
-      "error": 1.799437381020795e-05
+      "error": 0.010732610928529522
     },
     {
       "name": "crouch_preview:25:shin.R:IK",
       "ok": true,
-      "error": 2.4232513722118045e-05
+      "error": 1.96468518721956e-05
     },
     {
       "name": "crouch_preview:25:forearm.R:IK",
       "ok": true,
-      "error": 1.799437381020795e-05
+      "error": 0.010732610928529522
     },
     {
       "name": "crouch_preview:25:finite",
@@ -537,22 +537,22 @@
     {
       "name": "crouch_preview:28:shin.L:IK",
       "ok": true,
-      "error": 3.2445371745053596e-05
+      "error": 1.4925140220362917e-05
     },
     {
       "name": "crouch_preview:28:forearm.L:IK",
       "ok": true,
-      "error": 1.051240751173433e-05
+      "error": 0.0019388786460994597
     },
     {
       "name": "crouch_preview:28:shin.R:IK",
       "ok": true,
-      "error": 3.24374184548166e-05
+      "error": 1.4925140220362917e-05
     },
     {
       "name": "crouch_preview:28:forearm.R:IK",
       "ok": true,
-      "error": 1.051240751173433e-05
+      "error": 0.0019388786460994597
     },
     {
       "name": "crouch_preview:28:finite",
@@ -561,22 +561,22 @@
     {
       "name": "crouch_preview:31:shin.L:IK",
       "ok": true,
-      "error": 3.5088096210625404e-05
+      "error": 2.516105523569549e-05
     },
     {
       "name": "crouch_preview:31:forearm.L:IK",
       "ok": true,
-      "error": 7.075164858779192e-06
+      "error": 1.4600096599955427e-07
     },
     {
       "name": "crouch_preview:31:shin.R:IK",
       "ok": true,
-      "error": 3.508000783460455e-05
+      "error": 2.515256973570692e-05
     },
     {
       "name": "crouch_preview:31:forearm.R:IK",
       "ok": true,
-      "error": 7.074023185846629e-06
+      "error": 1.341104507446289e-07
     },
     {
       "name": "crouch_preview:31:finite",
@@ -585,22 +585,22 @@
     {
       "name": "fall:1:shin.L:IK",
       "ok": true,
-      "error": 2.271873473130482e-05
+      "error": 6.0060050300495436e-05
     },
     {
       "name": "fall:1:forearm.L:IK",
       "ok": true,
-      "error": 1.2438712509346838e-05
+      "error": 1.1694554341395185e-05
     },
     {
       "name": "fall:1:shin.R:IK",
       "ok": true,
-      "error": 2.271873473130482e-05
+      "error": 6.008578545065066e-05
     },
     {
       "name": "fall:1:forearm.R:IK",
       "ok": true,
-      "error": 1.2433248875172064e-05
+      "error": 1.1694554341395185e-05
     },
     {
       "name": "fall:1:finite",
@@ -609,22 +609,22 @@
     {
       "name": "fall:4:shin.L:IK",
       "ok": true,
-      "error": 2.271873473130482e-05
+      "error": 6.0060050300495436e-05
     },
     {
       "name": "fall:4:forearm.L:IK",
       "ok": true,
-      "error": 1.2438712509346838e-05
+      "error": 1.1694554341395185e-05
     },
     {
       "name": "fall:4:shin.R:IK",
       "ok": true,
-      "error": 2.271873473130482e-05
+      "error": 6.008578545065066e-05
     },
     {
       "name": "fall:4:forearm.R:IK",
       "ok": true,
-      "error": 1.2433248875172064e-05
+      "error": 1.1694554341395185e-05
     },
     {
       "name": "fall:4:finite",
@@ -633,22 +633,22 @@
     {
       "name": "fall:7:shin.L:IK",
       "ok": true,
-      "error": 2.271873473130482e-05
+      "error": 6.0060050300495436e-05
     },
     {
       "name": "fall:7:forearm.L:IK",
       "ok": true,
-      "error": 1.2438712509346838e-05
+      "error": 1.1694554341395185e-05
     },
     {
       "name": "fall:7:shin.R:IK",
       "ok": true,
-      "error": 2.271873473130482e-05
+      "error": 6.008578545065066e-05
     },
     {
       "name": "fall:7:forearm.R:IK",
       "ok": true,
-      "error": 1.2433248875172064e-05
+      "error": 1.1694554341395185e-05
     },
     {
       "name": "fall:7:finite",
@@ -657,22 +657,22 @@
     {
       "name": "fall:10:shin.L:IK",
       "ok": true,
-      "error": 2.271873473130482e-05
+      "error": 6.0060050300495436e-05
     },
     {
       "name": "fall:10:forearm.L:IK",
       "ok": true,
-      "error": 1.2438712509346838e-05
+      "error": 1.1694554341395185e-05
     },
     {
       "name": "fall:10:shin.R:IK",
       "ok": true,
-      "error": 2.271873473130482e-05
+      "error": 6.008578545065066e-05
     },
     {
       "name": "fall:10:forearm.R:IK",
       "ok": true,
-      "error": 1.2433248875172064e-05
+      "error": 1.1694554341395185e-05
     },
     {
       "name": "fall:10:finite",
@@ -681,22 +681,22 @@
     {
       "name": "fall:13:shin.L:IK",
       "ok": true,
-      "error": 2.271873473130482e-05
+      "error": 6.0060050300495436e-05
     },
     {
       "name": "fall:13:forearm.L:IK",
       "ok": true,
-      "error": 1.2438712509346838e-05
+      "error": 1.1694554341395185e-05
     },
     {
       "name": "fall:13:shin.R:IK",
       "ok": true,
-      "error": 2.271873473130482e-05
+      "error": 6.008578545065066e-05
     },
     {
       "name": "fall:13:forearm.R:IK",
       "ok": true,
-      "error": 1.2433248875172064e-05
+      "error": 1.1694554341395185e-05
     },
     {
       "name": "fall:13:finite",
@@ -705,22 +705,22 @@
     {
       "name": "fall:16:shin.L:IK",
       "ok": true,
-      "error": 2.271873473130482e-05
+      "error": 6.0060050300495436e-05
     },
     {
       "name": "fall:16:forearm.L:IK",
       "ok": true,
-      "error": 1.2438712509346838e-05
+      "error": 1.1694554341395185e-05
     },
     {
       "name": "fall:16:shin.R:IK",
       "ok": true,
-      "error": 2.271873473130482e-05
+      "error": 6.008578545065066e-05
     },
     {
       "name": "fall:16:forearm.R:IK",
       "ok": true,
-      "error": 1.2433248875172064e-05
+      "error": 1.1694554341395185e-05
     },
     {
       "name": "fall:16:finite",
@@ -729,22 +729,22 @@
     {
       "name": "fall:19:shin.L:IK",
       "ok": true,
-      "error": 2.271873473130482e-05
+      "error": 6.0060050300495436e-05
     },
     {
       "name": "fall:19:forearm.L:IK",
       "ok": true,
-      "error": 1.2438712509346838e-05
+      "error": 1.1694554341395185e-05
     },
     {
       "name": "fall:19:shin.R:IK",
       "ok": true,
-      "error": 2.271873473130482e-05
+      "error": 6.008578545065066e-05
     },
     {
       "name": "fall:19:forearm.R:IK",
       "ok": true,
-      "error": 1.2433248875172064e-05
+      "error": 1.1694554341395185e-05
     },
     {
       "name": "fall:19:finite",
@@ -753,22 +753,22 @@
     {
       "name": "fall:22:shin.L:IK",
       "ok": true,
-      "error": 2.271873473130482e-05
+      "error": 6.0060050300495436e-05
     },
     {
       "name": "fall:22:forearm.L:IK",
       "ok": true,
-      "error": 1.2438712509346838e-05
+      "error": 1.1694554341395185e-05
     },
     {
       "name": "fall:22:shin.R:IK",
       "ok": true,
-      "error": 2.271873473130482e-05
+      "error": 6.008578545065066e-05
     },
     {
       "name": "fall:22:forearm.R:IK",
       "ok": true,
-      "error": 1.2433248875172064e-05
+      "error": 1.1694554341395185e-05
     },
     {
       "name": "fall:22:finite",
@@ -777,22 +777,22 @@
     {
       "name": "fall:25:shin.L:IK",
       "ok": true,
-      "error": 2.271873473130482e-05
+      "error": 6.0060050300495436e-05
     },
     {
       "name": "fall:25:forearm.L:IK",
       "ok": true,
-      "error": 1.2438712509346838e-05
+      "error": 1.1694554341395185e-05
     },
     {
       "name": "fall:25:shin.R:IK",
       "ok": true,
-      "error": 2.271873473130482e-05
+      "error": 6.008578545065066e-05
     },
     {
       "name": "fall:25:forearm.R:IK",
       "ok": true,
-      "error": 1.2433248875172064e-05
+      "error": 1.1694554341395185e-05
     },
     {
       "name": "fall:25:finite",
@@ -801,22 +801,22 @@
     {
       "name": "fall:28:shin.L:IK",
       "ok": true,
-      "error": 2.271873473130482e-05
+      "error": 6.0060050300495436e-05
     },
     {
       "name": "fall:28:forearm.L:IK",
       "ok": true,
-      "error": 1.2438712509346838e-05
+      "error": 1.1694554341395185e-05
     },
     {
       "name": "fall:28:shin.R:IK",
       "ok": true,
-      "error": 2.271873473130482e-05
+      "error": 6.008578545065066e-05
     },
     {
       "name": "fall:28:forearm.R:IK",
       "ok": true,
-      "error": 1.2433248875172064e-05
+      "error": 1.1694554341395185e-05
     },
     {
       "name": "fall:28:finite",
@@ -825,22 +825,22 @@
     {
       "name": "fall:31:shin.L:IK",
       "ok": true,
-      "error": 2.271873473130482e-05
+      "error": 6.0060050300495436e-05
     },
     {
       "name": "fall:31:forearm.L:IK",
       "ok": true,
-      "error": 1.2438712509346838e-05
+      "error": 1.1694554341395185e-05
     },
     {
       "name": "fall:31:shin.R:IK",
       "ok": true,
-      "error": 2.271873473130482e-05
+      "error": 6.008578545065066e-05
     },
     {
       "name": "fall:31:forearm.R:IK",
       "ok": true,
-      "error": 1.2433248875172064e-05
+      "error": 1.1694554341395185e-05
     },
     {
       "name": "fall:31:finite",
@@ -849,22 +849,22 @@
     {
       "name": "grind:1:shin.L:IK",
       "ok": true,
-      "error": 2.4635508953391852e-05
+      "error": 2.278055803437961e-05
     },
     {
       "name": "grind:1:forearm.L:IK",
       "ok": true,
-      "error": 1.6783168326892266e-05
+      "error": 1.4714389276206603e-05
     },
     {
       "name": "grind:1:shin.R:IK",
       "ok": true,
-      "error": 2.465284423818886e-05
+      "error": 2.278055803437961e-05
     },
     {
       "name": "grind:1:forearm.R:IK",
       "ok": true,
-      "error": 1.6783576804220064e-05
+      "error": 1.4655640506577072e-05
     },
     {
       "name": "grind:1:finite",
@@ -873,22 +873,22 @@
     {
       "name": "grind:4:shin.L:IK",
       "ok": true,
-      "error": 2.4635508953391852e-05
+      "error": 2.278055803437961e-05
     },
     {
       "name": "grind:4:forearm.L:IK",
       "ok": true,
-      "error": 1.6967510981838174e-05
+      "error": 1.506813937373247e-05
     },
     {
       "name": "grind:4:shin.R:IK",
       "ok": true,
-      "error": 2.465284423818886e-05
+      "error": 2.278055803437961e-05
     },
     {
       "name": "grind:4:forearm.R:IK",
       "ok": true,
-      "error": 1.6967510981838174e-05
+      "error": 1.5127095269583713e-05
     },
     {
       "name": "grind:4:finite",
@@ -897,22 +897,22 @@
     {
       "name": "grind:7:shin.L:IK",
       "ok": true,
-      "error": 2.4635508953391852e-05
+      "error": 2.278055803437961e-05
     },
     {
       "name": "grind:7:forearm.L:IK",
       "ok": true,
-      "error": 1.7343596198292104e-05
+      "error": 1.6028773974007365e-05
     },
     {
       "name": "grind:7:shin.R:IK",
       "ok": true,
-      "error": 2.465284423818886e-05
+      "error": 2.278055803437961e-05
     },
     {
       "name": "grind:7:forearm.R:IK",
       "ok": true,
-      "error": 1.7281301681215178e-05
+      "error": 1.6028773974007365e-05
     },
     {
       "name": "grind:7:finite",
@@ -921,22 +921,22 @@
     {
       "name": "grind:10:shin.L:IK",
       "ok": true,
-      "error": 2.4635508953391852e-05
+      "error": 2.278055803437961e-05
     },
     {
       "name": "grind:10:forearm.L:IK",
       "ok": true,
-      "error": 1.7628527145325605e-05
+      "error": 1.6876788679185852e-05
     },
     {
       "name": "grind:10:shin.R:IK",
       "ok": true,
-      "error": 2.465284423818886e-05
+      "error": 2.278055803437961e-05
     },
     {
       "name": "grind:10:forearm.R:IK",
       "ok": true,
-      "error": 1.763000708438993e-05
+      "error": 1.6876788679185852e-05
     },
     {
       "name": "grind:10:finite",
@@ -945,22 +945,22 @@
     {
       "name": "grind:13:shin.L:IK",
       "ok": true,
-      "error": 2.4635508953391852e-05
+      "error": 2.278055803437961e-05
     },
     {
       "name": "grind:13:forearm.L:IK",
       "ok": true,
-      "error": 1.7539983345887562e-05
+      "error": 1.7376493505225578e-05
     },
     {
       "name": "grind:13:shin.R:IK",
       "ok": true,
-      "error": 2.465284423818886e-05
+      "error": 2.278055803437961e-05
     },
     {
       "name": "grind:13:forearm.R:IK",
       "ok": true,
-      "error": 1.7538280582066428e-05
+      "error": 1.7376493505225578e-05
     },
     {
       "name": "grind:13:finite",
@@ -969,22 +969,22 @@
     {
       "name": "grind:16:shin.L:IK",
       "ok": true,
-      "error": 2.4635508953391852e-05
+      "error": 2.278055803437961e-05
     },
     {
       "name": "grind:16:forearm.L:IK",
       "ok": true,
-      "error": 1.7674667989391252e-05
+      "error": 1.7618568963007367e-05
     },
     {
       "name": "grind:16:shin.R:IK",
       "ok": true,
-      "error": 2.465284423818886e-05
+      "error": 2.278055803437961e-05
     },
     {
       "name": "grind:16:forearm.R:IK",
       "ok": true,
-      "error": 1.7674667989391252e-05
+      "error": 1.7618568963007367e-05
     },
     {
       "name": "grind:16:finite",
@@ -993,22 +993,22 @@
     {
       "name": "grind:19:shin.L:IK",
       "ok": true,
-      "error": 2.4635508953391852e-05
+      "error": 2.278055803437961e-05
     },
     {
       "name": "grind:19:forearm.L:IK",
       "ok": true,
-      "error": 1.7539983345887562e-05
+      "error": 1.7376493505225578e-05
     },
     {
       "name": "grind:19:shin.R:IK",
       "ok": true,
-      "error": 2.465284423818886e-05
+      "error": 2.278055803437961e-05
     },
     {
       "name": "grind:19:forearm.R:IK",
       "ok": true,
-      "error": 1.7538280582066428e-05
+      "error": 1.7376493505225578e-05
     },
     {
       "name": "grind:19:finite",
@@ -1017,22 +1017,22 @@
     {
       "name": "grind:22:shin.L:IK",
       "ok": true,
-      "error": 2.4635508953391852e-05
+      "error": 2.278055803437961e-05
     },
     {
       "name": "grind:22:forearm.L:IK",
       "ok": true,
-      "error": 1.762779185280609e-05
+      "error": 1.687659625982685e-05
     },
     {
       "name": "grind:22:shin.R:IK",
       "ok": true,
-      "error": 2.465284423818886e-05
+      "error": 2.278055803437961e-05
     },
     {
       "name": "grind:22:forearm.R:IK",
       "ok": true,
-      "error": 1.7569146790851105e-05
+      "error": 1.6876984385514263e-05
     },
     {
       "name": "grind:22:finite",
@@ -1041,22 +1041,22 @@
     {
       "name": "grind:25:shin.L:IK",
       "ok": true,
-      "error": 2.4635508953391852e-05
+      "error": 2.278055803437961e-05
     },
     {
       "name": "grind:25:forearm.L:IK",
       "ok": true,
-      "error": 1.7343596198292104e-05
+      "error": 1.6028773974007365e-05
     },
     {
       "name": "grind:25:shin.R:IK",
       "ok": true,
-      "error": 2.465284423818886e-05
+      "error": 2.278055803437961e-05
     },
     {
       "name": "grind:25:forearm.R:IK",
       "ok": true,
-      "error": 1.7281301681215178e-05
+      "error": 1.6028773974007365e-05
     },
     {
       "name": "grind:25:finite",
@@ -1065,22 +1065,22 @@
     {
       "name": "grind:28:shin.L:IK",
       "ok": true,
-      "error": 2.4635508953391852e-05
+      "error": 2.278055803437961e-05
     },
     {
       "name": "grind:28:forearm.L:IK",
       "ok": true,
-      "error": 1.6967510981838174e-05
+      "error": 1.506813937373247e-05
     },
     {
       "name": "grind:28:shin.R:IK",
       "ok": true,
-      "error": 2.465284423818886e-05
+      "error": 2.278055803437961e-05
     },
     {
       "name": "grind:28:forearm.R:IK",
       "ok": true,
-      "error": 1.6967510981838174e-05
+      "error": 1.5127095269583713e-05
     },
     {
       "name": "grind:28:finite",
@@ -1089,22 +1089,22 @@
     {
       "name": "grind:31:shin.L:IK",
       "ok": true,
-      "error": 2.4635508953391852e-05
+      "error": 2.278055803437961e-05
     },
     {
       "name": "grind:31:forearm.L:IK",
       "ok": true,
-      "error": 1.6783168326892266e-05
+      "error": 1.4714389276206603e-05
     },
     {
       "name": "grind:31:shin.R:IK",
       "ok": true,
-      "error": 2.465284423818886e-05
+      "error": 2.278055803437961e-05
     },
     {
       "name": "grind:31:forearm.R:IK",
       "ok": true,
-      "error": 1.6783576804220064e-05
+      "error": 1.4655640506577072e-05
     },
     {
       "name": "grind:31:finite",
@@ -1113,22 +1113,22 @@
     {
       "name": "landing:1:shin.L:IK",
       "ok": true,
-      "error": 2.565635961724892e-05
+      "error": 2.1899678502992104e-05
     },
     {
       "name": "landing:1:forearm.L:IK",
       "ok": true,
-      "error": 2.2964217177233248e-05
+      "error": 2.644520794277518e-05
     },
     {
       "name": "landing:1:shin.R:IK",
       "ok": true,
-      "error": 2.5664493617970727e-05
+      "error": 2.1899678502992104e-05
     },
     {
       "name": "landing:1:forearm.R:IK",
       "ok": true,
-      "error": 2.2964217177233248e-05
+      "error": 2.644520794277518e-05
     },
     {
       "name": "landing:1:finite",
@@ -1137,22 +1137,22 @@
     {
       "name": "landing:4:shin.L:IK",
       "ok": true,
-      "error": 3.351245643519487e-05
+      "error": 6.273035613736238e-05
     },
     {
       "name": "landing:4:forearm.L:IK",
       "ok": true,
-      "error": 1.64408790094374e-05
+      "error": 1.1248679222484027e-05
     },
     {
       "name": "landing:4:shin.R:IK",
       "ok": true,
-      "error": 3.353414207034203e-05
+      "error": 6.27053416289882e-05
     },
     {
       "name": "landing:4:forearm.R:IK",
       "ok": true,
-      "error": 1.64408790094374e-05
+      "error": 1.1248679222484027e-05
     },
     {
       "name": "landing:4:finite",
@@ -1161,22 +1161,22 @@
     {
       "name": "landing:7:shin.L:IK",
       "ok": true,
-      "error": 3.22634194173304e-05
+      "error": 3.472097503506573e-05
     },
     {
       "name": "landing:7:forearm.L:IK",
       "ok": true,
-      "error": 2.3922282829705747e-05
+      "error": 1.341104507446289e-07
     },
     {
       "name": "landing:7:shin.R:IK",
       "ok": true,
-      "error": 3.228680023907987e-05
+      "error": 3.475658715147875e-05
     },
     {
       "name": "landing:7:forearm.R:IK",
       "ok": true,
-      "error": 2.3922282829705747e-05
+      "error": 1.341104507446289e-07
     },
     {
       "name": "landing:7:finite",
@@ -1185,46 +1185,70 @@
     {
       "name": "landing:10:shin.L:IK",
       "ok": true,
-      "error": 3.5088096210625404e-05
+      "error": 1.162413071403495e-05
     },
     {
       "name": "landing:10:forearm.L:IK",
       "ok": true,
-      "error": 7.075164858779192e-06
+      "error": 0.0018394485737137632
     },
     {
       "name": "landing:10:shin.R:IK",
       "ok": true,
-      "error": 3.508000783460455e-05
+      "error": 1.1622074675192917e-05
     },
     {
       "name": "landing:10:forearm.R:IK",
       "ok": true,
-      "error": 7.074023185846629e-06
+      "error": 0.0018394485737137632
     },
     {
       "name": "landing:10:finite",
       "ok": true
     },
     {
+      "name": "landing:13:shin.L:IK",
+      "ok": true,
+      "error": 2.516105523569549e-05
+    },
+    {
+      "name": "landing:13:forearm.L:IK",
+      "ok": true,
+      "error": 1.4600096599955427e-07
+    },
+    {
+      "name": "landing:13:shin.R:IK",
+      "ok": true,
+      "error": 2.515256973570692e-05
+    },
+    {
+      "name": "landing:13:forearm.R:IK",
+      "ok": true,
+      "error": 1.341104507446289e-07
+    },
+    {
+      "name": "landing:13:finite",
+      "ok": true
+    },
+    {
       "name": "ollie_charge:1:shin.L:IK",
       "ok": true,
-      "error": 3.5088096210625404e-05
+      "error": 2.516105523569549e-05
     },
     {
       "name": "ollie_charge:1:forearm.L:IK",
       "ok": true,
-      "error": 7.075164858779192e-06
+      "error": 1.4600096599955427e-07
     },
     {
       "name": "ollie_charge:1:shin.R:IK",
       "ok": true,
-      "error": 3.508000783460455e-05
+      "error": 2.515256973570692e-05
     },
     {
       "name": "ollie_charge:1:forearm.R:IK",
       "ok": true,
-      "error": 7.074023185846629e-06
+      "error": 1.341104507446289e-07
     },
     {
       "name": "ollie_charge:1:finite",
@@ -1233,22 +1257,22 @@
     {
       "name": "ollie_charge:4:shin.L:IK",
       "ok": true,
-      "error": 1.1059392478725247e-05
+      "error": 1.4912781431371734e-05
     },
     {
       "name": "ollie_charge:4:forearm.L:IK",
       "ok": true,
-      "error": 1.094987980810855e-05
+      "error": 0.0019388786460994597
     },
     {
       "name": "ollie_charge:4:shin.R:IK",
       "ok": true,
-      "error": 1.1062483976792982e-05
+      "error": 1.4912781431371734e-05
     },
     {
       "name": "ollie_charge:4:forearm.R:IK",
       "ok": true,
-      "error": 1.094987980810855e-05
+      "error": 0.0019388786460994597
     },
     {
       "name": "ollie_charge:4:finite",
@@ -1257,22 +1281,22 @@
     {
       "name": "ollie_charge:7:shin.L:IK",
       "ok": true,
-      "error": 2.9595825681482032e-05
+      "error": 1.9570983388220434e-05
     },
     {
       "name": "ollie_charge:7:forearm.L:IK",
       "ok": true,
-      "error": 1.9041072042491946e-05
+      "error": 0.010732890698069517
     },
     {
       "name": "ollie_charge:7:shin.R:IK",
       "ok": true,
-      "error": 2.9595825681482032e-05
+      "error": 1.9597536776632646e-05
     },
     {
       "name": "ollie_charge:7:forearm.R:IK",
       "ok": true,
-      "error": 1.9041072042491946e-05
+      "error": 0.010732890698069517
     },
     {
       "name": "ollie_charge:7:finite",
@@ -1281,22 +1305,22 @@
     {
       "name": "ollie_charge:10:shin.L:IK",
       "ok": true,
-      "error": 1.4745412417617056e-05
+      "error": 4.432996029500196e-05
     },
     {
       "name": "ollie_charge:10:forearm.L:IK",
       "ok": true,
-      "error": 2.6748618895213105e-05
+      "error": 0.020284716377821966
     },
     {
       "name": "ollie_charge:10:shin.R:IK",
       "ok": true,
-      "error": 1.4721027512510052e-05
+      "error": 4.430215214458302e-05
     },
     {
       "name": "ollie_charge:10:forearm.R:IK",
       "ok": true,
-      "error": 2.6748618895213105e-05
+      "error": 0.020284716377821966
     },
     {
       "name": "ollie_charge:10:finite",
@@ -1305,22 +1329,22 @@
     {
       "name": "ollie_charge:13:shin.L:IK",
       "ok": true,
-      "error": 5.418113027886165e-05
+      "error": 4.327934722024688e-05
     },
     {
       "name": "ollie_charge:13:forearm.L:IK",
       "ok": true,
-      "error": 1.0930760987979957e-05
+      "error": 0.027552791359271526
     },
     {
       "name": "ollie_charge:13:shin.R:IK",
       "ok": true,
-      "error": 5.421144021578332e-05
+      "error": 4.328406445609225e-05
     },
     {
       "name": "ollie_charge:13:forearm.R:IK",
       "ok": true,
-      "error": 1.0913714627654751e-05
+      "error": 0.027552791359271526
     },
     {
       "name": "ollie_charge:13:finite",
@@ -1329,22 +1353,22 @@
     {
       "name": "ollie_charge:16:shin.L:IK",
       "ok": true,
-      "error": 2.271873473130482e-05
+      "error": 6.273035613736238e-05
     },
     {
       "name": "ollie_charge:16:forearm.L:IK",
       "ok": true,
-      "error": 1.4541609482468765e-05
+      "error": 0.03041684297663964
     },
     {
       "name": "ollie_charge:16:shin.R:IK",
       "ok": true,
-      "error": 2.271873473130482e-05
+      "error": 6.27053416289882e-05
     },
     {
       "name": "ollie_charge:16:forearm.R:IK",
       "ok": true,
-      "error": 1.4540542479807528e-05
+      "error": 0.03041684297663964
     },
     {
       "name": "ollie_charge:16:finite",
@@ -1353,22 +1377,22 @@
     {
       "name": "ollie_pop:1:shin.L:IK",
       "ok": true,
-      "error": 2.271873473130482e-05
+      "error": 6.273035613736238e-05
     },
     {
       "name": "ollie_pop:1:forearm.L:IK",
       "ok": true,
-      "error": 1.4541609482468765e-05
+      "error": 0.03041684297663964
     },
     {
       "name": "ollie_pop:1:shin.R:IK",
       "ok": true,
-      "error": 2.271873473130482e-05
+      "error": 6.27053416289882e-05
     },
     {
       "name": "ollie_pop:1:forearm.R:IK",
       "ok": true,
-      "error": 1.4540542479807528e-05
+      "error": 0.03041684297663964
     },
     {
       "name": "ollie_pop:1:finite",
@@ -1377,22 +1401,22 @@
     {
       "name": "ollie_pop:4:shin.L:IK",
       "ok": true,
-      "error": 2.5943430892014937e-06
+      "error": 4.890721145666521e-05
     },
     {
       "name": "ollie_pop:4:forearm.L:IK",
       "ok": true,
-      "error": 1.952875629964512e-05
+      "error": 1.3077345998191671e-05
     },
     {
       "name": "ollie_pop:4:shin.R:IK",
       "ok": true,
-      "error": 2.594856566314726e-06
+      "error": 0.03348351632451869
     },
     {
       "name": "ollie_pop:4:forearm.R:IK",
       "ok": true,
-      "error": 1.952875629964512e-05
+      "error": 2.917842181464805e-05
     },
     {
       "name": "ollie_pop:4:finite",
@@ -1401,22 +1425,22 @@
     {
       "name": "ollie_pop:7:shin.L:IK",
       "ok": true,
-      "error": 1.9426634190150922e-05
+      "error": 1.9111414654971038e-05
     },
     {
       "name": "ollie_pop:7:forearm.L:IK",
       "ok": true,
-      "error": 1.2894699412082182e-05
+      "error": 6.7939490941127755e-06
     },
     {
       "name": "ollie_pop:7:shin.R:IK",
       "ok": true,
-      "error": 1.9426634190150922e-05
+      "error": 4.204966573179753e-05
     },
     {
       "name": "ollie_pop:7:forearm.R:IK",
       "ok": true,
-      "error": 1.289697223008768e-05
+      "error": 1.3881493409178469e-05
     },
     {
       "name": "ollie_pop:7:finite",
@@ -1425,22 +1449,22 @@
     {
       "name": "ollie_pop:10:shin.L:IK",
       "ok": true,
-      "error": 2.565635961724892e-05
+      "error": 2.1899678502992104e-05
     },
     {
       "name": "ollie_pop:10:forearm.L:IK",
       "ok": true,
-      "error": 2.2964217177233248e-05
+      "error": 2.644520794277518e-05
     },
     {
       "name": "ollie_pop:10:shin.R:IK",
       "ok": true,
-      "error": 2.5664493617970727e-05
+      "error": 2.1899678502992104e-05
     },
     {
       "name": "ollie_pop:10:forearm.R:IK",
       "ok": true,
-      "error": 2.2964217177233248e-05
+      "error": 2.644520794277518e-05
     },
     {
       "name": "ollie_pop:10:finite",
@@ -1449,22 +1473,22 @@
     {
       "name": "ride_idle:1:shin.L:IK",
       "ok": true,
-      "error": 3.5088096210625404e-05
+      "error": 2.516105523569549e-05
     },
     {
       "name": "ride_idle:1:forearm.L:IK",
       "ok": true,
-      "error": 7.075164858779192e-06
+      "error": 1.4600096599955427e-07
     },
     {
       "name": "ride_idle:1:shin.R:IK",
       "ok": true,
-      "error": 3.508000783460455e-05
+      "error": 2.515256973570692e-05
     },
     {
       "name": "ride_idle:1:forearm.R:IK",
       "ok": true,
-      "error": 7.074023185846629e-06
+      "error": 1.341104507446289e-07
     },
     {
       "name": "ride_idle:1:finite",
@@ -1473,22 +1497,22 @@
     {
       "name": "ride_idle:4:shin.L:IK",
       "ok": true,
-      "error": 9.402632713317871e-06
+      "error": 2.708651684907511e-05
     },
     {
       "name": "ride_idle:4:forearm.L:IK",
       "ok": true,
-      "error": 7.313119652610251e-06
+      "error": 1.3657139822709083e-07
     },
     {
       "name": "ride_idle:4:shin.R:IK",
       "ok": true,
-      "error": 9.416260587953362e-06
+      "error": 2.708651684907511e-05
     },
     {
       "name": "ride_idle:4:forearm.R:IK",
       "ok": true,
-      "error": 6.8001927063597545e-06
+      "error": 1.4975481660844222e-07
     },
     {
       "name": "ride_idle:4:finite",
@@ -1497,22 +1521,22 @@
     {
       "name": "ride_idle:7:shin.L:IK",
       "ok": true,
-      "error": 1.0035387222103726e-05
+      "error": 3.1925452700134856e-05
     },
     {
       "name": "ride_idle:7:forearm.L:IK",
       "ok": true,
-      "error": 8.025461635407272e-06
+      "error": 1.7881393432617188e-07
     },
     {
       "name": "ride_idle:7:shin.R:IK",
       "ok": true,
-      "error": 1.0035387222103726e-05
+      "error": 3.1925452700134856e-05
     },
     {
       "name": "ride_idle:7:forearm.R:IK",
       "ok": true,
-      "error": 3.1504737546021424e-05
+      "error": 1.4975481660844222e-07
     },
     {
       "name": "ride_idle:7:finite",
@@ -1521,22 +1545,22 @@
     {
       "name": "ride_idle:10:shin.L:IK",
       "ok": true,
-      "error": 1.1210824031180132e-05
+      "error": 9.274282095493147e-06
     },
     {
       "name": "ride_idle:10:forearm.L:IK",
       "ok": true,
-      "error": 9.188641289935831e-06
+      "error": 1.4975481660844222e-07
     },
     {
       "name": "ride_idle:10:shin.R:IK",
       "ok": true,
-      "error": 1.1210824031180132e-05
+      "error": 9.276930298090226e-06
     },
     {
       "name": "ride_idle:10:forearm.R:IK",
       "ok": true,
-      "error": 2.9158419970818864e-05
+      "error": 0.00017837881753139307
     },
     {
       "name": "ride_idle:10:finite",
@@ -1545,22 +1569,22 @@
     {
       "name": "ride_idle:13:shin.L:IK",
       "ok": true,
-      "error": 1.2453841035605616e-05
+      "error": 1.0786323152665132e-05
     },
     {
       "name": "ride_idle:13:forearm.L:IK",
       "ok": true,
-      "error": 9.638117251826614e-06
+      "error": 8.024520884654677e-08
     },
     {
       "name": "ride_idle:13:shin.R:IK",
       "ok": true,
-      "error": 1.245872533542791e-05
+      "error": 1.0786323152665132e-05
     },
     {
       "name": "ride_idle:13:forearm.R:IK",
       "ok": true,
-      "error": 2.686110695253193e-05
+      "error": 0.0010471270098777246
     },
     {
       "name": "ride_idle:13:finite",
@@ -1569,22 +1593,22 @@
     {
       "name": "ride_idle:16:shin.L:IK",
       "ok": true,
-      "error": 1.36593264158871e-05
+      "error": 1.246386604231107e-05
     },
     {
       "name": "ride_idle:16:forearm.L:IK",
       "ok": true,
-      "error": 1.0363808494822778e-05
+      "error": 1.3328003749250113e-07
     },
     {
       "name": "ride_idle:16:shin.R:IK",
       "ok": true,
-      "error": 1.3653895866735663e-05
+      "error": 1.246386604231107e-05
     },
     {
       "name": "ride_idle:16:forearm.R:IK",
       "ok": true,
-      "error": 2.7019335101394628e-05
+      "error": 0.001468671664729649
     },
     {
       "name": "ride_idle:16:finite",
@@ -1593,22 +1617,22 @@
     {
       "name": "ride_idle:19:shin.L:IK",
       "ok": true,
-      "error": 1.5038047818720774e-05
+      "error": 1.3861334150088524e-05
     },
     {
       "name": "ride_idle:19:forearm.L:IK",
       "ok": true,
-      "error": 1.0474700221047644e-05
+      "error": 1.6049041769309353e-07
     },
     {
       "name": "ride_idle:19:shin.R:IK",
       "ok": true,
-      "error": 1.5017443184343889e-05
+      "error": 1.386089962811192e-05
     },
     {
       "name": "ride_idle:19:forearm.R:IK",
       "ok": true,
-      "error": 2.9316765087915516e-05
+      "error": 0.0014461483262916746
     },
     {
       "name": "ride_idle:19:finite",
@@ -1617,22 +1641,22 @@
     {
       "name": "ride_idle:22:shin.L:IK",
       "ok": true,
-      "error": 1.617723343429483e-05
+      "error": 1.527807453369966e-05
     },
     {
       "name": "ride_idle:22:forearm.L:IK",
       "ok": true,
-      "error": 1.0470610823369654e-05
+      "error": 1.341104507446289e-07
     },
     {
       "name": "ride_idle:22:shin.R:IK",
       "ok": true,
-      "error": 1.617723343429483e-05
+      "error": 1.527807453369966e-05
     },
     {
       "name": "ride_idle:22:forearm.R:IK",
       "ok": true,
-      "error": 3.325614701870997e-05
+      "error": 0.00121795515075855
     },
     {
       "name": "ride_idle:22:finite",
@@ -1641,22 +1665,22 @@
     {
       "name": "ride_idle:25:shin.L:IK",
       "ok": true,
-      "error": 1.706531048752041e-05
+      "error": 1.6354912006583067e-05
     },
     {
       "name": "ride_idle:25:forearm.L:IK",
       "ok": true,
-      "error": 1.0076975673500225e-05
+      "error": 2.0485709734063626e-07
     },
     {
       "name": "ride_idle:25:shin.R:IK",
       "ok": true,
-      "error": 1.706531048752041e-05
+      "error": 1.6356106706473326e-05
     },
     {
       "name": "ride_idle:25:forearm.R:IK",
       "ok": true,
-      "error": 7.388106320681628e-06
+      "error": 0.0008189742394852274
     },
     {
       "name": "ride_idle:25:finite",
@@ -1665,22 +1689,22 @@
     {
       "name": "ride_idle:28:shin.L:IK",
       "ok": true,
-      "error": 1.7696256664378175e-05
+      "error": 1.7010868271823324e-05
     },
     {
       "name": "ride_idle:28:forearm.L:IK",
       "ok": true,
-      "error": 9.72434069915477e-06
+      "error": 9.541398640621973e-08
     },
     {
       "name": "ride_idle:28:shin.R:IK",
       "ok": true,
-      "error": 1.7696256664378175e-05
+      "error": 1.703779671924196e-05
     },
     {
       "name": "ride_idle:28:forearm.R:IK",
       "ok": true,
-      "error": 8.308984221089564e-06
+      "error": 0.00028360160884569513
     },
     {
       "name": "ride_idle:28:finite",
@@ -1689,22 +1713,22 @@
     {
       "name": "ride_idle:31:shin.L:IK",
       "ok": true,
-      "error": 1.78673373548243e-05
+      "error": 1.7198201191264685e-05
     },
     {
       "name": "ride_idle:31:forearm.L:IK",
       "ok": true,
-      "error": 9.108964781484617e-06
+      "error": 8.429369702178807e-08
     },
     {
       "name": "ride_idle:31:shin.R:IK",
       "ok": true,
-      "error": 1.7816686029309996e-05
+      "error": 1.7209223585055483e-05
     },
     {
       "name": "ride_idle:31:forearm.R:IK",
       "ok": true,
-      "error": 9.108964781484617e-06
+      "error": 8.429369702178807e-08
     },
     {
       "name": "ride_idle:31:finite",
@@ -1713,22 +1737,22 @@
     {
       "name": "ride_idle:34:shin.L:IK",
       "ok": true,
-      "error": 1.7696256664378175e-05
+      "error": 1.7010868271823324e-05
     },
     {
       "name": "ride_idle:34:forearm.L:IK",
       "ok": true,
-      "error": 8.235166875007919e-06
+      "error": 0.00028360160884569513
     },
     {
       "name": "ride_idle:34:shin.R:IK",
       "ok": true,
-      "error": 1.7696256664378175e-05
+      "error": 1.703779671924196e-05
     },
     {
       "name": "ride_idle:34:forearm.R:IK",
       "ok": true,
-      "error": 9.655642007764547e-06
+      "error": 1.3657139822709083e-07
     },
     {
       "name": "ride_idle:34:finite",
@@ -1737,22 +1761,22 @@
     {
       "name": "ride_idle:37:shin.L:IK",
       "ok": true,
-      "error": 1.706531048752041e-05
+      "error": 1.6354912006583067e-05
     },
     {
       "name": "ride_idle:37:forearm.L:IK",
       "ok": true,
-      "error": 7.515387020345018e-06
+      "error": 0.0008189555945310001
     },
     {
       "name": "ride_idle:37:shin.R:IK",
       "ok": true,
-      "error": 1.706531048752041e-05
+      "error": 1.6356106706473326e-05
     },
     {
       "name": "ride_idle:37:forearm.R:IK",
       "ok": true,
-      "error": 1.0203596649234685e-05
+      "error": 1.9314112360500873e-07
     },
     {
       "name": "ride_idle:37:finite",
@@ -1761,22 +1785,22 @@
     {
       "name": "ride_idle:40:shin.L:IK",
       "ok": true,
-      "error": 1.617723343429483e-05
+      "error": 1.527807453369966e-05
     },
     {
       "name": "ride_idle:40:forearm.L:IK",
       "ok": true,
-      "error": 3.315455792578163e-05
+      "error": 0.0012179887302183967
     },
     {
       "name": "ride_idle:40:shin.R:IK",
       "ok": true,
-      "error": 1.617723343429483e-05
+      "error": 1.527807453369966e-05
     },
     {
       "name": "ride_idle:40:forearm.R:IK",
       "ok": true,
-      "error": 1.039567472108394e-05
+      "error": 1.341104507446289e-07
     },
     {
       "name": "ride_idle:40:finite",
@@ -1785,22 +1809,22 @@
     {
       "name": "ride_idle:43:shin.L:IK",
       "ok": true,
-      "error": 1.5038047818720774e-05
+      "error": 1.3862215166666262e-05
     },
     {
       "name": "ride_idle:43:forearm.L:IK",
       "ok": true,
-      "error": 2.9351369117008013e-05
+      "error": 0.0014461695370515924
     },
     {
       "name": "ride_idle:43:shin.R:IK",
       "ok": true,
-      "error": 1.5017443184343889e-05
+      "error": 1.386089962811192e-05
     },
     {
       "name": "ride_idle:43:forearm.R:IK",
       "ok": true,
-      "error": 1.0480170573426184e-05
+      "error": 1.0848209096909341e-07
     },
     {
       "name": "ride_idle:43:finite",
@@ -1809,22 +1833,22 @@
     {
       "name": "ride_idle:46:shin.L:IK",
       "ok": true,
-      "error": 1.36593264158871e-05
+      "error": 1.246386604231107e-05
     },
     {
       "name": "ride_idle:46:forearm.L:IK",
       "ok": true,
-      "error": 2.7019335101394628e-05
+      "error": 0.001468671664729649
     },
     {
       "name": "ride_idle:46:shin.R:IK",
       "ok": true,
-      "error": 1.3653895866735663e-05
+      "error": 1.246386604231107e-05
     },
     {
       "name": "ride_idle:46:forearm.R:IK",
       "ok": true,
-      "error": 1.0410154269957564e-05
+      "error": 9.541398640621973e-08
     },
     {
       "name": "ride_idle:46:finite",
@@ -1833,22 +1857,22 @@
     {
       "name": "ride_idle:49:shin.L:IK",
       "ok": true,
-      "error": 1.2453841035605616e-05
+      "error": 1.0786323152665132e-05
     },
     {
       "name": "ride_idle:49:forearm.L:IK",
       "ok": true,
-      "error": 2.6901020534123883e-05
+      "error": 0.001047037415234365
     },
     {
       "name": "ride_idle:49:shin.R:IK",
       "ok": true,
-      "error": 1.245872533542791e-05
+      "error": 1.0786323152665132e-05
     },
     {
       "name": "ride_idle:49:forearm.R:IK",
       "ok": true,
-      "error": 9.6845740735728e-06
+      "error": 1.55572690202453e-07
     },
     {
       "name": "ride_idle:49:finite",
@@ -1857,22 +1881,22 @@
     {
       "name": "ride_idle:52:shin.L:IK",
       "ok": true,
-      "error": 1.1210824031180132e-05
+      "error": 9.274282095493147e-06
     },
     {
       "name": "ride_idle:52:forearm.L:IK",
       "ok": true,
-      "error": 2.9110172593986667e-05
+      "error": 0.00017837881753139307
     },
     {
       "name": "ride_idle:52:shin.R:IK",
       "ok": true,
-      "error": 1.1210824031180132e-05
+      "error": 9.276930298090226e-06
     },
     {
       "name": "ride_idle:52:forearm.R:IK",
       "ok": true,
-      "error": 9.080482025525173e-06
+      "error": 1.812804499357408e-07
     },
     {
       "name": "ride_idle:52:finite",
@@ -1881,22 +1905,22 @@
     {
       "name": "ride_idle:55:shin.L:IK",
       "ok": true,
-      "error": 1.0035387222103726e-05
+      "error": 3.192589782320896e-05
     },
     {
       "name": "ride_idle:55:forearm.L:IK",
       "ok": true,
-      "error": 3.150228123095309e-05
+      "error": 2.2549548671277697e-07
     },
     {
       "name": "ride_idle:55:shin.R:IK",
       "ok": true,
-      "error": 1.0035387222103726e-05
+      "error": 3.1916674161411575e-05
     },
     {
       "name": "ride_idle:55:forearm.R:IK",
       "ok": true,
-      "error": 8.046906436599649e-06
+      "error": 2.1073424255447017e-07
     },
     {
       "name": "ride_idle:55:finite",
@@ -1905,22 +1929,22 @@
     {
       "name": "ride_idle:58:shin.L:IK",
       "ok": true,
-      "error": 9.402632713317871e-06
+      "error": 2.708651684907511e-05
     },
     {
       "name": "ride_idle:58:forearm.L:IK",
       "ok": true,
-      "error": 6.849689559773059e-06
+      "error": 1.5840151626966372e-07
     },
     {
       "name": "ride_idle:58:shin.R:IK",
       "ok": true,
-      "error": 9.416260587953362e-06
+      "error": 2.708651684907511e-05
     },
     {
       "name": "ride_idle:58:forearm.R:IK",
       "ok": true,
-      "error": 7.309729652685163e-06
+      "error": 1.3657139822709083e-07
     },
     {
       "name": "ride_idle:58:finite",
@@ -1929,22 +1953,22 @@
     {
       "name": "ride_idle:61:shin.L:IK",
       "ok": true,
-      "error": 3.5088096210625404e-05
+      "error": 2.516105523569549e-05
     },
     {
       "name": "ride_idle:61:forearm.L:IK",
       "ok": true,
-      "error": 7.075164858779192e-06
+      "error": 1.4600096599955427e-07
     },
     {
       "name": "ride_idle:61:shin.R:IK",
       "ok": true,
-      "error": 3.508000783460455e-05
+      "error": 2.515256973570692e-05
     },
     {
       "name": "ride_idle:61:forearm.R:IK",
       "ok": true,
-      "error": 7.074023185846629e-06
+      "error": 1.341104507446289e-07
     },
     {
       "name": "ride_idle:61:finite",
@@ -2102,7 +2126,7 @@
     {
       "name": "rig_check:19:forearm.L:IK",
       "ok": true,
-      "error": 1.4791654378116749e-06
+      "error": 1.3999361393362048e-06
     },
     {
       "name": "rig_check:19:shin.R:IK",
@@ -2112,7 +2136,7 @@
     {
       "name": "rig_check:19:forearm.R:IK",
       "ok": true,
-      "error": 1.0665911435666235e-05
+      "error": 1.0098546734553857e-05
     },
     {
       "name": "rig_check:19:finite",
@@ -2126,7 +2150,7 @@
     {
       "name": "rig_check:22:forearm.L:IK",
       "ok": true,
-      "error": 7.948037589437584e-06
+      "error": 7.900177032996722e-06
     },
     {
       "name": "rig_check:22:shin.R:IK",
@@ -2136,7 +2160,7 @@
     {
       "name": "rig_check:22:forearm.R:IK",
       "ok": true,
-      "error": 9.554061680459584e-06
+      "error": 9.254089000408742e-06
     },
     {
       "name": "rig_check:22:finite",
@@ -2150,7 +2174,7 @@
     {
       "name": "rig_check:25:forearm.L:IK",
       "ok": true,
-      "error": 1.1617564921369536e-05
+      "error": 1.1811499204284648e-05
     },
     {
       "name": "rig_check:25:shin.R:IK",
@@ -2160,7 +2184,7 @@
     {
       "name": "rig_check:25:forearm.R:IK",
       "ok": true,
-      "error": 6.21062093600447e-06
+      "error": 9.973544887624798e-06
     },
     {
       "name": "rig_check:25:finite",
@@ -2174,7 +2198,7 @@
     {
       "name": "rig_check:28:forearm.L:IK",
       "ok": true,
-      "error": 1.0167135554166624e-05
+      "error": 1.0763920599459178e-05
     },
     {
       "name": "rig_check:28:shin.R:IK",
@@ -2184,7 +2208,7 @@
     {
       "name": "rig_check:28:forearm.R:IK",
       "ok": true,
-      "error": 4.8639910120756014e-06
+      "error": 1.643975631472044e-05
     },
     {
       "name": "rig_check:28:finite",
@@ -2217,22 +2241,22 @@
     {
       "name": "rig_check:34:shin.L:IK",
       "ok": true,
-      "error": 4.530173573958951e-06
+      "error": 3.849232702427523e-06
     },
     {
       "name": "rig_check:34:forearm.L:IK",
       "ok": true,
-      "error": 1.1849196877037731e-05
+      "error": 9.146655132333269e-06
     },
     {
       "name": "rig_check:34:shin.R:IK",
       "ok": true,
-      "error": 5.7944829851311847e-05
+      "error": 5.6851101489359134e-05
     },
     {
       "name": "rig_check:34:forearm.R:IK",
       "ok": true,
-      "error": 0.005799047848928041
+      "error": 0.024853592234580356
     },
     {
       "name": "rig_check:34:finite",
@@ -2241,22 +2265,22 @@
     {
       "name": "rig_check:37:shin.L:IK",
       "ok": true,
-      "error": 2.048926461757815e-05
+      "error": 2.0316863078519287e-05
     },
     {
       "name": "rig_check:37:forearm.L:IK",
       "ok": true,
-      "error": 9.736936852885259e-06
+      "error": 4.7487969129866045e-06
     },
     {
       "name": "rig_check:37:shin.R:IK",
       "ok": true,
-      "error": 5.273842254844683e-05
+      "error": 4.9718959186124015e-05
     },
     {
       "name": "rig_check:37:forearm.R:IK",
       "ok": true,
-      "error": 1.4061014346414625e-05
+      "error": 0.030264537750121133
     },
     {
       "name": "rig_check:37:finite",
@@ -2265,22 +2289,22 @@
     {
       "name": "rig_check:40:shin.L:IK",
       "ok": true,
-      "error": 3.164362889648137e-05
+      "error": 3.125212263488449e-05
     },
     {
       "name": "rig_check:40:forearm.L:IK",
       "ok": true,
-      "error": 1.2499480921974114e-05
+      "error": 2.8289060794065e-06
     },
     {
       "name": "rig_check:40:shin.R:IK",
       "ok": true,
-      "error": 4.097140473385917e-05
+      "error": 3.5625451306055175e-05
     },
     {
       "name": "rig_check:40:forearm.R:IK",
       "ok": true,
-      "error": 1.2067548785649575e-05
+      "error": 0.02488574577554826
     },
     {
       "name": "rig_check:40:finite",
@@ -2289,22 +2313,22 @@
     {
       "name": "rig_check:43:shin.L:IK",
       "ok": true,
-      "error": 3.9124561588301355e-05
+      "error": 3.69178245870663e-05
     },
     {
       "name": "rig_check:43:forearm.L:IK",
       "ok": true,
-      "error": 2.4126857501313953e-05
+      "error": 0.0061703505798582255
     },
     {
       "name": "rig_check:43:shin.R:IK",
       "ok": true,
-      "error": 2.475942894636085e-05
+      "error": 1.7733599541830046e-05
     },
     {
       "name": "rig_check:43:forearm.R:IK",
       "ok": true,
-      "error": 1.425015426692984e-05
+      "error": 0.018147981982120483
     },
     {
       "name": "rig_check:43:finite",
@@ -2313,22 +2337,22 @@
     {
       "name": "rig_check:46:shin.L:IK",
       "ok": true,
-      "error": 1.6330639343567594e-05
+      "error": 4.587482869367018e-05
     },
     {
       "name": "rig_check:46:forearm.L:IK",
       "ok": true,
-      "error": 2.695837102416366e-05
+      "error": 0.01528881040308419
     },
     {
       "name": "rig_check:46:shin.R:IK",
       "ok": true,
-      "error": 1.6323649087009157e-05
+      "error": 4.587662922294585e-05
     },
     {
       "name": "rig_check:46:forearm.R:IK",
       "ok": true,
-      "error": 2.7048361883653248e-05
+      "error": 0.01528881040308419
     },
     {
       "name": "rig_check:46:finite",
@@ -2337,22 +2361,22 @@
     {
       "name": "rig_check:49:shin.L:IK",
       "ok": true,
-      "error": 3.9124561588301355e-05
+      "error": 3.6942142480514515e-05
     },
     {
       "name": "rig_check:49:forearm.L:IK",
       "ok": true,
-      "error": 1.839219999635091e-05
+      "error": 0.0120880142738348
     },
     {
       "name": "rig_check:49:shin.R:IK",
       "ok": true,
-      "error": 3.9133243872286595e-05
+      "error": 3.6942142480514515e-05
     },
     {
       "name": "rig_check:49:forearm.R:IK",
       "ok": true,
-      "error": 1.839122056766819e-05
+      "error": 0.0120880142738348
     },
     {
       "name": "rig_check:49:finite",
@@ -2361,22 +2385,22 @@
     {
       "name": "rig_check:52:shin.L:IK",
       "ok": true,
-      "error": 3.16406079166218e-05
+      "error": 3.128379463974584e-05
     },
     {
       "name": "rig_check:52:forearm.L:IK",
       "ok": true,
-      "error": 1.1593354791358795e-05
+      "error": 0.0058454927916045665
     },
     {
       "name": "rig_check:52:shin.R:IK",
       "ok": true,
-      "error": 3.164362889648137e-05
+      "error": 3.128838299970068e-05
     },
     {
       "name": "rig_check:52:forearm.R:IK",
       "ok": true,
-      "error": 1.1593354791358795e-05
+      "error": 0.0058454927916045665
     },
     {
       "name": "rig_check:52:finite",
@@ -2385,22 +2409,22 @@
     {
       "name": "rig_check:55:shin.L:IK",
       "ok": true,
-      "error": 2.048926461757815e-05
+      "error": 2.0320037727985685e-05
     },
     {
       "name": "rig_check:55:forearm.L:IK",
       "ok": true,
-      "error": 4.647623265992242e-06
+      "error": 0.0009161353333472794
     },
     {
       "name": "rig_check:55:shin.R:IK",
       "ok": true,
-      "error": 2.049109059081531e-05
+      "error": 2.0322807627920378e-05
     },
     {
       "name": "rig_check:55:forearm.R:IK",
       "ok": true,
-      "error": 4.647181317465596e-06
+      "error": 0.0009161353333472794
     },
     {
       "name": "rig_check:55:finite",
@@ -2409,22 +2433,22 @@
     {
       "name": "rig_check:58:shin.L:IK",
       "ok": true,
-      "error": 4.517411804964763e-06
+      "error": 3.835276372474179e-06
     },
     {
       "name": "rig_check:58:forearm.L:IK",
       "ok": true,
-      "error": 7.601874519519523e-07
+      "error": 8.462232866585662e-08
     },
     {
       "name": "rig_check:58:shin.R:IK",
       "ok": true,
-      "error": 4.522968826722034e-06
+      "error": 3.856213518852474e-06
     },
     {
       "name": "rig_check:58:forearm.R:IK",
       "ok": true,
-      "error": 7.601874519519523e-07
+      "error": 8.462232866585662e-08
     },
     {
       "name": "rig_check:58:finite",

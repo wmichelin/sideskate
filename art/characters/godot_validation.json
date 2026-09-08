@@ -24,6 +24,7 @@
 			"details": {
 				"bones": [
 					"root",
+					"board_pose",
 					"pelvis",
 					"spine",
 					"chest",
