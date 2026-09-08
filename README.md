@@ -63,7 +63,7 @@ For focused iteration:
 
 Use an existing playable `.ssk` path for `--level`; debug map basenames also work.
 Gameplay scenarios are `spawn`, `gameplay` (menu/movement/ollie/pause), `air-out`,
-`fly-out`, `spine`, `acid`, `ramp-peak`, `grind`, `fall`, `lava`, and `all`.
+`fly-out`, `spine`, `acid`, `ramp-peak`, `grind`, `fall`, `lava`, `animation`, and `all`.
 Use `--max-fps 30`, `60`, or `120` to compare native gameplay hashes at equal
 physics checkpoints; physics remains at 60 Hz. Only capture pose `spawn` is
 supported. Legacy `pair` performs real Escape → pause
@@ -77,6 +77,21 @@ Test suites also run from `tests/TestRunner.tscn` with F6 after import.
 `python3 tools/verification/runner_contract.py` verifies failure handling by
 injecting broken scripts into a temporary checkout. CI runs these checks and
 uploads evidence; scheduled/manual runs also include the longer memory soak.
+
+## Record gameplay
+
+With the engine/display setup above and `ffmpeg` installed:
+
+```bash
+python3 tools/record_gameplay.py
+python3 tools/record_gameplay.py --scenario animation
+```
+
+This drives real game inputs with the normal follow camera, checks the gameplay
+report and replays the recorded sessions, then encodes a 720p, 60 FPS MP4 at
+`artifacts/checks/video/sideskate-gameplay.mp4`. Use `--out DIR` to choose another
+destination. Video capture uses the Forward+ renderer and requires a compatible
+GPU or software Vulkan driver.
 
 ## Local Web checks
 

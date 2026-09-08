@@ -6,6 +6,16 @@
 - [docs/gameplay.md](docs/gameplay.md) — presentation, debug, **key scripts map**
 - [docs/level_format.md](docs/level_format.md) — `.ssk` IDL + derived topology
 
+## Commit discipline
+
+- Commit each completed, validated milestone before starting the next substantial
+  change. Keep commits focused; do not accumulate large batches of finished work
+  in the working tree.
+- Treat committing completed work as part of delivery. When a push is requested,
+  push the commits and verify that the remote branch matches the local commit.
+- Preserve unrelated user changes and keep generated builds, recordings and
+  temporary verification artifacts out of commits.
+
 ## Player / sim layout
 
 - **`scripts/sim/`** — sole gameplay authority (`PlayerSim`, `IdlCompiler`, solvers, park model).
