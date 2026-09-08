@@ -527,6 +527,30 @@ func _fall_story() -> void:
 	_checkpoint("fall_recovery")
 	_check("fall:checkpoint_recovery", reached and sim.state.alive and sim.state.is_grounded() and sim.state.position.distance_to(sim.checkpoint_position) < 1.0, _snapshot())
 	await _capture("fall")
+	await _pipe_fall_story()
+
+
+func _pipe_fall_story() -> void:
+	if not await _load_level(FIXTURES + "pipe.ssk"):
+		return
+	var sim := _sim()
+	_key(KEY_A, true)
+	var reached := await _until(func(): return sim.state.is_grounded() and sim.model.pipes.has(sim.state.surface_id) and sim.state.u > 0.3, 180)
+	_key(KEY_A, false)
+	if not _check("fall:climbed_left_pipe", reached, _snapshot()):
+		return
+	_key(KEY_Y, true)
+	await _ticks(1)
+	_key(KEY_Y, false)
+	var presenter := get_tree().current_scene.get_node("World3D/PlayerVisual") as LogicalPosePresenter3D
+	var rider_velocity := presenter._rider_fall.linear_velocity
+	var board_velocity := presenter._board_fall.linear_velocity
+	# Logical left is positive world X. Climbing must also carry upward speed.
+	_check("fall:left_pipe_world_launch", sim.state.falling
+		and rider_velocity.x > 0.5 and rider_velocity.y > 0.5
+		and board_velocity.x > 0.5 and board_velocity.y > 0.5,
+		{"rider_velocity": _vector(rider_velocity), "board_velocity": _vector(board_velocity), "state": _snapshot()})
+	await _capture("fall-left-pipe")
 
 
 func _lava_story() -> void:

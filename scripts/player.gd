@@ -581,24 +581,66 @@ func fall_impact_plane_world() -> Dictionary:
 func motion_world(kind: int) -> Vector3:
 	if _sim == null or _sim.state == null:
 		return Vector3.ZERO
-	var st: SimState = _sim.state
-	match kind:
-		MotionVectors.Kind.INPUT:
-			return _WorldSpace.logical_velocity_to_world(
-				_last_wish.x * max_speed_x, _last_wish.y * max_speed_x, 0.0
-			)
-		MotionVectors.Kind.MOMENTUM:
-			if st.is_airborne():
-				return _WorldSpace.logical_velocity_to_world(st.velocity.x, st.velocity.y, st.velocity.z)
-			return _WorldSpace.logical_velocity_to_world(
-				st.tangent_velocity.x, st.tangent_velocity.y, 0.0
-			)
-		_:
-			if st.is_airborne():
-				return _WorldSpace.logical_velocity_to_world(st.velocity.x, st.velocity.y, st.velocity.z)
-			return _WorldSpace.logical_velocity_to_world(
-				st.tangent_velocity.x, st.tangent_velocity.y, 0.0
-			)
+	var v: Vector3
+	if kind == MotionVectors.Kind.INPUT:
+		v = Vector3(_last_wish.x * max_speed_x, _last_wish.y * max_speed_z, 0.0)
+	else:
+		v = _logical_motion_velocity()
+	return _WorldSpace.logical_velocity_to_world(v.x, v.y, v.z)
+
+
+## Analytical rates in logical X/depth/height, matching the existing solver law.
+## Read-only: presentation never changes the integrated surface/air velocity.
+func _logical_motion_velocity() -> Vector3:
+	var st := _sim.state
+	if st.is_airborne():
+		return st.velocity
+	if st.is_grinding():
+		return Vector3(st.grind_along, 0.0, 0.0)
+	var along := st.tangent_velocity.x
+	var depth_speed := st.tangent_velocity.y
+	if _sim.model.pipes.has(st.surface_id):
+		var pipe: PipeSurface = _sim.model.pipes[st.surface_id]
+		var sample := pipe.sample_at_z(st.position.y)
+		var radius := float(sample.radius)
+		if radius <= 0.001:
+			return Vector3.ZERO
+		var theta := st.u * PI * 0.5
+		# GroundSolver advances theta by along / radius, even for ellipses.
+		# Normalizing the geometric tangent would change the displayed speed.
+		var derivative := Vector3(pipe.outward_sign() * cos(theta), 0.0,
+			float(sample.get("rise", radius)) / radius * sin(theta))
+		return derivative * along + _surface_depth_tangent(pipe, st) * depth_speed
+	if _sim.model.ramps.has(st.surface_id):
+		var ramp: RampSurface = _sim.model.ramps[st.surface_id]
+		var projected := ramp.project(st.position.x, st.position.y, st.position.z)
+		var tangent: Vector3 = projected.get("tangent_along", Vector3.ZERO)
+		return tangent * along + _surface_depth_tangent(ramp, st) * depth_speed
+	if _sim.model.walls.has(st.surface_id):
+		var wall: WallSurface = _sim.model.walls[st.surface_id]
+		return Vector3(0.0, 0.0, along) + _surface_depth_tangent(wall, st) * depth_speed
+	return Vector3(along, depth_speed, 0.0)
+
+
+## Lofted profiles vary linearly between authored depth samples. Sample existing
+## surface position functions at those endpoints to include that lateral drift.
+func _surface_depth_tangent(surface: RefCounted, st: SimState) -> Vector3:
+	var samples: Array = surface.samples
+	for i in range(samples.size() - 1):
+		var za := float(samples[i].z)
+		var zb := float(samples[i + 1].z)
+		if st.position.y < za or st.position.y > zb or zb <= za:
+			continue
+		if surface is WallSurface:
+			# Wall motion advances absolute height, independently of its profile.
+			return Vector3((surface.position_at(zb, st.u).x - surface.position_at(za, st.u).x)
+				/ (zb - za), 1.0, 0.0)
+		var theta := st.u * PI * 0.5
+		return Vector3(
+			(surface.x_at_theta(zb, theta) - surface.x_at_theta(za, theta)) / (zb - za),
+			1.0,
+			(surface.height_at_theta(zb, theta) - surface.height_at_theta(za, theta)) / (zb - za))
+	return Vector3(0.0, 1.0, 0.0)
 
 
 func motion_speed(kind: int) -> float:
