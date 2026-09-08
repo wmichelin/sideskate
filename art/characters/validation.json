@@ -1,0 +1,2459 @@
+{
+  "completed": true,
+  "blender": "5.0.1",
+  "blend": "/home/wmichelin/code/sideskate/art/characters/ssk_skater.blend",
+  "glb": "/home/wmichelin/code/sideskate/assets/characters/ssk_skater.glb",
+  "vertices": 3738,
+  "triangles": 7180,
+  "materials": 10,
+  "deform_bones": 42,
+  "control_bones": 8,
+  "height_m": 1.7380000352859497,
+  "actions": [
+    "airborne",
+    "crouch_preview",
+    "fall",
+    "grind",
+    "landing",
+    "ollie_charge",
+    "ollie_pop",
+    "ride_idle",
+    "rig_check"
+  ],
+  "checks": [
+    {
+      "name": "all_vertices_weighted",
+      "ok": true,
+      "vertices": 3738
+    },
+    {
+      "name": "normalized_weights",
+      "ok": true
+    },
+    {
+      "name": "only_deform_bone_weights",
+      "ok": true
+    },
+    {
+      "name": "maximum_four_influences",
+      "ok": true
+    },
+    {
+      "name": "humanoid_bones",
+      "ok": true
+    },
+    {
+      "name": "feet_at_ground",
+      "ok": true
+    },
+    {
+      "name": "identity_mesh_transform",
+      "ok": true
+    },
+    {
+      "name": "mesh_deforms_with_controls",
+      "ok": true
+    },
+    {
+      "name": "airborne:1:shin.L:IK",
+      "ok": true,
+      "error": 2.565635961724892e-05
+    },
+    {
+      "name": "airborne:1:forearm.L:IK",
+      "ok": true,
+      "error": 2.2964217177233248e-05
+    },
+    {
+      "name": "airborne:1:shin.R:IK",
+      "ok": true,
+      "error": 2.5664493617970727e-05
+    },
+    {
+      "name": "airborne:1:forearm.R:IK",
+      "ok": true,
+      "error": 2.2964217177233248e-05
+    },
+    {
+      "name": "airborne:1:finite",
+      "ok": true
+    },
+    {
+      "name": "airborne:4:shin.L:IK",
+      "ok": true,
+      "error": 2.565635961724892e-05
+    },
+    {
+      "name": "airborne:4:forearm.L:IK",
+      "ok": true,
+      "error": 2.2964217177233248e-05
+    },
+    {
+      "name": "airborne:4:shin.R:IK",
+      "ok": true,
+      "error": 2.5664493617970727e-05
+    },
+    {
+      "name": "airborne:4:forearm.R:IK",
+      "ok": true,
+      "error": 2.2964217177233248e-05
+    },
+    {
+      "name": "airborne:4:finite",
+      "ok": true
+    },
+    {
+      "name": "airborne:7:shin.L:IK",
+      "ok": true,
+      "error": 2.565635961724892e-05
+    },
+    {
+      "name": "airborne:7:forearm.L:IK",
+      "ok": true,
+      "error": 2.2964217177233248e-05
+    },
+    {
+      "name": "airborne:7:shin.R:IK",
+      "ok": true,
+      "error": 2.5664493617970727e-05
+    },
+    {
+      "name": "airborne:7:forearm.R:IK",
+      "ok": true,
+      "error": 2.2964217177233248e-05
+    },
+    {
+      "name": "airborne:7:finite",
+      "ok": true
+    },
+    {
+      "name": "airborne:10:shin.L:IK",
+      "ok": true,
+      "error": 2.565635961724892e-05
+    },
+    {
+      "name": "airborne:10:forearm.L:IK",
+      "ok": true,
+      "error": 2.2964217177233248e-05
+    },
+    {
+      "name": "airborne:10:shin.R:IK",
+      "ok": true,
+      "error": 2.5664493617970727e-05
+    },
+    {
+      "name": "airborne:10:forearm.R:IK",
+      "ok": true,
+      "error": 2.2964217177233248e-05
+    },
+    {
+      "name": "airborne:10:finite",
+      "ok": true
+    },
+    {
+      "name": "airborne:13:shin.L:IK",
+      "ok": true,
+      "error": 2.565635961724892e-05
+    },
+    {
+      "name": "airborne:13:forearm.L:IK",
+      "ok": true,
+      "error": 2.2964217177233248e-05
+    },
+    {
+      "name": "airborne:13:shin.R:IK",
+      "ok": true,
+      "error": 2.5664493617970727e-05
+    },
+    {
+      "name": "airborne:13:forearm.R:IK",
+      "ok": true,
+      "error": 2.2964217177233248e-05
+    },
+    {
+      "name": "airborne:13:finite",
+      "ok": true
+    },
+    {
+      "name": "airborne:16:shin.L:IK",
+      "ok": true,
+      "error": 2.565635961724892e-05
+    },
+    {
+      "name": "airborne:16:forearm.L:IK",
+      "ok": true,
+      "error": 2.2964217177233248e-05
+    },
+    {
+      "name": "airborne:16:shin.R:IK",
+      "ok": true,
+      "error": 2.5664493617970727e-05
+    },
+    {
+      "name": "airborne:16:forearm.R:IK",
+      "ok": true,
+      "error": 2.2964217177233248e-05
+    },
+    {
+      "name": "airborne:16:finite",
+      "ok": true
+    },
+    {
+      "name": "airborne:19:shin.L:IK",
+      "ok": true,
+      "error": 2.565635961724892e-05
+    },
+    {
+      "name": "airborne:19:forearm.L:IK",
+      "ok": true,
+      "error": 2.2964217177233248e-05
+    },
+    {
+      "name": "airborne:19:shin.R:IK",
+      "ok": true,
+      "error": 2.5664493617970727e-05
+    },
+    {
+      "name": "airborne:19:forearm.R:IK",
+      "ok": true,
+      "error": 2.2964217177233248e-05
+    },
+    {
+      "name": "airborne:19:finite",
+      "ok": true
+    },
+    {
+      "name": "airborne:22:shin.L:IK",
+      "ok": true,
+      "error": 2.565635961724892e-05
+    },
+    {
+      "name": "airborne:22:forearm.L:IK",
+      "ok": true,
+      "error": 2.2964217177233248e-05
+    },
+    {
+      "name": "airborne:22:shin.R:IK",
+      "ok": true,
+      "error": 2.5664493617970727e-05
+    },
+    {
+      "name": "airborne:22:forearm.R:IK",
+      "ok": true,
+      "error": 2.2964217177233248e-05
+    },
+    {
+      "name": "airborne:22:finite",
+      "ok": true
+    },
+    {
+      "name": "airborne:25:shin.L:IK",
+      "ok": true,
+      "error": 2.565635961724892e-05
+    },
+    {
+      "name": "airborne:25:forearm.L:IK",
+      "ok": true,
+      "error": 2.2964217177233248e-05
+    },
+    {
+      "name": "airborne:25:shin.R:IK",
+      "ok": true,
+      "error": 2.5664493617970727e-05
+    },
+    {
+      "name": "airborne:25:forearm.R:IK",
+      "ok": true,
+      "error": 2.2964217177233248e-05
+    },
+    {
+      "name": "airborne:25:finite",
+      "ok": true
+    },
+    {
+      "name": "airborne:28:shin.L:IK",
+      "ok": true,
+      "error": 2.565635961724892e-05
+    },
+    {
+      "name": "airborne:28:forearm.L:IK",
+      "ok": true,
+      "error": 2.2964217177233248e-05
+    },
+    {
+      "name": "airborne:28:shin.R:IK",
+      "ok": true,
+      "error": 2.5664493617970727e-05
+    },
+    {
+      "name": "airborne:28:forearm.R:IK",
+      "ok": true,
+      "error": 2.2964217177233248e-05
+    },
+    {
+      "name": "airborne:28:finite",
+      "ok": true
+    },
+    {
+      "name": "airborne:31:shin.L:IK",
+      "ok": true,
+      "error": 2.565635961724892e-05
+    },
+    {
+      "name": "airborne:31:forearm.L:IK",
+      "ok": true,
+      "error": 2.2964217177233248e-05
+    },
+    {
+      "name": "airborne:31:shin.R:IK",
+      "ok": true,
+      "error": 2.5664493617970727e-05
+    },
+    {
+      "name": "airborne:31:forearm.R:IK",
+      "ok": true,
+      "error": 2.2964217177233248e-05
+    },
+    {
+      "name": "airborne:31:finite",
+      "ok": true
+    },
+    {
+      "name": "crouch_preview:1:shin.L:IK",
+      "ok": true,
+      "error": 3.5088096210625404e-05
+    },
+    {
+      "name": "crouch_preview:1:forearm.L:IK",
+      "ok": true,
+      "error": 7.075164858779192e-06
+    },
+    {
+      "name": "crouch_preview:1:shin.R:IK",
+      "ok": true,
+      "error": 3.508000783460455e-05
+    },
+    {
+      "name": "crouch_preview:1:forearm.R:IK",
+      "ok": true,
+      "error": 7.074023185846629e-06
+    },
+    {
+      "name": "crouch_preview:1:finite",
+      "ok": true
+    },
+    {
+      "name": "crouch_preview:4:shin.L:IK",
+      "ok": true,
+      "error": 3.2445371745053596e-05
+    },
+    {
+      "name": "crouch_preview:4:forearm.L:IK",
+      "ok": true,
+      "error": 1.0511269494527658e-05
+    },
+    {
+      "name": "crouch_preview:4:shin.R:IK",
+      "ok": true,
+      "error": 3.24374184548166e-05
+    },
+    {
+      "name": "crouch_preview:4:forearm.R:IK",
+      "ok": true,
+      "error": 1.0513550685722284e-05
+    },
+    {
+      "name": "crouch_preview:4:finite",
+      "ok": true
+    },
+    {
+      "name": "crouch_preview:7:shin.L:IK",
+      "ok": true,
+      "error": 2.4232513722118045e-05
+    },
+    {
+      "name": "crouch_preview:7:forearm.L:IK",
+      "ok": true,
+      "error": 1.793805844637777e-05
+    },
+    {
+      "name": "crouch_preview:7:shin.R:IK",
+      "ok": true,
+      "error": 2.4232513722118045e-05
+    },
+    {
+      "name": "crouch_preview:7:forearm.R:IK",
+      "ok": true,
+      "error": 1.793577448471204e-05
+    },
+    {
+      "name": "crouch_preview:7:finite",
+      "ok": true
+    },
+    {
+      "name": "crouch_preview:10:shin.L:IK",
+      "ok": true,
+      "error": 3.8478757021533086e-05
+    },
+    {
+      "name": "crouch_preview:10:forearm.L:IK",
+      "ok": true,
+      "error": 2.513180675115186e-05
+    },
+    {
+      "name": "crouch_preview:10:shin.R:IK",
+      "ok": true,
+      "error": 3.853922266238999e-05
+    },
+    {
+      "name": "crouch_preview:10:forearm.R:IK",
+      "ok": true,
+      "error": 2.51130160856298e-05
+    },
+    {
+      "name": "crouch_preview:10:finite",
+      "ok": true
+    },
+    {
+      "name": "crouch_preview:13:shin.L:IK",
+      "ok": true,
+      "error": 3.964308239859876e-05
+    },
+    {
+      "name": "crouch_preview:13:forearm.L:IK",
+      "ok": true,
+      "error": 3.492333747660516e-05
+    },
+    {
+      "name": "crouch_preview:13:shin.R:IK",
+      "ok": true,
+      "error": 3.964308239859876e-05
+    },
+    {
+      "name": "crouch_preview:13:forearm.R:IK",
+      "ok": true,
+      "error": 3.490527671656581e-05
+    },
+    {
+      "name": "crouch_preview:13:finite",
+      "ok": true
+    },
+    {
+      "name": "crouch_preview:16:shin.L:IK",
+      "ok": true,
+      "error": 5.2965772391030135e-05
+    },
+    {
+      "name": "crouch_preview:16:forearm.L:IK",
+      "ok": true,
+      "error": 1.0540978632342932e-05
+    },
+    {
+      "name": "crouch_preview:16:shin.R:IK",
+      "ok": true,
+      "error": 5.2965772391030135e-05
+    },
+    {
+      "name": "crouch_preview:16:forearm.R:IK",
+      "ok": true,
+      "error": 1.0540978632342932e-05
+    },
+    {
+      "name": "crouch_preview:16:finite",
+      "ok": true
+    },
+    {
+      "name": "crouch_preview:19:shin.L:IK",
+      "ok": true,
+      "error": 3.962814707034169e-05
+    },
+    {
+      "name": "crouch_preview:19:forearm.L:IK",
+      "ok": true,
+      "error": 3.492223195177381e-05
+    },
+    {
+      "name": "crouch_preview:19:shin.R:IK",
+      "ok": true,
+      "error": 3.967378970218895e-05
+    },
+    {
+      "name": "crouch_preview:19:forearm.R:IK",
+      "ok": true,
+      "error": 3.490416902930603e-05
+    },
+    {
+      "name": "crouch_preview:19:finite",
+      "ok": true
+    },
+    {
+      "name": "crouch_preview:22:shin.L:IK",
+      "ok": true,
+      "error": 3.8478757021533086e-05
+    },
+    {
+      "name": "crouch_preview:22:forearm.L:IK",
+      "ok": true,
+      "error": 2.512958018145866e-05
+    },
+    {
+      "name": "crouch_preview:22:shin.R:IK",
+      "ok": true,
+      "error": 3.853922266238999e-05
+    },
+    {
+      "name": "crouch_preview:22:forearm.R:IK",
+      "ok": true,
+      "error": 2.512958018145866e-05
+    },
+    {
+      "name": "crouch_preview:22:finite",
+      "ok": true
+    },
+    {
+      "name": "crouch_preview:25:shin.L:IK",
+      "ok": true,
+      "error": 2.4232513722118045e-05
+    },
+    {
+      "name": "crouch_preview:25:forearm.L:IK",
+      "ok": true,
+      "error": 1.799437381020795e-05
+    },
+    {
+      "name": "crouch_preview:25:shin.R:IK",
+      "ok": true,
+      "error": 2.4232513722118045e-05
+    },
+    {
+      "name": "crouch_preview:25:forearm.R:IK",
+      "ok": true,
+      "error": 1.799437381020795e-05
+    },
+    {
+      "name": "crouch_preview:25:finite",
+      "ok": true
+    },
+    {
+      "name": "crouch_preview:28:shin.L:IK",
+      "ok": true,
+      "error": 3.2445371745053596e-05
+    },
+    {
+      "name": "crouch_preview:28:forearm.L:IK",
+      "ok": true,
+      "error": 1.051240751173433e-05
+    },
+    {
+      "name": "crouch_preview:28:shin.R:IK",
+      "ok": true,
+      "error": 3.24374184548166e-05
+    },
+    {
+      "name": "crouch_preview:28:forearm.R:IK",
+      "ok": true,
+      "error": 1.051240751173433e-05
+    },
+    {
+      "name": "crouch_preview:28:finite",
+      "ok": true
+    },
+    {
+      "name": "crouch_preview:31:shin.L:IK",
+      "ok": true,
+      "error": 3.5088096210625404e-05
+    },
+    {
+      "name": "crouch_preview:31:forearm.L:IK",
+      "ok": true,
+      "error": 7.075164858779192e-06
+    },
+    {
+      "name": "crouch_preview:31:shin.R:IK",
+      "ok": true,
+      "error": 3.508000783460455e-05
+    },
+    {
+      "name": "crouch_preview:31:forearm.R:IK",
+      "ok": true,
+      "error": 7.074023185846629e-06
+    },
+    {
+      "name": "crouch_preview:31:finite",
+      "ok": true
+    },
+    {
+      "name": "fall:1:shin.L:IK",
+      "ok": true,
+      "error": 2.271873473130482e-05
+    },
+    {
+      "name": "fall:1:forearm.L:IK",
+      "ok": true,
+      "error": 1.2438712509346838e-05
+    },
+    {
+      "name": "fall:1:shin.R:IK",
+      "ok": true,
+      "error": 2.271873473130482e-05
+    },
+    {
+      "name": "fall:1:forearm.R:IK",
+      "ok": true,
+      "error": 1.2433248875172064e-05
+    },
+    {
+      "name": "fall:1:finite",
+      "ok": true
+    },
+    {
+      "name": "fall:4:shin.L:IK",
+      "ok": true,
+      "error": 2.271873473130482e-05
+    },
+    {
+      "name": "fall:4:forearm.L:IK",
+      "ok": true,
+      "error": 1.2438712509346838e-05
+    },
+    {
+      "name": "fall:4:shin.R:IK",
+      "ok": true,
+      "error": 2.271873473130482e-05
+    },
+    {
+      "name": "fall:4:forearm.R:IK",
+      "ok": true,
+      "error": 1.2433248875172064e-05
+    },
+    {
+      "name": "fall:4:finite",
+      "ok": true
+    },
+    {
+      "name": "fall:7:shin.L:IK",
+      "ok": true,
+      "error": 2.271873473130482e-05
+    },
+    {
+      "name": "fall:7:forearm.L:IK",
+      "ok": true,
+      "error": 1.2438712509346838e-05
+    },
+    {
+      "name": "fall:7:shin.R:IK",
+      "ok": true,
+      "error": 2.271873473130482e-05
+    },
+    {
+      "name": "fall:7:forearm.R:IK",
+      "ok": true,
+      "error": 1.2433248875172064e-05
+    },
+    {
+      "name": "fall:7:finite",
+      "ok": true
+    },
+    {
+      "name": "fall:10:shin.L:IK",
+      "ok": true,
+      "error": 2.271873473130482e-05
+    },
+    {
+      "name": "fall:10:forearm.L:IK",
+      "ok": true,
+      "error": 1.2438712509346838e-05
+    },
+    {
+      "name": "fall:10:shin.R:IK",
+      "ok": true,
+      "error": 2.271873473130482e-05
+    },
+    {
+      "name": "fall:10:forearm.R:IK",
+      "ok": true,
+      "error": 1.2433248875172064e-05
+    },
+    {
+      "name": "fall:10:finite",
+      "ok": true
+    },
+    {
+      "name": "fall:13:shin.L:IK",
+      "ok": true,
+      "error": 2.271873473130482e-05
+    },
+    {
+      "name": "fall:13:forearm.L:IK",
+      "ok": true,
+      "error": 1.2438712509346838e-05
+    },
+    {
+      "name": "fall:13:shin.R:IK",
+      "ok": true,
+      "error": 2.271873473130482e-05
+    },
+    {
+      "name": "fall:13:forearm.R:IK",
+      "ok": true,
+      "error": 1.2433248875172064e-05
+    },
+    {
+      "name": "fall:13:finite",
+      "ok": true
+    },
+    {
+      "name": "fall:16:shin.L:IK",
+      "ok": true,
+      "error": 2.271873473130482e-05
+    },
+    {
+      "name": "fall:16:forearm.L:IK",
+      "ok": true,
+      "error": 1.2438712509346838e-05
+    },
+    {
+      "name": "fall:16:shin.R:IK",
+      "ok": true,
+      "error": 2.271873473130482e-05
+    },
+    {
+      "name": "fall:16:forearm.R:IK",
+      "ok": true,
+      "error": 1.2433248875172064e-05
+    },
+    {
+      "name": "fall:16:finite",
+      "ok": true
+    },
+    {
+      "name": "fall:19:shin.L:IK",
+      "ok": true,
+      "error": 2.271873473130482e-05
+    },
+    {
+      "name": "fall:19:forearm.L:IK",
+      "ok": true,
+      "error": 1.2438712509346838e-05
+    },
+    {
+      "name": "fall:19:shin.R:IK",
+      "ok": true,
+      "error": 2.271873473130482e-05
+    },
+    {
+      "name": "fall:19:forearm.R:IK",
+      "ok": true,
+      "error": 1.2433248875172064e-05
+    },
+    {
+      "name": "fall:19:finite",
+      "ok": true
+    },
+    {
+      "name": "fall:22:shin.L:IK",
+      "ok": true,
+      "error": 2.271873473130482e-05
+    },
+    {
+      "name": "fall:22:forearm.L:IK",
+      "ok": true,
+      "error": 1.2438712509346838e-05
+    },
+    {
+      "name": "fall:22:shin.R:IK",
+      "ok": true,
+      "error": 2.271873473130482e-05
+    },
+    {
+      "name": "fall:22:forearm.R:IK",
+      "ok": true,
+      "error": 1.2433248875172064e-05
+    },
+    {
+      "name": "fall:22:finite",
+      "ok": true
+    },
+    {
+      "name": "fall:25:shin.L:IK",
+      "ok": true,
+      "error": 2.271873473130482e-05
+    },
+    {
+      "name": "fall:25:forearm.L:IK",
+      "ok": true,
+      "error": 1.2438712509346838e-05
+    },
+    {
+      "name": "fall:25:shin.R:IK",
+      "ok": true,
+      "error": 2.271873473130482e-05
+    },
+    {
+      "name": "fall:25:forearm.R:IK",
+      "ok": true,
+      "error": 1.2433248875172064e-05
+    },
+    {
+      "name": "fall:25:finite",
+      "ok": true
+    },
+    {
+      "name": "fall:28:shin.L:IK",
+      "ok": true,
+      "error": 2.271873473130482e-05
+    },
+    {
+      "name": "fall:28:forearm.L:IK",
+      "ok": true,
+      "error": 1.2438712509346838e-05
+    },
+    {
+      "name": "fall:28:shin.R:IK",
+      "ok": true,
+      "error": 2.271873473130482e-05
+    },
+    {
+      "name": "fall:28:forearm.R:IK",
+      "ok": true,
+      "error": 1.2433248875172064e-05
+    },
+    {
+      "name": "fall:28:finite",
+      "ok": true
+    },
+    {
+      "name": "fall:31:shin.L:IK",
+      "ok": true,
+      "error": 2.271873473130482e-05
+    },
+    {
+      "name": "fall:31:forearm.L:IK",
+      "ok": true,
+      "error": 1.2438712509346838e-05
+    },
+    {
+      "name": "fall:31:shin.R:IK",
+      "ok": true,
+      "error": 2.271873473130482e-05
+    },
+    {
+      "name": "fall:31:forearm.R:IK",
+      "ok": true,
+      "error": 1.2433248875172064e-05
+    },
+    {
+      "name": "fall:31:finite",
+      "ok": true
+    },
+    {
+      "name": "grind:1:shin.L:IK",
+      "ok": true,
+      "error": 2.4635508953391852e-05
+    },
+    {
+      "name": "grind:1:forearm.L:IK",
+      "ok": true,
+      "error": 1.6783168326892266e-05
+    },
+    {
+      "name": "grind:1:shin.R:IK",
+      "ok": true,
+      "error": 2.465284423818886e-05
+    },
+    {
+      "name": "grind:1:forearm.R:IK",
+      "ok": true,
+      "error": 1.6783576804220064e-05
+    },
+    {
+      "name": "grind:1:finite",
+      "ok": true
+    },
+    {
+      "name": "grind:4:shin.L:IK",
+      "ok": true,
+      "error": 2.4635508953391852e-05
+    },
+    {
+      "name": "grind:4:forearm.L:IK",
+      "ok": true,
+      "error": 1.6967510981838174e-05
+    },
+    {
+      "name": "grind:4:shin.R:IK",
+      "ok": true,
+      "error": 2.465284423818886e-05
+    },
+    {
+      "name": "grind:4:forearm.R:IK",
+      "ok": true,
+      "error": 1.6967510981838174e-05
+    },
+    {
+      "name": "grind:4:finite",
+      "ok": true
+    },
+    {
+      "name": "grind:7:shin.L:IK",
+      "ok": true,
+      "error": 2.4635508953391852e-05
+    },
+    {
+      "name": "grind:7:forearm.L:IK",
+      "ok": true,
+      "error": 1.7343596198292104e-05
+    },
+    {
+      "name": "grind:7:shin.R:IK",
+      "ok": true,
+      "error": 2.465284423818886e-05
+    },
+    {
+      "name": "grind:7:forearm.R:IK",
+      "ok": true,
+      "error": 1.7281301681215178e-05
+    },
+    {
+      "name": "grind:7:finite",
+      "ok": true
+    },
+    {
+      "name": "grind:10:shin.L:IK",
+      "ok": true,
+      "error": 2.4635508953391852e-05
+    },
+    {
+      "name": "grind:10:forearm.L:IK",
+      "ok": true,
+      "error": 1.7628527145325605e-05
+    },
+    {
+      "name": "grind:10:shin.R:IK",
+      "ok": true,
+      "error": 2.465284423818886e-05
+    },
+    {
+      "name": "grind:10:forearm.R:IK",
+      "ok": true,
+      "error": 1.763000708438993e-05
+    },
+    {
+      "name": "grind:10:finite",
+      "ok": true
+    },
+    {
+      "name": "grind:13:shin.L:IK",
+      "ok": true,
+      "error": 2.4635508953391852e-05
+    },
+    {
+      "name": "grind:13:forearm.L:IK",
+      "ok": true,
+      "error": 1.7539983345887562e-05
+    },
+    {
+      "name": "grind:13:shin.R:IK",
+      "ok": true,
+      "error": 2.465284423818886e-05
+    },
+    {
+      "name": "grind:13:forearm.R:IK",
+      "ok": true,
+      "error": 1.7538280582066428e-05
+    },
+    {
+      "name": "grind:13:finite",
+      "ok": true
+    },
+    {
+      "name": "grind:16:shin.L:IK",
+      "ok": true,
+      "error": 2.4635508953391852e-05
+    },
+    {
+      "name": "grind:16:forearm.L:IK",
+      "ok": true,
+      "error": 1.7674667989391252e-05
+    },
+    {
+      "name": "grind:16:shin.R:IK",
+      "ok": true,
+      "error": 2.465284423818886e-05
+    },
+    {
+      "name": "grind:16:forearm.R:IK",
+      "ok": true,
+      "error": 1.7674667989391252e-05
+    },
+    {
+      "name": "grind:16:finite",
+      "ok": true
+    },
+    {
+      "name": "grind:19:shin.L:IK",
+      "ok": true,
+      "error": 2.4635508953391852e-05
+    },
+    {
+      "name": "grind:19:forearm.L:IK",
+      "ok": true,
+      "error": 1.7539983345887562e-05
+    },
+    {
+      "name": "grind:19:shin.R:IK",
+      "ok": true,
+      "error": 2.465284423818886e-05
+    },
+    {
+      "name": "grind:19:forearm.R:IK",
+      "ok": true,
+      "error": 1.7538280582066428e-05
+    },
+    {
+      "name": "grind:19:finite",
+      "ok": true
+    },
+    {
+      "name": "grind:22:shin.L:IK",
+      "ok": true,
+      "error": 2.4635508953391852e-05
+    },
+    {
+      "name": "grind:22:forearm.L:IK",
+      "ok": true,
+      "error": 1.762779185280609e-05
+    },
+    {
+      "name": "grind:22:shin.R:IK",
+      "ok": true,
+      "error": 2.465284423818886e-05
+    },
+    {
+      "name": "grind:22:forearm.R:IK",
+      "ok": true,
+      "error": 1.7569146790851105e-05
+    },
+    {
+      "name": "grind:22:finite",
+      "ok": true
+    },
+    {
+      "name": "grind:25:shin.L:IK",
+      "ok": true,
+      "error": 2.4635508953391852e-05
+    },
+    {
+      "name": "grind:25:forearm.L:IK",
+      "ok": true,
+      "error": 1.7343596198292104e-05
+    },
+    {
+      "name": "grind:25:shin.R:IK",
+      "ok": true,
+      "error": 2.465284423818886e-05
+    },
+    {
+      "name": "grind:25:forearm.R:IK",
+      "ok": true,
+      "error": 1.7281301681215178e-05
+    },
+    {
+      "name": "grind:25:finite",
+      "ok": true
+    },
+    {
+      "name": "grind:28:shin.L:IK",
+      "ok": true,
+      "error": 2.4635508953391852e-05
+    },
+    {
+      "name": "grind:28:forearm.L:IK",
+      "ok": true,
+      "error": 1.6967510981838174e-05
+    },
+    {
+      "name": "grind:28:shin.R:IK",
+      "ok": true,
+      "error": 2.465284423818886e-05
+    },
+    {
+      "name": "grind:28:forearm.R:IK",
+      "ok": true,
+      "error": 1.6967510981838174e-05
+    },
+    {
+      "name": "grind:28:finite",
+      "ok": true
+    },
+    {
+      "name": "grind:31:shin.L:IK",
+      "ok": true,
+      "error": 2.4635508953391852e-05
+    },
+    {
+      "name": "grind:31:forearm.L:IK",
+      "ok": true,
+      "error": 1.6783168326892266e-05
+    },
+    {
+      "name": "grind:31:shin.R:IK",
+      "ok": true,
+      "error": 2.465284423818886e-05
+    },
+    {
+      "name": "grind:31:forearm.R:IK",
+      "ok": true,
+      "error": 1.6783576804220064e-05
+    },
+    {
+      "name": "grind:31:finite",
+      "ok": true
+    },
+    {
+      "name": "landing:1:shin.L:IK",
+      "ok": true,
+      "error": 2.565635961724892e-05
+    },
+    {
+      "name": "landing:1:forearm.L:IK",
+      "ok": true,
+      "error": 2.2964217177233248e-05
+    },
+    {
+      "name": "landing:1:shin.R:IK",
+      "ok": true,
+      "error": 2.5664493617970727e-05
+    },
+    {
+      "name": "landing:1:forearm.R:IK",
+      "ok": true,
+      "error": 2.2964217177233248e-05
+    },
+    {
+      "name": "landing:1:finite",
+      "ok": true
+    },
+    {
+      "name": "landing:4:shin.L:IK",
+      "ok": true,
+      "error": 3.351245643519487e-05
+    },
+    {
+      "name": "landing:4:forearm.L:IK",
+      "ok": true,
+      "error": 1.64408790094374e-05
+    },
+    {
+      "name": "landing:4:shin.R:IK",
+      "ok": true,
+      "error": 3.353414207034203e-05
+    },
+    {
+      "name": "landing:4:forearm.R:IK",
+      "ok": true,
+      "error": 1.64408790094374e-05
+    },
+    {
+      "name": "landing:4:finite",
+      "ok": true
+    },
+    {
+      "name": "landing:7:shin.L:IK",
+      "ok": true,
+      "error": 3.22634194173304e-05
+    },
+    {
+      "name": "landing:7:forearm.L:IK",
+      "ok": true,
+      "error": 2.3922282829705747e-05
+    },
+    {
+      "name": "landing:7:shin.R:IK",
+      "ok": true,
+      "error": 3.228680023907987e-05
+    },
+    {
+      "name": "landing:7:forearm.R:IK",
+      "ok": true,
+      "error": 2.3922282829705747e-05
+    },
+    {
+      "name": "landing:7:finite",
+      "ok": true
+    },
+    {
+      "name": "landing:10:shin.L:IK",
+      "ok": true,
+      "error": 3.5088096210625404e-05
+    },
+    {
+      "name": "landing:10:forearm.L:IK",
+      "ok": true,
+      "error": 7.075164858779192e-06
+    },
+    {
+      "name": "landing:10:shin.R:IK",
+      "ok": true,
+      "error": 3.508000783460455e-05
+    },
+    {
+      "name": "landing:10:forearm.R:IK",
+      "ok": true,
+      "error": 7.074023185846629e-06
+    },
+    {
+      "name": "landing:10:finite",
+      "ok": true
+    },
+    {
+      "name": "ollie_charge:1:shin.L:IK",
+      "ok": true,
+      "error": 3.5088096210625404e-05
+    },
+    {
+      "name": "ollie_charge:1:forearm.L:IK",
+      "ok": true,
+      "error": 7.075164858779192e-06
+    },
+    {
+      "name": "ollie_charge:1:shin.R:IK",
+      "ok": true,
+      "error": 3.508000783460455e-05
+    },
+    {
+      "name": "ollie_charge:1:forearm.R:IK",
+      "ok": true,
+      "error": 7.074023185846629e-06
+    },
+    {
+      "name": "ollie_charge:1:finite",
+      "ok": true
+    },
+    {
+      "name": "ollie_charge:4:shin.L:IK",
+      "ok": true,
+      "error": 1.1059392478725247e-05
+    },
+    {
+      "name": "ollie_charge:4:forearm.L:IK",
+      "ok": true,
+      "error": 1.094987980810855e-05
+    },
+    {
+      "name": "ollie_charge:4:shin.R:IK",
+      "ok": true,
+      "error": 1.1062483976792982e-05
+    },
+    {
+      "name": "ollie_charge:4:forearm.R:IK",
+      "ok": true,
+      "error": 1.094987980810855e-05
+    },
+    {
+      "name": "ollie_charge:4:finite",
+      "ok": true
+    },
+    {
+      "name": "ollie_charge:7:shin.L:IK",
+      "ok": true,
+      "error": 2.9595825681482032e-05
+    },
+    {
+      "name": "ollie_charge:7:forearm.L:IK",
+      "ok": true,
+      "error": 1.9041072042491946e-05
+    },
+    {
+      "name": "ollie_charge:7:shin.R:IK",
+      "ok": true,
+      "error": 2.9595825681482032e-05
+    },
+    {
+      "name": "ollie_charge:7:forearm.R:IK",
+      "ok": true,
+      "error": 1.9041072042491946e-05
+    },
+    {
+      "name": "ollie_charge:7:finite",
+      "ok": true
+    },
+    {
+      "name": "ollie_charge:10:shin.L:IK",
+      "ok": true,
+      "error": 1.4745412417617056e-05
+    },
+    {
+      "name": "ollie_charge:10:forearm.L:IK",
+      "ok": true,
+      "error": 2.6748618895213105e-05
+    },
+    {
+      "name": "ollie_charge:10:shin.R:IK",
+      "ok": true,
+      "error": 1.4721027512510052e-05
+    },
+    {
+      "name": "ollie_charge:10:forearm.R:IK",
+      "ok": true,
+      "error": 2.6748618895213105e-05
+    },
+    {
+      "name": "ollie_charge:10:finite",
+      "ok": true
+    },
+    {
+      "name": "ollie_charge:13:shin.L:IK",
+      "ok": true,
+      "error": 5.418113027886165e-05
+    },
+    {
+      "name": "ollie_charge:13:forearm.L:IK",
+      "ok": true,
+      "error": 1.0930760987979957e-05
+    },
+    {
+      "name": "ollie_charge:13:shin.R:IK",
+      "ok": true,
+      "error": 5.421144021578332e-05
+    },
+    {
+      "name": "ollie_charge:13:forearm.R:IK",
+      "ok": true,
+      "error": 1.0913714627654751e-05
+    },
+    {
+      "name": "ollie_charge:13:finite",
+      "ok": true
+    },
+    {
+      "name": "ollie_charge:16:shin.L:IK",
+      "ok": true,
+      "error": 2.271873473130482e-05
+    },
+    {
+      "name": "ollie_charge:16:forearm.L:IK",
+      "ok": true,
+      "error": 1.4541609482468765e-05
+    },
+    {
+      "name": "ollie_charge:16:shin.R:IK",
+      "ok": true,
+      "error": 2.271873473130482e-05
+    },
+    {
+      "name": "ollie_charge:16:forearm.R:IK",
+      "ok": true,
+      "error": 1.4540542479807528e-05
+    },
+    {
+      "name": "ollie_charge:16:finite",
+      "ok": true
+    },
+    {
+      "name": "ollie_pop:1:shin.L:IK",
+      "ok": true,
+      "error": 2.271873473130482e-05
+    },
+    {
+      "name": "ollie_pop:1:forearm.L:IK",
+      "ok": true,
+      "error": 1.4541609482468765e-05
+    },
+    {
+      "name": "ollie_pop:1:shin.R:IK",
+      "ok": true,
+      "error": 2.271873473130482e-05
+    },
+    {
+      "name": "ollie_pop:1:forearm.R:IK",
+      "ok": true,
+      "error": 1.4540542479807528e-05
+    },
+    {
+      "name": "ollie_pop:1:finite",
+      "ok": true
+    },
+    {
+      "name": "ollie_pop:4:shin.L:IK",
+      "ok": true,
+      "error": 2.5943430892014937e-06
+    },
+    {
+      "name": "ollie_pop:4:forearm.L:IK",
+      "ok": true,
+      "error": 1.952875629964512e-05
+    },
+    {
+      "name": "ollie_pop:4:shin.R:IK",
+      "ok": true,
+      "error": 2.594856566314726e-06
+    },
+    {
+      "name": "ollie_pop:4:forearm.R:IK",
+      "ok": true,
+      "error": 1.952875629964512e-05
+    },
+    {
+      "name": "ollie_pop:4:finite",
+      "ok": true
+    },
+    {
+      "name": "ollie_pop:7:shin.L:IK",
+      "ok": true,
+      "error": 1.9426634190150922e-05
+    },
+    {
+      "name": "ollie_pop:7:forearm.L:IK",
+      "ok": true,
+      "error": 1.2894699412082182e-05
+    },
+    {
+      "name": "ollie_pop:7:shin.R:IK",
+      "ok": true,
+      "error": 1.9426634190150922e-05
+    },
+    {
+      "name": "ollie_pop:7:forearm.R:IK",
+      "ok": true,
+      "error": 1.289697223008768e-05
+    },
+    {
+      "name": "ollie_pop:7:finite",
+      "ok": true
+    },
+    {
+      "name": "ollie_pop:10:shin.L:IK",
+      "ok": true,
+      "error": 2.565635961724892e-05
+    },
+    {
+      "name": "ollie_pop:10:forearm.L:IK",
+      "ok": true,
+      "error": 2.2964217177233248e-05
+    },
+    {
+      "name": "ollie_pop:10:shin.R:IK",
+      "ok": true,
+      "error": 2.5664493617970727e-05
+    },
+    {
+      "name": "ollie_pop:10:forearm.R:IK",
+      "ok": true,
+      "error": 2.2964217177233248e-05
+    },
+    {
+      "name": "ollie_pop:10:finite",
+      "ok": true
+    },
+    {
+      "name": "ride_idle:1:shin.L:IK",
+      "ok": true,
+      "error": 3.5088096210625404e-05
+    },
+    {
+      "name": "ride_idle:1:forearm.L:IK",
+      "ok": true,
+      "error": 7.075164858779192e-06
+    },
+    {
+      "name": "ride_idle:1:shin.R:IK",
+      "ok": true,
+      "error": 3.508000783460455e-05
+    },
+    {
+      "name": "ride_idle:1:forearm.R:IK",
+      "ok": true,
+      "error": 7.074023185846629e-06
+    },
+    {
+      "name": "ride_idle:1:finite",
+      "ok": true
+    },
+    {
+      "name": "ride_idle:4:shin.L:IK",
+      "ok": true,
+      "error": 9.402632713317871e-06
+    },
+    {
+      "name": "ride_idle:4:forearm.L:IK",
+      "ok": true,
+      "error": 7.313119652610251e-06
+    },
+    {
+      "name": "ride_idle:4:shin.R:IK",
+      "ok": true,
+      "error": 9.416260587953362e-06
+    },
+    {
+      "name": "ride_idle:4:forearm.R:IK",
+      "ok": true,
+      "error": 6.8001927063597545e-06
+    },
+    {
+      "name": "ride_idle:4:finite",
+      "ok": true
+    },
+    {
+      "name": "ride_idle:7:shin.L:IK",
+      "ok": true,
+      "error": 1.0035387222103726e-05
+    },
+    {
+      "name": "ride_idle:7:forearm.L:IK",
+      "ok": true,
+      "error": 8.025461635407272e-06
+    },
+    {
+      "name": "ride_idle:7:shin.R:IK",
+      "ok": true,
+      "error": 1.0035387222103726e-05
+    },
+    {
+      "name": "ride_idle:7:forearm.R:IK",
+      "ok": true,
+      "error": 3.1504737546021424e-05
+    },
+    {
+      "name": "ride_idle:7:finite",
+      "ok": true
+    },
+    {
+      "name": "ride_idle:10:shin.L:IK",
+      "ok": true,
+      "error": 1.1210824031180132e-05
+    },
+    {
+      "name": "ride_idle:10:forearm.L:IK",
+      "ok": true,
+      "error": 9.188641289935831e-06
+    },
+    {
+      "name": "ride_idle:10:shin.R:IK",
+      "ok": true,
+      "error": 1.1210824031180132e-05
+    },
+    {
+      "name": "ride_idle:10:forearm.R:IK",
+      "ok": true,
+      "error": 2.9158419970818864e-05
+    },
+    {
+      "name": "ride_idle:10:finite",
+      "ok": true
+    },
+    {
+      "name": "ride_idle:13:shin.L:IK",
+      "ok": true,
+      "error": 1.2453841035605616e-05
+    },
+    {
+      "name": "ride_idle:13:forearm.L:IK",
+      "ok": true,
+      "error": 9.638117251826614e-06
+    },
+    {
+      "name": "ride_idle:13:shin.R:IK",
+      "ok": true,
+      "error": 1.245872533542791e-05
+    },
+    {
+      "name": "ride_idle:13:forearm.R:IK",
+      "ok": true,
+      "error": 2.686110695253193e-05
+    },
+    {
+      "name": "ride_idle:13:finite",
+      "ok": true
+    },
+    {
+      "name": "ride_idle:16:shin.L:IK",
+      "ok": true,
+      "error": 1.36593264158871e-05
+    },
+    {
+      "name": "ride_idle:16:forearm.L:IK",
+      "ok": true,
+      "error": 1.0363808494822778e-05
+    },
+    {
+      "name": "ride_idle:16:shin.R:IK",
+      "ok": true,
+      "error": 1.3653895866735663e-05
+    },
+    {
+      "name": "ride_idle:16:forearm.R:IK",
+      "ok": true,
+      "error": 2.7019335101394628e-05
+    },
+    {
+      "name": "ride_idle:16:finite",
+      "ok": true
+    },
+    {
+      "name": "ride_idle:19:shin.L:IK",
+      "ok": true,
+      "error": 1.5038047818720774e-05
+    },
+    {
+      "name": "ride_idle:19:forearm.L:IK",
+      "ok": true,
+      "error": 1.0474700221047644e-05
+    },
+    {
+      "name": "ride_idle:19:shin.R:IK",
+      "ok": true,
+      "error": 1.5017443184343889e-05
+    },
+    {
+      "name": "ride_idle:19:forearm.R:IK",
+      "ok": true,
+      "error": 2.9316765087915516e-05
+    },
+    {
+      "name": "ride_idle:19:finite",
+      "ok": true
+    },
+    {
+      "name": "ride_idle:22:shin.L:IK",
+      "ok": true,
+      "error": 1.617723343429483e-05
+    },
+    {
+      "name": "ride_idle:22:forearm.L:IK",
+      "ok": true,
+      "error": 1.0470610823369654e-05
+    },
+    {
+      "name": "ride_idle:22:shin.R:IK",
+      "ok": true,
+      "error": 1.617723343429483e-05
+    },
+    {
+      "name": "ride_idle:22:forearm.R:IK",
+      "ok": true,
+      "error": 3.325614701870997e-05
+    },
+    {
+      "name": "ride_idle:22:finite",
+      "ok": true
+    },
+    {
+      "name": "ride_idle:25:shin.L:IK",
+      "ok": true,
+      "error": 1.706531048752041e-05
+    },
+    {
+      "name": "ride_idle:25:forearm.L:IK",
+      "ok": true,
+      "error": 1.0076975673500225e-05
+    },
+    {
+      "name": "ride_idle:25:shin.R:IK",
+      "ok": true,
+      "error": 1.706531048752041e-05
+    },
+    {
+      "name": "ride_idle:25:forearm.R:IK",
+      "ok": true,
+      "error": 7.388106320681628e-06
+    },
+    {
+      "name": "ride_idle:25:finite",
+      "ok": true
+    },
+    {
+      "name": "ride_idle:28:shin.L:IK",
+      "ok": true,
+      "error": 1.7696256664378175e-05
+    },
+    {
+      "name": "ride_idle:28:forearm.L:IK",
+      "ok": true,
+      "error": 9.72434069915477e-06
+    },
+    {
+      "name": "ride_idle:28:shin.R:IK",
+      "ok": true,
+      "error": 1.7696256664378175e-05
+    },
+    {
+      "name": "ride_idle:28:forearm.R:IK",
+      "ok": true,
+      "error": 8.308984221089564e-06
+    },
+    {
+      "name": "ride_idle:28:finite",
+      "ok": true
+    },
+    {
+      "name": "ride_idle:31:shin.L:IK",
+      "ok": true,
+      "error": 1.78673373548243e-05
+    },
+    {
+      "name": "ride_idle:31:forearm.L:IK",
+      "ok": true,
+      "error": 9.108964781484617e-06
+    },
+    {
+      "name": "ride_idle:31:shin.R:IK",
+      "ok": true,
+      "error": 1.7816686029309996e-05
+    },
+    {
+      "name": "ride_idle:31:forearm.R:IK",
+      "ok": true,
+      "error": 9.108964781484617e-06
+    },
+    {
+      "name": "ride_idle:31:finite",
+      "ok": true
+    },
+    {
+      "name": "ride_idle:34:shin.L:IK",
+      "ok": true,
+      "error": 1.7696256664378175e-05
+    },
+    {
+      "name": "ride_idle:34:forearm.L:IK",
+      "ok": true,
+      "error": 8.235166875007919e-06
+    },
+    {
+      "name": "ride_idle:34:shin.R:IK",
+      "ok": true,
+      "error": 1.7696256664378175e-05
+    },
+    {
+      "name": "ride_idle:34:forearm.R:IK",
+      "ok": true,
+      "error": 9.655642007764547e-06
+    },
+    {
+      "name": "ride_idle:34:finite",
+      "ok": true
+    },
+    {
+      "name": "ride_idle:37:shin.L:IK",
+      "ok": true,
+      "error": 1.706531048752041e-05
+    },
+    {
+      "name": "ride_idle:37:forearm.L:IK",
+      "ok": true,
+      "error": 7.515387020345018e-06
+    },
+    {
+      "name": "ride_idle:37:shin.R:IK",
+      "ok": true,
+      "error": 1.706531048752041e-05
+    },
+    {
+      "name": "ride_idle:37:forearm.R:IK",
+      "ok": true,
+      "error": 1.0203596649234685e-05
+    },
+    {
+      "name": "ride_idle:37:finite",
+      "ok": true
+    },
+    {
+      "name": "ride_idle:40:shin.L:IK",
+      "ok": true,
+      "error": 1.617723343429483e-05
+    },
+    {
+      "name": "ride_idle:40:forearm.L:IK",
+      "ok": true,
+      "error": 3.315455792578163e-05
+    },
+    {
+      "name": "ride_idle:40:shin.R:IK",
+      "ok": true,
+      "error": 1.617723343429483e-05
+    },
+    {
+      "name": "ride_idle:40:forearm.R:IK",
+      "ok": true,
+      "error": 1.039567472108394e-05
+    },
+    {
+      "name": "ride_idle:40:finite",
+      "ok": true
+    },
+    {
+      "name": "ride_idle:43:shin.L:IK",
+      "ok": true,
+      "error": 1.5038047818720774e-05
+    },
+    {
+      "name": "ride_idle:43:forearm.L:IK",
+      "ok": true,
+      "error": 2.9351369117008013e-05
+    },
+    {
+      "name": "ride_idle:43:shin.R:IK",
+      "ok": true,
+      "error": 1.5017443184343889e-05
+    },
+    {
+      "name": "ride_idle:43:forearm.R:IK",
+      "ok": true,
+      "error": 1.0480170573426184e-05
+    },
+    {
+      "name": "ride_idle:43:finite",
+      "ok": true
+    },
+    {
+      "name": "ride_idle:46:shin.L:IK",
+      "ok": true,
+      "error": 1.36593264158871e-05
+    },
+    {
+      "name": "ride_idle:46:forearm.L:IK",
+      "ok": true,
+      "error": 2.7019335101394628e-05
+    },
+    {
+      "name": "ride_idle:46:shin.R:IK",
+      "ok": true,
+      "error": 1.3653895866735663e-05
+    },
+    {
+      "name": "ride_idle:46:forearm.R:IK",
+      "ok": true,
+      "error": 1.0410154269957564e-05
+    },
+    {
+      "name": "ride_idle:46:finite",
+      "ok": true
+    },
+    {
+      "name": "ride_idle:49:shin.L:IK",
+      "ok": true,
+      "error": 1.2453841035605616e-05
+    },
+    {
+      "name": "ride_idle:49:forearm.L:IK",
+      "ok": true,
+      "error": 2.6901020534123883e-05
+    },
+    {
+      "name": "ride_idle:49:shin.R:IK",
+      "ok": true,
+      "error": 1.245872533542791e-05
+    },
+    {
+      "name": "ride_idle:49:forearm.R:IK",
+      "ok": true,
+      "error": 9.6845740735728e-06
+    },
+    {
+      "name": "ride_idle:49:finite",
+      "ok": true
+    },
+    {
+      "name": "ride_idle:52:shin.L:IK",
+      "ok": true,
+      "error": 1.1210824031180132e-05
+    },
+    {
+      "name": "ride_idle:52:forearm.L:IK",
+      "ok": true,
+      "error": 2.9110172593986667e-05
+    },
+    {
+      "name": "ride_idle:52:shin.R:IK",
+      "ok": true,
+      "error": 1.1210824031180132e-05
+    },
+    {
+      "name": "ride_idle:52:forearm.R:IK",
+      "ok": true,
+      "error": 9.080482025525173e-06
+    },
+    {
+      "name": "ride_idle:52:finite",
+      "ok": true
+    },
+    {
+      "name": "ride_idle:55:shin.L:IK",
+      "ok": true,
+      "error": 1.0035387222103726e-05
+    },
+    {
+      "name": "ride_idle:55:forearm.L:IK",
+      "ok": true,
+      "error": 3.150228123095309e-05
+    },
+    {
+      "name": "ride_idle:55:shin.R:IK",
+      "ok": true,
+      "error": 1.0035387222103726e-05
+    },
+    {
+      "name": "ride_idle:55:forearm.R:IK",
+      "ok": true,
+      "error": 8.046906436599649e-06
+    },
+    {
+      "name": "ride_idle:55:finite",
+      "ok": true
+    },
+    {
+      "name": "ride_idle:58:shin.L:IK",
+      "ok": true,
+      "error": 9.402632713317871e-06
+    },
+    {
+      "name": "ride_idle:58:forearm.L:IK",
+      "ok": true,
+      "error": 6.849689559773059e-06
+    },
+    {
+      "name": "ride_idle:58:shin.R:IK",
+      "ok": true,
+      "error": 9.416260587953362e-06
+    },
+    {
+      "name": "ride_idle:58:forearm.R:IK",
+      "ok": true,
+      "error": 7.309729652685163e-06
+    },
+    {
+      "name": "ride_idle:58:finite",
+      "ok": true
+    },
+    {
+      "name": "ride_idle:61:shin.L:IK",
+      "ok": true,
+      "error": 3.5088096210625404e-05
+    },
+    {
+      "name": "ride_idle:61:forearm.L:IK",
+      "ok": true,
+      "error": 7.075164858779192e-06
+    },
+    {
+      "name": "ride_idle:61:shin.R:IK",
+      "ok": true,
+      "error": 3.508000783460455e-05
+    },
+    {
+      "name": "ride_idle:61:forearm.R:IK",
+      "ok": true,
+      "error": 7.074023185846629e-06
+    },
+    {
+      "name": "ride_idle:61:finite",
+      "ok": true
+    },
+    {
+      "name": "rig_check:1:shin.L:IK",
+      "ok": true,
+      "error": 1.0378594588281858e-06
+    },
+    {
+      "name": "rig_check:1:forearm.L:IK",
+      "ok": true,
+      "error": 1.3333208984265686e-07
+    },
+    {
+      "name": "rig_check:1:shin.R:IK",
+      "ok": true,
+      "error": 1.0378594588281858e-06
+    },
+    {
+      "name": "rig_check:1:forearm.R:IK",
+      "ok": true,
+      "error": 1.3333208984265686e-07
+    },
+    {
+      "name": "rig_check:1:finite",
+      "ok": true
+    },
+    {
+      "name": "rig_check:4:shin.L:IK",
+      "ok": true,
+      "error": 5.554573983966944e-06
+    },
+    {
+      "name": "rig_check:4:forearm.L:IK",
+      "ok": true,
+      "error": 1.3333208984265686e-07
+    },
+    {
+      "name": "rig_check:4:shin.R:IK",
+      "ok": true,
+      "error": 1.0378594588281858e-06
+    },
+    {
+      "name": "rig_check:4:forearm.R:IK",
+      "ok": true,
+      "error": 1.4796907462882503e-06
+    },
+    {
+      "name": "rig_check:4:finite",
+      "ok": true
+    },
+    {
+      "name": "rig_check:7:shin.L:IK",
+      "ok": true,
+      "error": 1.8802818516256225e-05
+    },
+    {
+      "name": "rig_check:7:forearm.L:IK",
+      "ok": true,
+      "error": 1.3333208984265686e-07
+    },
+    {
+      "name": "rig_check:7:shin.R:IK",
+      "ok": true,
+      "error": 1.0378594588281858e-06
+    },
+    {
+      "name": "rig_check:7:forearm.R:IK",
+      "ok": true,
+      "error": 7.723402802229087e-06
+    },
+    {
+      "name": "rig_check:7:finite",
+      "ok": true
+    },
+    {
+      "name": "rig_check:10:shin.L:IK",
+      "ok": true,
+      "error": 3.092200005742765e-05
+    },
+    {
+      "name": "rig_check:10:forearm.L:IK",
+      "ok": true,
+      "error": 1.3333208984265686e-07
+    },
+    {
+      "name": "rig_check:10:shin.R:IK",
+      "ok": true,
+      "error": 1.0378594588281858e-06
+    },
+    {
+      "name": "rig_check:10:forearm.R:IK",
+      "ok": true,
+      "error": 1.0955140755005361e-05
+    },
+    {
+      "name": "rig_check:10:finite",
+      "ok": true
+    },
+    {
+      "name": "rig_check:13:shin.L:IK",
+      "ok": true,
+      "error": 4.2183429271415024e-05
+    },
+    {
+      "name": "rig_check:13:forearm.L:IK",
+      "ok": true,
+      "error": 1.3333208984265686e-07
+    },
+    {
+      "name": "rig_check:13:shin.R:IK",
+      "ok": true,
+      "error": 1.0378594588281858e-06
+    },
+    {
+      "name": "rig_check:13:forearm.R:IK",
+      "ok": true,
+      "error": 9.01096516326583e-06
+    },
+    {
+      "name": "rig_check:13:finite",
+      "ok": true
+    },
+    {
+      "name": "rig_check:16:shin.L:IK",
+      "ok": true,
+      "error": 5.877818895474761e-05
+    },
+    {
+      "name": "rig_check:16:forearm.L:IK",
+      "ok": true,
+      "error": 1.3333208984265686e-07
+    },
+    {
+      "name": "rig_check:16:shin.R:IK",
+      "ok": true,
+      "error": 1.0378594588281858e-06
+    },
+    {
+      "name": "rig_check:16:forearm.R:IK",
+      "ok": true,
+      "error": 4.8442297661131855e-06
+    },
+    {
+      "name": "rig_check:16:finite",
+      "ok": true
+    },
+    {
+      "name": "rig_check:19:shin.L:IK",
+      "ok": true,
+      "error": 4.218711639337268e-05
+    },
+    {
+      "name": "rig_check:19:forearm.L:IK",
+      "ok": true,
+      "error": 1.4791654378116749e-06
+    },
+    {
+      "name": "rig_check:19:shin.R:IK",
+      "ok": true,
+      "error": 5.561591425898718e-06
+    },
+    {
+      "name": "rig_check:19:forearm.R:IK",
+      "ok": true,
+      "error": 1.0665911435666235e-05
+    },
+    {
+      "name": "rig_check:19:finite",
+      "ok": true
+    },
+    {
+      "name": "rig_check:22:shin.L:IK",
+      "ok": true,
+      "error": 3.092200005742765e-05
+    },
+    {
+      "name": "rig_check:22:forearm.L:IK",
+      "ok": true,
+      "error": 7.948037589437584e-06
+    },
+    {
+      "name": "rig_check:22:shin.R:IK",
+      "ok": true,
+      "error": 1.8802818516256225e-05
+    },
+    {
+      "name": "rig_check:22:forearm.R:IK",
+      "ok": true,
+      "error": 9.554061680459584e-06
+    },
+    {
+      "name": "rig_check:22:finite",
+      "ok": true
+    },
+    {
+      "name": "rig_check:25:shin.L:IK",
+      "ok": true,
+      "error": 1.8802818516256225e-05
+    },
+    {
+      "name": "rig_check:25:forearm.L:IK",
+      "ok": true,
+      "error": 1.1617564921369536e-05
+    },
+    {
+      "name": "rig_check:25:shin.R:IK",
+      "ok": true,
+      "error": 3.0934840246934726e-05
+    },
+    {
+      "name": "rig_check:25:forearm.R:IK",
+      "ok": true,
+      "error": 6.21062093600447e-06
+    },
+    {
+      "name": "rig_check:25:finite",
+      "ok": true
+    },
+    {
+      "name": "rig_check:28:shin.L:IK",
+      "ok": true,
+      "error": 5.585656347015558e-06
+    },
+    {
+      "name": "rig_check:28:forearm.L:IK",
+      "ok": true,
+      "error": 1.0167135554166624e-05
+    },
+    {
+      "name": "rig_check:28:shin.R:IK",
+      "ok": true,
+      "error": 4.2183429271415024e-05
+    },
+    {
+      "name": "rig_check:28:forearm.R:IK",
+      "ok": true,
+      "error": 4.8639910120756014e-06
+    },
+    {
+      "name": "rig_check:28:finite",
+      "ok": true
+    },
+    {
+      "name": "rig_check:31:shin.L:IK",
+      "ok": true,
+      "error": 1.0378594588281858e-06
+    },
+    {
+      "name": "rig_check:31:forearm.L:IK",
+      "ok": true,
+      "error": 4.8442297661131855e-06
+    },
+    {
+      "name": "rig_check:31:shin.R:IK",
+      "ok": true,
+      "error": 5.877818895474761e-05
+    },
+    {
+      "name": "rig_check:31:forearm.R:IK",
+      "ok": true,
+      "error": 1.3333208984265686e-07
+    },
+    {
+      "name": "rig_check:31:finite",
+      "ok": true
+    },
+    {
+      "name": "rig_check:34:shin.L:IK",
+      "ok": true,
+      "error": 4.530173573958951e-06
+    },
+    {
+      "name": "rig_check:34:forearm.L:IK",
+      "ok": true,
+      "error": 1.1849196877037731e-05
+    },
+    {
+      "name": "rig_check:34:shin.R:IK",
+      "ok": true,
+      "error": 5.7944829851311847e-05
+    },
+    {
+      "name": "rig_check:34:forearm.R:IK",
+      "ok": true,
+      "error": 0.005799047848928041
+    },
+    {
+      "name": "rig_check:34:finite",
+      "ok": true
+    },
+    {
+      "name": "rig_check:37:shin.L:IK",
+      "ok": true,
+      "error": 2.048926461757815e-05
+    },
+    {
+      "name": "rig_check:37:forearm.L:IK",
+      "ok": true,
+      "error": 9.736936852885259e-06
+    },
+    {
+      "name": "rig_check:37:shin.R:IK",
+      "ok": true,
+      "error": 5.273842254844683e-05
+    },
+    {
+      "name": "rig_check:37:forearm.R:IK",
+      "ok": true,
+      "error": 1.4061014346414625e-05
+    },
+    {
+      "name": "rig_check:37:finite",
+      "ok": true
+    },
+    {
+      "name": "rig_check:40:shin.L:IK",
+      "ok": true,
+      "error": 3.164362889648137e-05
+    },
+    {
+      "name": "rig_check:40:forearm.L:IK",
+      "ok": true,
+      "error": 1.2499480921974114e-05
+    },
+    {
+      "name": "rig_check:40:shin.R:IK",
+      "ok": true,
+      "error": 4.097140473385917e-05
+    },
+    {
+      "name": "rig_check:40:forearm.R:IK",
+      "ok": true,
+      "error": 1.2067548785649575e-05
+    },
+    {
+      "name": "rig_check:40:finite",
+      "ok": true
+    },
+    {
+      "name": "rig_check:43:shin.L:IK",
+      "ok": true,
+      "error": 3.9124561588301355e-05
+    },
+    {
+      "name": "rig_check:43:forearm.L:IK",
+      "ok": true,
+      "error": 2.4126857501313953e-05
+    },
+    {
+      "name": "rig_check:43:shin.R:IK",
+      "ok": true,
+      "error": 2.475942894636085e-05
+    },
+    {
+      "name": "rig_check:43:forearm.R:IK",
+      "ok": true,
+      "error": 1.425015426692984e-05
+    },
+    {
+      "name": "rig_check:43:finite",
+      "ok": true
+    },
+    {
+      "name": "rig_check:46:shin.L:IK",
+      "ok": true,
+      "error": 1.6330639343567594e-05
+    },
+    {
+      "name": "rig_check:46:forearm.L:IK",
+      "ok": true,
+      "error": 2.695837102416366e-05
+    },
+    {
+      "name": "rig_check:46:shin.R:IK",
+      "ok": true,
+      "error": 1.6323649087009157e-05
+    },
+    {
+      "name": "rig_check:46:forearm.R:IK",
+      "ok": true,
+      "error": 2.7048361883653248e-05
+    },
+    {
+      "name": "rig_check:46:finite",
+      "ok": true
+    },
+    {
+      "name": "rig_check:49:shin.L:IK",
+      "ok": true,
+      "error": 3.9124561588301355e-05
+    },
+    {
+      "name": "rig_check:49:forearm.L:IK",
+      "ok": true,
+      "error": 1.839219999635091e-05
+    },
+    {
+      "name": "rig_check:49:shin.R:IK",
+      "ok": true,
+      "error": 3.9133243872286595e-05
+    },
+    {
+      "name": "rig_check:49:forearm.R:IK",
+      "ok": true,
+      "error": 1.839122056766819e-05
+    },
+    {
+      "name": "rig_check:49:finite",
+      "ok": true
+    },
+    {
+      "name": "rig_check:52:shin.L:IK",
+      "ok": true,
+      "error": 3.16406079166218e-05
+    },
+    {
+      "name": "rig_check:52:forearm.L:IK",
+      "ok": true,
+      "error": 1.1593354791358795e-05
+    },
+    {
+      "name": "rig_check:52:shin.R:IK",
+      "ok": true,
+      "error": 3.164362889648137e-05
+    },
+    {
+      "name": "rig_check:52:forearm.R:IK",
+      "ok": true,
+      "error": 1.1593354791358795e-05
+    },
+    {
+      "name": "rig_check:52:finite",
+      "ok": true
+    },
+    {
+      "name": "rig_check:55:shin.L:IK",
+      "ok": true,
+      "error": 2.048926461757815e-05
+    },
+    {
+      "name": "rig_check:55:forearm.L:IK",
+      "ok": true,
+      "error": 4.647623265992242e-06
+    },
+    {
+      "name": "rig_check:55:shin.R:IK",
+      "ok": true,
+      "error": 2.049109059081531e-05
+    },
+    {
+      "name": "rig_check:55:forearm.R:IK",
+      "ok": true,
+      "error": 4.647181317465596e-06
+    },
+    {
+      "name": "rig_check:55:finite",
+      "ok": true
+    },
+    {
+      "name": "rig_check:58:shin.L:IK",
+      "ok": true,
+      "error": 4.517411804964763e-06
+    },
+    {
+      "name": "rig_check:58:forearm.L:IK",
+      "ok": true,
+      "error": 7.601874519519523e-07
+    },
+    {
+      "name": "rig_check:58:shin.R:IK",
+      "ok": true,
+      "error": 4.522968826722034e-06
+    },
+    {
+      "name": "rig_check:58:forearm.R:IK",
+      "ok": true,
+      "error": 7.601874519519523e-07
+    },
+    {
+      "name": "rig_check:58:finite",
+      "ok": true
+    },
+    {
+      "name": "rig_check:61:shin.L:IK",
+      "ok": true,
+      "error": 1.0378594588281858e-06
+    },
+    {
+      "name": "rig_check:61:forearm.L:IK",
+      "ok": true,
+      "error": 1.3333208984265686e-07
+    },
+    {
+      "name": "rig_check:61:shin.R:IK",
+      "ok": true,
+      "error": 1.0378594588281858e-06
+    },
+    {
+      "name": "rig_check:61:forearm.R:IK",
+      "ok": true,
+      "error": 1.3333208984265686e-07
+    },
+    {
+      "name": "rig_check:61:finite",
+      "ok": true
+    }
+  ],
+  "failed": 0
+}

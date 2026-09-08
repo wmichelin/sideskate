@@ -1,0 +1,256 @@
+{
+	"checks": [
+		{
+			"details": {},
+			"name": "model_imported",
+			"ok": true
+		},
+		{
+			"details": {},
+			"name": "skeleton_present",
+			"ok": true
+		},
+		{
+			"details": {},
+			"name": "animation_player_present",
+			"ok": true
+		},
+		{
+			"details": {},
+			"name": "skinned_mesh_present",
+			"ok": true
+		},
+		{
+			"details": {
+				"bones": [
+					"root",
+					"pelvis",
+					"spine",
+					"chest",
+					"neck",
+					"head",
+					"clavicle.L",
+					"upper_arm.L",
+					"forearm.L",
+					"hand.L",
+					"index_01.L",
+					"index_02.L",
+					"middle_01.L",
+					"middle_02.L",
+					"ring_01.L",
+					"ring_02.L",
+					"pinky_01.L",
+					"pinky_02.L",
+					"thumb_01.L",
+					"thumb_02.L",
+					"clavicle.R",
+					"upper_arm.R",
+					"forearm.R",
+					"hand.R",
+					"index_01.R",
+					"index_02.R",
+					"middle_01.R",
+					"middle_02.R",
+					"ring_01.R",
+					"ring_02.R",
+					"pinky_01.R",
+					"pinky_02.R",
+					"thumb_01.R",
+					"thumb_02.R",
+					"thigh.L",
+					"shin.L",
+					"foot.L",
+					"toe.L",
+					"thigh.R",
+					"shin.R",
+					"foot.R",
+					"toe.R"
+				]
+			},
+			"name": "full_humanoid_skeleton",
+			"ok": true
+		},
+		{
+			"details": {},
+			"name": "authoring_controls_excluded",
+			"ok": true
+		},
+		{
+			"details": {},
+			"name": "mesh_has_skin:Skater_Mesh",
+			"ok": true
+		},
+		{
+			"details": {},
+			"name": "mesh_has_geometry:Skater_Mesh",
+			"ok": true
+		},
+		{
+			"details": {
+				"animations": [
+					"airborne",
+					"crouch_preview",
+					"fall",
+					"grind",
+					"landing",
+					"ollie_charge",
+					"ollie_pop",
+					"ride_idle",
+					"rig_check"
+				]
+			},
+			"name": "clip:ride_idle",
+			"ok": true
+		},
+		{
+			"details": {
+				"animations": [
+					"airborne",
+					"crouch_preview",
+					"fall",
+					"grind",
+					"landing",
+					"ollie_charge",
+					"ollie_pop",
+					"ride_idle",
+					"rig_check"
+				]
+			},
+			"name": "clip:ollie_charge",
+			"ok": true
+		},
+		{
+			"details": {
+				"animations": [
+					"airborne",
+					"crouch_preview",
+					"fall",
+					"grind",
+					"landing",
+					"ollie_charge",
+					"ollie_pop",
+					"ride_idle",
+					"rig_check"
+				]
+			},
+			"name": "clip:ollie_pop",
+			"ok": true
+		},
+		{
+			"details": {
+				"animations": [
+					"airborne",
+					"crouch_preview",
+					"fall",
+					"grind",
+					"landing",
+					"ollie_charge",
+					"ollie_pop",
+					"ride_idle",
+					"rig_check"
+				]
+			},
+			"name": "clip:airborne",
+			"ok": true
+		},
+		{
+			"details": {
+				"animations": [
+					"airborne",
+					"crouch_preview",
+					"fall",
+					"grind",
+					"landing",
+					"ollie_charge",
+					"ollie_pop",
+					"ride_idle",
+					"rig_check"
+				]
+			},
+			"name": "clip:landing",
+			"ok": true
+		},
+		{
+			"details": {
+				"animations": [
+					"airborne",
+					"crouch_preview",
+					"fall",
+					"grind",
+					"landing",
+					"ollie_charge",
+					"ollie_pop",
+					"ride_idle",
+					"rig_check"
+				]
+			},
+			"name": "clip:grind",
+			"ok": true
+		},
+		{
+			"details": {
+				"animations": [
+					"airborne",
+					"crouch_preview",
+					"fall",
+					"grind",
+					"landing",
+					"ollie_charge",
+					"ollie_pop",
+					"ride_idle",
+					"rig_check"
+				]
+			},
+			"name": "clip:fall",
+			"ok": true
+		},
+		{
+			"details": {
+				"animations": [
+					"airborne",
+					"crouch_preview",
+					"fall",
+					"grind",
+					"landing",
+					"ollie_charge",
+					"ollie_pop",
+					"ride_idle",
+					"rig_check"
+				]
+			},
+			"name": "clip:crouch_preview",
+			"ok": true
+		},
+		{
+			"details": {
+				"animations": [
+					"airborne",
+					"crouch_preview",
+					"fall",
+					"grind",
+					"landing",
+					"ollie_charge",
+					"ollie_pop",
+					"ride_idle",
+					"rig_check"
+				]
+			},
+			"name": "clip:rig_check",
+			"ok": true
+		},
+		{
+			"details": {
+				"moved_bones": 15
+			},
+			"name": "animation_moves_exported_bones",
+			"ok": true
+		},
+		{
+			"details": {},
+			"name": "finite_animated_transforms",
+			"ok": true
+		}
+	],
+	"completed": true,
+	"failed": 0
+}
