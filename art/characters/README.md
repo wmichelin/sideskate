@@ -36,8 +36,9 @@ deform skeleton, fingers and controls. Left and right bones have different color
 The gameplay actions are `ride_idle`, `ollie_charge`, `ollie_pop`, `airborne`,
 `landing`, `grind` and `fall`. `crouch_preview` and `rig_check` remain authoring
 previews. Gameplay clips use a sideways stance with knees tracking over the feet.
-Charge sits the hips back and lowers the hands; the pop extends with the front
-knee leading, then tucks both knees and levels the board before a soft landing.
+Charge eases into a rearward hip shift and arm backswing. The pop leads with
+the front knee while the arms follow with a small shoulder turn. Descent opens
+the tucked legs for contact; landing compresses before recovering into riding.
 The `board_pose` animation marker drives the existing game's board tilt from the
 same baked clip as the feet. It adds no gameplay translation or collision motion.
 The face has static geometry, without facial controls or expressions.
@@ -61,7 +62,8 @@ feet on Z=0, +Z up and -Y forward. The GLB converts to +Y up / +Z forward.
 Flat normals and material boundaries may split vertices during export.
 
 Materials use no external textures. The GLB excludes the studio, widgets and IK
-control bones; the exporter samples constraints into the deform skeleton.
+control bones; the exporter samples constraints into the deform skeleton at
+60 FPS so foot placement stays accurate through the fast pop.
 The gameplay scene uses the actual 1.738 m height, displays it at 0.55 m, and
 rotates the sideways stance to match the board and logical facing. The larger
 visual fall bounds contain the rider while tumbling; sim collision is unchanged.

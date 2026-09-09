@@ -27,7 +27,7 @@ func configure(player: AnimationPlayer) -> bool:
 	_player.callback_mode_process = AnimationMixer.ANIMATION_CALLBACK_MODE_PROCESS_MANUAL
 	for clip in REQUIRED:
 		var animation := _player.get_animation(clip)
-		animation.loop_mode = Animation.LOOP_LINEAR if clip in [RIDE, GRIND, AIR, FALL] else Animation.LOOP_NONE
+		animation.loop_mode = Animation.LOOP_LINEAR if clip in [RIDE, GRIND, FALL] else Animation.LOOP_NONE
 	reset()
 	return true
 
@@ -66,6 +66,12 @@ func tick(delta: float, airborne: bool, falling: bool, charge: float,
 		# Scrub the crouch from actual charge, including holding at full charge.
 		_player.advance(maxf(delta, 0.0))
 		_player.seek(clampf(charge, 0.0, 1.0) * _length(CHARGE), true)
+		_player.advance(0.0)
+	elif pose_name == AIR:
+		# Descending speed opens the tucked pose for contact. Rising air-outs
+		# stay tucked; a short ollie cannot run an arbitrary airborne loop.
+		_player.advance(maxf(delta, 0.0))
+		_player.seek(clampf(-vertical_velocity / 650.0, 0.0, 1.0) * _length(AIR), true)
 		_player.advance(0.0)
 	else:
 		_player.advance(maxf(delta, 0.0))

@@ -25,9 +25,9 @@ for action in list(bpy.data.actions):
 
 scene = bpy.context.scene
 scene.unit_settings.system = "METRIC"
-scene.render.fps = 30
+scene.render.fps = 60
 scene.frame_start = 1
-scene.frame_end = 61
+scene.frame_end = 121
 parts = []
 
 
@@ -415,14 +415,15 @@ def rotate_world(name, axis, angle):
     pb.rotation_quaternion = rest.inverted() @ Quaternion(axis, angle) @ rest
 
 
-def pose_ride(depth=.085, sway=0, reach=0.0, pitch=0.0):
+def pose_ride(depth=.085, sway=0, reach=0.0, pitch=0.0, swing=0.0, twist=0.0, shift=0.0):
     reset_pose()
     # Sit the hips back and hinge the torso over the board, rather than just
     # dropping a vertical torso between inward-collapsing knees.
-    offset("pelvis", (-pitch * .08, .025 + depth * .35, -depth))
+    offset("pelvis", (-pitch * .08 + shift, .025 + depth * .35, -depth))
+    rotate_world("pelvis", (0, 0, 1), twist)
     rotate_world("spine", (1, 0, 0), .12 + depth * .95)
     rotate_world("chest", (1, 0, 0), .06 + depth * .22)
-    rotate_world("head", (0, 0, 1), 1.05)
+    rotate_world("head", (0, 0, 1), 1.05 - twist * .65)
     board_rotation = Quaternion((0, 1, 0), -pitch)
     rotate_world("board_pose", (0, 1, 0), -pitch)
     for side, s in (("L", 1), ("R", -1)):
@@ -433,8 +434,11 @@ def pose_ride(depth=.085, sway=0, reach=0.0, pitch=0.0):
         rotate_world("CTRL_foot." + side, (0, 1, 0), -pitch)
         knee = Vector((s * .62, -.62, .48))
         offset("CTRL_knee." + side, knee - bone_specs["CTRL_knee." + side][0])
-        target = Vector((s * (.43 + reach * .16), -.16 + sway * s,
-                         .94 - depth * 1.25 + reach * .47))
+        # The front arm leads the swing; the rear arm follows for balance.
+        # Hand targets lag the hip drive instead of mirroring each other.
+        target = Vector((s * (.43 - depth * .1 + reach * .16) + swing * .04,
+                         -.16 + sway * s - swing * (.08 if side == "L" else .05),
+                         .94 - depth * 1.05 + reach * .47 + swing * (.07 if side == "L" else -.035)))
         offset("CTRL_hand." + side, target - bone_specs["CTRL_hand." + side][0])
         for finger in ("index", "middle", "ring", "pinky"):
             for n in ("01", "02"):
@@ -442,6 +446,8 @@ def pose_ride(depth=.085, sway=0, reach=0.0, pitch=0.0):
 
 
 def insert_pose(frame):
+    # Author timing at 30 fps, bake IK at 60 fps to keep soles planted between keys.
+    frame = 1 + (frame - 1) * 2
     for pb in rig.pose.bones:
         for prop in ("location", "rotation_quaternion", "scale"):
             pb.keyframe_insert(prop, frame=frame, group=pb.name)
@@ -458,23 +464,36 @@ for name in ("ride_idle", "ollie_charge", "ollie_pop", "airborne", "landing", "g
             pose_ride(depth, sway)
             insert_pose(frame)
     elif name == "ollie_charge":
-        for frame, depth in ((1, .085), (16, .32)):
-            pose_ride(depth)
+        for frame, depth, swing, twist, shift in (
+                (1, .085, 0, 0, 0), (5, .13, -.10, -.015, -.008),
+                (10, .25, -.45, -.04, -.022), (16, .34, -.75, -.06, -.03)):
+            pose_ride(depth, swing=swing, twist=twist, shift=shift)
             insert_pose(frame)
     elif name == "ollie_pop":
         # Reference sequence compressed from slow motion into the game's jump:
         # extend, lead with the front knee, bring the rear knee up, level out.
-        for frame, depth, reach, pitch in ((1, .32, 0, 0), (3, .09, .75, .38),
-                                           (6, .24, 1, .24), (10, .36, .85, 0)):
-            pose_ride(depth, reach=reach, pitch=pitch)
+        for frame, depth, reach, pitch, swing, twist, shift in (
+                (1, .34, 0, 0, -.75, -.06, -.03),
+                (2, .27, .12, .17, -.45, -.035, -.02),
+                (3, .18, .65, .38, .25, .025, -.005),
+                (4, .19, .90, .34, .85, .07, .005),
+                (6, .24, 1.0, .24, 1.0, .08, .025),
+                (8, .34, .9, .10, .65, .055, .015),
+                (10, .36, .8, 0, .35, .035, .005)):
+            pose_ride(depth, reach=reach, pitch=pitch, swing=swing, twist=twist, shift=shift)
             insert_pose(frame)
     elif name == "airborne":
-        for frame in (1, 31):
-            pose_ride(.36, reach=.85)
+        # Tuck at the apex, then open the legs and lower the arms for contact.
+        for frame, depth, reach, swing, twist in (
+                (1, .36, .8, .35, .035), (6, .34, .78, .30, .03),
+                (11, .26, .60, .25, .02), (16, .18, .45, .20, .015)):
+            pose_ride(depth, reach=reach, swing=swing, twist=twist)
             insert_pose(frame)
     elif name == "landing":
-        for frame, depth, reach in ((1, .36, .85), (4, .32, .25), (13, .085, 0)):
-            pose_ride(depth, reach=reach)
+        for frame, depth, reach, swing, twist in (
+                (1, .18, .45, .20, .015), (4, .38, .30, .50, -.025),
+                (8, .25, .15, -.15, .02), (13, .085, 0, 0, 0)):
+            pose_ride(depth, reach=reach, swing=swing, twist=twist)
             insert_pose(frame)
     elif name == "grind":
         for frame, sway in ((1, -.012), (16, .012), (31, -.012)):
@@ -491,8 +510,8 @@ for name in ("ride_idle", "ollie_charge", "ollie_pop", "airborne", "landing", "g
                 offset("CTRL_hand." + side, target - bone_specs["CTRL_hand." + side][0])
             insert_pose(frame)
     elif name == "crouch_preview":
-        for frame, depth in ((1, .085), (16, .32), (31, .085)):
-            pose_ride(depth)
+        for frame, depth, swing, twist in ((1, .085, 0, 0), (16, .34, -.75, -.06), (31, .085, 0, 0)):
+            pose_ride(depth, swing=swing, twist=twist, shift=twist * .5)
             insert_pose(frame)
     else:
         for frame in (1, 16, 31, 46, 61):
@@ -538,12 +557,12 @@ def evaluated_positions():
 rig.animation_data.action = bpy.data.actions["rig_check"]
 scene.frame_set(1)
 baseline = evaluated_positions()
-scene.frame_set(16)
+scene.frame_set(31)
 raised = evaluated_positions()
 check("mesh_deforms_with_controls", max((a - b).length for a, b in zip(baseline, raised)) > .15)
 for action in bpy.data.actions:
     rig.animation_data.action = action
-    for frame in range(1, int(action.frame_range[1]) + 1, 3):
+    for frame in range(1, int(action.frame_range[1]) + 1):
         scene.frame_set(frame)
         evaluated_positions()
         for side in ("L", "R"):
@@ -661,7 +680,7 @@ save a separate .blend for hand edits you want to retain.
 bpy.context.preferences.filepaths.save_version = 0
 bpy.ops.wm.save_as_mainfile(filepath=str(SOURCE / "ssk_skater.blend"))
 
-for label, action_name, frame in (("preview", "ride_idle", 1), ("crouch", "crouch_preview", 16), ("rig_check", "rig_check", 16)):
+for label, action_name, frame in (("preview", "ride_idle", 1), ("crouch", "crouch_preview", 31), ("rig_check", "rig_check", 31)):
     rig.animation_data.action = bpy.data.actions[action_name]
     scene.frame_set(frame)
     scene.render.filepath = str(SOURCE / f"ssk_skater_{label}.png")

@@ -5,7 +5,7 @@ const DT := 1.0 / 60.0
 
 
 func cases() -> Array:
-	return ["charge_holds_and_cancels", "successful_ollie_and_landing", "ride_off_and_fall_recovery", "planted_feet_and_board", "knees_and_pop_sequence", "board_follows_baked_pose"]
+	return ["charge_holds_and_cancels", "successful_ollie_and_landing", "ride_off_and_fall_recovery", "planted_feet_and_board", "knees_and_pop_sequence", "board_follows_baked_pose", "descent_prepares_and_landing_compresses"]
 
 
 func run() -> bool:
@@ -183,4 +183,30 @@ func board_follows_baked_pose() -> bool:
 			ok = _check(board.basis.y.dot(Vector3.UP) < 0.99,
 				"Board must display the authored pop tilt in either facing: bone=%s basis=%s" % [presenter._board_pose_bone, board.basis]) and ok
 	presenter.free()
+	return ok
+
+
+func descent_prepares_and_landing_compresses() -> bool:
+	var f := _fixture()
+	var c: SkaterAnimationController = f.controller
+	var skeleton: Skeleton3D = f.skeleton
+	var pelvis := _bone(skeleton, "pelvis")
+	for tick in 12:
+		c.tick(DT, true, false, 0, false, false, 0)
+	var tucked := skeleton.get_bone_global_pose(pelvis).origin.y
+	for tick in 20:
+		c.tick(DT, true, false, 0, false, false, -float(tick + 1) * 32.5)
+	var prepared := skeleton.get_bone_global_pose(pelvis).origin.y
+	var ok := _check(prepared - tucked > 0.12,
+		"Descent must extend the tucked legs in preparation for contact")
+	for tick in 6:
+		c.tick(DT, false, false, 0, false, false, 0)
+	var compressed := skeleton.get_bone_global_pose(pelvis).origin.y
+	ok = _check(c.pose_name == c.LAND and prepared - compressed > 0.12,
+		"Landing must absorb impact before standing back up") and ok
+	for tick in 24:
+		c.tick(DT, false, false, 0, false, false, 0)
+	ok = _check(c.pose_name == c.RIDE and skeleton.get_bone_global_pose(pelvis).origin.y - compressed > 0.2,
+		"Impact compression must recover smoothly into riding") and ok
+	f.node.free()
 	return ok
